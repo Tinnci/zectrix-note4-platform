@@ -30,4 +30,6 @@ The current demo has migration exceptions in `main/` and `components/zectrix_dem
 - Eight partial refreshes request a full clean refresh.
 - Dirty regions are unioned until a full refresh or error clears them.
 
-The pure state model and host tests implement M2.1a. The service wrapper, UI migration and hardware regression remain separate M2.1b-d work.
+The pure state model and host tests implement M2.1a. `DisplayService` now provides the M2.1b wrapper. UI migration and hardware regression remain separate M2.1c-d work.
+
+`DisplayService::Create` owns the raw driver handle. Callers use only logical display operations. A partial refresh is rejected when no valid 1bpp baseline exists or when the partial budget is exhausted. Any driver error invalidates the baseline.
