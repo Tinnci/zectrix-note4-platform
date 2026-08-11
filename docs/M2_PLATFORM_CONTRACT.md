@@ -2,6 +2,12 @@
 
 Status: Draft. This document is an internal M2 contract. It is not an SDK v1 specification.
 
+Apply the rules in
+[`PLATFORM_MIGRATION_PRINCIPLES.md`](PLATFORM_MIGRATION_PRINCIPLES.md) to each
+platform migration. These rules use controlled technical English that is
+aligned with useful ASD-STE100 principles. They do not state or imply formal
+ASD-STE100 compliance or certification.
+
 ## Architecture boundary
 
 Applications call platform services. Platform services call board support. Board support calls raw drivers and ESP-IDF.
@@ -30,7 +36,7 @@ The checker enforces these restrictions in `main/`, `components/zectrix_demo_ui/
 - Eight partial refreshes request a full clean refresh.
 - Dirty regions are unioned until a full refresh or error clears them.
 
-The pure state model and host tests implement M2.1a. `DisplayService` now provides the M2.1b wrapper. UI migration and hardware regression remain separate M2.1c-d work.
+The pure state model and host tests implement M2.1a. `DisplayService` provides the M2.1b wrapper. The UI and gallery migration implements M2.1c. M2.1d remains open until the corrected firmware passes hardware regression.
 
 `DisplayService::Create` owns the only raw driver handle. The demo UI and gallery share that service and its state. Callers use only logical display operations. A partial refresh is rejected when no valid 1bpp baseline exists or when the partial budget is exhausted. Any driver error invalidates the baseline.
 
