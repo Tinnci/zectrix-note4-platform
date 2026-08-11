@@ -1,6 +1,6 @@
 # U0 hardware qualification
 
-Status: HARDWARE QUALIFICATION PASS. FACTORY RECOVERY PENDING.
+Status: U0 HARDWARE QUALIFICATION AND FACTORY RECOVERY PASS.
 
 Qualification date: 2026-08-11
 
@@ -133,7 +133,33 @@ does not print every final interactive test result to the serial console.
 Do not block this gate because of subjective 4bpp image quality. Record image
 quality observations for the EPD baseline measurement work.
 
+## Factory recovery drill
+
+The operator explicitly authorized the full factory recovery drill on
+2026-08-11. The recovery used the preserved 16 MiB image at offset `0x000000`.
+It did not write an eFuse, enable secure boot or enable flash encryption.
+
+| Check | Result | Evidence or notes |
+| --- | --- | --- |
+| Source image size | PASS | 16,777,216 bytes |
+| Source image SHA-256 | PASS | `47a3eb7b97a5a20dd0f3b0904b02ea792504c769941216af7dd4c02498b439d2` |
+| Full-image write verification | PASS | The flash tool verified the written-data hash. |
+| Independent readback | PASS | ROM bootloader, `--no-stub`, 16 segments of 1 MiB |
+| Segment comparison | PASS | 16 of 16 segments matched byte for byte. |
+| Reassembled readback size | PASS | 16,777,216 bytes |
+| Reassembled readback SHA-256 | PASS | Exact match with the source image |
+| Factory firmware boot | PASS | The operator confirmed the original interface and normal basic operation. |
+
+The stub flasher stopped during two initial readback attempts. The original
+backup log documents the same transport limitation. The controlled readback
+therefore used the ROM bootloader and the same 1 MiB segmentation method as the
+two preservation reads. This method completed without an error.
+
+Detailed recovery logs and readback binaries remain in the private backup
+workspace. They are not part of this public repository.
+
 ## Exit rule
 
-Platform issue #1 is complete. Keep platform issue #2 open until the factory
-recovery drill and its verification pass.
+Platform issues #1 and #2 are complete. The U0 baseline is qualified for the
+tested device. Continue with the next M1 platform-abstraction task without
+changing the preserved factory backup.
