@@ -5,19 +5,18 @@
 
 namespace zectrix::input {
 
-esp_err_t InputService::Attach(void* board, InputService** out_service) {
-    if (board == nullptr || out_service == nullptr) return ESP_ERR_INVALID_ARG;
+esp_err_t InputService::Attach(ZectrixBoard& board, InputService** out_service) {
+    if (out_service == nullptr) return ESP_ERR_INVALID_ARG;
     *out_service = new InputService(board);
     return ESP_OK;
 }
 
 InputService::~InputService() = default;
 
-bool InputService::Wait(InputEvent* event, uint32_t timeout_ms) {
+bool InputService::Wait(InputEvent* event, TickType_t timeout_ticks) {
     if (event == nullptr || board_ == nullptr) return false;
     ZectrixButtonEvent board_event;
-    if (!static_cast<ZectrixBoard*>(board_)->WaitButton(
-            &board_event, pdMS_TO_TICKS(timeout_ms))) {
+    if (!board_->WaitButton(&board_event, timeout_ticks)) {
         return false;
     }
     switch (board_event.button) {
@@ -32,7 +31,7 @@ bool InputService::Wait(InputEvent* event, uint32_t timeout_ms) {
 }
 
 void InputService::Drain() {
-    if (board_ != nullptr) static_cast<ZectrixBoard*>(board_)->DrainButtons();
+    if (board_ != nullptr) board_->DrainButtons();
 }
 
 }  // namespace zectrix::input

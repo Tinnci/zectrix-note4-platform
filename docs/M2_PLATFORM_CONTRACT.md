@@ -10,11 +10,12 @@ ASD-STE100 compliance or certification.
 
 ## Architecture boundary
 
-Applications call platform services. Platform services call board support. Board support calls raw drivers and ESP-IDF.
+Applications call platform services. A service can call board support or its
+resource driver. Application code does not call either lower layer directly.
 
 | Service | Owns |
 | --- | --- |
-| DisplayService | logical display state, valid 1bpp baseline, dirty regions, partial refresh budget, refresh intent, error state |
+| DisplayService | panel lifecycle, logical display state, valid 1bpp baseline, dirty regions, partial refresh budget, refresh intent, error state |
 | InputService | logical button mapping and event delivery |
 | PowerService | sleep, deep sleep, wake, shutdown, wake reason, battery and external power |
 | TimeService | RTC, wall clock and timer abstraction |
@@ -24,7 +25,10 @@ Applications call platform services. Platform services call board support. Board
 Application code must not include `driver/gpio.h`, `driver/spi_master.h` or `zectrix_epd.h`.
 Application code must not call `esp_deep_sleep_start()`, access NVS directly, or depend on PCF8563.
 
-The checker enforces these restrictions in `main/`, `components/zectrix_demo_ui/`, and future `apps/` or `applications/` roots. Board support, platform services, raw drivers and self-test implementations are not application roots.
+The checker enforces these restrictions in the known application roots. It
+also discovers service consumers from their CMake files. Board support,
+platform services, raw drivers, and self-test implementations are not
+application roots.
 
 ## M2.1a display state invariants
 
@@ -38,8 +42,22 @@ The checker enforces these restrictions in `main/`, `components/zectrix_demo_ui/
 
 The pure state model and host tests implement M2.1a. `DisplayService` provides the M2.1b wrapper. The UI and gallery migration implements M2.1c. M2.1d remains open until the corrected firmware passes hardware regression.
 
-`DisplayService::Create` owns the only raw driver handle. The demo UI and gallery share that service and its state. Callers use only logical display operations. A partial refresh is rejected when no valid 1bpp baseline exists or when the partial budget is exhausted. Any driver error invalidates the baseline.
+`DisplayService::Create` owns the only raw driver handle. The demo UI and
+gallery share that service and its state. Callers use only logical display
+operations. The service owns panel power for each refresh. A caller can request
+a service-managed batch when a qualified sequence must keep the panel powered.
+The service rejects a partial refresh when no valid 1bpp baseline exists. When
+the partial budget is exhausted, the service uses a supplied full 1bpp frame to
+establish a new baseline. Any driver or panel-power error invalidates the
+baseline.
 
-`InputService` attaches to initialized board support and converts debounced physical button results to `InputEvent`. Applications use logical `Button` and `Action` values. Physical sampling, GPIO numbers, FreeRTOS queues and debounce thresholds remain inside board support.
+`InputService` attaches to initialized board support with a typed reference. It
+converts debounced physical button results to `InputEvent`. Applications use
+logical `Button` and `Action` values. Wait values use native FreeRTOS ticks so
+`portMAX_DELAY` keeps its wait-forever meaning. Physical sampling, GPIO
+numbers, FreeRTOS queues, and debounce thresholds remain inside board support.
 
-`PowerService` exposes logical battery, external-power and wake-reason values. It owns the shutdown sequence and the deep-sleep call; board GPIO and rail control remain inside board support.
+`PowerService` attaches to board support with a typed reference. It exposes
+logical battery, external-power, and wake-reason values. It owns the shutdown
+sequence and the deep-sleep call. Board GPIO and rail control remain inside
+board support.

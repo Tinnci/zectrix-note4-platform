@@ -284,12 +284,7 @@ esp_err_t ZectrixDemoUi::RefreshFull() {
     if (display_ == nullptr) {
         return ESP_ERR_INVALID_STATE;
     }
-    esp_err_t err = display_->PowerOn();
-    if (err == ESP_OK) {
-        err = display_->RefreshFull1Bpp(canvas_.data(), canvas_.size());
-    }
-    const esp_err_t off = display_->PowerOff();
-    return err == ESP_OK ? off : err;
+    return display_->RefreshFull1Bpp(canvas_.data(), canvas_.size());
 }
 
 esp_err_t ZectrixDemoUi::RefreshPartial(const zectrix::display::Rect& rect) {
@@ -297,9 +292,6 @@ esp_err_t ZectrixDemoUi::RefreshPartial(const zectrix::display::Rect& rect) {
         rect.height <= 0 || (rect.x & 7) != 0 || (rect.width & 7) != 0 ||
         rect.x + rect.width > 400 || rect.y + rect.height > 300) {
         return ESP_ERR_INVALID_ARG;
-    }
-    if (display_->ShouldRequestFullClean()) {
-        return RefreshFull();
     }
     const size_t row_bytes = static_cast<size_t>(rect.width / 8);
     const size_t required = row_bytes * rect.height;
@@ -312,13 +304,8 @@ esp_err_t ZectrixDemoUi::RefreshPartial(const zectrix::display::Rect& rect) {
         std::memcpy(partial_buffer_.data() + static_cast<size_t>(row) * row_bytes,
                     source, row_bytes);
     }
-    esp_err_t err = display_->PowerOn();
-    if (err == ESP_OK) {
-        err = display_->RefreshPartial1Bpp(rect, partial_buffer_.data(), required);
-    }
-    const esp_err_t off = display_->PowerOff();
-    if (err == ESP_OK) err = off;
-    return err;
+    return display_->RefreshPartial1Bpp(
+        rect, partial_buffer_.data(), required, canvas_.data(), canvas_.size());
 }
 
 esp_err_t ZectrixDemoUi::ClearDisplay() {

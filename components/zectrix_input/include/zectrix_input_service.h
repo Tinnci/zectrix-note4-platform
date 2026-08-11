@@ -3,6 +3,9 @@
 #include <cstdint>
 
 #include "esp_err.h"
+#include "freertos/FreeRTOS.h"
+
+class ZectrixBoard;
 
 namespace zectrix::input {
 
@@ -16,14 +19,15 @@ struct InputEvent {
 
 class InputService {
 public:
-    // Attaches to an already-initialised board support object. The service does not own it.
-    static esp_err_t Attach(void* board, InputService** out_service);
+    // Attaches to initialized board support. The service does not own it.
+    static esp_err_t Attach(ZectrixBoard& board, InputService** out_service);
     ~InputService();
 
     InputService(const InputService&) = delete;
     InputService& operator=(const InputService&) = delete;
 
-    bool Wait(InputEvent* event, uint32_t timeout_ms);
+    // Uses native FreeRTOS ticks so portMAX_DELAY keeps its wait-forever meaning.
+    bool Wait(InputEvent* event, TickType_t timeout_ticks);
     void Drain();
 
     static constexpr InputEvent MakeEvent(Button button, Action action) {
@@ -31,8 +35,8 @@ public:
     }
 
 private:
-    explicit InputService(void* board) : board_(board) {}
-    void* board_;
+    explicit InputService(ZectrixBoard& board) : board_(&board) {}
+    ZectrixBoard* board_;
 };
 
 }  // namespace zectrix::input

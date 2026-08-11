@@ -9,8 +9,8 @@
 
 namespace zectrix::power {
 
-esp_err_t PowerService::Attach(void* board, PowerService** out_service) {
-    if (board == nullptr || out_service == nullptr) return ESP_ERR_INVALID_ARG;
+esp_err_t PowerService::Attach(ZectrixBoard& board, PowerService** out_service) {
+    if (out_service == nullptr) return ESP_ERR_INVALID_ARG;
     *out_service = new PowerService(board);
     return ESP_OK;
 }
@@ -21,7 +21,7 @@ PowerSnapshot PowerService::ReadSnapshot() const {
     PowerSnapshot snapshot;
     if (board_ == nullptr) return snapshot;
     const ZectrixPowerSnapshot board_snapshot =
-        static_cast<ZectrixBoard*>(board_)->ReadPowerSnapshot();
+        board_->ReadPowerSnapshot();
     snapshot.battery_valid = board_snapshot.battery_valid;
     snapshot.battery_mv = board_snapshot.battery_mv;
     snapshot.battery_percent = board_snapshot.battery_percent;
@@ -44,11 +44,10 @@ WakeReason PowerService::GetWakeReason() const {
 
 [[noreturn]] void PowerService::Shutdown() {
     if (board_ != nullptr) {
-        auto* board = static_cast<ZectrixBoard*>(board_);
-        board->SetPowerLed(false);
-        board->SetAudioPower(false);
+        board_->SetPowerLed(false);
+        board_->SetAudioPower(false);
         vTaskDelay(pdMS_TO_TICKS(100));
-        board->CutBatteryPower();
+        board_->CutBatteryPower();
         vTaskDelay(pdMS_TO_TICKS(100));
     }
     esp_deep_sleep_start();

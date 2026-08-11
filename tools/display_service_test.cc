@@ -1,0 +1,84 @@
+#include "zectrix_display_service.h"
+#include "zectrix_epd.h"
+
+#include <array>
+#include <cassert>
+
+struct zectrix_epd_t {
+    bool powered = false;
+    int power_on_count = 0;
+    int power_off_count = 0;
+    int full_1bpp_count = 0;
+    int partial_count = 0;
+    int full_4bpp_count = 0;
+};
+
+static zectrix_epd_t driver;
+
+void zectrix_epd_get_default_config(zectrix_epd_config_t*) {}
+esp_err_t zectrix_epd_new(const zectrix_epd_config_t*,
+                          zectrix_epd_handle_t* out_handle) {
+    driver = {};
+    *out_handle = &driver;
+    return ESP_OK;
+}
+esp_err_t zectrix_epd_del(zectrix_epd_handle_t) { return ESP_OK; }
+esp_err_t zectrix_epd_power_on(zectrix_epd_handle_t handle) {
+    handle->powered = true;
+    ++handle->power_on_count;
+    return ESP_OK;
+}
+esp_err_t zectrix_epd_power_off(zectrix_epd_handle_t handle) {
+    handle->powered = false;
+    ++handle->power_off_count;
+    return ESP_OK;
+}
+bool zectrix_epd_is_powered(zectrix_epd_handle_t handle) {
+    return handle->powered;
+}
+esp_err_t zectrix_epd_refresh_full_1bpp(zectrix_epd_handle_t handle,
+                                        const std::uint8_t*, std::size_t) {
+    ++handle->full_1bpp_count;
+    return ESP_OK;
+}
+esp_err_t zectrix_epd_refresh_partial_1bpp(zectrix_epd_handle_t handle,
+                                           const zectrix_epd_rect_t*,
+                                           const std::uint8_t*, std::size_t) {
+    ++handle->partial_count;
+    return ESP_OK;
+}
+esp_err_t zectrix_epd_refresh_full_4bpp(zectrix_epd_handle_t handle,
+                                        const std::uint8_t*, std::size_t) {
+    ++handle->full_4bpp_count;
+    return ESP_OK;
+}
+
+int main() {
+    using namespace zectrix::display;
+    std::array<std::uint8_t, DisplayService::kFrameBytes1Bpp> frame = {};
+    std::array<std::uint8_t, 1> pixel = {};
+    DisplayService* service = nullptr;
+    assert(DisplayService::Create(&service) == ESP_OK);
+    assert(service->RefreshPartial1Bpp({0, 0, 8, 1}, pixel.data(), 1) ==
+           ESP_ERR_INVALID_STATE);
+    assert(service->RefreshFull1Bpp(frame.data(), frame.size()) == ESP_OK);
+    assert(driver.power_on_count == 1 && driver.power_off_count == 1);
+    for (int i = 0; i < 8; ++i) {
+        assert(service->RefreshPartial1Bpp({0, 0, 8, 1}, pixel.data(), 1) ==
+               ESP_OK);
+    }
+    assert(service->state().partial_refresh_count == 8);
+    assert(service->RefreshPartial1Bpp(
+               {0, 0, 8, 1}, pixel.data(), 1, frame.data(), frame.size()) ==
+           ESP_OK);
+    assert(driver.full_1bpp_count == 2);
+    assert(service->state().partial_refresh_count == 0);
+    assert(service->BeginBatch() == ESP_OK);
+    assert(service->RefreshFull1Bpp(frame.data(), frame.size()) == ESP_OK);
+    assert(service->RefreshPartial1Bpp({0, 0, 8, 1}, pixel.data(), 1) ==
+           ESP_OK);
+    assert(service->EndBatch() == ESP_OK);
+    assert(!service->IsPowered());
+    assert(driver.power_on_count == driver.power_off_count);
+    delete service;
+}

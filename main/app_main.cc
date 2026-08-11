@@ -82,9 +82,9 @@ public:
             ESP_LOGE(kTag, "board initialization failed: %s", esp_err_to_name(err));
         }
         ESP_ERROR_CHECK(zectrix::input::InputService::Attach(
-            &board_, &input_));
+            board_, &input_));
         ESP_ERROR_CHECK(zectrix::power::PowerService::Attach(
-            &board_, &power_));
+            board_, &power_));
 
         err = zectrix::display::DisplayService::Create(&display_);
         if (err != ESP_OK) {
@@ -110,8 +110,8 @@ private:
             zectrix::input::InputEvent event;
             const TickType_t elapsed = xTaskGetTickCount() - start;
             const TickType_t remaining = duration > elapsed ? duration - elapsed : 0;
-            if (!input_->Wait(&event, pdTICKS_TO_MS(
-                                   std::min(remaining, pdMS_TO_TICKS(100))))) {
+            if (!input_->Wait(&event,
+                              std::min(remaining, pdMS_TO_TICKS(100)))) {
                 continue;
             }
             if (event.button == zectrix::input::Button::Down &&
@@ -136,7 +136,7 @@ private:
         ESP_ERROR_CHECK(ui_.ShowMenu(title, items, count, *selected, footer, true));
         while (true) {
             zectrix::input::InputEvent event;
-            if (!input_->Wait(&event, pdTICKS_TO_MS(idle_timeout))) {
+            if (!input_->Wait(&event, idle_timeout)) {
                 return ControlResult::kContinue;
             }
             if (event.button == zectrix::input::Button::Down &&
@@ -214,11 +214,7 @@ private:
             return result;
         }
         const int64_t start = esp_timer_get_time();
-        result.error = display_->PowerOn();
-        if (result.error == ESP_OK) {
-            result.error = display_->RefreshFull1Bpp(kLighthouse1bppStart, size);
-        }
-        display_->PowerOff();
+        result.error = display_->RefreshFull1Bpp(kLighthouse1bppStart, size);
         result.elapsed_ms = (esp_timer_get_time() - start) / 1000;
         if (result.error == ESP_OK) {
             result.control = Wait(pdMS_TO_TICKS(2500), true);
@@ -241,7 +237,7 @@ private:
         }
 
         const int64_t start = esp_timer_get_time();
-        result.error = display_->PowerOn();
+        result.error = display_->BeginBatch();
         if (result.error == ESP_OK) {
             result.error = display_->RefreshFull1Bpp(
                 kSnowPath1bppStart, background_size);
@@ -283,7 +279,8 @@ private:
                 result.control = Wait(pdMS_TO_TICKS(400), true);
             }
         }
-        display_->PowerOff();
+        const esp_err_t end_batch = display_->EndBatch();
+        if (result.error == ESP_OK) result.error = end_batch;
         result.elapsed_ms = (esp_timer_get_time() - start) / 1000;
         if (result.error == ESP_OK &&
             result.control == ControlResult::kContinue) {
@@ -305,12 +302,8 @@ private:
         // every gray refresh to minimize visible history on this panel.
         result.error = ui_.ClearDisplay();
         if (result.error == ESP_OK) {
-            result.error = display_->PowerOn();
-        }
-        if (result.error == ESP_OK) {
             result.error = display_->RefreshFull4Bpp(kMountain4bppStart, size);
         }
-        display_->PowerOff();
         result.elapsed_ms = (esp_timer_get_time() - start) / 1000;
         if (result.error == ESP_OK) {
             result.control = Wait(pdMS_TO_TICKS(5000), true);
@@ -378,7 +371,7 @@ private:
                 result.elapsed_ms, result.error));
             while (true) {
                 zectrix::input::InputEvent event;
-                if (!input_->Wait(&event, pdTICKS_TO_MS(portMAX_DELAY))) continue;
+                if (!input_->Wait(&event, portMAX_DELAY)) continue;
                 if (event.button == zectrix::input::Button::Down &&
                     event.action == zectrix::input::Action::LongPress) {
                     return ControlResult::kShutdown;
@@ -445,7 +438,7 @@ private:
         ESP_ERROR_CHECK(ui_.ShowTestMenu(selected, test_states_, true));
         while (true) {
             zectrix::input::InputEvent event;
-            if (!input_->Wait(&event, pdTICKS_TO_MS(portMAX_DELAY))) continue;
+            if (!input_->Wait(&event, portMAX_DELAY)) continue;
             if (event.button == zectrix::input::Button::Down &&
                 event.action == zectrix::input::Action::LongPress) {
                 return ControlResult::kShutdown;

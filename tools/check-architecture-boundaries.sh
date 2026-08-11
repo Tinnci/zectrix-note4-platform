@@ -42,7 +42,32 @@ run_self_test() {
 if [[ "${1:-}" == "--self-test" ]]; then run_self_test; exit 0; fi
 status=0
 found_root=0
-for relative_root in main components/zectrix_demo_ui apps applications; do
+declare -A application_roots=(
+    [main]=1
+    [components/zectrix_demo_ui]=1
+    [apps]=1
+    [applications]=1
+)
+
+# Discover current consumers from the build files. This prevents a new
+# application component from bypassing the check only because its directory
+# name is not in the seed list above.
+while IFS= read -r cmake_file; do
+    component_dir=${cmake_file%/CMakeLists.txt}
+    component_name=${component_dir##*/}
+    if [[ "$component_name" =~ ^zectrix_(display|input|power|time|storage|system)$ ]]; then
+        continue
+    fi
+    if rg -q 'zectrix_(display|input|power|time|storage|system)' "$cmake_file"; then
+        relative_root=${cmake_file#"$root_dir/"}
+        application_roots["${relative_root%/CMakeLists.txt}"]=1
+    fi
+done < <(find "$root_dir" \
+    -path "$root_dir/build" -prune -o \
+    -path "$root_dir/managed_components" -prune -o \
+    -name CMakeLists.txt -type f -print)
+
+for relative_root in "${!application_roots[@]}"; do
     scan_root="$root_dir/$relative_root"
     if [[ -d "$scan_root" ]]; then
         found_root=1

@@ -4,6 +4,8 @@
 
 #include "esp_err.h"
 
+class ZectrixBoard;
+
 namespace zectrix::power {
 
 enum class WakeReason : uint8_t {
@@ -27,7 +29,7 @@ struct PowerSnapshot {
 class PowerService {
 public:
     // Attaches to initialized board support. The service does not own it.
-    static esp_err_t Attach(void* board, PowerService** out_service);
+    static esp_err_t Attach(ZectrixBoard& board, PowerService** out_service);
     ~PowerService();
 
     PowerService(const PowerService&) = delete;
@@ -40,8 +42,8 @@ public:
     [[noreturn]] void Shutdown();
 
 private:
-    explicit PowerService(void* board) : board_(board) {}
-    void* board_;
+    explicit PowerService(ZectrixBoard& board) : board_(&board) {}
+    ZectrixBoard* board_;
 };
 
 }  // namespace zectrix::power

@@ -191,4 +191,3 @@ Issue or change set for the hardware behavior change.
 - [ ] The result identifies the firmware commit and hardware baseline.
 - [ ] Follow-up work is separate from current acceptance.
 - [ ] The Issue does not claim API or ABI stability unless M4 permits the claim.
-
