@@ -9,11 +9,11 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "zectrix_board.h"
 #include "zectrix_demo_ui.h"
 #include "zectrix_display_service.h"
 #include "zectrix_input_service.h"
 #include "zectrix_power_service.h"
+#include "zectrix_platform.h"
 #include "zectrix_self_test.h"
 #include "zectrix_storage_service.h"
 #include "zectrix_system_service.h"
@@ -66,36 +66,23 @@ uint16_t ReadLe16(const uint8_t* data) {
 
 class DemoApp {
 public:
-    DemoApp() : ui_(nullptr), tests_(&board_) {
+    DemoApp() : ui_(nullptr), tests_(&platform_.BoardForSelfTest()) {
         test_states_.fill(ZectrixTestState::kWait);
-    }
-    ~DemoApp() {
-        delete display_;
-        delete power_;
-        delete input_;
-        delete time_;
-        delete storage_;
-        delete system_;
     }
 
     void Run() {
-        esp_err_t err = board_.Init();
+        esp_err_t err = platform_.Initialize();
         if (err != ESP_OK) {
-            ESP_LOGE(kTag, "board initialization failed: %s", esp_err_to_name(err));
-        }
-        ESP_ERROR_CHECK(zectrix::input::InputService::Attach(
-            board_, &input_));
-        ESP_ERROR_CHECK(zectrix::power::PowerService::Attach(
-            board_, &power_));
-        ESP_ERROR_CHECK(zectrix::time::TimeService::Attach(board_, &time_));
-        ESP_ERROR_CHECK(zectrix::storage::StorageService::Create(&storage_));
-        ESP_ERROR_CHECK(zectrix::system::SystemService::Attach(board_, &system_));
-
-        err = zectrix::display::DisplayService::Create(&display_);
-        if (err != ESP_OK) {
-            ESP_LOGE(kTag, "EPD initialization failed: %s", esp_err_to_name(err));
+            ESP_LOGE(kTag, "platform initialization failed: %s",
+                     esp_err_to_name(err));
             return;
         }
+        display_ = &platform_.Display();
+        input_ = &platform_.Input();
+        power_ = &platform_.Power();
+        time_ = &platform_.Time();
+        storage_ = &platform_.Storage();
+        system_ = &platform_.System();
         ui_.SetDisplay(display_);
         ui_.SetTime(time_);
         tests_.SetTime(time_);
@@ -500,7 +487,7 @@ private:
         power_->Shutdown();
     }
 
-    ZectrixBoard board_;
+    zectrix::Platform platform_;
     zectrix::input::InputService* input_ = nullptr;
     zectrix::power::PowerService* power_ = nullptr;
     zectrix::display::DisplayService* display_ = nullptr;

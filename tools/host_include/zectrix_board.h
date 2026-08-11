@@ -1,6 +1,7 @@
 #pragma once
 
 #include "freertos/FreeRTOS.h"
+#include "esp_err.h"
 
 #include <ctime>
 
@@ -14,6 +15,7 @@ struct ZectrixButtonEvent {
 
 class ZectrixBoard {
 public:
+    esp_err_t Init();
     bool WaitButton(ZectrixButtonEvent* event, TickType_t timeout_ticks) {
         last_timeout = timeout_ticks;
         if (!has_event || event == nullptr) return false;
@@ -56,6 +58,7 @@ public:
     bool drained = false;
     bool rtc_available = true;
     bool nfc_available = true;
+    esp_err_t init_result = ESP_OK;
     bool rtc_io_ok = true;
     bool timer_flag = false;
     bool rtc_interrupt_active = false;

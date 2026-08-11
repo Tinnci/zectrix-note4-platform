@@ -19,6 +19,7 @@ check_root() {
         'esp_flash_get_size[[:space:]]*\('
         'esp_read_mac[[:space:]]*\('
         'heap_caps_get_[a-zA-Z0-9_]*[[:space:]]*\('
+        '(DisplayService|InputService|PowerService|TimeService|StorageService|SystemService)::(Attach|Create)[[:space:]]*\('
     )
     for pattern in "${patterns[@]}"; do
         if rg -n -i --glob '*.{c,cc,cpp,h,hh,hpp}' "$pattern" "$scan_root"; then found=1; fi
@@ -39,6 +40,7 @@ run_self_test() {
         'void sleep_now() { esp_deep_sleep_start(); }' \
         'void load() { nvs_get_i32(0, "key", nullptr); }' \
         'void identity() { esp_read_mac(nullptr, 0); }' \
+        'void service() { InputService::Attach(board, nullptr); }' \
         'const char* rtc = "PCF8563";' > "$temp_dir/bad/app.cc"
     if ! check_root "$temp_dir/good" || check_root "$temp_dir/bad"; then
         echo 'FAIL: architecture boundary checker self-test.' >&2
@@ -63,7 +65,7 @@ declare -A application_roots=(
 while IFS= read -r cmake_file; do
     component_dir=${cmake_file%/CMakeLists.txt}
     component_name=${component_dir##*/}
-    if [[ "$component_name" =~ ^zectrix_(display|input|power|time|storage|system|self_test)$ ]]; then
+    if [[ "$component_name" =~ ^zectrix_(display|input|power|time|storage|system|platform|self_test)$ ]]; then
         continue
     fi
     if rg -q 'zectrix_(display|input|power|time|storage|system)' "$cmake_file"; then

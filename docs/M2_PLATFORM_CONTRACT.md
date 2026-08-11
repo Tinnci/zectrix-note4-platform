@@ -22,15 +22,30 @@ resource driver. Application code does not call either lower layer directly.
 | StorageService | settings, configuration and small persistent state |
 | SystemService | firmware identity, reset reason, capabilities and diagnostics |
 
+`Platform` is the composition root for these six services. It initializes board
+support first. It then creates each service in a documented order. Application
+code gets non-owning service references from `Platform`. Application code does
+not call a service factory, call `Attach()`, or delete a service.
+
+`Platform` destroys the services in reverse initialization order. A failed
+initialization destroys each service that was already created. The same
+`Platform` object does not retry initialization after a failure because board
+support can be partially initialized.
+
 Application code must not include `driver/gpio.h`, `driver/spi_master.h` or `zectrix_epd.h`.
 Application code must not call `esp_deep_sleep_start()`, access NVS directly, or depend on PCF8563.
 Application code must not read the application descriptor, reset reason, chip
 information, flash size, heap diagnostics, or hardware MAC address directly.
 
 The checker enforces these restrictions in the known application roots. It
-also discovers service consumers from their CMake files. Board support,
-platform services, raw drivers, and self-test implementations are not
+also discovers service consumers from their CMake files. Board support, the
+Platform composition root, platform services, raw drivers, and self-test implementations are not
 application roots.
+
+The hardware self-test is transitional infrastructure. It can get board support
+only through `Platform::BoardForSelfTest()`. Application feature code must not
+use this access. Issue #13 Stage B will move Diagnostics to typed Platform
+services and reduce this exception.
 
 ## M2.1a display state invariants
 
