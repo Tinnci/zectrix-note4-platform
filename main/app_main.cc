@@ -10,7 +10,6 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_mac.h"
-#include "esp_sleep.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -18,6 +17,7 @@
 #include "zectrix_demo_ui.h"
 #include "zectrix_epd.h"
 #include "zectrix_input_service.h"
+#include "zectrix_power_service.h"
 #include "zectrix_self_test.h"
 
 extern "C" {
@@ -70,7 +70,10 @@ public:
     DemoApp() : ui_(nullptr), tests_(&board_) {
         test_states_.fill(ZectrixTestState::kWait);
     }
-    ~DemoApp() { delete input_; }
+    ~DemoApp() {
+        delete power_;
+        delete input_;
+    }
 
     void Run() {
         esp_err_t err = board_.Init();
@@ -79,6 +82,8 @@ public:
         }
         ESP_ERROR_CHECK(zectrix::input::InputService::Attach(
             &board_, &input_));
+        ESP_ERROR_CHECK(zectrix::power::PowerService::Attach(
+            &board_, &power_));
 
         zectrix_epd_config_t config = {};
         zectrix_epd_get_default_config(&config);
@@ -502,17 +507,13 @@ private:
         if (clear != ESP_OK) {
             ESP_LOGW(kTag, "display clear failed: %s", esp_err_to_name(clear));
         }
-        board_.SetPowerLed(false);
-        board_.SetAudioPower(false);
-        ESP_LOGI(kTag, "cutting battery latch");
-        vTaskDelay(pdMS_TO_TICKS(100));
-        board_.CutBatteryPower();
-        vTaskDelay(pdMS_TO_TICKS(100));
-        esp_deep_sleep_start();
+        ESP_LOGI(kTag, "entering power service shutdown");
+        power_->Shutdown();
     }
 
     ZectrixBoard board_;
     zectrix::input::InputService* input_ = nullptr;
+    zectrix::power::PowerService* power_ = nullptr;
     zectrix_epd_handle_t epd_ = nullptr;
     ZectrixDemoUi ui_;
     ZectrixSelfTest tests_;

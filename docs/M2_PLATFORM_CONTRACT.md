@@ -35,3 +35,5 @@ The pure state model and host tests implement M2.1a. `DisplayService` now provid
 `DisplayService::Create` owns the raw driver handle. Callers use only logical display operations. A partial refresh is rejected when no valid 1bpp baseline exists or when the partial budget is exhausted. Any driver error invalidates the baseline.
 
 `InputService` attaches to initialized board support and converts debounced physical button results to `InputEvent`. Applications use logical `Button` and `Action` values. GPIO numbers, FreeRTOS queues and debounce thresholds remain inside board support.
+
+`PowerService` exposes logical battery, external-power and wake-reason values. It owns the shutdown sequence and the deep-sleep call; board GPIO and rail control remain inside board support.
