@@ -10,6 +10,7 @@
 #include "zectrix_display_service.h"
 #include "zectrix_power_service.h"
 #include "zectrix_self_test.h"
+#include "zectrix_system_service.h"
 #include "zectrix_time_service.h"
 
 class ZectrixDemoUi {
@@ -42,9 +43,7 @@ public:
         const std::array<ZectrixTestState,
                          static_cast<size_t>(ZectrixTestId::kCount)>& states);
     esp_err_t ShowDeviceInfo(const zectrix::power::PowerSnapshot& power,
-                             bool rtc_ready, bool nfc_ready,
-                             const char* mac, uint32_t flash_mb,
-                             uint32_t psram_mb);
+                             const zectrix::system::SystemSnapshot& system);
     esp_err_t ShowAbout();
     esp_err_t ClearDisplay();
 

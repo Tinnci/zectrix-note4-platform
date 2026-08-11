@@ -373,6 +373,8 @@ bool ZectrixBoard::IsRtcInterruptActive() const {
     return rtc_ != nullptr && gpio_get_level(ZECTRIX_RTC_INT) == 0;
 }
 
+bool ZectrixBoard::HasNfc() const { return nfc_ != nullptr; }
+
 void ZectrixBoard::SetPowerLed(bool on) {
     gpio_hold_dis(ZECTRIX_POWER_LED);
     gpio_set_level(ZECTRIX_POWER_LED, on ? 0 : 1);

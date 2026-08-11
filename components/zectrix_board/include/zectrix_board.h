@@ -58,6 +58,7 @@ public:
     bool ClearRtcTimerFlag();
     bool IsRtcTimerFired();
     bool IsRtcInterruptActive() const;
+    bool HasNfc() const;
     ZectrixNfc* nfc() const { return nfc_.get(); }
     AudioCodec* PrepareAudio();
     i2c_master_bus_handle_t i2c_bus() const { return i2c_bus_; }

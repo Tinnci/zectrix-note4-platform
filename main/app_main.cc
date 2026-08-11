@@ -6,10 +6,7 @@
 #include <cstring>
 #include <iterator>
 
-#include "esp_flash.h"
-#include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "esp_mac.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "zectrix_board.h"
@@ -19,6 +16,7 @@
 #include "zectrix_power_service.h"
 #include "zectrix_self_test.h"
 #include "zectrix_storage_service.h"
+#include "zectrix_system_service.h"
 #include "zectrix_time_service.h"
 
 extern "C" {
@@ -77,6 +75,7 @@ public:
         delete input_;
         delete time_;
         delete storage_;
+        delete system_;
     }
 
     void Run() {
@@ -90,6 +89,7 @@ public:
             board_, &power_));
         ESP_ERROR_CHECK(zectrix::time::TimeService::Attach(board_, &time_));
         ESP_ERROR_CHECK(zectrix::storage::StorageService::Create(&storage_));
+        ESP_ERROR_CHECK(zectrix::system::SystemService::Attach(board_, &system_));
 
         err = zectrix::display::DisplayService::Create(&display_);
         if (err != ESP_OK) {
@@ -100,6 +100,7 @@ public:
         ui_.SetTime(time_);
         tests_.SetTime(time_);
         tests_.SetStorage(storage_);
+        tests_.SetSystem(system_);
         ESP_ERROR_CHECK(ui_.ShowSplash());
         Wait(pdMS_TO_TICKS(1500), false);
 
@@ -483,20 +484,9 @@ private:
     }
 
     ControlResult RunDeviceInfo() {
-        uint8_t mac_bytes[6] = {};
-        esp_read_mac(mac_bytes, ESP_MAC_WIFI_STA);
-        char mac[24];
-        std::snprintf(mac, sizeof(mac), "%02X:%02X:%02X:%02X:%02X:%02X",
-                      mac_bytes[0], mac_bytes[1], mac_bytes[2], mac_bytes[3],
-                      mac_bytes[4], mac_bytes[5]);
-        uint32_t flash_bytes = 0;
-        esp_flash_get_size(nullptr, &flash_bytes);
-        const uint32_t psram_bytes = static_cast<uint32_t>(
-            heap_caps_get_total_size(MALLOC_CAP_SPIRAM));
-        ESP_ERROR_CHECK(ui_.ShowDeviceInfo(
-            power_->ReadSnapshot(), time_->RtcAvailable(),
-            board_.nfc() != nullptr, mac, flash_bytes / (1024 * 1024),
-            psram_bytes / (1024 * 1024)));
+        zectrix::system::SystemSnapshot system;
+        ESP_ERROR_CHECK(system_->ReadSnapshot(&system));
+        ESP_ERROR_CHECK(ui_.ShowDeviceInfo(power_->ReadSnapshot(), system));
         return Wait(portMAX_DELAY, false);
     }
 
@@ -516,6 +506,7 @@ private:
     zectrix::display::DisplayService* display_ = nullptr;
     zectrix::time::TimeService* time_ = nullptr;
     zectrix::storage::StorageService* storage_ = nullptr;
+    zectrix::system::SystemService* system_ = nullptr;
     ZectrixDemoUi ui_;
     ZectrixSelfTest tests_;
     std::array<ZectrixTestState,

@@ -13,6 +13,12 @@ check_root() {
         'nvs_[a-zA-Z0-9_]*[[:space:]]*\('
         'PCF8563'
         'esp_timer_get_time[[:space:]]*\('
+        'esp_app_get_description[[:space:]]*\('
+        'esp_chip_info[[:space:]]*\('
+        'esp_reset_reason[[:space:]]*\('
+        'esp_flash_get_size[[:space:]]*\('
+        'esp_read_mac[[:space:]]*\('
+        'heap_caps_get_[a-zA-Z0-9_]*[[:space:]]*\('
     )
     for pattern in "${patterns[@]}"; do
         if rg -n -i --glob '*.{c,cc,cpp,h,hh,hpp}' "$pattern" "$scan_root"; then found=1; fi
@@ -32,6 +38,7 @@ run_self_test() {
         '#include "zectrix_epd.h"' \
         'void sleep_now() { esp_deep_sleep_start(); }' \
         'void load() { nvs_get_i32(0, "key", nullptr); }' \
+        'void identity() { esp_read_mac(nullptr, 0); }' \
         'const char* rtc = "PCF8563";' > "$temp_dir/bad/app.cc"
     if ! check_root "$temp_dir/good" || check_root "$temp_dir/bad"; then
         echo 'FAIL: architecture boundary checker self-test.' >&2

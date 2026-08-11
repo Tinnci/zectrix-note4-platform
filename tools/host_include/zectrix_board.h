@@ -25,6 +25,7 @@ public:
     void DrainButtons() { drained = true; }
 
     bool HasRtc() const { return rtc_available; }
+    bool HasNfc() const { return nfc_available; }
     bool ReadRtc(tm* value) {
         if (!rtc_available || !rtc_io_ok || value == nullptr) return false;
         *value = rtc_value;
@@ -54,6 +55,7 @@ public:
     bool has_event = false;
     bool drained = false;
     bool rtc_available = true;
+    bool nfc_available = true;
     bool rtc_io_ok = true;
     bool timer_flag = false;
     bool rtc_interrupt_active = false;

@@ -13,7 +13,6 @@
 #include "driver/gpio.h"
 #include "esp_event.h"
 #include "esp_log.h"
-#include "esp_mac.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
@@ -22,6 +21,7 @@
 #include "zectrix_board_config.h"
 #include "zectrix_nfc.h"
 #include "zectrix_storage_service.h"
+#include "zectrix_system_service.h"
 #include "zectrix_time_service.h"
 
 namespace {
@@ -266,7 +266,12 @@ ZectrixTestResult ZectrixSelfTest::RunAudio(const UpdateCallback& callback) {
                              "Playing, recording and decoding AFSK...");
     Publish(callback, update);
     std::array<uint8_t, 6> mac = {};
-    esp_read_mac(mac.data(), ESP_MAC_WIFI_STA);
+    if (system_ == nullptr || system_->ReadWifiMac(&mac) != ESP_OK) {
+        update.state = ZectrixTestState::kFail;
+        SetText(update.hint, sizeof(update.hint), "System identity is not available");
+        Publish(callback, update);
+        return ZectrixTestResult::kFail;
+    }
     AudioCodec* codec = board_->PrepareAudio();
     const AcousticSelftestSummary summary = AcousticSelftest().Run(codec, mac);
     update.state = summary.pass ? ZectrixTestState::kPass

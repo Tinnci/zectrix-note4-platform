@@ -24,6 +24,8 @@ resource driver. Application code does not call either lower layer directly.
 
 Application code must not include `driver/gpio.h`, `driver/spi_master.h` or `zectrix_epd.h`.
 Application code must not call `esp_deep_sleep_start()`, access NVS directly, or depend on PCF8563.
+Application code must not read the application descriptor, reset reason, chip
+information, flash size, heap diagnostics, or hardware MAC address directly.
 
 The checker enforces these restrictions in the known application roots. It
 also discovers service consumers from their CMake files. Board support,
@@ -76,3 +78,9 @@ on demand so the migration does not add an NVS erase path during normal boot.
 The behavior baseline is in
 [`M2_STORAGE_BASELINE.md`](M2_STORAGE_BASELINE.md). M2.5 does not select a
 filesystem or application package format.
+
+`SystemService` owns firmware identity, reset reason, chip capabilities, memory
+diagnostics, flash size, and the hardware MAC address. Device Info and
+diagnostic code get these values from the service. Board support continues to
+own the detection of board capabilities such as RTC and NFC. The behavior
+baseline is in [`M2_SYSTEM_BASELINE.md`](M2_SYSTEM_BASELINE.md).

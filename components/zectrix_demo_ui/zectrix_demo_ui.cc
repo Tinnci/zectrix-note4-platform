@@ -238,8 +238,8 @@ esp_err_t ZectrixDemoUi::ShowTestSummary(
 }
 
 esp_err_t ZectrixDemoUi::ShowDeviceInfo(
-    const zectrix::power::PowerSnapshot& power, bool rtc_ready, bool nfc_ready,
-    const char* mac, uint32_t flash_mb, uint32_t psram_mb) {
+    const zectrix::power::PowerSnapshot& power,
+    const zectrix::system::SystemSnapshot& system) {
     DrawFrame("DEVICE INFO", "Hold OK Back   Hold DOWN Power Off");
     char line[80];
     const char* labels[] = {"MCU", "DISPLAY", "FLASH / PSRAM", "WI-FI MAC",
@@ -248,15 +248,21 @@ esp_err_t ZectrixDemoUi::ShowDeviceInfo(
     for (int i = 0; i < 7; ++i) {
         canvas_.Text(18, ys[i], labels[i]);
     }
-    canvas_.Text(176, ys[0], "ESP32-S3");
+    canvas_.Text(176, ys[0], system.capabilities.chip_model.data());
     canvas_.Text(176, ys[1], "400x300 1/4bpp");
     std::snprintf(line, sizeof(line), "%lu MB / %lu MB",
-                  static_cast<unsigned long>(flash_mb),
-                  static_cast<unsigned long>(psram_mb));
+                  static_cast<unsigned long>(system.diagnostics.flash_bytes /
+                                             (1024 * 1024)),
+                  static_cast<unsigned long>(system.diagnostics.psram_bytes /
+                                             (1024 * 1024)));
     canvas_.Text(176, ys[2], line);
-    canvas_.Text(176, ys[3], mac);
+    std::snprintf(line, sizeof(line), "%02X:%02X:%02X:%02X:%02X:%02X",
+                  system.wifi_mac[0], system.wifi_mac[1], system.wifi_mac[2],
+                  system.wifi_mac[3], system.wifi_mac[4], system.wifi_mac[5]);
+    canvas_.Text(176, ys[3], line);
     std::snprintf(line, sizeof(line), "%s / %s",
-                  rtc_ready ? "READY" : "N/A", nfc_ready ? "READY" : "N/A");
+                  system.capabilities.rtc ? "READY" : "N/A",
+                  system.capabilities.nfc ? "READY" : "N/A");
     canvas_.Text(176, ys[4], line);
     std::snprintf(line, sizeof(line), "%u%%  %u mV",
                   power.battery_percent, power.battery_mv);

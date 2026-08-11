@@ -4,6 +4,7 @@ idf_component_register(
     REQUIRES
         zectrix_board
         zectrix_storage
+        zectrix_system
         zectrix_time
         esp_event
         esp_netif
