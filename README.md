@@ -1,5 +1,10 @@
 # ZECTRIX NOTE4 E-Paper Reference Demo
 
+> This repository is the public development base for the Zectrix Note 4 open
+> firmware platform. It preserves the upstream reference demo as the initial
+> hardware baseline. See [docs/ROADMAP.md](docs/ROADMAP.md) before proposing
+> platform or application changes.
+
 English | [中文](README_zh.md)
 
 A standalone, open-source ESP-IDF reference project for the ZECTRIX NOTE4

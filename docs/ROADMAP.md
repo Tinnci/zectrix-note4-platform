@@ -1,0 +1,62 @@
+# Development roadmap
+
+The project uses stage gates. A later milestone may start only when its stated
+dependencies are satisfied. Advanced E-Ink quality research runs in parallel
+and does not block unrelated input or power work.
+
+## M1 — Reproducible reference baseline
+
+Goal: reproduce the upstream hardware demo without architectural changes.
+
+- Pin ESP-IDF 5.5.2 and component dependencies.
+- Record firmware version, Git commit and partition version at boot.
+- Produce firmware hashes and a size report.
+- Document build, flash, monitor and factory-recovery procedures.
+- Run and record the existing seven hardware self-tests.
+
+Exit: a clean checkout builds with the pinned toolchain, boots on the target
+board and can be followed by a verified factory restore.
+
+## M2 — Minimum platform services
+
+Goal: prevent application code from controlling hardware directly.
+
+- Add display, input, power, time, storage and system service boundaries.
+- Move EPD baseline and refresh-state ownership into the display service.
+- Define a common event type and non-blocking dispatch model.
+- Add a Diagnostics application that uses platform services only.
+
+Exit: Diagnostics exercises the primary hardware without raw GPIO, SPI or
+deep-sleep calls.
+
+## M3 — Static application platform
+
+Goal: run multiple statically linked applications through one lifecycle.
+
+- Add application descriptors and a static registry.
+- Add Launcher, Settings, Diagnostics and Clock.
+- Keep platform implementation types out of public application headers.
+
+Exit: at least three applications use only the draft public API.
+
+## M4 — SDK and update architecture
+
+Goal: freeze SDK v1 and select a safe update layout.
+
+- Add API compatibility tests and semantic versioning.
+- Measure maximum firmware, assets and user-data requirements.
+- Select an A/B OTA and rollback design using an architecture decision record.
+
+Exit: SDK v1 and the partition layout have explicit compatibility guarantees.
+
+## Deferred research
+
+The following work is not a prerequisite for M1–M3:
+
+- `.zapp` packaging;
+- native ELF loading;
+- WebAssembly runtime;
+- application signing and distribution;
+- custom bootloader.
+
+These items require SDK v1 and separate design decisions.
