@@ -1,6 +1,6 @@
 # U0 hardware qualification
 
-Status: PREPARED. FLASH NOT AUTHORIZED.
+Status: FIRST FLASH PASS. HARDWARE QUALIFICATION IN PROGRESS.
 
 Qualification date: 2026-08-11
 
@@ -14,20 +14,21 @@ qualify display image quality or a new waveform.
 
 | Field | Value |
 | --- | --- |
-| Platform commit | `1eb64ae94bd225546807da70d45ace8dde04735d` |
-| Application version | `v1.0.0-4-g1eb64ae` |
+| Flashed platform commit | `20bb282d3a6bb7b8acea726bf21be391663118bd` |
+| Application version | `v1.0.0-5-g20bb282` |
 | Target | `esp32s3` |
 | ESP-IDF | `v5.5.2` |
 | ESP-IDF commit | `30aaf64524299d3bde422ca9a2848090d1bc5d0f` |
 | Component lock | `espressif/esp_codec_dev` `1.5.11` |
-| Clean build | PASS, `1121/1121` tasks |
+| Clean build | PASS, `1121/1121` tasks at functional-source commit `1eb64ae` |
+| Flash-time rebuild | PASS, 11 incremental tasks at commit `20bb282` |
 
 | Artifact | Size (bytes) | SHA-256 |
 | --- | ---: | --- |
 | `bootloader/bootloader.bin` | 21056 | `7af0c77e7a1de2534b5136f52ed30489c4096fb01ce03c9c733d1a1225e41e34` |
 | `partition_table/partition-table.bin` | 3072 | `73c0b5c3e5fcba3a151cc70c453c93dd5f4798899e7f2f8cca76da1f32ffc501` |
-| `zectrix_epd_demo.bin` | 1009360 | `b7cb0897d206ea98a0b3c254735d5d8bcfbbaa5c717b4b052c767b9e6f48bc67` |
-| `zectrix_epd_demo.elf` | 11833756 | `2b065a903e5f73a7ec1ab632e99c2dc7e869fe7f873a31336cd4ddbbd5d4f1f8` |
+| `zectrix_epd_demo.bin` | 1009360 | `1568d1a081ee0b6dd3615ebc4e4d9c7ed3b410c33346f12734cd8c46e75eda4f` |
+| `zectrix_epd_demo.elf` | 11833756 | `36fbfbee919f0cfc5f26ea0b7aa0f53aafdc28e576030ed473861979f87d0f7d` |
 
 The generated provenance record is `build/build-provenance.txt`. The build
 directory is a local derived artifact. Do not commit it.
@@ -48,11 +49,10 @@ directory is a local derived artifact. Do not commit it.
 
 `/dev/ttyACM0` is a FIBOCOM modem. Do not use it for this qualification.
 
-## Authorization boundary
+## Authorization and safety boundary
 
-Do not start the flash operation without explicit authorization for this
-device and this U0 build. The authorized operation writes the normal ESP-IDF
-project images only.
+The operator explicitly authorized the first flash on 2026-08-11. The
+authorized operation wrote the normal ESP-IDF project images only.
 
 Do not run any of these operations:
 
@@ -63,12 +63,12 @@ Do not run any of these operations:
 - a partition redesign.
 - a waveform modification.
 
-Stop before writing if the backup check fails, the serial identity changes or
-the build identity differs from this record.
+For a future write, stop if the backup check fails, the serial identity changes
+or the build identity differs from the approved record.
 
 ## First-flash execution
 
-After explicit authorization, activate the controlled environment. Then run:
+The authorized session used this command:
 
 ```bash
 source tools/activate-dev-env.sh
@@ -85,17 +85,34 @@ Capture the complete serial output. Confirm this boot sequence:
 6. The splash screen and UI appear.
 7. No panic, watchdog reset or reset loop occurs.
 
+The local session log is `build/u0-first-flash-session.log`. It contains a
+private device identity and remains an uncommitted derived artifact.
+
+### Controlled deviation
+
+The preflight artifact came from clean functional-source commit `1eb64ae`.
+Commit `20bb282` then added this qualification document. The flash command
+detected the new Git commit and rebuilt the application before writing. No
+functional source changed. The table above records the hashes that the flash
+command actually wrote and verified.
+
+The first monitor connection lost the USB device after application handoff.
+The operator disconnected and reconnected USB once. The second monitor session
+captured a complete successful boot. Do not classify this manual USB reset as
+an unexpected firmware reset.
+
 ## Qualification results
 
 | Check | Result | Evidence or notes |
 | --- | --- | --- |
-| Bootloader | PENDING | |
-| Partition table | PENDING | |
-| Application version in serial log | PENDING | |
-| PSRAM | PENDING | |
-| Full 1bpp refresh | PENDING | |
-| Partial 1bpp refresh | PENDING | |
-| Full 4bpp refresh | PENDING | |
+| Bootloader | PASS | ESP-IDF v5.5.2 second-stage bootloader started. |
+| Partition table | PASS | NVS, PHY and 3 MiB factory app loaded. |
+| Application version in serial log | PASS | `v1.0.0-5-g20bb282` |
+| PSRAM | PASS | 8 MiB detected. SPI SRAM memory test passed. |
+| Board initialization | PASS | RTC and NFC initialization completed. |
+| Full 1bpp refresh | EXECUTED | Scene 0 ran twice. Visual confirmation pending. |
+| Partial 1bpp refresh | EXECUTED | Scene 1 ran twice. Visual confirmation pending. |
+| Full 4bpp refresh | EXECUTED | Scene 2 ran twice. Visual confirmation pending. |
 | Wi-Fi | PENDING | |
 | Audio | PENDING | |
 | RTC | PENDING | |
@@ -103,15 +120,16 @@ Capture the complete serial output. Confirm this boot sequence:
 | LED | PENDING | |
 | Buttons | PENDING | |
 | NFC | PENDING | |
-| Panic count | PENDING | |
-| Watchdog count | PENDING | |
-| Unexpected reset count | PENDING | |
+| Panic count | PASS | 0 during the captured 64-second application run. |
+| Watchdog count | PASS | 0 during the captured 64-second application run. |
+| Unexpected reset count | PASS | 0 after the successful monitored boot. |
 
 Do not block this gate because of subjective 4bpp image quality. Record image
 quality observations for the EPD baseline measurement work.
 
 ## Exit rule
 
-Keep platform issue #1 open until the serial log proves the application build
-identity. Keep platform issue #2 open until all hardware checks and the factory
-recovery drill pass.
+The serial log proves the application build identity. Platform issue #1 can
+close after this result is committed. Keep platform issue #2 open until the
+operator confirms the display output, all hardware checks pass and the factory
+recovery drill passes.
