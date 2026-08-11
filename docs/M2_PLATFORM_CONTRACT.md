@@ -68,3 +68,11 @@ countdown status. Board support owns the RTC implementation, I2C operations,
 and interrupt GPIO. The migration preserves the behavior in
 [`M2_TIME_BASELINE.md`](M2_TIME_BASELINE.md). It does not add timezone policy or
 RTC-to-system-clock synchronization.
+
+`StorageService` owns default NVS initialization, recovery policy, and the
+platform key-value namespace. Application and self-test code do not call NVS
+directly. A successful write or erase commits immediately. Initialization is
+on demand so the migration does not add an NVS erase path during normal boot.
+The behavior baseline is in
+[`M2_STORAGE_BASELINE.md`](M2_STORAGE_BASELINE.md). M2.5 does not select a
+filesystem or application package format.

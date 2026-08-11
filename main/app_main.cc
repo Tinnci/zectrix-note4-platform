@@ -18,6 +18,7 @@
 #include "zectrix_input_service.h"
 #include "zectrix_power_service.h"
 #include "zectrix_self_test.h"
+#include "zectrix_storage_service.h"
 #include "zectrix_time_service.h"
 
 extern "C" {
@@ -75,6 +76,7 @@ public:
         delete power_;
         delete input_;
         delete time_;
+        delete storage_;
     }
 
     void Run() {
@@ -87,6 +89,7 @@ public:
         ESP_ERROR_CHECK(zectrix::power::PowerService::Attach(
             board_, &power_));
         ESP_ERROR_CHECK(zectrix::time::TimeService::Attach(board_, &time_));
+        ESP_ERROR_CHECK(zectrix::storage::StorageService::Create(&storage_));
 
         err = zectrix::display::DisplayService::Create(&display_);
         if (err != ESP_OK) {
@@ -96,6 +99,7 @@ public:
         ui_.SetDisplay(display_);
         ui_.SetTime(time_);
         tests_.SetTime(time_);
+        tests_.SetStorage(storage_);
         ESP_ERROR_CHECK(ui_.ShowSplash());
         Wait(pdMS_TO_TICKS(1500), false);
 
@@ -511,6 +515,7 @@ private:
     zectrix::power::PowerService* power_ = nullptr;
     zectrix::display::DisplayService* display_ = nullptr;
     zectrix::time::TimeService* time_ = nullptr;
+    zectrix::storage::StorageService* storage_ = nullptr;
     ZectrixDemoUi ui_;
     ZectrixSelfTest tests_;
     std::array<ZectrixTestState,

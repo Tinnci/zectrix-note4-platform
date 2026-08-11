@@ -18,10 +18,10 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "nvs_flash.h"
 #include "zectrix_board.h"
 #include "zectrix_board_config.h"
 #include "zectrix_nfc.h"
+#include "zectrix_storage_service.h"
 #include "zectrix_time_service.h"
 
 namespace {
@@ -78,15 +78,9 @@ bool IsCancelOrShutdown(ZectrixBoard* board, TickType_t timeout,
     return false;
 }
 
-esp_err_t EnsureWifiReady() {
-    esp_err_t err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES ||
-        err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        err = nvs_flash_erase();
-        if (err == ESP_OK) {
-            err = nvs_flash_init();
-        }
-    }
+esp_err_t EnsureWifiReady(zectrix::storage::StorageService* storage) {
+    if (storage == nullptr) return ESP_ERR_INVALID_STATE;
+    esp_err_t err = storage->Initialize();
     if (err != ESP_OK) {
         return err;
     }
@@ -184,7 +178,7 @@ ZectrixTestResult ZectrixSelfTest::RunRf(const UpdateCallback& callback) {
     auto update = MakeUpdate(ZectrixTestId::kRf, ZectrixTestState::kRunning,
                              "Scanning 2.4 GHz access points...");
     Publish(callback, update);
-    const esp_err_t init = EnsureWifiReady();
+    const esp_err_t init = EnsureWifiReady(storage_);
     if (init != ESP_OK) {
         update.state = ZectrixTestState::kFail;
         SetText(update.hint, sizeof(update.hint), "Wi-Fi init failed");

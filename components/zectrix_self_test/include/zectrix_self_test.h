@@ -7,6 +7,7 @@
 
 class ZectrixBoard;
 namespace zectrix::time { class TimeService; }
+namespace zectrix::storage { class StorageService; }
 
 enum class ZectrixTestId : uint8_t {
     kRf = 0,
@@ -47,6 +48,9 @@ public:
 
     explicit ZectrixSelfTest(ZectrixBoard* board) : board_(board) {}
     void SetTime(zectrix::time::TimeService* time) { time_ = time; }
+    void SetStorage(zectrix::storage::StorageService* storage) {
+        storage_ = storage;
+    }
 
     static const char* Name(ZectrixTestId id);
     ZectrixTestResult Run(ZectrixTestId id, const UpdateCallback& callback);
@@ -62,6 +66,7 @@ private:
 
     ZectrixBoard* board_ = nullptr;
     zectrix::time::TimeService* time_ = nullptr;
+    zectrix::storage::StorageService* storage_ = nullptr;
 };
 
 #endif  // ZECTRIX_SELF_TEST_H_

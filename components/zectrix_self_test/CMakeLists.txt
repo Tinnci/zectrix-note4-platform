@@ -3,11 +3,11 @@ idf_component_register(
     INCLUDE_DIRS "." "include"
     REQUIRES
         zectrix_board
+        zectrix_storage
         zectrix_time
         esp_event
         esp_netif
         esp_wifi
-        nvs_flash
 )
 
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_17)
