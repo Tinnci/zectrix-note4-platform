@@ -6,6 +6,8 @@
 #include <functional>
 
 class ZectrixBoard;
+namespace zectrix::input { class InputService; }
+namespace zectrix::power { class PowerService; }
 namespace zectrix::time { class TimeService; }
 namespace zectrix::storage { class StorageService; }
 namespace zectrix::system { class SystemService; }
@@ -47,12 +49,14 @@ class ZectrixSelfTest {
 public:
     using UpdateCallback = std::function<void(const ZectrixTestUpdate&)>;
 
-    explicit ZectrixSelfTest(ZectrixBoard* board) : board_(board) {}
-    void SetTime(zectrix::time::TimeService* time) { time_ = time; }
-    void SetStorage(zectrix::storage::StorageService* storage) {
-        storage_ = storage;
-    }
-    void SetSystem(zectrix::system::SystemService* system) { system_ = system; }
+    ZectrixSelfTest(ZectrixBoard& board,
+                    zectrix::input::InputService& input,
+                    zectrix::power::PowerService& power,
+                    zectrix::time::TimeService& time,
+                    zectrix::storage::StorageService& storage,
+                    zectrix::system::SystemService& system)
+        : board_(&board), input_(&input), power_(&power), time_(&time),
+          storage_(&storage), system_(&system) {}
 
     static const char* Name(ZectrixTestId id);
     ZectrixTestResult Run(ZectrixTestId id, const UpdateCallback& callback);
@@ -67,6 +71,8 @@ private:
     ZectrixTestResult RunNfc(const UpdateCallback& callback);
 
     ZectrixBoard* board_ = nullptr;
+    zectrix::input::InputService* input_ = nullptr;
+    zectrix::power::PowerService* power_ = nullptr;
     zectrix::time::TimeService* time_ = nullptr;
     zectrix::storage::StorageService* storage_ = nullptr;
     zectrix::system::SystemService* system_ = nullptr;

@@ -36,6 +36,7 @@ value after an error.
 
 ## Stage boundary
 
-Stage A establishes `SystemService` ownership and migrates existing consumers.
-Issue #16 will add the Platform composition root. Issue #13 Stage B will then
-route Diagnostics through Platform and complete the hardware acceptance tests.
+Stage A established `SystemService` ownership and migrated existing consumers.
+Stage B gets Diagnostics from the Platform composition root. Platform supplies
+typed Input, Power, Time, Storage, and System service references. The
+application does not supply board support or construct Diagnostics.

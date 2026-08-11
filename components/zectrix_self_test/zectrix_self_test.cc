@@ -20,6 +20,8 @@
 #include "zectrix_board.h"
 #include "zectrix_board_config.h"
 #include "zectrix_nfc.h"
+#include "zectrix_input_service.h"
+#include "zectrix_power_service.h"
 #include "zectrix_storage_service.h"
 #include "zectrix_system_service.h"
 #include "zectrix_time_service.h"
@@ -55,23 +57,24 @@ void Publish(const ZectrixSelfTest::UpdateCallback& callback,
     }
 }
 
-bool IsCancelOrShutdown(ZectrixBoard* board, TickType_t timeout,
+bool IsCancelOrShutdown(zectrix::input::InputService* input,
+                        TickType_t timeout,
                         ZectrixTestResult* result,
-                        ZectrixButtonEvent* received = nullptr) {
-    ZectrixButtonEvent event;
-    if (!board->WaitButton(&event, timeout)) {
+                        zectrix::input::InputEvent* received = nullptr) {
+    zectrix::input::InputEvent event;
+    if (input == nullptr || !input->Wait(&event, timeout)) {
         return false;
     }
     if (received != nullptr) {
         *received = event;
     }
-    if (event.button == ZectrixButton::kDown &&
-        event.action == ZectrixButtonAction::kLongPress) {
+    if (event.button == zectrix::input::Button::Down &&
+        event.action == zectrix::input::Action::LongPress) {
         *result = ZectrixTestResult::kShutdown;
         return true;
     }
-    if (event.button == ZectrixButton::kOk &&
-        event.action == ZectrixButtonAction::kLongPress) {
+    if (event.button == zectrix::input::Button::Ok &&
+        event.action == zectrix::input::Action::LongPress) {
         *result = ZectrixTestResult::kCancelled;
         return true;
     }
@@ -158,10 +161,11 @@ const char* ZectrixSelfTest::Name(ZectrixTestId id) {
 
 ZectrixTestResult ZectrixSelfTest::Run(
     ZectrixTestId id, const UpdateCallback& callback) {
-    if (board_ == nullptr) {
+    if (board_ == nullptr || input_ == nullptr || power_ == nullptr ||
+        time_ == nullptr || storage_ == nullptr || system_ == nullptr) {
         return ZectrixTestResult::kFail;
     }
-    board_->DrainButtons();
+    input_->Drain();
     switch (id) {
         case ZectrixTestId::kRf: return RunRf(callback);
         case ZectrixTestId::kAudio: return RunAudio(callback);
@@ -248,7 +252,7 @@ ZectrixTestResult ZectrixSelfTest::RunRf(const UpdateCallback& callback) {
             return ZectrixTestResult::kPass;
         }
         ZectrixTestResult control;
-        if (IsCancelOrShutdown(board_, pdMS_TO_TICKS(250), &control)) {
+        if (IsCancelOrShutdown(input_, pdMS_TO_TICKS(250), &control)) {
             esp_wifi_stop();
             return control;
         }
@@ -324,7 +328,7 @@ ZectrixTestResult ZectrixSelfTest::RunRtc(const UpdateCallback& callback) {
                     break;
                 }
                 ZectrixTestResult control;
-                if (IsCancelOrShutdown(board_, pdMS_TO_TICKS(50), &control)) {
+                if (IsCancelOrShutdown(input_, pdMS_TO_TICKS(50), &control)) {
                     time_->StopRtcCountdown();
                     return control;
                 }
@@ -351,34 +355,34 @@ ZectrixTestResult ZectrixSelfTest::RunCharge(const UpdateCallback& callback) {
                              "Connect USB power to verify charging");
     const int64_t deadline = time_->MonotonicMicroseconds() + kInteractiveTimeoutUs;
     while (time_->MonotonicMicroseconds() < deadline) {
-        const ZectrixPowerSnapshot power = board_->ReadPowerSnapshot();
+        const zectrix::power::PowerSnapshot power = power_->ReadSnapshot();
         SetText(update.details[0].data(), update.details[0].size(),
-                "USB POWER: %s", power.charge.power_present ? "PRESENT" : "ABSENT");
+                "USB POWER: %s", power.external_power_present ? "PRESENT" : "ABSENT");
         SetText(update.details[1].data(), update.details[1].size(),
                 "CHARGING: %s   FULL: %s",
-                power.charge.charging ? "YES" : "NO",
-                power.charge.full ? "YES" : "NO");
+                power.charging ? "YES" : "NO",
+                power.charge_full ? "YES" : "NO");
         SetText(update.details[2].data(), update.details[2].size(),
                 "BATTERY: %s%u%%", power.battery_valid ? "" : "-- / ",
                 power.battery_valid ? power.battery_percent : 0);
         SetText(update.details[3].data(), update.details[3].size(),
                 "VOLTAGE: %u mV%s", power.battery_mv,
-                power.charge.no_battery ? "  NO BATTERY" : "");
+                power.battery_absent ? "  NO BATTERY" : "");
         Publish(callback, update);
-        const bool pass = power.charge.charging ||
-                          (power.charge.full && power.battery_valid &&
+        const bool pass = power.charging ||
+                          (power.charge_full && power.battery_valid &&
                            power.battery_percent > 97);
-        if (pass && !power.charge.no_battery) {
+        if (pass && !power.battery_absent) {
             update.state = ZectrixTestState::kPass;
             SetText(update.hint, sizeof(update.hint), "Power and charging path passed");
             Publish(callback, update);
             return ZectrixTestResult::kPass;
         }
-        if (power.charge.fault) {
+        if (power.charge_fault) {
             break;
         }
         ZectrixTestResult control;
-        if (IsCancelOrShutdown(board_, pdMS_TO_TICKS(300), &control)) {
+        if (IsCancelOrShutdown(input_, pdMS_TO_TICKS(300), &control)) {
             return control;
         }
     }
@@ -409,30 +413,30 @@ ZectrixTestResult ZectrixSelfTest::RunLed(const UpdateCallback& callback) {
             board_->SetPowerLed(led_on);
             last_toggle = now;
         }
-        ZectrixButtonEvent event;
-        if (!board_->WaitButton(&event, pdMS_TO_TICKS(50))) {
+        zectrix::input::InputEvent event;
+        if (!input_->Wait(&event, pdMS_TO_TICKS(50))) {
             continue;
         }
-        if (event.button == ZectrixButton::kDown &&
-            event.action == ZectrixButtonAction::kLongPress) {
+        if (event.button == zectrix::input::Button::Down &&
+            event.action == zectrix::input::Action::LongPress) {
             board_->SetPowerLed(false);
             return ZectrixTestResult::kShutdown;
         }
-        if (event.button == ZectrixButton::kOk &&
-            event.action == ZectrixButtonAction::kLongPress) {
+        if (event.button == zectrix::input::Button::Ok &&
+            event.action == zectrix::input::Action::LongPress) {
             board_->SetPowerLed(false);
             return ZectrixTestResult::kCancelled;
         }
-        if (event.action == ZectrixButtonAction::kClick &&
-            event.button == ZectrixButton::kOk) {
+        if (event.action == zectrix::input::Action::Click &&
+            event.button == zectrix::input::Button::Ok) {
             board_->SetPowerLed(false);
             update.state = ZectrixTestState::kPass;
             SetText(update.hint, sizeof(update.hint), "LED confirmed by operator");
             Publish(callback, update);
             return ZectrixTestResult::kPass;
         }
-        if (event.action == ZectrixButtonAction::kClick &&
-            event.button == ZectrixButton::kDown) {
+        if (event.action == zectrix::input::Action::Click &&
+            event.button == zectrix::input::Button::Down) {
             board_->SetPowerLed(false);
             update.state = ZectrixTestState::kFail;
             SetText(update.hint, sizeof(update.hint), "LED rejected by operator");
@@ -451,8 +455,9 @@ ZectrixTestResult ZectrixSelfTest::RunButtons(const UpdateCallback& callback) {
     auto update = MakeUpdate(ZectrixTestId::kButtons,
                              ZectrixTestState::kRunning,
                              "Press the requested buttons in order");
-    constexpr std::array<ZectrixButton, 3> sequence = {
-        ZectrixButton::kOk, ZectrixButton::kUp, ZectrixButton::kDown};
+    constexpr std::array<zectrix::input::Button, 3> sequence = {
+        zectrix::input::Button::Ok, zectrix::input::Button::Up,
+        zectrix::input::Button::Down};
     constexpr std::array<const char*, 3> names = {"OK", "UP", "DOWN"};
     size_t stage = 0;
     const int64_t deadline = time_->MonotonicMicroseconds() + kInteractiveTimeoutUs;
@@ -463,19 +468,19 @@ ZectrixTestResult ZectrixSelfTest::RunButtons(const UpdateCallback& callback) {
                     names[i]);
         }
         Publish(callback, update);
-        ZectrixButtonEvent event;
-        if (!board_->WaitButton(&event, pdMS_TO_TICKS(200))) {
+        zectrix::input::InputEvent event;
+        if (!input_->Wait(&event, pdMS_TO_TICKS(200))) {
             continue;
         }
-        if (event.button == ZectrixButton::kDown &&
-            event.action == ZectrixButtonAction::kLongPress) {
+        if (event.button == zectrix::input::Button::Down &&
+            event.action == zectrix::input::Action::LongPress) {
             return ZectrixTestResult::kShutdown;
         }
-        if (event.button == ZectrixButton::kOk &&
-            event.action == ZectrixButtonAction::kLongPress) {
+        if (event.button == zectrix::input::Button::Ok &&
+            event.action == zectrix::input::Action::LongPress) {
             return ZectrixTestResult::kCancelled;
         }
-        if (event.action != ZectrixButtonAction::kClick) {
+        if (event.action != zectrix::input::Action::Click) {
             continue;
         }
         if (event.button == sequence[stage]) {
@@ -559,7 +564,7 @@ ZectrixTestResult ZectrixSelfTest::RunNfc(const UpdateCallback& callback) {
                 "PHONE FIELD: %s  %d/3", field ? "DETECTED" : "WAIT", stable);
         Publish(callback, update);
         ZectrixTestResult control;
-        if (IsCancelOrShutdown(board_, pdMS_TO_TICKS(200), &control)) {
+        if (IsCancelOrShutdown(input_, pdMS_TO_TICKS(200), &control)) {
             nfc->WriteUserData(0, backup.data(), backup.size());
             return control;
         }

@@ -28,6 +28,7 @@ from `Platform`. It does not create, attach, or delete a service.
 5. Create StorageService.
 6. Attach SystemService.
 7. Create DisplayService.
+8. Create Diagnostics with typed references to the services.
 
 The order preserves the qualified demo startup behavior. Display initialization
 remains the last service operation before the splash screen.
@@ -41,6 +42,7 @@ on the same object.
 Application code can use `Display()`, `Input()`, `Power()`, `Time()`, `Storage()`,
 and `System()`.
 
-The hardware self-test temporarily uses `BoardForSelfTest()`. This exception is
-limited to self-test infrastructure. Issue #13 Stage B will route Diagnostics
-through typed Platform services.
+The application gets Diagnostics through `Diagnostics()`. The Platform API does
+not expose board support. Diagnostics gets typed Input, Power, Time, Storage,
+and System service references during composition. Diagnostic-only audio, LED,
+and NFC operations remain private to the self-test implementation.

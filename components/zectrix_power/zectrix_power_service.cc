@@ -27,6 +27,9 @@ PowerSnapshot PowerService::ReadSnapshot() const {
     snapshot.battery_percent = board_snapshot.battery_percent;
     snapshot.external_power_present = board_snapshot.charge.power_present;
     snapshot.charging = board_snapshot.charge.charging;
+    snapshot.charge_full = board_snapshot.charge.full;
+    snapshot.charge_fault = board_snapshot.charge.fault;
+    snapshot.battery_absent = board_snapshot.charge.no_battery;
     return snapshot;
 }
 

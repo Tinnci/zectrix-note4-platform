@@ -1,7 +1,8 @@
 #pragma once
 
 #include "esp_err.h"
-#include "zectrix_board.h"
+
+class ZectrixSelfTest;
 
 namespace zectrix::display { class DisplayService; }
 namespace zectrix::input { class InputService; }
@@ -29,20 +30,12 @@ public:
     time::TimeService& Time() const;
     storage::StorageService& Storage() const;
     system::SystemService& System() const;
-
-    // This access is for the hardware self-test infrastructure only.
-    ZectrixBoard& BoardForSelfTest() { return board_; }
+    ZectrixSelfTest& Diagnostics() const;
 
 private:
     void ResetServices();
-
-    ZectrixBoard board_;
-    input::InputService* input_ = nullptr;
-    power::PowerService* power_ = nullptr;
-    time::TimeService* time_ = nullptr;
-    storage::StorageService* storage_ = nullptr;
-    system::SystemService* system_ = nullptr;
-    display::DisplayService* display_ = nullptr;
+    struct Impl;
+    Impl* impl_ = nullptr;
     bool initialization_attempted_ = false;
     bool initialized_ = false;
 };

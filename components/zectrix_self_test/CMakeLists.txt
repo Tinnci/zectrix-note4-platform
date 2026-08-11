@@ -3,6 +3,8 @@ idf_component_register(
     INCLUDE_DIRS "." "include"
     REQUIRES
         zectrix_board
+        zectrix_input
+        zectrix_power
         zectrix_storage
         zectrix_system
         zectrix_time

@@ -6,6 +6,7 @@ idf_component_register(
         zectrix_display
         zectrix_input
         zectrix_power
+        zectrix_self_test
         zectrix_storage
         zectrix_system
         zectrix_time

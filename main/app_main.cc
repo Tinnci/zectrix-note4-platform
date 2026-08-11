@@ -66,7 +66,7 @@ uint16_t ReadLe16(const uint8_t* data) {
 
 class DemoApp {
 public:
-    DemoApp() : ui_(nullptr), tests_(&platform_.BoardForSelfTest()) {
+    DemoApp() : ui_(nullptr) {
         test_states_.fill(ZectrixTestState::kWait);
     }
 
@@ -83,11 +83,9 @@ public:
         time_ = &platform_.Time();
         storage_ = &platform_.Storage();
         system_ = &platform_.System();
+        tests_ = &platform_.Diagnostics();
         ui_.SetDisplay(display_);
         ui_.SetTime(time_);
-        tests_.SetTime(time_);
-        tests_.SetStorage(storage_);
-        tests_.SetSystem(system_);
         ESP_ERROR_CHECK(ui_.ShowSplash());
         Wait(pdMS_TO_TICKS(1500), false);
 
@@ -398,7 +396,7 @@ private:
 
     ZectrixTestResult ExecuteTest(ZectrixTestId id) {
         test_states_[static_cast<size_t>(id)] = ZectrixTestState::kRunning;
-        return tests_.Run(id, [this](const ZectrixTestUpdate& update) {
+        return tests_->Run(id, [this](const ZectrixTestUpdate& update) {
             test_states_[static_cast<size_t>(update.id)] = update.state;
             const esp_err_t err = ui_.ShowTestUpdate(update, test_states_);
             if (err != ESP_OK) {
@@ -495,7 +493,7 @@ private:
     zectrix::storage::StorageService* storage_ = nullptr;
     zectrix::system::SystemService* system_ = nullptr;
     ZectrixDemoUi ui_;
-    ZectrixSelfTest tests_;
+    ZectrixSelfTest* tests_ = nullptr;
     std::array<ZectrixTestState,
                static_cast<size_t>(ZectrixTestId::kCount)> test_states_;
 };

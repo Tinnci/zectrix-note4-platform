@@ -20,6 +20,7 @@ check_root() {
         'esp_read_mac[[:space:]]*\('
         'heap_caps_get_[a-zA-Z0-9_]*[[:space:]]*\('
         '(DisplayService|InputService|PowerService|TimeService|StorageService|SystemService)::(Attach|Create)[[:space:]]*\('
+        'BoardForSelfTest[[:space:]]*\('
     )
     for pattern in "${patterns[@]}"; do
         if rg -n -i --glob '*.{c,cc,cpp,h,hh,hpp}' "$pattern" "$scan_root"; then found=1; fi

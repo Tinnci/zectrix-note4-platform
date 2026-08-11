@@ -24,6 +24,9 @@ struct PowerSnapshot {
     uint8_t battery_percent = 0;
     bool external_power_present = false;
     bool charging = false;
+    bool charge_full = false;
+    bool charge_fault = false;
+    bool battery_absent = false;
 };
 
 class PowerService {

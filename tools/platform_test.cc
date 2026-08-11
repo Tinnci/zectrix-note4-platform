@@ -1,4 +1,5 @@
 #include "zectrix_platform.h"
+#include "zectrix_board.h"
 
 #include <cassert>
 #include <string>

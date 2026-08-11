@@ -42,10 +42,13 @@ also discovers service consumers from their CMake files. Board support, the
 Platform composition root, platform services, raw drivers, and self-test implementations are not
 application roots.
 
-The hardware self-test is transitional infrastructure. It can get board support
-only through `Platform::BoardForSelfTest()`. Application feature code must not
-use this access. Issue #13 Stage B will move Diagnostics to typed Platform
-services and reduce this exception.
+`Platform` owns Diagnostics after all six services exist. The application gets
+Diagnostics from `Platform::Diagnostics()`. It does not inject board support or
+individual services. Diagnostics uses InputService for button events,
+PowerService for power state, TimeService for clocks and RTC, StorageService for
+persistent setup, and SystemService for system identity. Diagnostic-only audio,
+LED, and NFC operations stay inside the self-test implementation and board
+support. They are not application API.
 
 ## M2.1a display state invariants
 
