@@ -17,6 +17,7 @@
 #include "zectrix_board.h"
 #include "zectrix_demo_ui.h"
 #include "zectrix_epd.h"
+#include "zectrix_input_service.h"
 #include "zectrix_self_test.h"
 
 extern "C" {
@@ -69,12 +70,15 @@ public:
     DemoApp() : ui_(nullptr), tests_(&board_) {
         test_states_.fill(ZectrixTestState::kWait);
     }
+    ~DemoApp() { delete input_; }
 
     void Run() {
         esp_err_t err = board_.Init();
         if (err != ESP_OK) {
             ESP_LOGE(kTag, "board initialization failed: %s", esp_err_to_name(err));
         }
+        ESP_ERROR_CHECK(zectrix::input::InputService::Attach(
+            &board_, &input_));
 
         zectrix_epd_config_t config = {};
         zectrix_epd_get_default_config(&config);
@@ -99,23 +103,23 @@ private:
     ControlResult Wait(TickType_t duration, bool any_click_returns) {
         const TickType_t start = xTaskGetTickCount();
         while (xTaskGetTickCount() - start < duration) {
-            ZectrixButtonEvent event;
+            zectrix::input::InputEvent event;
             const TickType_t elapsed = xTaskGetTickCount() - start;
             const TickType_t remaining = duration > elapsed ? duration - elapsed : 0;
-            if (!board_.WaitButton(&event,
-                                   std::min(remaining, pdMS_TO_TICKS(100)))) {
+            if (!input_->Wait(&event, pdTICKS_TO_MS(
+                                   std::min(remaining, pdMS_TO_TICKS(100))))) {
                 continue;
             }
-            if (event.button == ZectrixButton::kDown &&
-                event.action == ZectrixButtonAction::kLongPress) {
+            if (event.button == zectrix::input::Button::Down &&
+                event.action == zectrix::input::Action::LongPress) {
                 return ControlResult::kShutdown;
             }
-            if (event.button == ZectrixButton::kOk &&
-                event.action == ZectrixButtonAction::kLongPress) {
+            if (event.button == zectrix::input::Button::Ok &&
+                event.action == zectrix::input::Action::LongPress) {
                 return ControlResult::kBack;
             }
             if (any_click_returns &&
-                event.action == ZectrixButtonAction::kClick) {
+                event.action == zectrix::input::Action::Click) {
                 return ControlResult::kBack;
             }
         }
@@ -127,30 +131,30 @@ private:
                           size_t* selected, TickType_t idle_timeout = portMAX_DELAY) {
         ESP_ERROR_CHECK(ui_.ShowMenu(title, items, count, *selected, footer, true));
         while (true) {
-            ZectrixButtonEvent event;
-            if (!board_.WaitButton(&event, idle_timeout)) {
+            zectrix::input::InputEvent event;
+            if (!input_->Wait(&event, pdTICKS_TO_MS(idle_timeout))) {
                 return ControlResult::kContinue;
             }
-            if (event.button == ZectrixButton::kDown &&
-                event.action == ZectrixButtonAction::kLongPress) {
+            if (event.button == zectrix::input::Button::Down &&
+                event.action == zectrix::input::Action::LongPress) {
                 return ControlResult::kShutdown;
             }
-            if (event.button == ZectrixButton::kOk &&
-                event.action == ZectrixButtonAction::kLongPress) {
+            if (event.button == zectrix::input::Button::Ok &&
+                event.action == zectrix::input::Action::LongPress) {
                 return ControlResult::kBack;
             }
-            if (event.action != ZectrixButtonAction::kClick) {
+            if (event.action != zectrix::input::Action::Click) {
                 continue;
             }
-            if (event.button == ZectrixButton::kUp) {
+            if (event.button == zectrix::input::Button::Up) {
                 *selected = (*selected + count - 1) % count;
                 ESP_ERROR_CHECK(ui_.ShowMenu(title, items, count, *selected,
                                              footer, false));
-            } else if (event.button == ZectrixButton::kDown) {
+            } else if (event.button == zectrix::input::Button::Down) {
                 *selected = (*selected + 1) % count;
                 ESP_ERROR_CHECK(ui_.ShowMenu(title, items, count, *selected,
                                              footer, false));
-            } else if (event.button == ZectrixButton::kOk) {
+            } else if (event.button == zectrix::input::Button::Ok) {
                 return ControlResult::kSelected;
             }
         }
@@ -370,18 +374,18 @@ private:
                               : ZECTRIX_EPD_1BPP_FRAME_BYTES,
                 result.elapsed_ms, result.error));
             while (true) {
-                ZectrixButtonEvent event;
-                if (!board_.WaitButton(&event, portMAX_DELAY)) continue;
-                if (event.button == ZectrixButton::kDown &&
-                    event.action == ZectrixButtonAction::kLongPress) {
+                zectrix::input::InputEvent event;
+                if (!input_->Wait(&event, pdTICKS_TO_MS(portMAX_DELAY))) continue;
+                if (event.button == zectrix::input::Button::Down &&
+                    event.action == zectrix::input::Action::LongPress) {
                     return ControlResult::kShutdown;
                 }
-                if (event.button == ZectrixButton::kOk &&
-                    event.action == ZectrixButtonAction::kClick) {
+                if (event.button == zectrix::input::Button::Ok &&
+                    event.action == zectrix::input::Action::Click) {
                     break;
                 }
-                if (event.button == ZectrixButton::kOk &&
-                    event.action == ZectrixButtonAction::kLongPress) {
+                if (event.button == zectrix::input::Button::Ok &&
+                    event.action == zectrix::input::Action::LongPress) {
                     break;
                 }
             }
@@ -437,24 +441,24 @@ private:
         size_t selected = 0;
         ESP_ERROR_CHECK(ui_.ShowTestMenu(selected, test_states_, true));
         while (true) {
-            ZectrixButtonEvent event;
-            if (!board_.WaitButton(&event, portMAX_DELAY)) continue;
-            if (event.button == ZectrixButton::kDown &&
-                event.action == ZectrixButtonAction::kLongPress) {
+            zectrix::input::InputEvent event;
+            if (!input_->Wait(&event, pdTICKS_TO_MS(portMAX_DELAY))) continue;
+            if (event.button == zectrix::input::Button::Down &&
+                event.action == zectrix::input::Action::LongPress) {
                 return ControlResult::kShutdown;
             }
-            if (event.button == ZectrixButton::kOk &&
-                event.action == ZectrixButtonAction::kLongPress) {
+            if (event.button == zectrix::input::Button::Ok &&
+                event.action == zectrix::input::Action::LongPress) {
                 return ControlResult::kBack;
             }
-            if (event.action != ZectrixButtonAction::kClick) continue;
-            if (event.button == ZectrixButton::kUp) {
+            if (event.action != zectrix::input::Action::Click) continue;
+            if (event.button == zectrix::input::Button::Up) {
                 selected = (selected + 6) % 7;
                 ESP_ERROR_CHECK(ui_.ShowTestMenu(selected, test_states_, false));
-            } else if (event.button == ZectrixButton::kDown) {
+            } else if (event.button == zectrix::input::Button::Down) {
                 selected = (selected + 1) % 7;
                 ESP_ERROR_CHECK(ui_.ShowTestMenu(selected, test_states_, false));
-            } else if (event.button == ZectrixButton::kOk) {
+            } else if (event.button == zectrix::input::Button::Ok) {
                 const ZectrixTestId id = static_cast<ZectrixTestId>(selected);
                 const ZectrixTestResult result = ExecuteTest(id);
                 if (result == ZectrixTestResult::kShutdown) {
@@ -508,6 +512,7 @@ private:
     }
 
     ZectrixBoard board_;
+    zectrix::input::InputService* input_ = nullptr;
     zectrix_epd_handle_t epd_ = nullptr;
     ZectrixDemoUi ui_;
     ZectrixSelfTest tests_;
