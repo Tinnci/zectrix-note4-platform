@@ -33,3 +33,5 @@ The current demo has migration exceptions in `main/` and `components/zectrix_dem
 The pure state model and host tests implement M2.1a. `DisplayService` now provides the M2.1b wrapper. UI migration and hardware regression remain separate M2.1c-d work.
 
 `DisplayService::Create` owns the raw driver handle. Callers use only logical display operations. A partial refresh is rejected when no valid 1bpp baseline exists or when the partial budget is exhausted. Any driver error invalidates the baseline.
+
+`InputService` attaches to initialized board support and converts debounced physical button results to `InputEvent`. Applications use logical `Button` and `Action` values. GPIO numbers, FreeRTOS queues and debounce thresholds remain inside board support.
