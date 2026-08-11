@@ -1,8 +1,8 @@
 # Zectrix EPD component API
 
-Copy `components/zectrix_epd` into an ESP-IDF 5.4+ project and add
+Copy `components/zectrix_epd` into an ESP-IDF v5.5.2 project and add
 `zectrix_epd` to the consuming component's `REQUIRES` list. The public API is
-the C header `zectrix_epd.h`, so it can be called from C or C++.
+the C header `zectrix_epd.h`. C and C++ applications can call this API.
 
 ## Lifecycle
 
@@ -47,8 +47,8 @@ ESP_ERROR_CHECK(zectrix_epd_refresh_partial_1bpp(
 
 A successful full 1bpp refresh must establish the base image before any
 partial update. The patch is tightly packed by row. Keep coordinates inside
-the 400 x 300 panel and supply `ceil(width / 8) * height` bytes. Applications
-should occasionally perform a full refresh to control ghosting.
+the 400 x 300 panel and supply `ceil(width / 8) * height` bytes. Perform a
+full refresh after eight partial refreshes to control ghosting.
 
 ## Full 4bpp refresh
 
@@ -69,12 +69,12 @@ After 4bpp, establish another full 1bpp base before using partial refresh.
 
 The API returns standard `esp_err_t` values. Common errors include
 `ESP_ERR_INVALID_ARG`, `ESP_ERR_INVALID_SIZE`, `ESP_ERR_INVALID_STATE` and
-`ESP_ERR_TIMEOUT`. Avoid `ESP_ERROR_CHECK` in a long-running product UI if a
-recoverable screen error should not reboot the device; log and handle the
-return value instead.
+`ESP_ERR_TIMEOUT`. In a long-running product UI, do not use `ESP_ERROR_CHECK`
+for a recoverable screen error. Log the return value and handle the error
+instead.
 
 ## SPI ownership
 
 The default configuration initializes the SPI bus. Set
-`initialize_spi_bus = false` only when the application already owns and has
-configured the selected SPI host with compatible pins and DMA settings.
+`initialize_spi_bus = false` only when the application owns the selected SPI
+host. The application must also configure compatible pins and DMA settings.

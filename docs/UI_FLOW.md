@@ -29,14 +29,15 @@ leaves the unattended sequence at the next safe point.
 
 - Splash, page changes, scene reports and summaries use full 1bpp refresh.
 - Menu selection and live test content use partial 1bpp refresh.
-- After eight UI partial refreshes, the next update is promoted to full refresh.
+- After eight UI partial refreshes, promote the next update to full refresh.
 - Test updates are throttled to 500 ms unless a PASS/FAIL state must be shown.
-- Full 4bpp content is preceded by a white full 1bpp refresh.
+- Precede full 4bpp content with a white full 1bpp refresh.
 
 ## Display gallery
 
-Each scene displays content first, then an information page with refresh mode,
-pixel format, frame-buffer bytes, measured duration and ESP-IDF result name.
+Each scene displays content first. It then displays an information page with
+the refresh mode, pixel format, frame-buffer size, measured duration and
+ESP-IDF result name.
 
 | Scene | Initial operation | Animated operation |
 | --- | --- | --- |
@@ -48,10 +49,10 @@ pixel format, frame-buffer bytes, measured duration and ESP-IDF result name.
 
 A full-width strip below the page title shows all seven tests and their
 WAIT/RUN/PASS/FAIL state. The selected test uses an inverted cell. Instructions
-and measurements use the full content width below the strip; exceptionally long
-runtime values are shortened with an ellipsis instead of running off-screen.
+and measurements use the full content width below the strip. Shorten
+exceptionally long runtime values with an ellipsis.
 Interactive tests use explicit operator prompts. Long OK cancels the active
-test; long DOWN retains its global shutdown meaning.
+test. Long DOWN retains its global shutdown meaning.
 
 ## Shutdown sequence
 

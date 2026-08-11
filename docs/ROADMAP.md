@@ -1,6 +1,6 @@
 # Development roadmap
 
-The project uses stage gates. A later milestone may start only when its stated
+The project uses stage gates. A later milestone can start only when its stated
 dependencies are satisfied. Advanced E-Ink quality research runs in parallel
 and does not block unrelated input or power work.
 
@@ -14,8 +14,8 @@ Goal: reproduce the upstream hardware demo without architectural changes.
 - Document build, flash, monitor and factory-recovery procedures.
 - Run and record the existing seven hardware self-tests.
 
-Exit: a clean checkout builds with the pinned toolchain, boots on the target
-board and can be followed by a verified factory restore.
+Exit: a clean checkout builds with the pinned toolchain and boots on the target
+board. A verified factory restore must then succeed.
 
 ## M2 — Minimum platform services
 
@@ -53,10 +53,10 @@ Exit: SDK v1 and the partition layout have explicit compatibility guarantees.
 
 The following work is not a prerequisite for M1–M3:
 
-- `.zapp` packaging;
-- native ELF loading;
-- WebAssembly runtime;
-- application signing and distribution;
+- `.zapp` packaging.
+- native ELF loading.
+- WebAssembly runtime.
+- application signing and distribution.
 - custom bootloader.
 
 These items require SDK v1 and separate design decisions.

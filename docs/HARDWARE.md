@@ -9,7 +9,7 @@ target the current Zectrix 4.2-inch ESP32-S3 e-paper board.
 | --- | --- | --- |
 | OK button | GPIO0 | Active low |
 | UP button | GPIO39 | Active low |
-| DOWN / power button | GPIO18 | Active low; 3-second shutdown hold |
+| DOWN / power button | GPIO18 | Active low. Hold for 3 seconds to shut down. |
 | Battery power latch | GPIO17 | High keeps battery rail on |
 | Power LED | GPIO3 | Active low |
 | Audio rail | GPIO42 | Active high |
@@ -29,7 +29,7 @@ returned `zectrix_epd_config_t` before creating the driver.
 
 At boot, the demo asserts the battery latch before peripheral initialization.
 The display has a separate controlled rail and remains off until a refresh.
-Audio is initialized lazily when the audio test first runs.
+The board initializes audio when the audio test first runs.
 
 Battery voltage is read through the board ADC path and displayed as both
 millivolts and an estimated percentage. The charging test combines charger

@@ -22,8 +22,8 @@ bash tools/check-dev-env.sh
 ```
 
 Do not activate an ESP-IDF environment unconditionally from the shell startup
-file. The admission test validates the controlled, materialized submodule set;
-it does not require every ESP-IDF submodule to be initialized.
+file. The admission test validates the controlled, materialized submodule set.
+It does not require every ESP-IDF submodule to be initialized.
 
 ## Network
 
@@ -36,15 +36,15 @@ https://components.espressif.com
 ```
 
 GitHub API `EOF` failures are transport failures. Retry the request and record
-the failure; do not change repository state to compensate for a transient
+the failure. Do not change repository state to compensate for a transient
 proxy error.
 
 ## GitHub CLI
 
 Use `gh milestone` for daily milestone operations, `gh issue` for issues, and
 `gh label` for labels. Use `gh api` for idempotent bootstrap and special
-fields. `gh-milestone` is optional command-syntax convenience only; it does
-not repair proxy transport EOF failures and is not a prerequisite gate.
+fields. `gh-milestone` is optional command-syntax convenience only. It does
+not repair proxy transport EOF failures. It is not a prerequisite gate.
 
 ## Device gate
 

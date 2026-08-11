@@ -17,8 +17,8 @@ version advances.
 
 ## Supported development lane
 
-The supported lane is a separately qualified exact ESP-IDF version. It may
-advance within the 5.5 maintenance line after review of release notes, build
+The supported lane is a separately qualified exact ESP-IDF version. Advance it
+within the 5.5 maintenance line only after review of release notes, build
 output, hardware self-tests, EPD behavior and power behavior.
 
 An ESP-IDF version is not supported merely because it satisfies the manifest's

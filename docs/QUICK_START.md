@@ -2,8 +2,8 @@
 
 ## 1. Install ESP-IDF
 
-Install ESP-IDF 5.4 or later and open an ESP-IDF-enabled shell. Confirm that
-the tools are available:
+Install the project-qualified ESP-IDF v5.5.2 baseline and open an ESP-IDF-
+enabled shell. Confirm that the tools are available:
 
 ```bash
 idf.py --version
@@ -19,9 +19,8 @@ idf.py build
 ```
 
 The supplied defaults select 16 MB flash, octal PSRAM and a 3 MB factory app
-partition. `set-target` creates a local `sdkconfig`; delete that generated file
-before changing targets or applying revised defaults to a previously configured
-copy.
+partition. `set-target` creates a local `sdkconfig`. Delete that generated file
+before you change targets or apply revised defaults to a configured copy.
 
 ## 3. Flash and monitor
 
@@ -30,7 +29,7 @@ idf.py -p /dev/ttyACM0 flash monitor
 ```
 
 On Linux, the device may appear as `/dev/ttyACM0` or `/dev/ttyUSB0`. On macOS,
-look for `/dev/cu.usbmodem*`; on Windows, use the corresponding `COM` port.
+look for `/dev/cu.usbmodem*`. On Windows, use the corresponding `COM` port.
 
 Exit the monitor with `Ctrl+]`.
 
@@ -44,9 +43,9 @@ shut down.
 For a complete hardware check, open **Hardware Tests**, select **Run All
 Tests**, and follow the on-screen English prompts. Have the following ready:
 
-- a visible 2.4 GHz Wi-Fi access point;
-- a reasonably quiet environment for the acoustic loopback;
-- USB power and a connected battery for the charging test;
+- a visible 2.4 GHz Wi-Fi access point.
+- a reasonably quiet environment for the acoustic loopback.
+- USB power and a connected battery for the charging test.
 - an NFC-capable phone for field detection.
 
 ## Configuration
@@ -63,13 +62,13 @@ and temporary NFC URL. Rebuild and reflash after changing configuration.
 ### The component download fails
 
 Check network access to the ESP Component Registry, then retry `idf.py build`.
-The required component and version constraint are declared in
+The project declares the required component and version constraint in
 `main/idf_component.yml`.
 
 ### The board repeatedly resets after flashing
 
-Confirm the target is `esp32s3`, the physical board has 16 MB flash and octal
-PSRAM, and the whole project—not only the app image—was flashed.
+Confirm that the target is `esp32s3`. Confirm that the board has 16 MB flash
+and octal PSRAM. Flash the whole project, not only the app image.
 
 ### BUSY timeout during an e-paper refresh
 
@@ -79,5 +78,5 @@ before a successful full 1bpp base refresh.
 
 ### The board does not power off while connected to USB
 
-This is expected. USB keeps the rail powered; the demo clears the panel and
+This is expected. USB keeps the rail powered. The demo clears the panel and
 enters deep sleep. Disconnect USB to validate battery-latch shutdown.

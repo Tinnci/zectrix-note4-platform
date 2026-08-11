@@ -33,8 +33,8 @@ capabilities. A complete recursive checkout is not a project prerequisite.
 
 The clean non-minimal build exposed Unity, CMock, SPIFFS, protobuf-c, cJSON,
 and micro-ecc as concrete configure, generate, or bootloader dependencies.
-They were completed individually. No global recursive submodule update was used
-after this policy was adopted.
+We completed these submodules individually. We did not run a global recursive
+submodule update after we adopted this policy.
 
-NFC remains implemented by the board component over I2C and GPIO. It does not
-justify OpenThread or another radio protocol stack.
+The board component implements NFC over I2C and GPIO. NFC does not justify
+OpenThread or another radio protocol stack.

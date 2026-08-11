@@ -23,11 +23,11 @@ ESP-IDF and FreeRTOS
 
 Applications must not directly:
 
-- send SSD2683 commands;
-- select waveform tables;
-- control display power GPIO;
-- access raw partitions;
-- call `esp_deep_sleep_start()`;
+- send SSD2683 commands.
+- select waveform tables.
+- control display power GPIO.
+- access raw partitions.
+- call `esp_deep_sleep_start()`.
 - depend on internal ESP-IDF driver handles.
 
 ## Display boundary
@@ -41,11 +41,11 @@ Applications submit display intent such as `AUTO`, `FAST`, `QUALITY` or
 
 ## Application boundary
 
-The first application model is a static registry. A dynamic ELF or WebAssembly
-runtime is out of scope until the static API has been exercised by at least
-three independent applications and the SDK ABI is frozen.
+The first application model is a static registry. Do not add a dynamic ELF or
+WebAssembly runtime yet. First exercise the static API with at least three
+independent applications and freeze the SDK ABI.
 
 ## Update boundary
 
-The partition table is not frozen. A/B OTA, rollback, assets and user-data
-requirements must be measured before a replacement layout is accepted.
+The partition table is not frozen. Measure A/B OTA, rollback, assets and
+user-data requirements before accepting a replacement layout.

@@ -1,7 +1,7 @@
 # U0 — Upstream reproduction baseline
 
 This manifest freezes the reproducible software baseline for the first
-hardware qualification gate. U0 is a reference point; it does not promote
+hardware qualification gate. U0 is a reference point. It does not promote
 ESP-IDF 5.5.2 to the permanent supported SDK.
 
 ## Identity
@@ -21,8 +21,8 @@ ESP-IDF 5.5.2 to the permanent supported SDK.
 
 The ESP-IDF version command reports `ESP-IDF v5.5.2-dirty` because the
 superproject intentionally materializes only the controlled submodule set.
-The superproject commit and every required submodule listed below are pinned;
-the dirty suffix is not a functional-source change.
+The superproject commit and every required submodule listed below use pinned
+commits. The dirty suffix does not indicate a functional-source change.
 
 ## Controlled submodules
 
@@ -54,8 +54,8 @@ the dirty suffix is not a functional-source change.
 | esptool | 4.12.0 |
 | Build mode | `IDF_SKIP_CHECK_SUBMODULES=1` after project admission test |
 
-The admission test is `tools/check-dev-env.sh`; use
-`source tools/activate-dev-env.sh` before running it or building.
+The admission test is `tools/check-dev-env.sh`. Run
+`source tools/activate-dev-env.sh` before the admission test or a build.
 
 ## Build artifacts
 
@@ -74,5 +74,5 @@ The clean build completed `1121/1121` tasks on 2026-08-11.
 - Factory backup verification remains the prerequisite for first flash. The
   verified full-image SHA-256 is
   `47a3eb7b97a5a20dd0f3b0904b02ea792504c769941216af7dd4c02498b439d2`.
-- Hardware runtime qualification, serial boot-log capture and recovery drill
-  are not completed by this manifest.
+- This manifest does not include hardware runtime qualification, serial boot-log
+  capture or a recovery drill.
