@@ -103,6 +103,8 @@ an unexpected firmware reset.
 
 ## Qualification results
 
+The operator visually confirmed all three display scenes on 2026-08-11.
+
 | Check | Result | Evidence or notes |
 | --- | --- | --- |
 | Bootloader | PASS | ESP-IDF v5.5.2 second-stage bootloader started. |
@@ -110,9 +112,9 @@ an unexpected firmware reset.
 | Application version in serial log | PASS | `v1.0.0-5-g20bb282` |
 | PSRAM | PASS | 8 MiB detected. SPI SRAM memory test passed. |
 | Board initialization | PASS | RTC and NFC initialization completed. |
-| Full 1bpp refresh | EXECUTED | Scene 0 ran twice. Visual confirmation pending. |
-| Partial 1bpp refresh | EXECUTED | Scene 1 ran twice. Visual confirmation pending. |
-| Full 4bpp refresh | EXECUTED | Scene 2 ran twice. Visual confirmation pending. |
+| Full 1bpp refresh | PASS | Scene 0 ran twice. The operator confirmed the output. |
+| Partial 1bpp refresh | PASS | Scene 1 ran twice. The operator confirmed the output. |
+| Full 4bpp refresh | PASS | Scene 2 ran twice. The operator confirmed the output. |
 | Wi-Fi | PENDING | |
 | Audio | PENDING | |
 | RTC | PENDING | |
