@@ -3,9 +3,9 @@ idf_component_register(
     INCLUDE_DIRS "." "include"
     REQUIRES
         zectrix_board
+        zectrix_time
         esp_event
         esp_netif
-        esp_timer
         esp_wifi
         nvs_flash
 )

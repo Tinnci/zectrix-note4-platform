@@ -5,7 +5,6 @@
 #include <cstring>
 
 #include "esp_log.h"
-#include "esp_timer.h"
 
 namespace {
 
@@ -181,7 +180,8 @@ esp_err_t ZectrixDemoUi::ShowTestUpdate(
     const std::array<ZectrixTestState,
                      static_cast<size_t>(ZectrixTestId::kCount)>& states,
     bool force) {
-    const int64_t now = esp_timer_get_time();
+    if (time_ == nullptr) return ESP_ERR_INVALID_STATE;
+    const int64_t now = time_->MonotonicMicroseconds();
     const bool terminal = update.state == ZectrixTestState::kPass ||
                           update.state == ZectrixTestState::kFail;
     if (!force && !terminal && now - last_update_us_ < kUpdateThrottleUs) {

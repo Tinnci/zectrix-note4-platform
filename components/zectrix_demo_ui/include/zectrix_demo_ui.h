@@ -10,6 +10,7 @@
 #include "zectrix_display_service.h"
 #include "zectrix_power_service.h"
 #include "zectrix_self_test.h"
+#include "zectrix_time_service.h"
 
 class ZectrixDemoUi {
 public:
@@ -18,6 +19,7 @@ public:
     void SetDisplay(zectrix::display::DisplayService* display) {
         display_ = display;
     }
+    void SetTime(zectrix::time::TimeService* time) { time_ = time; }
 
     esp_err_t ShowSplash();
     esp_err_t ShowMenu(const char* title, const char* const* items,
@@ -59,6 +61,7 @@ private:
     static const char* StateText(ZectrixTestState state);
 
     zectrix::display::DisplayService* display_ = nullptr;
+    zectrix::time::TimeService* time_ = nullptr;
     ZectrixCanvas canvas_;
     std::array<uint8_t, 50 * 300> partial_buffer_ = {};
     int64_t last_update_us_ = 0;

@@ -343,6 +343,36 @@ ZectrixPowerSnapshot ZectrixBoard::ReadPowerSnapshot() {
     return result;
 }
 
+bool ZectrixBoard::HasRtc() const { return rtc_ != nullptr; }
+
+bool ZectrixBoard::ReadRtc(tm* value) {
+    return rtc_ != nullptr && value != nullptr && rtc_->GetTime(*value);
+}
+
+bool ZectrixBoard::WriteRtc(const tm& value) {
+    return rtc_ != nullptr && rtc_->SetTime(value);
+}
+
+bool ZectrixBoard::StartRtcCountdown(uint8_t seconds) {
+    return rtc_ != nullptr && rtc_->StartCountdownTimer(seconds);
+}
+
+bool ZectrixBoard::StopRtcCountdown() {
+    return rtc_ != nullptr && rtc_->StopCountdownTimer();
+}
+
+bool ZectrixBoard::ClearRtcTimerFlag() {
+    return rtc_ != nullptr && rtc_->ClearTimerFlag();
+}
+
+bool ZectrixBoard::IsRtcTimerFired() {
+    return rtc_ != nullptr && rtc_->IsTimerFired();
+}
+
+bool ZectrixBoard::IsRtcInterruptActive() const {
+    return rtc_ != nullptr && gpio_get_level(ZECTRIX_RTC_INT) == 0;
+}
+
 void ZectrixBoard::SetPowerLed(bool on) {
     gpio_hold_dis(ZECTRIX_POWER_LED);
     gpio_set_level(ZECTRIX_POWER_LED, on ? 0 : 1);

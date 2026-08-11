@@ -12,6 +12,7 @@ check_root() {
         'esp_deep_sleep_start[[:space:]]*\('
         'nvs_[a-zA-Z0-9_]*[[:space:]]*\('
         'PCF8563'
+        'esp_timer_get_time[[:space:]]*\('
     )
     for pattern in "${patterns[@]}"; do
         if rg -n -i --glob '*.{c,cc,cpp,h,hh,hpp}' "$pattern" "$scan_root"; then found=1; fi
@@ -55,7 +56,7 @@ declare -A application_roots=(
 while IFS= read -r cmake_file; do
     component_dir=${cmake_file%/CMakeLists.txt}
     component_name=${component_dir##*/}
-    if [[ "$component_name" =~ ^zectrix_(display|input|power|time|storage|system)$ ]]; then
+    if [[ "$component_name" =~ ^zectrix_(display|input|power|time|storage|system|self_test)$ ]]; then
         continue
     fi
     if rg -q 'zectrix_(display|input|power|time|storage|system)' "$cmake_file"; then

@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstdint>
+#include <ctime>
 #include <memory>
 
 #include "charge_status.h"
@@ -49,7 +50,14 @@ public:
     bool WaitButton(ZectrixButtonEvent* event, TickType_t timeout);
     void DrainButtons();
 
-    RtcPcf8563* rtc() const { return rtc_.get(); }
+    bool HasRtc() const;
+    bool ReadRtc(tm* value);
+    bool WriteRtc(const tm& value);
+    bool StartRtcCountdown(uint8_t seconds);
+    bool StopRtcCountdown();
+    bool ClearRtcTimerFlag();
+    bool IsRtcTimerFired();
+    bool IsRtcInterruptActive() const;
     ZectrixNfc* nfc() const { return nfc_.get(); }
     AudioCodec* PrepareAudio();
     i2c_master_bus_handle_t i2c_bus() const { return i2c_bus_; }

@@ -61,3 +61,10 @@ numbers, FreeRTOS queues, and debounce thresholds remain inside board support.
 logical battery, external-power, and wake-reason values. It owns the shutdown
 sequence and the deep-sleep call. Board GPIO and rail control remain inside
 board support.
+
+`TimeService` attaches to board support with a typed reference. It owns the
+application monotonic-clock boundary, RTC calendar operations, and RTC
+countdown status. Board support owns the RTC implementation, I2C operations,
+and interrupt GPIO. The migration preserves the behavior in
+[`M2_TIME_BASELINE.md`](M2_TIME_BASELINE.md). It does not add timezone policy or
+RTC-to-system-clock synchronization.

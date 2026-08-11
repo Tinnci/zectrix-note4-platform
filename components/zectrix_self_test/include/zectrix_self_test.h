@@ -6,6 +6,7 @@
 #include <functional>
 
 class ZectrixBoard;
+namespace zectrix::time { class TimeService; }
 
 enum class ZectrixTestId : uint8_t {
     kRf = 0,
@@ -45,6 +46,7 @@ public:
     using UpdateCallback = std::function<void(const ZectrixTestUpdate&)>;
 
     explicit ZectrixSelfTest(ZectrixBoard* board) : board_(board) {}
+    void SetTime(zectrix::time::TimeService* time) { time_ = time; }
 
     static const char* Name(ZectrixTestId id);
     ZectrixTestResult Run(ZectrixTestId id, const UpdateCallback& callback);
@@ -59,6 +61,7 @@ private:
     ZectrixTestResult RunNfc(const UpdateCallback& callback);
 
     ZectrixBoard* board_ = nullptr;
+    zectrix::time::TimeService* time_ = nullptr;
 };
 
 #endif  // ZECTRIX_SELF_TEST_H_

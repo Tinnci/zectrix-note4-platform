@@ -15,15 +15,14 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
-#include "esp_timer.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
-#include "rtc_pcf8563.h"
 #include "zectrix_board.h"
 #include "zectrix_board_config.h"
 #include "zectrix_nfc.h"
+#include "zectrix_time_service.h"
 
 namespace {
 
@@ -198,8 +197,8 @@ ZectrixTestResult ZectrixSelfTest::RunRf(const UpdateCallback& callback) {
     const char* target = CONFIG_ZECTRIX_DEMO_RF_TARGET_SSID;
     const bool qualification = target[0] != '\0';
     int consecutive_hits = 0;
-    const int64_t deadline = esp_timer_get_time() + kInteractiveTimeoutUs;
-    while (esp_timer_get_time() < deadline) {
+    const int64_t deadline = time_->MonotonicMicroseconds() + kInteractiveTimeoutUs;
+    while (time_->MonotonicMicroseconds() < deadline) {
         wifi_scan_config_t scan = {};
         scan.show_hidden = true;
         scan.scan_type = WIFI_SCAN_TYPE_ACTIVE;
@@ -299,8 +298,7 @@ ZectrixTestResult ZectrixSelfTest::RunRtc(const UpdateCallback& callback) {
                              ZectrixTestState::kRunning,
                              "Waiting for a 1 second RTC interrupt...");
     Publish(callback, update);
-    RtcPcf8563* rtc = board_->rtc();
-    if (rtc == nullptr) {
+    if (time_ == nullptr || !time_->RtcAvailable()) {
         update.state = ZectrixTestState::kFail;
         SetText(update.hint, sizeof(update.hint), "PCF8563 was not detected");
         Publish(callback, update);
@@ -309,11 +307,12 @@ ZectrixTestResult ZectrixSelfTest::RunRtc(const UpdateCallback& callback) {
 
     for (int attempt = 1; attempt <= 3; ++attempt) {
         bool fired = false;
-        if (rtc->StartCountdownTimer(1)) {
-            const int64_t deadline = esp_timer_get_time() + 2000000;
-            while (esp_timer_get_time() < deadline) {
-                const bool gpio_hit = gpio_get_level(ZECTRIX_RTC_INT) == 0;
-                const bool flag_hit = rtc->IsTimerFired();
+        if (time_->StartRtcCountdown(1) == ESP_OK) {
+            const int64_t deadline = time_->MonotonicMicroseconds() + 2000000;
+            while (time_->MonotonicMicroseconds() < deadline) {
+                const auto status = time_->ReadRtcTimerStatus();
+                const bool gpio_hit = status.interrupt_active;
+                const bool flag_hit = status.flag_set;
                 SetText(update.details[0].data(), update.details[0].size(),
                         "ATTEMPT: %d/3", attempt);
                 SetText(update.details[1].data(), update.details[1].size(),
@@ -327,13 +326,13 @@ ZectrixTestResult ZectrixSelfTest::RunRtc(const UpdateCallback& callback) {
                 }
                 ZectrixTestResult control;
                 if (IsCancelOrShutdown(board_, pdMS_TO_TICKS(50), &control)) {
-                    rtc->StopCountdownTimer();
+                    time_->StopRtcCountdown();
                     return control;
                 }
             }
         }
-        rtc->StopCountdownTimer();
-        rtc->ClearTimerFlag();
+        time_->StopRtcCountdown();
+        time_->ClearRtcTimerFlag();
         if (fired) {
             update.state = ZectrixTestState::kPass;
             SetText(update.hint, sizeof(update.hint), "RTC timer interrupt passed");
@@ -351,8 +350,8 @@ ZectrixTestResult ZectrixSelfTest::RunCharge(const UpdateCallback& callback) {
     auto update = MakeUpdate(ZectrixTestId::kCharge,
                              ZectrixTestState::kRunning,
                              "Connect USB power to verify charging");
-    const int64_t deadline = esp_timer_get_time() + kInteractiveTimeoutUs;
-    while (esp_timer_get_time() < deadline) {
+    const int64_t deadline = time_->MonotonicMicroseconds() + kInteractiveTimeoutUs;
+    while (time_->MonotonicMicroseconds() < deadline) {
         const ZectrixPowerSnapshot power = board_->ReadPowerSnapshot();
         SetText(update.details[0].data(), update.details[0].size(),
                 "USB POWER: %s", power.charge.power_present ? "PRESENT" : "ABSENT");
@@ -403,8 +402,8 @@ ZectrixTestResult ZectrixSelfTest::RunLed(const UpdateCallback& callback) {
     Publish(callback, update);
     bool led_on = false;
     TickType_t last_toggle = xTaskGetTickCount();
-    const int64_t deadline = esp_timer_get_time() + kInteractiveTimeoutUs;
-    while (esp_timer_get_time() < deadline) {
+    const int64_t deadline = time_->MonotonicMicroseconds() + kInteractiveTimeoutUs;
+    while (time_->MonotonicMicroseconds() < deadline) {
         const TickType_t now = xTaskGetTickCount();
         if (now - last_toggle >= pdMS_TO_TICKS(500)) {
             led_on = !led_on;
@@ -457,8 +456,8 @@ ZectrixTestResult ZectrixSelfTest::RunButtons(const UpdateCallback& callback) {
         ZectrixButton::kOk, ZectrixButton::kUp, ZectrixButton::kDown};
     constexpr std::array<const char*, 3> names = {"OK", "UP", "DOWN"};
     size_t stage = 0;
-    const int64_t deadline = esp_timer_get_time() + kInteractiveTimeoutUs;
-    while (stage < sequence.size() && esp_timer_get_time() < deadline) {
+    const int64_t deadline = time_->MonotonicMicroseconds() + kInteractiveTimeoutUs;
+    while (stage < sequence.size() && time_->MonotonicMicroseconds() < deadline) {
         for (size_t i = 0; i < names.size(); ++i) {
             SetText(update.details[i].data(), update.details[i].size(),
                     "%s  %s", i < stage ? "PASS" : (i == stage ? ">>" : "--"),
@@ -552,9 +551,9 @@ ZectrixTestResult ZectrixSelfTest::RunNfc(const UpdateCallback& callback) {
     }
 
     SetText(update.hint, sizeof(update.hint), "Tap a phone on the NFC antenna");
-    const int64_t deadline = esp_timer_get_time() + kInteractiveTimeoutUs;
+    const int64_t deadline = time_->MonotonicMicroseconds() + kInteractiveTimeoutUs;
     int stable = 0;
-    while (esp_timer_get_time() < deadline && stable < 3) {
+    while (time_->MonotonicMicroseconds() < deadline && stable < 3) {
         const bool field = nfc->HasField();
         stable = field ? stable + 1 : 0;
         SetText(update.details[3].data(), update.details[3].size(),

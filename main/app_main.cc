@@ -10,7 +10,6 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_mac.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "zectrix_board.h"
@@ -19,6 +18,7 @@
 #include "zectrix_input_service.h"
 #include "zectrix_power_service.h"
 #include "zectrix_self_test.h"
+#include "zectrix_time_service.h"
 
 extern "C" {
 extern const uint8_t kLighthouse1bppStart[]
@@ -74,6 +74,7 @@ public:
         delete display_;
         delete power_;
         delete input_;
+        delete time_;
     }
 
     void Run() {
@@ -85,6 +86,7 @@ public:
             board_, &input_));
         ESP_ERROR_CHECK(zectrix::power::PowerService::Attach(
             board_, &power_));
+        ESP_ERROR_CHECK(zectrix::time::TimeService::Attach(board_, &time_));
 
         err = zectrix::display::DisplayService::Create(&display_);
         if (err != ESP_OK) {
@@ -92,6 +94,8 @@ public:
             return;
         }
         ui_.SetDisplay(display_);
+        ui_.SetTime(time_);
+        tests_.SetTime(time_);
         ESP_ERROR_CHECK(ui_.ShowSplash());
         Wait(pdMS_TO_TICKS(1500), false);
 
@@ -213,9 +217,9 @@ private:
             result.error = ESP_ERR_INVALID_SIZE;
             return result;
         }
-        const int64_t start = esp_timer_get_time();
+        const int64_t start = time_->MonotonicMicroseconds();
         result.error = display_->RefreshFull1Bpp(kLighthouse1bppStart, size);
-        result.elapsed_ms = (esp_timer_get_time() - start) / 1000;
+        result.elapsed_ms = (time_->MonotonicMicroseconds() - start) / 1000;
         if (result.error == ESP_OK) {
             result.control = Wait(pdMS_TO_TICKS(2500), true);
         }
@@ -236,7 +240,7 @@ private:
             return result;
         }
 
-        const int64_t start = esp_timer_get_time();
+        const int64_t start = time_->MonotonicMicroseconds();
         result.error = display_->BeginBatch();
         if (result.error == ESP_OK) {
             result.error = display_->RefreshFull1Bpp(
@@ -281,7 +285,7 @@ private:
         }
         const esp_err_t end_batch = display_->EndBatch();
         if (result.error == ESP_OK) result.error = end_batch;
-        result.elapsed_ms = (esp_timer_get_time() - start) / 1000;
+        result.elapsed_ms = (time_->MonotonicMicroseconds() - start) / 1000;
         if (result.error == ESP_OK &&
             result.control == ControlResult::kContinue) {
             result.control = Wait(pdMS_TO_TICKS(2200), true);
@@ -297,14 +301,14 @@ private:
             result.error = ESP_ERR_INVALID_SIZE;
             return result;
         }
-        const int64_t start = esp_timer_get_time();
+        const int64_t start = time_->MonotonicMicroseconds();
         // A true white 1bpp full refresh is deliberately performed before
         // every gray refresh to minimize visible history on this panel.
         result.error = ui_.ClearDisplay();
         if (result.error == ESP_OK) {
             result.error = display_->RefreshFull4Bpp(kMountain4bppStart, size);
         }
-        result.elapsed_ms = (esp_timer_get_time() - start) / 1000;
+        result.elapsed_ms = (time_->MonotonicMicroseconds() - start) / 1000;
         if (result.error == ESP_OK) {
             result.control = Wait(pdMS_TO_TICKS(5000), true);
         }
@@ -486,7 +490,7 @@ private:
         const uint32_t psram_bytes = static_cast<uint32_t>(
             heap_caps_get_total_size(MALLOC_CAP_SPIRAM));
         ESP_ERROR_CHECK(ui_.ShowDeviceInfo(
-            power_->ReadSnapshot(), board_.rtc() != nullptr,
+            power_->ReadSnapshot(), time_->RtcAvailable(),
             board_.nfc() != nullptr, mac, flash_bytes / (1024 * 1024),
             psram_bytes / (1024 * 1024)));
         return Wait(portMAX_DELAY, false);
@@ -506,6 +510,7 @@ private:
     zectrix::input::InputService* input_ = nullptr;
     zectrix::power::PowerService* power_ = nullptr;
     zectrix::display::DisplayService* display_ = nullptr;
+    zectrix::time::TimeService* time_ = nullptr;
     ZectrixDemoUi ui_;
     ZectrixSelfTest tests_;
     std::array<ZectrixTestState,
