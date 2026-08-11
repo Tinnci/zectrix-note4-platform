@@ -57,6 +57,10 @@ Replace `/dev/ttyACM0` with the board's serial port. Exit the monitor with
 
 See [docs/QUICK_START.md](docs/QUICK_START.md) for setup and troubleshooting.
 
+Development prerequisites and the ESP-IDF version policy are documented in
+[docs/PREREQUISITES.md](docs/PREREQUISITES.md) and
+[docs/TOOLCHAIN_POLICY.md](docs/TOOLCHAIN_POLICY.md).
+
 ## Controls
 
 | Input | Action |

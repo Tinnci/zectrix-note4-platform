@@ -1,4 +1,6 @@
 /build/
+/build-*/
+/build.failed-*/
 /sdkconfig
 /sdkconfig.old
 /managed_components/
