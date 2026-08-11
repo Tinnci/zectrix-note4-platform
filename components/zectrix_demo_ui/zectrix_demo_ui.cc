@@ -15,7 +15,6 @@ constexpr int kFooterHeight = 30;
 constexpr int kTestStripHeight = 42;
 constexpr int kTestContentLeft = 16;
 constexpr int kTestContentRight = 384;
-constexpr int kPartialRefreshLimit = 8;
 constexpr int64_t kUpdateThrottleUs = 500000;
 
 constexpr std::array<ZectrixTestId, 7> kTestOrder = {
@@ -239,7 +238,7 @@ esp_err_t ZectrixDemoUi::ShowTestSummary(
 }
 
 esp_err_t ZectrixDemoUi::ShowDeviceInfo(
-    const ZectrixPowerSnapshot& power, bool rtc_ready, bool nfc_ready,
+    const zectrix::power::PowerSnapshot& power, bool rtc_ready, bool nfc_ready,
     const char* mac, uint32_t flash_mb, uint32_t psram_mb) {
     DrawFrame("DEVICE INFO", "Hold OK Back   Hold DOWN Power Off");
     char line[80];
@@ -263,8 +262,8 @@ esp_err_t ZectrixDemoUi::ShowDeviceInfo(
                   power.battery_percent, power.battery_mv);
     canvas_.Text(176, ys[5], power.battery_valid ? line : "NOT AVAILABLE");
     std::snprintf(line, sizeof(line), "%s / %s",
-                  power.charge.power_present ? "IN" : "OUT",
-                  power.charge.charging ? "CHARGING" : "IDLE");
+                  power.external_power_present ? "IN" : "OUT",
+                  power.charging ? "CHARGING" : "IDLE");
     canvas_.Text(176, ys[6], line);
     return RefreshFull();
 }
@@ -281,14 +280,6 @@ esp_err_t ZectrixDemoUi::ShowAbout() {
     return RefreshFull();
 }
 
-void ZectrixDemoUi::SetEpd(void* epd) {
-    delete display_;
-    display_ = nullptr;
-    if (epd != nullptr) {
-        zectrix::display::DisplayService::Attach(epd, &display_);
-    }
-}
-
 esp_err_t ZectrixDemoUi::RefreshFull() {
     if (display_ == nullptr) {
         return ESP_ERR_INVALID_STATE;
@@ -298,7 +289,6 @@ esp_err_t ZectrixDemoUi::RefreshFull() {
         err = display_->RefreshFull1Bpp(canvas_.data(), canvas_.size());
     }
     const esp_err_t off = display_->PowerOff();
-    partial_count_ = 0;
     return err == ESP_OK ? off : err;
 }
 
@@ -308,7 +298,7 @@ esp_err_t ZectrixDemoUi::RefreshPartial(const zectrix::display::Rect& rect) {
         rect.x + rect.width > 400 || rect.y + rect.height > 300) {
         return ESP_ERR_INVALID_ARG;
     }
-    if (partial_count_ >= kPartialRefreshLimit) {
+    if (display_->ShouldRequestFullClean()) {
         return RefreshFull();
     }
     const size_t row_bytes = static_cast<size_t>(rect.width / 8);
@@ -327,10 +317,7 @@ esp_err_t ZectrixDemoUi::RefreshPartial(const zectrix::display::Rect& rect) {
         err = display_->RefreshPartial1Bpp(rect, partial_buffer_.data(), required);
     }
     const esp_err_t off = display_->PowerOff();
-    if (err == ESP_OK) {
-        ++partial_count_;
-        err = off;
-    }
+    if (err == ESP_OK) err = off;
     return err;
 }
 

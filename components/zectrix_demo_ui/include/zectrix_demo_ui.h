@@ -6,16 +6,18 @@
 #include <cstdint>
 
 #include "esp_err.h"
-#include "zectrix_board.h"
 #include "zectrix_canvas.h"
 #include "zectrix_display_service.h"
+#include "zectrix_power_service.h"
 #include "zectrix_self_test.h"
 
 class ZectrixDemoUi {
 public:
-    explicit ZectrixDemoUi(void* epd) { SetEpd(epd); }
-    ~ZectrixDemoUi() { delete display_; }
-    void SetEpd(void* epd);
+    explicit ZectrixDemoUi(zectrix::display::DisplayService* display)
+        : display_(display) {}
+    void SetDisplay(zectrix::display::DisplayService* display) {
+        display_ = display;
+    }
 
     esp_err_t ShowSplash();
     esp_err_t ShowMenu(const char* title, const char* const* items,
@@ -37,7 +39,7 @@ public:
     esp_err_t ShowTestSummary(
         const std::array<ZectrixTestState,
                          static_cast<size_t>(ZectrixTestId::kCount)>& states);
-    esp_err_t ShowDeviceInfo(const ZectrixPowerSnapshot& power,
+    esp_err_t ShowDeviceInfo(const zectrix::power::PowerSnapshot& power,
                              bool rtc_ready, bool nfc_ready,
                              const char* mac, uint32_t flash_mb,
                              uint32_t psram_mb);
@@ -59,7 +61,6 @@ private:
     zectrix::display::DisplayService* display_ = nullptr;
     ZectrixCanvas canvas_;
     std::array<uint8_t, 50 * 300> partial_buffer_ = {};
-    int partial_count_ = 0;
     int64_t last_update_us_ = 0;
 };
 

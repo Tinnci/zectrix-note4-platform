@@ -9,7 +9,7 @@ Applications call platform services. Platform services call board support. Board
 | Service | Owns |
 | --- | --- |
 | DisplayService | logical display state, valid 1bpp baseline, dirty regions, partial refresh budget, refresh intent, error state |
-| InputService | physical button to logical event mapping and debounce |
+| InputService | logical button mapping and event delivery |
 | PowerService | sleep, deep sleep, wake, shutdown, wake reason, battery and external power |
 | TimeService | RTC, wall clock and timer abstraction |
 | StorageService | settings, configuration and small persistent state |
@@ -18,7 +18,7 @@ Applications call platform services. Platform services call board support. Board
 Application code must not include `driver/gpio.h`, `driver/spi_master.h` or `zectrix_epd.h`.
 Application code must not call `esp_deep_sleep_start()`, access NVS directly, or depend on PCF8563.
 
-The current demo has migration exceptions in `main/` and `components/zectrix_demo_ui/`. Board support, raw drivers and self-test code are not application roots. Run `tools/check-architecture-boundaries.sh` to check future `apps/` and `applications/` roots.
+The checker enforces these restrictions in `main/`, `components/zectrix_demo_ui/`, and future `apps/` or `applications/` roots. Board support, platform services, raw drivers and self-test implementations are not application roots.
 
 ## M2.1a display state invariants
 
@@ -32,8 +32,8 @@ The current demo has migration exceptions in `main/` and `components/zectrix_dem
 
 The pure state model and host tests implement M2.1a. `DisplayService` now provides the M2.1b wrapper. UI migration and hardware regression remain separate M2.1c-d work.
 
-`DisplayService::Create` owns the raw driver handle. Callers use only logical display operations. A partial refresh is rejected when no valid 1bpp baseline exists or when the partial budget is exhausted. Any driver error invalidates the baseline.
+`DisplayService::Create` owns the only raw driver handle. The demo UI and gallery share that service and its state. Callers use only logical display operations. A partial refresh is rejected when no valid 1bpp baseline exists or when the partial budget is exhausted. Any driver error invalidates the baseline.
 
-`InputService` attaches to initialized board support and converts debounced physical button results to `InputEvent`. Applications use logical `Button` and `Action` values. GPIO numbers, FreeRTOS queues and debounce thresholds remain inside board support.
+`InputService` attaches to initialized board support and converts debounced physical button results to `InputEvent`. Applications use logical `Button` and `Action` values. Physical sampling, GPIO numbers, FreeRTOS queues and debounce thresholds remain inside board support.
 
 `PowerService` exposes logical battery, external-power and wake-reason values. It owns the shutdown sequence and the deep-sleep call; board GPIO and rail control remain inside board support.

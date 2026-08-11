@@ -3,6 +3,8 @@
 #include <cstdlib>
 
 #include "esp_sleep.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "zectrix_board.h"
 
 namespace zectrix::power {
@@ -45,7 +47,9 @@ WakeReason PowerService::GetWakeReason() const {
         auto* board = static_cast<ZectrixBoard*>(board_);
         board->SetPowerLed(false);
         board->SetAudioPower(false);
+        vTaskDelay(pdMS_TO_TICKS(100));
         board->CutBatteryPower();
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
     esp_deep_sleep_start();
     abort();

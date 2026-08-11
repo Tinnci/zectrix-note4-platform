@@ -12,18 +12,12 @@ esp_err_t DisplayService::Create(DisplayService** out_service) {
     zectrix_epd_handle_t handle = nullptr;
     const esp_err_t err = zectrix_epd_new(&config, &handle);
     if (err != ESP_OK) return err;
-    *out_service = new DisplayService(static_cast<void*>(handle), true);
-    return ESP_OK;
-}
-
-esp_err_t DisplayService::Attach(void* driver_handle, DisplayService** out_service) {
-    if (driver_handle == nullptr || out_service == nullptr) return ESP_ERR_INVALID_ARG;
-    *out_service = new DisplayService(driver_handle, false);
+    *out_service = new DisplayService(static_cast<void*>(handle));
     return ESP_OK;
 }
 
 DisplayService::~DisplayService() {
-    if (owns_driver_ && driver_handle_ != nullptr) {
+    if (driver_handle_ != nullptr) {
         zectrix_epd_del(static_cast<zectrix_epd_handle_t>(driver_handle_));
     }
 }

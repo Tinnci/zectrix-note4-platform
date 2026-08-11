@@ -15,7 +15,7 @@
 #include "freertos/task.h"
 #include "zectrix_board.h"
 #include "zectrix_demo_ui.h"
-#include "zectrix_epd.h"
+#include "zectrix_display_service.h"
 #include "zectrix_input_service.h"
 #include "zectrix_power_service.h"
 #include "zectrix_self_test.h"
@@ -71,6 +71,7 @@ public:
         test_states_.fill(ZectrixTestState::kWait);
     }
     ~DemoApp() {
+        delete display_;
         delete power_;
         delete input_;
     }
@@ -85,14 +86,12 @@ public:
         ESP_ERROR_CHECK(zectrix::power::PowerService::Attach(
             &board_, &power_));
 
-        zectrix_epd_config_t config = {};
-        zectrix_epd_get_default_config(&config);
-        err = zectrix_epd_new(&config, &epd_);
+        err = zectrix::display::DisplayService::Create(&display_);
         if (err != ESP_OK) {
             ESP_LOGE(kTag, "EPD initialization failed: %s", esp_err_to_name(err));
             return;
         }
-        ui_.SetEpd(epd_);
+        ui_.SetDisplay(display_);
         ESP_ERROR_CHECK(ui_.ShowSplash());
         Wait(pdMS_TO_TICKS(1500), false);
 
@@ -210,17 +209,16 @@ private:
         SceneResult result;
         const size_t size = static_cast<size_t>(kLighthouse1bppEnd -
                                                 kLighthouse1bppStart);
-        if (size != ZECTRIX_EPD_1BPP_FRAME_BYTES) {
+        if (size != zectrix::display::DisplayService::kFrameBytes1Bpp) {
             result.error = ESP_ERR_INVALID_SIZE;
             return result;
         }
         const int64_t start = esp_timer_get_time();
-        result.error = zectrix_epd_power_on(epd_);
+        result.error = display_->PowerOn();
         if (result.error == ESP_OK) {
-            result.error = zectrix_epd_refresh_full_1bpp(
-                epd_, kLighthouse1bppStart, size);
+            result.error = display_->RefreshFull1Bpp(kLighthouse1bppStart, size);
         }
-        zectrix_epd_power_off(epd_);
+        display_->PowerOff();
         result.elapsed_ms = (esp_timer_get_time() - start) / 1000;
         if (result.error == ESP_OK) {
             result.control = Wait(pdMS_TO_TICKS(2500), true);
@@ -234,7 +232,7 @@ private:
             kSnowPath1bppEnd - kSnowPath1bppStart);
         const size_t animation_size = static_cast<size_t>(
             kFootprintAnimationEnd - kFootprintAnimationStart);
-        if (background_size != ZECTRIX_EPD_1BPP_FRAME_BYTES ||
+        if (background_size != zectrix::display::DisplayService::kFrameBytes1Bpp ||
             animation_size < kAnimationHeaderSize ||
             std::memcmp(kFootprintAnimationStart, kFootprintMagic,
                         sizeof(kFootprintMagic)) != 0) {
@@ -243,10 +241,10 @@ private:
         }
 
         const int64_t start = esp_timer_get_time();
-        result.error = zectrix_epd_power_on(epd_);
+        result.error = display_->PowerOn();
         if (result.error == ESP_OK) {
-            result.error = zectrix_epd_refresh_full_1bpp(
-                epd_, kSnowPath1bppStart, background_size);
+            result.error = display_->RefreshFull1Bpp(
+                kSnowPath1bppStart, background_size);
         }
         if (result.error == ESP_OK) {
             result.control = Wait(pdMS_TO_TICKS(900), true);
@@ -275,17 +273,17 @@ private:
                 result.error = ESP_ERR_INVALID_SIZE;
                 break;
             }
-            const zectrix_epd_rect_t rect = {
+            const zectrix::display::Rect rect = {
                 static_cast<int>(x), static_cast<int>(y),
                 static_cast<int>(width), static_cast<int>(height)};
-            result.error = zectrix_epd_refresh_partial_1bpp(
-                epd_, &rect, cursor, data_size);
+            result.error = display_->RefreshPartial1Bpp(
+                rect, cursor, data_size);
             cursor += data_size;
             if (result.error == ESP_OK) {
                 result.control = Wait(pdMS_TO_TICKS(400), true);
             }
         }
-        zectrix_epd_power_off(epd_);
+        display_->PowerOff();
         result.elapsed_ms = (esp_timer_get_time() - start) / 1000;
         if (result.error == ESP_OK &&
             result.control == ControlResult::kContinue) {
@@ -298,7 +296,7 @@ private:
         SceneResult result;
         const size_t size = static_cast<size_t>(kMountain4bppEnd -
                                                 kMountain4bppStart);
-        if (size != ZECTRIX_EPD_4BPP_FRAME_BYTES) {
+        if (size != zectrix::display::DisplayService::kFrameBytes4Bpp) {
             result.error = ESP_ERR_INVALID_SIZE;
             return result;
         }
@@ -307,13 +305,12 @@ private:
         // every gray refresh to minimize visible history on this panel.
         result.error = ui_.ClearDisplay();
         if (result.error == ESP_OK) {
-            result.error = zectrix_epd_power_on(epd_);
+            result.error = display_->PowerOn();
         }
         if (result.error == ESP_OK) {
-            result.error = zectrix_epd_refresh_full_4bpp(
-                epd_, kMountain4bppStart, size);
+            result.error = display_->RefreshFull4Bpp(kMountain4bppStart, size);
         }
-        zectrix_epd_power_off(epd_);
+        display_->PowerOff();
         result.elapsed_ms = (esp_timer_get_time() - start) / 1000;
         if (result.error == ESP_OK) {
             result.control = Wait(pdMS_TO_TICKS(5000), true);
@@ -375,8 +372,9 @@ private:
             if (result.control == ControlResult::kShutdown) return result.control;
             ESP_ERROR_CHECK(ui_.ShowSceneInfo(
                 kTitles[selected], kModes[selected], kFormats[selected],
-                selected == 2 ? ZECTRIX_EPD_4BPP_FRAME_BYTES
-                              : ZECTRIX_EPD_1BPP_FRAME_BYTES,
+                selected == 2
+                    ? zectrix::display::DisplayService::kFrameBytes4Bpp
+                    : zectrix::display::DisplayService::kFrameBytes1Bpp,
                 result.elapsed_ms, result.error));
             while (true) {
                 zectrix::input::InputEvent event;
@@ -495,7 +493,7 @@ private:
         const uint32_t psram_bytes = static_cast<uint32_t>(
             heap_caps_get_total_size(MALLOC_CAP_SPIRAM));
         ESP_ERROR_CHECK(ui_.ShowDeviceInfo(
-            board_.ReadPowerSnapshot(), board_.rtc() != nullptr,
+            power_->ReadSnapshot(), board_.rtc() != nullptr,
             board_.nfc() != nullptr, mac, flash_bytes / (1024 * 1024),
             psram_bytes / (1024 * 1024)));
         return Wait(portMAX_DELAY, false);
@@ -514,7 +512,7 @@ private:
     ZectrixBoard board_;
     zectrix::input::InputService* input_ = nullptr;
     zectrix::power::PowerService* power_ = nullptr;
-    zectrix_epd_handle_t epd_ = nullptr;
+    zectrix::display::DisplayService* display_ = nullptr;
     ZectrixDemoUi ui_;
     ZectrixSelfTest tests_;
     std::array<ZectrixTestState,
