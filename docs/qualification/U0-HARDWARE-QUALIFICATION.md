@@ -1,6 +1,6 @@
 # U0 hardware qualification
 
-Status: FIRST FLASH PASS. HARDWARE QUALIFICATION IN PROGRESS.
+Status: HARDWARE QUALIFICATION PASS. FACTORY RECOVERY PENDING.
 
 Qualification date: 2026-08-11
 
@@ -104,6 +104,10 @@ an unexpected firmware reset.
 ## Qualification results
 
 The operator visually confirmed all three display scenes on 2026-08-11.
+The operator also confirmed that the final seven-item hardware-test summary
+reported PASS for every test. The serial log contains explicit Audio PASS
+evidence and the Wi-Fi initialization and scan lifecycle. The current firmware
+does not print every final interactive test result to the serial console.
 
 | Check | Result | Evidence or notes |
 | --- | --- | --- |
@@ -115,15 +119,15 @@ The operator visually confirmed all three display scenes on 2026-08-11.
 | Full 1bpp refresh | PASS | Scene 0 ran twice. The operator confirmed the output. |
 | Partial 1bpp refresh | PASS | Scene 1 ran twice. The operator confirmed the output. |
 | Full 4bpp refresh | PASS | Scene 2 ran twice. The operator confirmed the output. |
-| Wi-Fi | PENDING | |
-| Audio | PENDING | |
-| RTC | PENDING | |
-| Power and charging | PENDING | |
-| LED | PENDING | |
-| Buttons | PENDING | |
-| NFC | PENDING | |
-| Panic count | PASS | 0 during the captured 64-second application run. |
-| Watchdog count | PASS | 0 during the captured 64-second application run. |
+| Wi-Fi | PASS | Driver and scan lifecycle logged. Operator confirmed PASS summary. |
+| Audio | PASS | Serial log reports `result=PASS`. Operator confirmed PASS summary. |
+| RTC | PASS | Operator confirmed PASS summary. |
+| Power and charging | PASS | Operator confirmed PASS summary. |
+| LED | PASS | Operator confirmed visible LED result and PASS summary. |
+| Buttons | PASS | Operator completed the required sequence and confirmed PASS summary. |
+| NFC | PASS | NFC initialized. Operator confirmed field test and PASS summary. |
+| Panic count | PASS | 0 through the display and hardware-test run. |
+| Watchdog count | PASS | 0 through the display and hardware-test run. |
 | Unexpected reset count | PASS | 0 after the successful monitored boot. |
 
 Do not block this gate because of subjective 4bpp image quality. Record image
@@ -131,7 +135,5 @@ quality observations for the EPD baseline measurement work.
 
 ## Exit rule
 
-The serial log proves the application build identity. Platform issue #1 can
-close after this result is committed. Keep platform issue #2 open until the
-operator confirms the display output, all hardware checks pass and the factory
-recovery drill passes.
+Platform issue #1 is complete. Keep platform issue #2 open until the factory
+recovery drill and its verification pass.
