@@ -8,13 +8,14 @@
 #include "esp_err.h"
 #include "zectrix_board.h"
 #include "zectrix_canvas.h"
-#include "zectrix_epd.h"
+#include "zectrix_display_service.h"
 #include "zectrix_self_test.h"
 
 class ZectrixDemoUi {
 public:
-    explicit ZectrixDemoUi(zectrix_epd_handle_t epd) : epd_(epd) {}
-    void SetEpd(zectrix_epd_handle_t epd) { epd_ = epd; }
+    explicit ZectrixDemoUi(void* epd) { SetEpd(epd); }
+    ~ZectrixDemoUi() { delete display_; }
+    void SetEpd(void* epd);
 
     esp_err_t ShowSplash();
     esp_err_t ShowMenu(const char* title, const char* const* items,
@@ -45,7 +46,7 @@ public:
 
     ZectrixCanvas& canvas() { return canvas_; }
     esp_err_t RefreshFull();
-    esp_err_t RefreshPartial(const zectrix_epd_rect_t& rect);
+    esp_err_t RefreshPartial(const zectrix::display::Rect& rect);
 
 private:
     void DrawFrame(const char* title, const char* footer);
@@ -55,7 +56,7 @@ private:
                          static_cast<size_t>(ZectrixTestId::kCount)>& states);
     static const char* StateText(ZectrixTestState state);
 
-    zectrix_epd_handle_t epd_ = nullptr;
+    zectrix::display::DisplayService* display_ = nullptr;
     ZectrixCanvas canvas_;
     std::array<uint8_t, 50 * 300> partial_buffer_ = {};
     int partial_count_ = 0;

@@ -12,6 +12,8 @@ class DisplayService {
 public:
     // Creates a service with the board's default EPD configuration.
     static esp_err_t Create(DisplayService** out_service);
+    // Transitional adapter for an existing driver owner. The service does not delete the handle.
+    static esp_err_t Attach(void* driver_handle, DisplayService** out_service);
     ~DisplayService();
 
     DisplayService(const DisplayService&) = delete;
@@ -33,10 +35,12 @@ public:
     }
 
 private:
-    explicit DisplayService(void* driver_handle) : driver_handle_(driver_handle) {}
+    explicit DisplayService(void* driver_handle, bool owns_driver)
+        : driver_handle_(driver_handle), owns_driver_(owns_driver) {}
     void OnError();
 
     void* driver_handle_;
+    bool owns_driver_;
     StateModel state_model_;
 };
 

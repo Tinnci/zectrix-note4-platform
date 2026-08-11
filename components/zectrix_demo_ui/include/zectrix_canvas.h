@@ -5,13 +5,12 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "zectrix_epd.h"
-
 class ZectrixCanvas {
 public:
-    static constexpr int kWidth = ZECTRIX_EPD_PANEL_WIDTH;
-    static constexpr int kHeight = ZECTRIX_EPD_PANEL_HEIGHT;
+    static constexpr int kWidth = 400;
+    static constexpr int kHeight = 300;
     static constexpr int kStride = kWidth / 8;
+    static constexpr int kFrameBytes = kStride * kHeight;
 
     void Clear(bool white = true);
     void Pixel(int x, int y, bool black);
@@ -29,7 +28,7 @@ public:
     size_t size() const { return pixels_.size(); }
 
 private:
-    std::array<uint8_t, ZECTRIX_EPD_1BPP_FRAME_BYTES> pixels_ = {};
+    std::array<uint8_t, kFrameBytes> pixels_ = {};
 };
 
 #endif  // ZECTRIX_CANVAS_H_

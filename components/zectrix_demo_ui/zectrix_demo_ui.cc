@@ -281,21 +281,29 @@ esp_err_t ZectrixDemoUi::ShowAbout() {
     return RefreshFull();
 }
 
+void ZectrixDemoUi::SetEpd(void* epd) {
+    delete display_;
+    display_ = nullptr;
+    if (epd != nullptr) {
+        zectrix::display::DisplayService::Attach(epd, &display_);
+    }
+}
+
 esp_err_t ZectrixDemoUi::RefreshFull() {
-    if (epd_ == nullptr) {
+    if (display_ == nullptr) {
         return ESP_ERR_INVALID_STATE;
     }
-    esp_err_t err = zectrix_epd_power_on(epd_);
+    esp_err_t err = display_->PowerOn();
     if (err == ESP_OK) {
-        err = zectrix_epd_refresh_full_1bpp(epd_, canvas_.data(), canvas_.size());
+        err = display_->RefreshFull1Bpp(canvas_.data(), canvas_.size());
     }
-    const esp_err_t off = zectrix_epd_power_off(epd_);
+    const esp_err_t off = display_->PowerOff();
     partial_count_ = 0;
     return err == ESP_OK ? off : err;
 }
 
-esp_err_t ZectrixDemoUi::RefreshPartial(const zectrix_epd_rect_t& rect) {
-    if (epd_ == nullptr || rect.x < 0 || rect.y < 0 || rect.width <= 0 ||
+esp_err_t ZectrixDemoUi::RefreshPartial(const zectrix::display::Rect& rect) {
+    if (display_ == nullptr || rect.x < 0 || rect.y < 0 || rect.width <= 0 ||
         rect.height <= 0 || (rect.x & 7) != 0 || (rect.width & 7) != 0 ||
         rect.x + rect.width > 400 || rect.y + rect.height > 300) {
         return ESP_ERR_INVALID_ARG;
@@ -314,12 +322,11 @@ esp_err_t ZectrixDemoUi::RefreshPartial(const zectrix_epd_rect_t& rect) {
         std::memcpy(partial_buffer_.data() + static_cast<size_t>(row) * row_bytes,
                     source, row_bytes);
     }
-    esp_err_t err = zectrix_epd_power_on(epd_);
+    esp_err_t err = display_->PowerOn();
     if (err == ESP_OK) {
-        err = zectrix_epd_refresh_partial_1bpp(
-            epd_, &rect, partial_buffer_.data(), required);
+        err = display_->RefreshPartial1Bpp(rect, partial_buffer_.data(), required);
     }
-    const esp_err_t off = zectrix_epd_power_off(epd_);
+    const esp_err_t off = display_->PowerOff();
     if (err == ESP_OK) {
         ++partial_count_;
         err = off;
