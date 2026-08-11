@@ -4,6 +4,7 @@ idf_component_register(SRCS "app_main.cc"
                        zectrix_demo_ui
                        zectrix_epd
                        zectrix_input
+                       zectrix_power
                        zectrix_self_test
                        esp_timer
                        heap
