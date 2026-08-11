@@ -10,7 +10,7 @@ tests time out after 60 seconds unless stated otherwise.
 | RTC | PCF8563 one-second countdown asserts its status flag or interrupt within the retry window. | No operator action. |
 | Power | Charging is active, or the charger reports full while a valid battery measurement exceeds 97%. No-battery and fault states fail. | Connect a battery and USB power. |
 | LED | Operator confirms that the power LED visibly blinks. | Press OK for PASS. Press DOWN for FAIL. |
-| Buttons | Correct sequence `OK`, `UP`, `DOWN` is received. UP/DOWN trigger on press. OK triggers on release. Wrong input restarts the sequence. | Follow the on-screen prompt. |
+| Buttons | Correct sequence `OK`, `UP`, `DOWN` is received. UP/DOWN trigger on press. OK triggers on release. Wrong input restarts the sequence. | Do the on-screen steps. |
 | NFC | User memory is backed up, a temporary URL NDEF message is written and read back, a phone field is detected, then the original bytes are restored. | Hold an NFC-capable phone near the antenna when prompted. |
 
 ## Controls during tests
@@ -23,7 +23,7 @@ tests time out after 60 seconds unless stated otherwise.
 
 Generic Wi-Fi scan is intended for demonstrations only. Set
 `CONFIG_ZECTRIX_DEMO_RF_TARGET_SSID` and choose an RSSI threshold that matches
-the fixture before using RF results for qualification.
+the fixture before you use RF results for qualification.
 
 The LED test is intentionally visual. For a fully automated fixture, add an
 optical sensor and replace the operator result with a measured threshold.

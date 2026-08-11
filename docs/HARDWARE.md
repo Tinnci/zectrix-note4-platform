@@ -22,7 +22,7 @@ target the current Zectrix 4.2-inch ESP32-S3 e-paper board.
 | Charge detect / full | GPIO2 / GPIO1 | Charger status inputs |
 
 The EPD GPIO and SPI defaults are public through
-`zectrix_epd_get_default_config()`. Applications may override any value in the
+`zectrix_epd_get_default_config()`. Applications can override each value in the
 returned `zectrix_epd_config_t` before creating the driver.
 
 ## Power behavior

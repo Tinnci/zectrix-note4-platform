@@ -12,14 +12,15 @@ A standalone, open-source ESP-IDF reference project for the ZECTRIX NOTE4
 Wi-Fi, RTC, charging, LED, buttons, NFC and battery-monitoring capabilities
 through an English on-device UI.
 
-This project is self-contained under this directory. It does not link to the
+This project is self-contained in this directory. It does not link to the
 commercial NOTE4 firmware or require LVGL. It is a hardware demonstration and
-driver reference, not the complete NOTE4 consumer firmware or cloud service.
+driver reference, not the full NOTE4 consumer firmware or cloud service.
 
-> [!IMPORTANT]
+> [!CAUTION]
 > This project targets the black-and-white ZECTRIX NOTE4 hardware. It is not
-> compatible with NOTE4C. A flash operation replaces the firmware on the
-> connected device. Confirm the model and serial port before you flash.
+> compatible with NOTE4C. Flashing replaces the firmware on the connected
+> device. Confirm the model and serial port before you flash. If you flash the
+> wrong device, you can lose its current firmware.
 
 ![Footprint animation preview](main/assets/snow_path_footprints_preview.png)
 

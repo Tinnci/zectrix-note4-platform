@@ -45,7 +45,8 @@ Goal: freeze SDK v1 and select a safe update layout.
 
 - Add API compatibility tests and semantic versioning.
 - Measure maximum firmware, assets and user-data requirements.
-- Select an A/B OTA and rollback design using an architecture decision record.
+- Select an A/B OTA and rollback design. Record the selection in an
+  architecture decision record.
 
 Exit: SDK v1 and the partition layout have explicit compatibility guarantees.
 

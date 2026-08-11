@@ -45,9 +45,9 @@ ESP_ERROR_CHECK(zectrix_epd_refresh_partial_1bpp(
     epd, &rect, patch, sizeof(patch)));
 ```
 
-A successful full 1bpp refresh must establish the base image before any
+A successful full 1bpp refresh must establish the base image before a
 partial update. The patch is tightly packed by row. Keep coordinates inside
-the 400 x 300 panel and supply `ceil(width / 8) * height` bytes. Perform a
+the 400 x 300 panel and supply `ceil(width / 8) * height` bytes. Do a
 full refresh after eight partial refreshes to control ghosting.
 
 ## Full 4bpp refresh
@@ -62,8 +62,8 @@ The image is 400 x 300 with two pixels per byte. The high nibble is the left
 pixel. Values range from `0` black to `15` white. The buffer must be exactly
 60,000 bytes.
 
-For the cleanest transition, perform a white full 1bpp refresh before 4bpp.
-After 4bpp, establish another full 1bpp base before using partial refresh.
+To reduce ghosting, do a white full 1bpp refresh before 4bpp.
+After 4bpp, establish another full 1bpp base before you use partial refresh.
 
 ## Error handling
 

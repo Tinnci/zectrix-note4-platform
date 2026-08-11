@@ -28,7 +28,7 @@ before you change targets or apply revised defaults to a configured copy.
 idf.py -p /dev/ttyACM0 flash monitor
 ```
 
-On Linux, the device may appear as `/dev/ttyACM0` or `/dev/ttyUSB0`. On macOS,
+On Linux, the device can appear as `/dev/ttyACM0` or `/dev/ttyUSB0`. On macOS,
 look for `/dev/cu.usbmodem*`. On Windows, use the corresponding `COM` port.
 
 Exit the monitor with `Ctrl+]`.
@@ -40,8 +40,8 @@ pressed for 15 seconds, Auto Showcase begins. Hold OK for 1.5 seconds to
 return. Hold DOWN for 3 seconds from any normal screen to clear the e-paper and
 shut down.
 
-For a complete hardware check, open **Hardware Tests**, select **Run All
-Tests**, and follow the on-screen English prompts. Have the following ready:
+For a full hardware check, open **Hardware Tests**, select **Run All Tests**,
+and do the on-screen steps. Have the following ready:
 
 - a visible 2.4 GHz Wi-Fi access point.
 - a reasonably quiet environment for the acoustic loopback.
@@ -61,8 +61,8 @@ and temporary NFC URL. Rebuild and reflash after changing configuration.
 
 ### The component download fails
 
-Check network access to the ESP Component Registry, then retry `idf.py build`.
-The project declares the required component and version constraint in
+Confirm network access to the ESP Component Registry, then retry `idf.py build`.
+The project declares the component and version constraint in
 `main/idf_component.yml`.
 
 ### The board repeatedly resets after flashing

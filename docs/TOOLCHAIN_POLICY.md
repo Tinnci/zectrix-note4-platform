@@ -35,7 +35,7 @@ until the supported lane passes all qualification gates.
 "Reproducible environment" means that source, IDF, component lock, target and
 tool versions are recorded. "Bit-for-bit reproducible build" additionally
 requires independent clean builds that produce identical artifacts. The latter
-must be demonstrated before using that stronger claim.
+must be demonstrated before you make that stronger claim.
 
 ## Promotion rule
 

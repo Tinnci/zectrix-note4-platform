@@ -22,7 +22,7 @@ The home menu contains:
 4. **DEVICE INFO** — live board and power information.
 5. **ABOUT & LICENSE** — project ownership and license.
 
-After 15 seconds of home-screen inactivity, Auto Showcase starts. Any click
+After 15 seconds of home-screen inactivity, Auto Showcase starts. A click
 leaves the unattended sequence at the next safe point.
 
 ## Refresh policy
@@ -56,7 +56,7 @@ test. Long DOWN retains its global shutdown meaning.
 
 ## Shutdown sequence
 
-1. Perform a white full 1bpp refresh and wait for completion.
+1. Do a white full 1bpp refresh and wait for completion.
 2. Power off the display through the driver.
 3. Turn off the indicator LED and audio rail.
 4. Release the battery power latch.

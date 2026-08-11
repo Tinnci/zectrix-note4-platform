@@ -75,7 +75,7 @@ source tools/activate-dev-env.sh
 IDF_SKIP_CHECK_SUBMODULES=1 idf.py -p /dev/ttyACM1 flash monitor
 ```
 
-Capture the complete serial output. Confirm this boot sequence:
+Capture the full serial output. Confirm this boot sequence:
 
 1. The bootloader starts.
 2. The partition table loads.
@@ -98,7 +98,7 @@ command actually wrote and verified.
 
 The first monitor connection lost the USB device after application handoff.
 The operator disconnected and reconnected USB once. The second monitor session
-captured a complete successful boot. Do not classify this manual USB reset as
+captured a successful boot. Do not classify this manual USB reset as
 an unexpected firmware reset.
 
 ## Qualification results
@@ -124,7 +124,7 @@ does not print every final interactive test result to the serial console.
 | RTC | PASS | Operator confirmed PASS summary. |
 | Power and charging | PASS | Operator confirmed PASS summary. |
 | LED | PASS | Operator confirmed visible LED result and PASS summary. |
-| Buttons | PASS | Operator completed the required sequence and confirmed PASS summary. |
+| Buttons | PASS | Operator completed the specified sequence and confirmed PASS summary. |
 | NFC | PASS | NFC initialized. Operator confirmed field test and PASS summary. |
 | Panic count | PASS | 0 through the display and hardware-test run. |
 | Watchdog count | PASS | 0 through the display and hardware-test run. |
@@ -151,15 +151,15 @@ It did not write an eFuse, enable secure boot or enable flash encryption.
 | Factory firmware boot | PASS | The operator confirmed the original interface and normal basic operation. |
 
 The stub flasher stopped during two initial readback attempts. The original
-backup log documents the same transport limitation. The controlled readback
-therefore used the ROM bootloader and the same 1 MiB segmentation method as the
-two preservation reads. This method completed without an error.
+backup log documents the same transport limitation. As a result, the controlled
+readback used the ROM bootloader and the same 1 MiB segmentation method as the
+two preservation reads. This method finished without an error.
 
 Detailed recovery logs and readback binaries remain in the private backup
 workspace. They are not part of this public repository.
 
 ## Exit rule
 
-Platform issues #1 and #2 are complete. The U0 baseline is qualified for the
+Platform issues #1 and #2 are closed. The U0 baseline is qualified for the
 tested device. Continue with the next M1 platform-abstraction task without
 changing the preserved factory backup.

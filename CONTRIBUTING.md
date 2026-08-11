@@ -10,11 +10,11 @@ Pull Request。
 
 Please include the following information when reporting a problem:
 
-- the exact device model and hardware revision;
-- the ESP-IDF version (`idf.py --version`);
+- the exact device model and hardware revision.
+- the ESP-IDF version (`idf.py --version`).
 - the build or runtime log with credentials, Wi-Fi names, MAC addresses and
-  other personal data removed;
-- the smallest sequence of steps that reproduces the problem;
+  other personal data removed.
+- the smallest sequence of steps that reproduces the problem.
 - whether the issue occurs on USB power, battery power or both.
 
 提交问题时，请提供准确的设备型号和硬件版本、ESP-IDF 版本、去除凭据和个人信息后的
