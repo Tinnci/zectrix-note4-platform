@@ -1,6 +1,7 @@
 #include "zectrix_system_service.h"
 
 #include <cstdio>
+#include <new>
 #include <cstring>
 
 #include "esp_app_desc.h"
@@ -49,8 +50,8 @@ void FormatSha256(const uint8_t* sha,
 esp_err_t SystemService::Attach(ZectrixBoard& board,
                                 SystemService** out_service) {
     if (out_service == nullptr) return ESP_ERR_INVALID_ARG;
-    *out_service = new SystemService(board);
-    return ESP_OK;
+    *out_service = new (std::nothrow) SystemService(board);
+    return *out_service == nullptr ? ESP_ERR_NO_MEM : ESP_OK;
 }
 
 SystemService::~SystemService() = default;

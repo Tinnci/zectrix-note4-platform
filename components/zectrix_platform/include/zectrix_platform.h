@@ -24,6 +24,9 @@ public:
     esp_err_t Initialize();
     bool IsInitialized() const { return initialized_; }
 
+    // Initialize() must return ESP_OK before an application calls an accessor.
+    // A contract violation stops in an assertion instead of dereferencing an
+    // unchecked null implementation pointer.
     display::DisplayService& Display() const;
     input::InputService& Input() const;
     power::PowerService& Power() const;

@@ -6,6 +6,7 @@ trap 'rm -f "$test_binary"' EXIT
 c++ -std=c++17 -Wall -Wextra -Werror \
   -I"$root_dir/tools/host_include" \
   -I"$root_dir/components/zectrix_power/include" \
+  "$root_dir/components/zectrix_power/zectrix_power_service.cc" \
   "$root_dir/tools/power_service_test.cc" -o "$test_binary"
 "$test_binary"
 echo 'PASS: power service tests.'

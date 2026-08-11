@@ -37,6 +37,12 @@ If an operation fails, `Platform` destroys each service that it already created.
 It destroys the services in reverse order. It does not retry board initialization
 on the same object.
 
+Allocation failure returns `ESP_ERR_NO_MEM`. The application calls service
+accessors only after `Initialize()` returns `ESP_OK`. An accessor asserts this
+precondition before it returns a reference.
+If allocation fails before board initialization starts, the application can
+retry initialization on the same Platform object.
+
 ## Application boundary
 
 Application code can use `Display()`, `Input()`, `Power()`, `Time()`, `Storage()`,

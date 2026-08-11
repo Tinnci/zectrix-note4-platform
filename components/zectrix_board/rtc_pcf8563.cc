@@ -58,13 +58,16 @@ bool RtcPcf8563::Init(gpio_num_t int_gpio) {
 }
 
 bool RtcPcf8563::SetTime(const tm& local_tm) {
-    return WriteRegChecked(kRegSeconds, ToBcd(local_tm.tm_sec) & 0x7F) == ESP_OK &&
-           WriteRegChecked(kRegMinutes, ToBcd(local_tm.tm_min) & 0x7F) == ESP_OK &&
-           WriteRegChecked(kRegHours, ToBcd(local_tm.tm_hour) & 0x3F) == ESP_OK &&
-           WriteRegChecked(kRegDays, ToBcd(local_tm.tm_mday) & 0x3F) == ESP_OK &&
-           WriteRegChecked(kRegWeekdays, ToBcd(local_tm.tm_wday) & 0x07) == ESP_OK &&
-           WriteRegChecked(kRegMonths, ToBcd(local_tm.tm_mon + 1) & 0x1F) == ESP_OK &&
-           WriteRegChecked(kRegYears, ToBcd(local_tm.tm_year % 100)) == ESP_OK;
+    const uint8_t values[] = {
+        static_cast<uint8_t>(ToBcd(local_tm.tm_sec) & 0x7F),
+        static_cast<uint8_t>(ToBcd(local_tm.tm_min) & 0x7F),
+        static_cast<uint8_t>(ToBcd(local_tm.tm_hour) & 0x3F),
+        static_cast<uint8_t>(ToBcd(local_tm.tm_mday) & 0x3F),
+        static_cast<uint8_t>(ToBcd(local_tm.tm_wday) & 0x07),
+        static_cast<uint8_t>(ToBcd(local_tm.tm_mon + 1) & 0x1F),
+        ToBcd(local_tm.tm_year % 100),
+    };
+    return WriteRegsChecked(kRegSeconds, values, sizeof(values)) == ESP_OK;
 }
 
 bool RtcPcf8563::GetTime(tm& out_local_tm) {

@@ -1,5 +1,7 @@
 #include "zectrix_display_service.h"
 
+#include <new>
+
 #include "zectrix_epd.h"
 
 namespace zectrix::display {
@@ -12,7 +14,11 @@ esp_err_t DisplayService::Create(DisplayService** out_service) {
     zectrix_epd_handle_t handle = nullptr;
     const esp_err_t err = zectrix_epd_new(&config, &handle);
     if (err != ESP_OK) return err;
-    *out_service = new DisplayService(static_cast<void*>(handle));
+    *out_service = new (std::nothrow) DisplayService(static_cast<void*>(handle));
+    if (*out_service == nullptr) {
+        zectrix_epd_del(handle);
+        return ESP_ERR_NO_MEM;
+    }
     return ESP_OK;
 }
 

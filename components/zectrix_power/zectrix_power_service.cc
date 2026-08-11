@@ -1,6 +1,7 @@
 #include "zectrix_power_service.h"
 
 #include <cstdlib>
+#include <new>
 
 #include "esp_sleep.h"
 #include "freertos/FreeRTOS.h"
@@ -11,8 +12,8 @@ namespace zectrix::power {
 
 esp_err_t PowerService::Attach(ZectrixBoard& board, PowerService** out_service) {
     if (out_service == nullptr) return ESP_ERR_INVALID_ARG;
-    *out_service = new PowerService(board);
-    return ESP_OK;
+    *out_service = new (std::nothrow) PowerService(board);
+    return *out_service == nullptr ? ESP_ERR_NO_MEM : ESP_OK;
 }
 
 PowerService::~PowerService() = default;

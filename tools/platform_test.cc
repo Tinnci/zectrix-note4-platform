@@ -2,6 +2,8 @@
 #include "zectrix_board.h"
 
 #include <cassert>
+#include <cstdlib>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -15,10 +17,22 @@
 namespace {
 std::vector<std::string> events;
 std::string fail_at;
+int nothrow_allocation_count = 0;
+int fail_nothrow_allocation = 0;
 esp_err_t Result(const char* name) {
     events.emplace_back(std::string("create:") + name);
     return fail_at == name ? ESP_FAIL : ESP_OK;
 }
+}
+
+void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
+    ++nothrow_allocation_count;
+    if (nothrow_allocation_count == fail_nothrow_allocation) return nullptr;
+    return std::malloc(size);
+}
+
+void operator delete(void* pointer, const std::nothrow_t&) noexcept {
+    std::free(pointer);
 }
 
 esp_err_t ZectrixBoard::Init() {
@@ -111,5 +125,28 @@ int main() {
     assert((events == std::vector<std::string>{
         "init:board", "create:input", "create:power", "create:time",
         "create:storage", "create:system", "delete:storage", "delete:time",
+        "delete:power", "delete:input"}));
+
+    events.clear();
+    fail_at.clear();
+    nothrow_allocation_count = 0;
+    fail_nothrow_allocation = 1;
+    zectrix::Platform no_impl_memory;
+    assert(no_impl_memory.Initialize() == ESP_ERR_NO_MEM);
+    assert(!no_impl_memory.IsInitialized());
+    assert(events.empty());
+    fail_nothrow_allocation = 0;
+    assert(no_impl_memory.Initialize() == ESP_OK);
+
+    events.clear();
+    nothrow_allocation_count = 0;
+    fail_nothrow_allocation = 2;
+    zectrix::Platform no_diagnostics_memory;
+    assert(no_diagnostics_memory.Initialize() == ESP_ERR_NO_MEM);
+    assert(!no_diagnostics_memory.IsInitialized());
+    assert((events == std::vector<std::string>{
+        "init:board", "create:input", "create:power", "create:time",
+        "create:storage", "create:system", "create:display",
+        "delete:display", "delete:system", "delete:storage", "delete:time",
         "delete:power", "delete:input"}));
 }

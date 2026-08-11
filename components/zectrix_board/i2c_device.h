@@ -15,6 +15,8 @@ protected:
     uint8_t device_address_ = 0;
 
     esp_err_t WriteRegChecked(uint8_t reg, uint8_t value);
+    esp_err_t WriteRegsChecked(uint8_t reg, const uint8_t* values,
+                               size_t length);
     esp_err_t ReadRegChecked(uint8_t reg, uint8_t* value);
     esp_err_t ReadRegsChecked(uint8_t reg, uint8_t* buffer, size_t length);
 

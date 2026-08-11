@@ -2,6 +2,8 @@
 
 #include <esp_log.h>
 
+#include <cstring>
+
 #include "i2c_bus_lock.h"
 
 #define TAG "I2cDevice"
@@ -46,28 +48,41 @@ void I2cDevice::WriteReg(uint8_t reg, uint8_t value) {
 }
 
 esp_err_t I2cDevice::WriteRegChecked(uint8_t reg, uint8_t value) {
+    return WriteRegsChecked(reg, &value, 1);
+}
+
+esp_err_t I2cDevice::WriteRegsChecked(uint8_t reg, const uint8_t* values,
+                                      size_t length) {
+    constexpr size_t kMaxRegisterWriteBytes = 32;
+    if (values == nullptr || length == 0 || length > kMaxRegisterWriteBytes) {
+        return ESP_ERR_INVALID_ARG;
+    }
     ScopedI2cBusLock bus_lock("I2cDevice::WriteReg");
     if (!bus_lock.locked()) {
         return bus_lock.status();
     }
-    uint8_t buffer[2] = {reg, value};
+    uint8_t buffer[kMaxRegisterWriteBytes + 1] = {};
+    buffer[0] = reg;
+    memcpy(buffer + 1, values, length);
     BoardI2cForcePowerOn();
-    esp_err_t ret = i2c_master_transmit(i2c_device_, buffer, sizeof(buffer), kI2cTimeoutMs);
+    esp_err_t ret = i2c_master_transmit(i2c_device_, buffer, length + 1,
+                                        kI2cTimeoutMs);
     if (ret == ESP_ERR_INVALID_STATE || ret == ESP_ERR_TIMEOUT) {
         ESP_LOGW(TAG,
-                 "i2c write failed: addr=0x%02X reg=0x%02X val=0x%02X ret=%s",
+                 "i2c write failed: addr=0x%02X reg=0x%02X len=%u ret=%s",
                  static_cast<unsigned>(device_address_),
                  static_cast<unsigned>(reg),
-                 static_cast<unsigned>(value),
+                 static_cast<unsigned>(length),
                  esp_err_to_name(ret));
         if (ResetBus("write_retry") == ESP_OK) {
             BoardI2cForcePowerOn();
-            ret = i2c_master_transmit(i2c_device_, buffer, sizeof(buffer), kI2cTimeoutMs);
+            ret = i2c_master_transmit(i2c_device_, buffer, length + 1,
+                                      kI2cTimeoutMs);
             ESP_LOGW(TAG,
-                     "i2c write retry result: addr=0x%02X reg=0x%02X val=0x%02X ret=%s",
+                     "i2c write retry result: addr=0x%02X reg=0x%02X len=%u ret=%s",
                      static_cast<unsigned>(device_address_),
                      static_cast<unsigned>(reg),
-                     static_cast<unsigned>(value),
+                     static_cast<unsigned>(length),
                      esp_err_to_name(ret));
         }
     }

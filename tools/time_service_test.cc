@@ -26,6 +26,26 @@ int main() {
     assert(read.hour == written.hour && read.minute == written.minute);
     assert(read.second == written.second);
 
+    const tm last_valid_write = board.rtc_value;
+    const DateTime invalid_values[] = {
+        {1999, 12, 31, 5, 23, 59, 59},
+        {2100, 1, 1, 5, 0, 0, 0},
+        {2026, 13, 1, 1, 0, 0, 0},
+        {2026, 2, 29, 0, 0, 0, 0},
+        {2024, 2, 30, 5, 0, 0, 0},
+        {2026, 8, 11, 7, 0, 0, 0},
+        {2026, 8, 11, 2, 24, 0, 0},
+        {2026, 8, 11, 2, 0, 60, 0},
+        {2026, 8, 11, 2, 0, 0, 60},
+    };
+    for (const DateTime& invalid : invalid_values) {
+        assert(service->WriteRtc(invalid) == ESP_ERR_INVALID_ARG);
+        assert(board.rtc_value.tm_year == last_valid_write.tm_year);
+        assert(board.rtc_value.tm_mon == last_valid_write.tm_mon);
+        assert(board.rtc_value.tm_mday == last_valid_write.tm_mday);
+    }
+    assert(service->WriteRtc({2024, 2, 29, 4, 12, 0, 0}) == ESP_OK);
+
     assert(service->StartRtcCountdown(1) == ESP_OK);
     assert(board.countdown_seconds == 1);
     board.rtc_interrupt_active = true;

@@ -1,5 +1,8 @@
 #include "zectrix_platform.h"
 
+#include <cassert>
+#include <new>
+
 #include "zectrix_board.h"
 #include "zectrix_display_service.h"
 #include "zectrix_input_service.h"
@@ -27,8 +30,9 @@ Platform::~Platform() { ResetServices(); }
 esp_err_t Platform::Initialize() {
     if (initialized_) return ESP_OK;
     if (initialization_attempted_) return ESP_ERR_INVALID_STATE;
+    impl_ = new (std::nothrow) Impl;
+    if (impl_ == nullptr) return ESP_ERR_NO_MEM;
     initialization_attempted_ = true;
-    impl_ = new Impl;
 
     esp_err_t err = impl_->board.Init();
     if (err == ESP_OK) err = input::InputService::Attach(impl_->board, &impl_->input);
@@ -38,9 +42,10 @@ esp_err_t Platform::Initialize() {
     if (err == ESP_OK) err = system::SystemService::Attach(impl_->board, &impl_->system);
     if (err == ESP_OK) err = display::DisplayService::Create(&impl_->display);
     if (err == ESP_OK) {
-        impl_->diagnostics = new ZectrixSelfTest(
+        impl_->diagnostics = new (std::nothrow) ZectrixSelfTest(
             impl_->board, *impl_->input, *impl_->power, *impl_->time,
             *impl_->storage, *impl_->system);
+        if (impl_->diagnostics == nullptr) err = ESP_ERR_NO_MEM;
     }
     if (err != ESP_OK) {
         ResetServices();
@@ -50,13 +55,21 @@ esp_err_t Platform::Initialize() {
     return ESP_OK;
 }
 
-display::DisplayService& Platform::Display() const { return *impl_->display; }
-input::InputService& Platform::Input() const { return *impl_->input; }
-power::PowerService& Platform::Power() const { return *impl_->power; }
-time::TimeService& Platform::Time() const { return *impl_->time; }
-storage::StorageService& Platform::Storage() const { return *impl_->storage; }
-system::SystemService& Platform::System() const { return *impl_->system; }
-ZectrixSelfTest& Platform::Diagnostics() const { return *impl_->diagnostics; }
+#define ZECTRIX_PLATFORM_ACCESSOR(Type, Name, Member) \
+    Type& Platform::Name() const {                    \
+        assert(initialized_ && impl_ != nullptr && impl_->Member != nullptr); \
+        return *impl_->Member;                        \
+    }
+
+ZECTRIX_PLATFORM_ACCESSOR(display::DisplayService, Display, display)
+ZECTRIX_PLATFORM_ACCESSOR(input::InputService, Input, input)
+ZECTRIX_PLATFORM_ACCESSOR(power::PowerService, Power, power)
+ZECTRIX_PLATFORM_ACCESSOR(time::TimeService, Time, time)
+ZECTRIX_PLATFORM_ACCESSOR(storage::StorageService, Storage, storage)
+ZECTRIX_PLATFORM_ACCESSOR(system::SystemService, System, system)
+ZECTRIX_PLATFORM_ACCESSOR(ZectrixSelfTest, Diagnostics, diagnostics)
+
+#undef ZECTRIX_PLATFORM_ACCESSOR
 
 void Platform::ResetServices() {
     if (impl_ == nullptr) return;

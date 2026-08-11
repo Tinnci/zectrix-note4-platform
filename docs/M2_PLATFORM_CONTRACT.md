@@ -30,7 +30,13 @@ not call a service factory, call `Attach()`, or delete a service.
 `Platform` destroys the services in reverse initialization order. A failed
 initialization destroys each service that was already created. The same
 `Platform` object does not retry initialization after a failure because board
-support can be partially initialized.
+support can be partially initialized. If allocation fails before board
+initialization starts, the same object can retry safely.
+
+`Platform::Initialize()` reports allocation failure as `ESP_ERR_NO_MEM` and
+cleans up completed service creation. An application must get service
+references only after `Initialize()` returns `ESP_OK`. Access before successful
+initialization is a contract violation and triggers an assertion.
 
 Application code must not include `driver/gpio.h`, `driver/spi_master.h` or `zectrix_epd.h`.
 Application code must not call `esp_deep_sleep_start()`, access NVS directly, or depend on PCF8563.
@@ -38,7 +44,8 @@ Application code must not read the application descriptor, reset reason, chip
 information, flash size, heap diagnostics, or hardware MAC address directly.
 
 The checker enforces these restrictions in the known application roots. It
-also discovers service consumers from their CMake files. Board support, the
+also discovers Platform and service consumers from their CMake files. It
+rejects application use of the board header or `ZectrixBoard` type. Board support, the
 Platform composition root, platform services, raw drivers, and self-test implementations are not
 application roots.
 
@@ -70,6 +77,12 @@ The service rejects a partial refresh when no valid 1bpp baseline exists. When
 the partial budget is exhausted, the service uses a supplied full 1bpp frame to
 establish a new baseline. Any driver or panel-power error invalidates the
 baseline.
+
+The current DisplayService contract is single-task. The application must call
+all display and batch methods from one task. Do not call `BeginBatch()`, a
+refresh method, or `EndBatch()` concurrently. A future multi-task consumer must
+first add service-level transaction ownership; the driver mutex alone is not a
+service transaction lock.
 
 `InputService` attaches to initialized board support with a typed reference. It
 converts debounced physical button results to `InputEvent`. Applications use

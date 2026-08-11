@@ -22,6 +22,8 @@ public:
     DisplayService(const DisplayService&) = delete;
     DisplayService& operator=(const DisplayService&) = delete;
 
+    // Call all methods from one application task. A batch has task-local
+    // sequencing semantics and the service does not support concurrent calls.
     // Keep the panel powered across a related refresh sequence. The service
     // remains the owner of the panel power operation.
     esp_err_t BeginBatch();

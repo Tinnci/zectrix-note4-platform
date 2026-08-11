@@ -3,6 +3,8 @@
 
 #include <array>
 #include <cassert>
+#include <cstdlib>
+#include <new>
 
 struct zectrix_epd_t {
     bool powered = false;
@@ -14,6 +16,17 @@ struct zectrix_epd_t {
 };
 
 static zectrix_epd_t driver;
+static bool fail_service_allocation = false;
+static int delete_count = 0;
+
+void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
+    if (fail_service_allocation) return nullptr;
+    return std::malloc(size);
+}
+
+void operator delete(void* pointer, const std::nothrow_t&) noexcept {
+    std::free(pointer);
+}
 
 void zectrix_epd_get_default_config(zectrix_epd_config_t*) {}
 esp_err_t zectrix_epd_new(const zectrix_epd_config_t*,
@@ -22,7 +35,10 @@ esp_err_t zectrix_epd_new(const zectrix_epd_config_t*,
     *out_handle = &driver;
     return ESP_OK;
 }
-esp_err_t zectrix_epd_del(zectrix_epd_handle_t) { return ESP_OK; }
+esp_err_t zectrix_epd_del(zectrix_epd_handle_t) {
+    ++delete_count;
+    return ESP_OK;
+}
 esp_err_t zectrix_epd_power_on(zectrix_epd_handle_t handle) {
     handle->powered = true;
     ++handle->power_on_count;
@@ -58,6 +74,10 @@ int main() {
     std::array<std::uint8_t, DisplayService::kFrameBytes1Bpp> frame = {};
     std::array<std::uint8_t, 1> pixel = {};
     DisplayService* service = nullptr;
+    fail_service_allocation = true;
+    assert(DisplayService::Create(&service) == ESP_ERR_NO_MEM);
+    assert(service == nullptr && delete_count == 1);
+    fail_service_allocation = false;
     assert(DisplayService::Create(&service) == ESP_OK);
     assert(service->RefreshPartial1Bpp({0, 0, 8, 1}, pixel.data(), 1) ==
            ESP_ERR_INVALID_STATE);
@@ -81,4 +101,5 @@ int main() {
     assert(!service->IsPowered());
     assert(driver.power_on_count == driver.power_off_count);
     delete service;
+    assert(delete_count == 2);
 }

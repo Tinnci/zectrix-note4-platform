@@ -13,6 +13,21 @@ struct ZectrixButtonEvent {
     ZectrixButtonAction action = ZectrixButtonAction::kClick;
 };
 
+struct ZectrixChargeSnapshot {
+    bool power_present = false;
+    bool charging = false;
+    bool full = false;
+    bool fault = false;
+    bool no_battery = false;
+};
+
+struct ZectrixPowerSnapshot {
+    bool battery_valid = false;
+    std::uint16_t battery_mv = 0;
+    std::uint8_t battery_percent = 0;
+    ZectrixChargeSnapshot charge = {};
+};
+
 class ZectrixBoard {
 public:
     esp_err_t Init();
@@ -25,6 +40,17 @@ public:
     }
 
     void DrainButtons() { drained = true; }
+
+    ZectrixPowerSnapshot ReadPowerSnapshot() { return power_snapshot; }
+    void SetPowerLed(bool on) {
+        power_led = on;
+        power_events[power_event_count++] = on ? 1 : 2;
+    }
+    void SetAudioPower(bool on) {
+        audio_power = on;
+        power_events[power_event_count++] = on ? 3 : 4;
+    }
+    void CutBatteryPower() { power_events[power_event_count++] = 5; }
 
     bool HasRtc() const { return rtc_available; }
     bool HasNfc() const { return nfc_available; }
@@ -64,4 +90,9 @@ public:
     bool rtc_interrupt_active = false;
     std::uint8_t countdown_seconds = 0;
     tm rtc_value = {};
+    ZectrixPowerSnapshot power_snapshot = {};
+    bool power_led = true;
+    bool audio_power = true;
+    int power_events[8] = {};
+    std::size_t power_event_count = 0;
 };

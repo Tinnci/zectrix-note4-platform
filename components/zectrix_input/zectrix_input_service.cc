@@ -1,5 +1,7 @@
 #include "zectrix_input_service.h"
 
+#include <new>
+
 #include "freertos/FreeRTOS.h"
 #include "zectrix_board.h"
 
@@ -7,8 +9,8 @@ namespace zectrix::input {
 
 esp_err_t InputService::Attach(ZectrixBoard& board, InputService** out_service) {
     if (out_service == nullptr) return ESP_ERR_INVALID_ARG;
-    *out_service = new InputService(board);
-    return ESP_OK;
+    *out_service = new (std::nothrow) InputService(board);
+    return *out_service == nullptr ? ESP_ERR_NO_MEM : ESP_OK;
 }
 
 InputService::~InputService() = default;

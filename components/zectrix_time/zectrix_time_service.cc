@@ -1,6 +1,7 @@
 #include "zectrix_time_service.h"
 
 #include <ctime>
+#include <new>
 
 #include "esp_timer.h"
 #include "zectrix_board.h"
@@ -25,12 +26,32 @@ DateTime FromTm(const tm& value) {
                     value.tm_wday, value.tm_hour, value.tm_min, value.tm_sec};
 }
 
+bool IsLeapYear(int year) {
+    return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+}
+
+bool IsValid(const DateTime& value) {
+    if (value.year < 2000 || value.year > 2099 ||
+        value.month < 1 || value.month > 12 ||
+        value.weekday < 0 || value.weekday > 6 ||
+        value.hour < 0 || value.hour > 23 ||
+        value.minute < 0 || value.minute > 59 ||
+        value.second < 0 || value.second > 59) {
+        return false;
+    }
+    constexpr int kDaysPerMonth[] =
+        {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    int days = kDaysPerMonth[value.month - 1];
+    if (value.month == 2 && IsLeapYear(value.year)) ++days;
+    return value.day >= 1 && value.day <= days;
+}
+
 }  // namespace
 
 esp_err_t TimeService::Attach(ZectrixBoard& board, TimeService** out_service) {
     if (out_service == nullptr) return ESP_ERR_INVALID_ARG;
-    *out_service = new TimeService(board);
-    return ESP_OK;
+    *out_service = new (std::nothrow) TimeService(board);
+    return *out_service == nullptr ? ESP_ERR_NO_MEM : ESP_OK;
 }
 
 TimeService::~TimeService() = default;
@@ -53,6 +74,7 @@ esp_err_t TimeService::ReadRtc(DateTime* value) {
 }
 
 esp_err_t TimeService::WriteRtc(const DateTime& value) {
+    if (!IsValid(value)) return ESP_ERR_INVALID_ARG;
     if (!RtcAvailable()) return ESP_ERR_NOT_FOUND;
     const tm raw = ToTm(value);
     return board_->WriteRtc(raw) ? ESP_OK : ESP_FAIL;
