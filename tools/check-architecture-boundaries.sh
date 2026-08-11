@@ -30,8 +30,14 @@ check_root() {
     return "$found"
 }
 
-is_application_consumer() {
-    rg -q 'zectrix_(display|input|power|time|storage|system|platform)' "$1"
+is_infrastructure_component() {
+    case "$1" in
+        zectrix_board|zectrix_display|zectrix_epd|zectrix_input|zectrix_platform|\
+        zectrix_power|zectrix_self_test|zectrix_storage|zectrix_system|zectrix_time)
+            return 0
+            ;;
+    esac
+    return 1
 }
 
 run_self_test() {
@@ -55,10 +61,9 @@ run_self_test() {
         echo 'FAIL: architecture boundary checker self-test.' >&2
         return 1
     fi
-    printf '%s\n' 'idf_component_register(REQUIRES zectrix_platform)' > \
-        "$temp_dir/platform-consumer.cmake"
-    if ! is_application_consumer "$temp_dir/platform-consumer.cmake"; then
-        echo 'FAIL: Platform consumer discovery self-test.' >&2
+    if ! is_infrastructure_component zectrix_platform || \
+        is_infrastructure_component zectrix_new_application; then
+        echo 'FAIL: Infrastructure allowlist self-test.' >&2
         return 1
     fi
     echo 'PASS: architecture boundary checker self-test.'
@@ -67,32 +72,24 @@ run_self_test() {
 if [[ "${1:-}" == "--self-test" ]]; then run_self_test; exit 0; fi
 status=0
 found_root=0
-declare -A application_roots=(
+declare -A scan_roots=(
     [main]=1
-    [components/zectrix_demo_ui]=1
     [apps]=1
     [applications]=1
 )
 
-# Discover current consumers from the build files. This prevents a new
-# application component from bypassing the check only because its directory
-# name is not in the seed list above.
-while IFS= read -r cmake_file; do
-    component_dir=${cmake_file%/CMakeLists.txt}
+# Scan every first-party component unless it is an explicitly listed platform
+# implementation component. Discovery does not depend on CMake dependency text.
+while IFS= read -r component_dir; do
     component_name=${component_dir##*/}
-    if [[ "$component_name" =~ ^zectrix_(display|input|power|time|storage|system|platform|self_test)$ ]]; then
+    if is_infrastructure_component "$component_name"; then
         continue
     fi
-    if is_application_consumer "$cmake_file"; then
-        relative_root=${cmake_file#"$root_dir/"}
-        application_roots["${relative_root%/CMakeLists.txt}"]=1
-    fi
-done < <(find "$root_dir" \
-    -path "$root_dir/build" -prune -o \
-    -path "$root_dir/managed_components" -prune -o \
-    -name CMakeLists.txt -type f -print)
+    relative_root=${component_dir#"$root_dir/"}
+    scan_roots["$relative_root"]=1
+done < <(find "$root_dir/components" -mindepth 1 -maxdepth 1 -type d -print)
 
-for relative_root in "${!application_roots[@]}"; do
+for relative_root in "${!scan_roots[@]}"; do
     scan_root="$root_dir/$relative_root"
     if [[ -d "$scan_root" ]]; then
         found_root=1

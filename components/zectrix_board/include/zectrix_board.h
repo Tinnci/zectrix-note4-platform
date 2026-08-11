@@ -56,7 +56,7 @@ public:
     bool StartRtcCountdown(uint8_t seconds);
     bool StopRtcCountdown();
     bool ClearRtcTimerFlag();
-    bool IsRtcTimerFired();
+    esp_err_t ReadRtcTimerFlag(bool* fired);
     bool IsRtcInterruptActive() const;
     bool HasNfc() const;
     ZectrixNfc* nfc() const { return nfc_.get(); }

@@ -43,11 +43,12 @@ Application code must not call `esp_deep_sleep_start()`, access NVS directly, or
 Application code must not read the application descriptor, reset reason, chip
 information, flash size, heap diagnostics, or hardware MAC address directly.
 
-The checker enforces these restrictions in the known application roots. It
-also discovers Platform and service consumers from their CMake files. It
-rejects application use of the board header or `ZectrixBoard` type. Board support, the
-Platform composition root, platform services, raw drivers, and self-test implementations are not
-application roots.
+The checker scans `main`, application directories, and every first-party
+component that is not in the explicit infrastructure allowlist. Discovery does
+not depend on CMake dependency text. It rejects application use of the board
+header or `ZectrixBoard` type. Board support, the Platform composition root,
+platform services, raw drivers, and self-test implementations are in the
+infrastructure allowlist.
 
 `Platform` owns Diagnostics after all six services exist. The application gets
 Diagnostics from `Platform::Diagnostics()`. It does not inject board support or
@@ -67,16 +68,18 @@ support. They are not application API.
 - Eight partial refreshes request a full clean refresh.
 - Dirty regions are unioned until a full refresh or error clears them.
 
-The pure state model and host tests implement M2.1a. `DisplayService` provides the M2.1b wrapper. The UI and gallery migration implements M2.1c. M2.1d remains open until the corrected firmware passes hardware regression.
+The pure state model and host tests implement M2.1a. `DisplayService` provides
+the M2.1b wrapper. The UI and gallery migration implements M2.1c. The M2.1
+acceptance is open until the intent API passes hardware regression.
 
 `DisplayService::Create` owns the only raw driver handle. The demo UI and
-gallery share that service and its state. Callers use only logical display
-operations. The service owns panel power for each refresh. A caller can request
-a service-managed batch when a qualified sequence must keep the panel powered.
-The service rejects a partial refresh when no valid 1bpp baseline exists. When
-the partial budget is exhausted, the service uses a supplied full 1bpp frame to
-establish a new baseline. Any driver or panel-power error invalidates the
-baseline.
+gallery share that service and its state. Callers submit `DisplayIntent` and
+frame data. They do not call a raw refresh operation. `Auto` and `Fast` use a
+partial 1bpp refresh only when the baseline and partial budget permit it. The
+service otherwise uses the supplied full 1bpp frame. `Quality` and `FullClean`
+use the qualified full 1bpp path. A 4bpp frame accepts `Quality` only. The
+service owns panel power for each refresh. Any driver or panel-power error
+invalidates the baseline.
 
 The current DisplayService contract is single-task. The application must call
 all display and batch methods from one task. Do not call `BeginBatch()`, a

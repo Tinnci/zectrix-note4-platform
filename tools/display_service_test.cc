@@ -72,6 +72,7 @@ esp_err_t zectrix_epd_refresh_full_4bpp(zectrix_epd_handle_t handle,
 int main() {
     using namespace zectrix::display;
     std::array<std::uint8_t, DisplayService::kFrameBytes1Bpp> frame = {};
+    std::array<std::uint8_t, DisplayService::kFrameBytes4Bpp> gray_frame = {};
     std::array<std::uint8_t, 1> pixel = {};
     DisplayService* service = nullptr;
     fail_service_allocation = true;
@@ -79,27 +80,36 @@ int main() {
     assert(service == nullptr && delete_count == 1);
     fail_service_allocation = false;
     assert(DisplayService::Create(&service) == ESP_OK);
-    assert(service->RefreshPartial1Bpp({0, 0, 8, 1}, pixel.data(), 1) ==
-           ESP_ERR_INVALID_STATE);
-    assert(service->RefreshFull1Bpp(frame.data(), frame.size()) == ESP_OK);
+    assert(service->Present1Bpp(DisplayIntent::Fast,
+                                frame.data(), frame.size(),
+                                {0, 0, 8, 1}, pixel.data(), 1) == ESP_OK);
+    assert(driver.full_1bpp_count == 1 && driver.partial_count == 0);
     assert(driver.power_on_count == 1 && driver.power_off_count == 1);
     for (int i = 0; i < 8; ++i) {
-        assert(service->RefreshPartial1Bpp({0, 0, 8, 1}, pixel.data(), 1) ==
-               ESP_OK);
+        assert(service->Present1Bpp(DisplayIntent::Auto,
+                                    frame.data(), frame.size(),
+                                    {0, 0, 8, 1}, pixel.data(), 1) == ESP_OK);
     }
     assert(service->state().partial_refresh_count == 8);
-    assert(service->RefreshPartial1Bpp(
-               {0, 0, 8, 1}, pixel.data(), 1, frame.data(), frame.size()) ==
-           ESP_OK);
+    assert(service->Present1Bpp(DisplayIntent::Fast,
+                                frame.data(), frame.size(),
+                                {0, 0, 8, 1}, pixel.data(), 1) == ESP_OK);
     assert(driver.full_1bpp_count == 2);
     assert(service->state().partial_refresh_count == 0);
     assert(service->BeginBatch() == ESP_OK);
-    assert(service->RefreshFull1Bpp(frame.data(), frame.size()) == ESP_OK);
-    assert(service->RefreshPartial1Bpp({0, 0, 8, 1}, pixel.data(), 1) ==
-           ESP_OK);
+    assert(service->Present1Bpp(DisplayIntent::Quality,
+                                frame.data(), frame.size()) == ESP_OK);
+    assert(service->Present1Bpp(DisplayIntent::Fast,
+                                frame.data(), frame.size(),
+                                {0, 0, 8, 1}, pixel.data(), 1) == ESP_OK);
     assert(service->EndBatch() == ESP_OK);
     assert(!service->IsPowered());
     assert(driver.power_on_count == driver.power_off_count);
+    assert(service->Present4Bpp(DisplayIntent::Fast, frame.data(),
+                                frame.size()) == ESP_ERR_NOT_SUPPORTED);
+    assert(service->Present4Bpp(DisplayIntent::Quality, gray_frame.data(),
+                                gray_frame.size()) == ESP_OK);
+    assert(!service->CanUsePartial());
     delete service;
     assert(delete_count == 2);
 }

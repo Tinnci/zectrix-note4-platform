@@ -69,7 +69,9 @@ esp_err_t TimeService::ReadRtc(DateTime* value) {
     if (!RtcAvailable()) return ESP_ERR_NOT_FOUND;
     tm raw = {};
     if (!board_->ReadRtc(&raw)) return ESP_FAIL;
-    *value = FromTm(raw);
+    const DateTime candidate = FromTm(raw);
+    if (!IsValid(candidate)) return ESP_ERR_INVALID_RESPONSE;
+    *value = candidate;
     return ESP_OK;
 }
 
@@ -85,9 +87,14 @@ esp_err_t TimeService::StartRtcCountdown(uint8_t seconds) {
     return board_->StartRtcCountdown(seconds) ? ESP_OK : ESP_FAIL;
 }
 
-RtcTimerStatus TimeService::ReadRtcTimerStatus() {
-    if (!RtcAvailable()) return {};
-    return {board_->IsRtcInterruptActive(), board_->IsRtcTimerFired()};
+esp_err_t TimeService::ReadRtcTimerStatus(RtcTimerStatus* status) {
+    if (status == nullptr) return ESP_ERR_INVALID_ARG;
+    if (!RtcAvailable()) return ESP_ERR_NOT_FOUND;
+    bool flag_set = false;
+    const esp_err_t result = board_->ReadRtcTimerFlag(&flag_set);
+    if (result != ESP_OK) return result;
+    *status = {board_->IsRtcInterruptActive(), flag_set};
+    return ESP_OK;
 }
 
 esp_err_t TimeService::StopRtcCountdown() {

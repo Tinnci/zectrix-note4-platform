@@ -290,7 +290,8 @@ esp_err_t ZectrixDemoUi::RefreshFull() {
     if (display_ == nullptr) {
         return ESP_ERR_INVALID_STATE;
     }
-    return display_->RefreshFull1Bpp(canvas_.data(), canvas_.size());
+    return display_->Present1Bpp(zectrix::display::DisplayIntent::FullClean,
+                                 canvas_.data(), canvas_.size());
 }
 
 esp_err_t ZectrixDemoUi::RefreshPartial(const zectrix::display::Rect& rect) {
@@ -310,8 +311,10 @@ esp_err_t ZectrixDemoUi::RefreshPartial(const zectrix::display::Rect& rect) {
         std::memcpy(partial_buffer_.data() + static_cast<size_t>(row) * row_bytes,
                     source, row_bytes);
     }
-    return display_->RefreshPartial1Bpp(
-        rect, partial_buffer_.data(), required, canvas_.data(), canvas_.size());
+    return display_->Present1Bpp(
+        zectrix::display::DisplayIntent::Auto,
+        canvas_.data(), canvas_.size(), rect,
+        partial_buffer_.data(), required);
 }
 
 esp_err_t ZectrixDemoUi::ClearDisplay() {

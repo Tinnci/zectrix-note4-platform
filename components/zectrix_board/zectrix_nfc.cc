@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <new>
 #include <utility>
 
 extern "C" void __attribute__((weak)) BoardI2cForcePowerOn() {}
@@ -132,6 +133,11 @@ ZectrixNfc::ZectrixNfc(i2c_master_bus_handle_t i2c_bus,
       fd_active_level_(fd_active_level) {}
 
 bool ZectrixNfc::Init() {
+    if (initialization_status() != ESP_OK) {
+        ESP_LOGE(kTag, "I2C device initialization failed: %s",
+                 esp_err_to_name(initialization_status()));
+        return false;
+    }
     bool expected = false;
     if (!initialized_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
         return true;
@@ -626,7 +632,9 @@ esp_err_t ZectrixNfc::Probe() {
 }
 
 esp_err_t ZectrixNfc::BeginTransferSessionLocked(const char* reason) {
-    i2c_session_lock_ = std::make_unique<ScopedI2cBusLock>("ZectrixNfc::TransferSession");
+    i2c_session_lock_.reset(
+        new (std::nothrow) ScopedI2cBusLock("ZectrixNfc::TransferSession"));
+    if (i2c_session_lock_ == nullptr) return ESP_ERR_NO_MEM;
     if (!i2c_session_lock_->locked()) {
         esp_err_t ret = i2c_session_lock_->status();
         i2c_session_lock_.reset();

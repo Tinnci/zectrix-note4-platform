@@ -73,7 +73,13 @@ public:
         timer_flag = false;
         return rtc_available && rtc_io_ok;
     }
-    bool IsRtcTimerFired() { return rtc_available && timer_flag; }
+    esp_err_t ReadRtcTimerFlag(bool* fired) {
+        if (fired == nullptr) return ESP_ERR_INVALID_ARG;
+        if (!rtc_available) return ESP_ERR_NOT_FOUND;
+        if (!rtc_io_ok) return ESP_FAIL;
+        *fired = timer_flag;
+        return ESP_OK;
+    }
     bool IsRtcInterruptActive() const {
         return rtc_available && rtc_interrupt_active;
     }

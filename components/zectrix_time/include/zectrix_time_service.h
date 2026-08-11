@@ -36,7 +36,7 @@ public:
     esp_err_t ReadRtc(DateTime* value);
     esp_err_t WriteRtc(const DateTime& value);
     esp_err_t StartRtcCountdown(uint8_t seconds);
-    RtcTimerStatus ReadRtcTimerStatus();
+    esp_err_t ReadRtcTimerStatus(RtcTimerStatus* status);
     esp_err_t StopRtcCountdown();
     esp_err_t ClearRtcTimerFlag();
 

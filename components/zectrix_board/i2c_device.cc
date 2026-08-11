@@ -15,7 +15,10 @@ constexpr int kI2cTimeoutMs = 100;
 I2cDevice::I2cDevice(i2c_master_bus_handle_t i2c_bus, uint8_t addr)
     : i2c_bus_(i2c_bus), device_address_(addr) {
     ScopedI2cBusLock bus_lock("I2cDevice::I2cDevice");
-    ESP_ERROR_CHECK(bus_lock.status());
+    if (!bus_lock.locked()) {
+        initialization_status_ = bus_lock.status();
+        return;
+    }
     i2c_device_config_t i2c_device_cfg = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
         .device_address = addr,
@@ -25,11 +28,15 @@ I2cDevice::I2cDevice(i2c_master_bus_handle_t i2c_bus, uint8_t addr)
             .disable_ack_check = 0,
         },
     };
-    ESP_ERROR_CHECK(i2c_master_bus_add_device(i2c_bus, &i2c_device_cfg, &i2c_device_));
-    assert(i2c_device_ != NULL);
+    initialization_status_ =
+        i2c_master_bus_add_device(i2c_bus, &i2c_device_cfg, &i2c_device_);
+    if (initialization_status_ == ESP_OK && i2c_device_ == nullptr) {
+        initialization_status_ = ESP_ERR_INVALID_STATE;
+    }
 }
 
 esp_err_t I2cDevice::ResetBus(const char* reason) {
+    if (initialization_status_ != ESP_OK) return initialization_status_;
     ScopedI2cBusLock bus_lock("I2cDevice::ResetBus");
     if (!bus_lock.locked()) {
         return bus_lock.status();
@@ -57,6 +64,7 @@ esp_err_t I2cDevice::WriteRegsChecked(uint8_t reg, const uint8_t* values,
     if (values == nullptr || length == 0 || length > kMaxRegisterWriteBytes) {
         return ESP_ERR_INVALID_ARG;
     }
+    if (initialization_status_ != ESP_OK) return initialization_status_;
     ScopedI2cBusLock bus_lock("I2cDevice::WriteReg");
     if (!bus_lock.locked()) {
         return bus_lock.status();
@@ -112,6 +120,7 @@ esp_err_t I2cDevice::ReadRegsChecked(uint8_t reg, uint8_t* buffer, size_t length
     if (buffer == nullptr || length == 0) {
         return ESP_ERR_INVALID_ARG;
     }
+    if (initialization_status_ != ESP_OK) return initialization_status_;
 
     ScopedI2cBusLock bus_lock("I2cDevice::ReadRegs");
     if (!bus_lock.locked()) {

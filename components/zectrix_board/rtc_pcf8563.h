@@ -26,7 +26,7 @@ public:
     bool StartCountdownTimer(uint8_t seconds);
     bool StopCountdownTimer();
     bool ClearTimerFlag();
-    bool IsTimerFired();
+    esp_err_t ReadTimerFlag(bool* fired);
     bool ResetI2cBus(const char* reason);
 
     void OnInterrupt(std::function<void()> callback);

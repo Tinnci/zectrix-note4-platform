@@ -208,7 +208,9 @@ private:
             return result;
         }
         const int64_t start = time_->MonotonicMicroseconds();
-        result.error = display_->RefreshFull1Bpp(kLighthouse1bppStart, size);
+        result.error = display_->Present1Bpp(
+            zectrix::display::DisplayIntent::Quality,
+            kLighthouse1bppStart, size);
         result.elapsed_ms = (time_->MonotonicMicroseconds() - start) / 1000;
         if (result.error == ESP_OK) {
             result.control = Wait(pdMS_TO_TICKS(2500), true);
@@ -233,7 +235,8 @@ private:
         const int64_t start = time_->MonotonicMicroseconds();
         result.error = display_->BeginBatch();
         if (result.error == ESP_OK) {
-            result.error = display_->RefreshFull1Bpp(
+            result.error = display_->Present1Bpp(
+                zectrix::display::DisplayIntent::FullClean,
                 kSnowPath1bppStart, background_size);
         }
         if (result.error == ESP_OK) {
@@ -266,7 +269,9 @@ private:
             const zectrix::display::Rect rect = {
                 static_cast<int>(x), static_cast<int>(y),
                 static_cast<int>(width), static_cast<int>(height)};
-            result.error = display_->RefreshPartial1Bpp(
+            result.error = display_->Present1Bpp(
+                zectrix::display::DisplayIntent::Fast,
+                kSnowPath1bppStart, background_size,
                 rect, cursor, data_size);
             cursor += data_size;
             if (result.error == ESP_OK) {
@@ -296,7 +301,9 @@ private:
         // every gray refresh to minimize visible history on this panel.
         result.error = ui_.ClearDisplay();
         if (result.error == ESP_OK) {
-            result.error = display_->RefreshFull4Bpp(kMountain4bppStart, size);
+            result.error = display_->Present4Bpp(
+                zectrix::display::DisplayIntent::Quality,
+                kMountain4bppStart, size);
         }
         result.elapsed_ms = (time_->MonotonicMicroseconds() - start) / 1000;
         if (result.error == ESP_OK) {

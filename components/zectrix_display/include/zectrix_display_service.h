@@ -8,6 +8,13 @@
 
 namespace zectrix::display {
 
+enum class DisplayIntent : uint8_t {
+    Auto,
+    Fast,
+    Quality,
+    FullClean,
+};
+
 class DisplayService {
 public:
     static constexpr int kPanelWidth = 400;
@@ -30,18 +37,24 @@ public:
     esp_err_t EndBatch();
     bool IsPowered() const;
 
-    esp_err_t RefreshFull1Bpp(const uint8_t* framebuffer, std::size_t size);
-    esp_err_t RefreshPartial1Bpp(const Rect& region, const uint8_t* pixels,
-                                 std::size_t size,
-                                 const uint8_t* full_framebuffer = nullptr,
-                                 std::size_t full_framebuffer_size = 0);
-    esp_err_t RefreshFull4Bpp(const uint8_t* framebuffer, std::size_t size);
+    esp_err_t Present1Bpp(DisplayIntent intent,
+                          const uint8_t* full_framebuffer,
+                          std::size_t full_framebuffer_size,
+                          const Rect& partial_region = {},
+                          const uint8_t* partial_pixels = nullptr,
+                          std::size_t partial_size = 0);
+    esp_err_t Present4Bpp(DisplayIntent intent, const uint8_t* framebuffer,
+                          std::size_t size);
 
     const State& state() const { return state_model_.state(); }
     bool CanUsePartial() const { return state_model_.CanUsePartial(); }
 
 private:
     explicit DisplayService(void* driver_handle) : driver_handle_(driver_handle) {}
+    esp_err_t RefreshFull1Bpp(const uint8_t* framebuffer, std::size_t size);
+    esp_err_t RefreshPartial1Bpp(const Rect& region, const uint8_t* pixels,
+                                 std::size_t size);
+    esp_err_t RefreshFull4Bpp(const uint8_t* framebuffer, std::size_t size);
     esp_err_t BeginRefresh(bool* owns_power);
     esp_err_t EndRefresh(bool owns_power, esp_err_t refresh_result);
     void OnError();

@@ -46,12 +46,22 @@ int main() {
     }
     assert(service->WriteRtc({2024, 2, 29, 4, 12, 0, 0}) == ESP_OK);
 
+    const DateTime unchanged = read;
+    board.rtc_value.tm_mon = 12;
+    assert(service->ReadRtc(&read) == ESP_ERR_INVALID_RESPONSE);
+    assert(read.year == unchanged.year && read.month == unchanged.month);
+    board.rtc_value = last_valid_write;
+
     assert(service->StartRtcCountdown(1) == ESP_OK);
     assert(board.countdown_seconds == 1);
     board.rtc_interrupt_active = true;
     board.timer_flag = true;
-    const RtcTimerStatus status = service->ReadRtcTimerStatus();
+    RtcTimerStatus status;
+    assert(service->ReadRtcTimerStatus(&status) == ESP_OK);
     assert(status.interrupt_active && status.flag_set);
+    board.rtc_io_ok = false;
+    assert(service->ReadRtcTimerStatus(&status) == ESP_FAIL);
+    board.rtc_io_ok = true;
     assert(service->StopRtcCountdown() == ESP_OK);
     assert(service->ClearRtcTimerFlag() == ESP_OK);
     assert(!board.timer_flag);
@@ -60,5 +70,6 @@ int main() {
     assert(!service->RtcAvailable());
     assert(service->ReadRtc(&read) == ESP_ERR_NOT_FOUND);
     assert(service->StartRtcCountdown(1) == ESP_ERR_NOT_FOUND);
+    assert(service->ReadRtcTimerStatus(&status) == ESP_ERR_NOT_FOUND);
     delete service;
 }

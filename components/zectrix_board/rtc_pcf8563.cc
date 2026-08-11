@@ -33,12 +33,22 @@ constexpr uint8_t kTimerFreq1Hz = 0x02;
 static constexpr uint8_t kCtrl2WritableMask = 0x1F; // bits[4:0]
 
 constexpr char kTag[] = "RtcPcf8563";
+
+bool IsValidBcd(uint8_t value, int maximum) {
+    return (value & 0x0F) <= 9 && ((value >> 4) & 0x0F) <= 9 &&
+           ((value >> 4) * 10 + (value & 0x0F)) <= maximum;
+}
 }  // namespace
 
 RtcPcf8563::RtcPcf8563(i2c_master_bus_handle_t i2c_bus, uint8_t addr)
     : I2cDevice(i2c_bus, addr) {}
 
 bool RtcPcf8563::Init(gpio_num_t int_gpio) {
+    if (initialization_status() != ESP_OK) {
+        ESP_LOGE(kTag, "I2C device initialization failed: %s",
+                 esp_err_to_name(initialization_status()));
+        return false;
+    }
     int_gpio_ = int_gpio;
 
     if (int_gpio_ != GPIO_NUM_NC) {
@@ -79,6 +89,17 @@ bool RtcPcf8563::GetTime(tm& out_local_tm) {
     }
     if ((buf[0] & 0x80) != 0) {
         ESP_LOGW(kTag, "GetTime failed: voltage-low flag set");
+        return false;
+    }
+    if (!IsValidBcd(buf[0] & 0x7F, 59) ||
+        !IsValidBcd(buf[1] & 0x7F, 59) ||
+        !IsValidBcd(buf[2] & 0x3F, 23) ||
+        !IsValidBcd(buf[3] & 0x3F, 31) ||
+        !IsValidBcd(buf[4] & 0x07, 6) ||
+        !IsValidBcd(buf[5] & 0x1F, 12) ||
+        !IsValidBcd(buf[6], 99) || (buf[3] & 0x3F) == 0 ||
+        (buf[5] & 0x1F) == 0) {
+        ESP_LOGW(kTag, "GetTime failed: invalid BCD date/time");
         return false;
     }
 
@@ -238,12 +259,13 @@ bool RtcPcf8563::ClearTimerFlag() {
     return WriteRegChecked(kRegCtrl2, ctrl2) == ESP_OK;
 }
 
-bool RtcPcf8563::IsTimerFired() {
+esp_err_t RtcPcf8563::ReadTimerFlag(bool* fired) {
+    if (fired == nullptr) return ESP_ERR_INVALID_ARG;
     uint8_t ctrl2 = 0;
-    if (ReadRegChecked(kRegCtrl2, &ctrl2) != ESP_OK) {
-        return false;
-    }
-    return (ctrl2 & kCtrl2TimerFlag) != 0;
+    const esp_err_t result = ReadRegChecked(kRegCtrl2, &ctrl2);
+    if (result != ESP_OK) return result;
+    *fired = (ctrl2 & kCtrl2TimerFlag) != 0;
+    return ESP_OK;
 }
 
 bool RtcPcf8563::ResetI2cBus(const char* reason) {

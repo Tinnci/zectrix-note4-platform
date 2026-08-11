@@ -188,17 +188,17 @@ esp_err_t ZectrixBoard::Init() {
         return err;
     }
 
-    rtc_ = std::make_unique<RtcPcf8563>(i2c_bus_, ZECTRIX_RTC_ADDR);
-    if (!rtc_->Init(ZECTRIX_RTC_INT) ||
+    rtc_.reset(new (std::nothrow) RtcPcf8563(i2c_bus_, ZECTRIX_RTC_ADDR));
+    if (rtc_ == nullptr || !rtc_->Init(ZECTRIX_RTC_INT) ||
         i2c_master_probe(i2c_bus_, ZECTRIX_RTC_ADDR, 200) != ESP_OK) {
         ESP_LOGW(kTag, "RTC is unavailable");
         rtc_.reset();
     }
 
-    nfc_ = std::make_unique<ZectrixNfc>(
+    nfc_.reset(new (std::nothrow) ZectrixNfc(
         i2c_bus_, ZECTRIX_NFC_ADDR, ZECTRIX_NFC_POWER,
-        ZECTRIX_NFC_FD, ZECTRIX_NFC_FD_ACTIVE_LEVEL);
-    if (!nfc_->Init()) {
+        ZECTRIX_NFC_FD, ZECTRIX_NFC_FD_ACTIVE_LEVEL));
+    if (nfc_ == nullptr || !nfc_->Init()) {
         ESP_LOGW(kTag, "NFC is unavailable");
         nfc_.reset();
     }
@@ -294,11 +294,12 @@ AudioCodec* ZectrixBoard::PrepareAudio() {
         // esp_codec_dev expects the 8 bit shifted address and right shifts it
         // itself, so the library constant (0x30) must be used rather than the
         // 7 bit address 0x18 that the other devices on this bus use.
-        audio_ = std::make_unique<Es8311AudioCodec>(
+        audio_.reset(new (std::nothrow) Es8311AudioCodec(
             i2c_bus_, I2C_NUM_0, ZECTRIX_AUDIO_SAMPLE_RATE,
             ZECTRIX_AUDIO_SAMPLE_RATE, ZECTRIX_AUDIO_MCLK,
             ZECTRIX_AUDIO_BCLK, ZECTRIX_AUDIO_WS, ZECTRIX_AUDIO_DOUT,
-            ZECTRIX_AUDIO_DIN, ZECTRIX_AUDIO_PA, ES8311_CODEC_DEFAULT_ADDR);
+            ZECTRIX_AUDIO_DIN, ZECTRIX_AUDIO_PA, ES8311_CODEC_DEFAULT_ADDR));
+        if (audio_ == nullptr) return nullptr;
     }
     if (!audio_started_) {
         audio_->Start();
@@ -365,8 +366,10 @@ bool ZectrixBoard::ClearRtcTimerFlag() {
     return rtc_ != nullptr && rtc_->ClearTimerFlag();
 }
 
-bool ZectrixBoard::IsRtcTimerFired() {
-    return rtc_ != nullptr && rtc_->IsTimerFired();
+esp_err_t ZectrixBoard::ReadRtcTimerFlag(bool* fired) {
+    if (fired == nullptr) return ESP_ERR_INVALID_ARG;
+    if (rtc_ == nullptr) return ESP_ERR_NOT_FOUND;
+    return rtc_->ReadTimerFlag(fired);
 }
 
 bool ZectrixBoard::IsRtcInterruptActive() const {

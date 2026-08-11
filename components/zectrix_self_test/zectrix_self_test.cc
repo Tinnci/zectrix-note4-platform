@@ -313,7 +313,10 @@ ZectrixTestResult ZectrixSelfTest::RunRtc(const UpdateCallback& callback) {
         if (time_->StartRtcCountdown(1) == ESP_OK) {
             const int64_t deadline = time_->MonotonicMicroseconds() + 2000000;
             while (time_->MonotonicMicroseconds() < deadline) {
-                const auto status = time_->ReadRtcTimerStatus();
+                zectrix::time::RtcTimerStatus status;
+                if (time_->ReadRtcTimerStatus(&status) != ESP_OK) {
+                    break;
+                }
                 const bool gpio_hit = status.interrupt_active;
                 const bool flag_hit = status.flag_set;
                 SetText(update.details[0].data(), update.details[0].size(),
