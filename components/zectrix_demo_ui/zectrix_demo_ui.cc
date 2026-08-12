@@ -82,16 +82,17 @@ esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
     }
     DrawFrame(title, footer);
     const int row_height = std::min(42, 215 / static_cast<int>(count));
+    const int box_height = std::min(34, row_height - 2);
     const int start_y = 46;
     for (size_t i = 0; i < count; ++i) {
         const int y = start_y + static_cast<int>(i) * row_height;
         const bool active = i == selected;
         if (active) {
-            canvas_.FillRect(16, y, 368, 34, true);
-            canvas_.Text(28, y + 9, items[i], 1, true);
+            canvas_.FillRect(16, y, 368, box_height, true);
+            canvas_.Text(28, y + (box_height - 8) / 2, items[i], 1, true);
         } else {
-            canvas_.Rect(16, y, 368, 34);
-            canvas_.Text(28, y + 9, items[i]);
+            canvas_.Rect(16, y, 368, box_height);
+            canvas_.Text(28, y + (box_height - 8) / 2, items[i]);
         }
     }
     return full_refresh ? RefreshFull()
@@ -109,6 +110,22 @@ esp_err_t ZectrixDemoUi::ShowClock(const zectrix::time::DateTime& value) {
     canvas_.TextCentered(154, line, 3);
     canvas_.TextCentered(224, "RTC", 1);
     return RefreshFull();
+}
+
+esp_err_t ZectrixDemoUi::ShowSettings(bool auto_showcase, const char* status,
+                                      bool full_refresh) {
+    DrawFrame("SETTINGS", "UP/DOWN Change  OK Save  Hold OK Home");
+    canvas_.Text(24, 62, "AUTO SHOWCASE", 1);
+    canvas_.FillRect(250, 52, 118, 34, auto_showcase);
+    canvas_.Rect(250, 52, 118, 34);
+    canvas_.Text(300, 65, auto_showcase ? "ON" : "OFF", 1,
+                 auto_showcase);
+    canvas_.Line(20, 112, 379, 112);
+    canvas_.Text(24, 134, "START AFTER 15 SECONDS IDLE");
+    canvas_.Text(24, 178, "STATUS:");
+    canvas_.Text(112, 178, status == nullptr ? "" : status);
+    return full_refresh ? RefreshFull()
+                        : RefreshPartial({0, 36, 400, 234});
 }
 
 esp_err_t ZectrixDemoUi::ShowSceneInfo(const char* title, const char* mode,

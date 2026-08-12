@@ -79,6 +79,21 @@ covered Launcher navigation, Clock entry and return, the old automatic test
 flow, and return from the old flow. The device did not show an unexpected
 reset, panic, or display failure during this test.
 
+## M3 platform settings
+
+M3 defines one platform setting:
+
+| Key | Type | Values | Default | Consumer |
+| --- | --- | --- | --- | --- |
+| `ui.auto_demo` | unsigned 32-bit integer | `0` off, `1` on | `1` | Launcher |
+
+The Settings application uses `StorageService`. It does not call NVS. A
+missing key creates the default value. A value outside the documented range is
+invalid. Settings uses the default and attempts to replace the invalid value.
+If a read or write fails, Settings remains active and shows the failure. It
+does not abort or restart the device. Settings pages are private application
+state and are not registry entries.
+
 ## Lifecycle
 
 The normal lifecycle is:

@@ -71,6 +71,7 @@ esp_err_t StorageService::Create(StorageService** output) {
     if (result == ESP_OK) *output = new StorageService(new Impl);
     return result;
 }
+esp_err_t StorageService::Initialize() { return Result("storage-init"); }
 StorageService::~StorageService() {
     delete impl_;
     events.emplace_back("delete:storage");
@@ -108,11 +109,13 @@ int main() {
         (void)platform.System();
         assert((events == std::vector<std::string>{
             "init:board", "create:input", "create:power", "create:time",
-            "create:storage", "create:system", "create:display"}));
+            "create:storage", "create:storage-init", "create:system",
+            "create:display"}));
     }
     assert((events == std::vector<std::string>{
         "init:board", "create:input", "create:power", "create:time",
-        "create:storage", "create:system", "create:display",
+        "create:storage", "create:storage-init", "create:system",
+        "create:display",
         "delete:display", "delete:system", "delete:storage", "delete:time",
         "delete:power", "delete:input"}));
 
@@ -124,7 +127,8 @@ int main() {
     assert(failed.Initialize() == ESP_ERR_INVALID_STATE);
     assert((events == std::vector<std::string>{
         "init:board", "create:input", "create:power", "create:time",
-        "create:storage", "create:system", "delete:storage", "delete:time",
+        "create:storage", "create:storage-init", "create:system",
+        "delete:storage", "delete:time",
         "delete:power", "delete:input"}));
 
     events.clear();
@@ -146,7 +150,18 @@ int main() {
     assert(!no_diagnostics_memory.IsInitialized());
     assert((events == std::vector<std::string>{
         "init:board", "create:input", "create:power", "create:time",
-        "create:storage", "create:system", "create:display",
+        "create:storage", "create:storage-init", "create:system",
+        "create:display",
         "delete:display", "delete:system", "delete:storage", "delete:time",
         "delete:power", "delete:input"}));
+
+    events.clear();
+    fail_at = "storage-init";
+    zectrix::Platform failed_storage_init;
+    assert(failed_storage_init.Initialize() == ESP_FAIL);
+    assert(!failed_storage_init.IsInitialized());
+    assert((events == std::vector<std::string>{
+        "init:board", "create:input", "create:power", "create:time",
+        "create:storage", "create:storage-init", "delete:storage",
+        "delete:time", "delete:power", "delete:input"}));
 }

@@ -17,9 +17,16 @@ int main() {
     assert(result.decision == LauncherDecision::RenderFast);
     assert(result.selected == 1);
     result = launcher.Handle({Button::Ok, Action::Click});
-    assert(result.decision == LauncherDecision::RunLegacy);
+    assert(result.decision == LauncherDecision::OpenSettings);
     assert(result.selected == 1);
 
+    result = launcher.Handle({Button::Down, Action::Click});
+    assert(result.selected == 2);
+    result = launcher.Handle({Button::Ok, Action::Click});
+    assert(result.decision == LauncherDecision::RunLegacy);
+
+    result = launcher.Handle({Button::Up, Action::Click});
+    assert(result.selected == 1);
     result = launcher.Handle({Button::Up, Action::Click});
     assert(result.selected == 0);
     result = launcher.Handle({Button::Up, Action::Click});
@@ -38,4 +45,24 @@ int main() {
            ClockDecision::None);
     assert(HandleClockInput({Button::Up, Action::LongPress}) ==
            ClockDecision::None);
+
+    bool normalized = false;
+    assert(NormalizeAutoShowcaseSetting(0, &normalized));
+    assert(!normalized);
+    assert(NormalizeAutoShowcaseSetting(1, &normalized));
+    assert(normalized);
+    assert(!NormalizeAutoShowcaseSetting(2, &normalized));
+    assert(!NormalizeAutoShowcaseSetting(0, nullptr));
+
+    SettingsController settings(true);
+    SettingsResult setting = settings.Handle({Button::Down, Action::Click});
+    assert(setting.decision == SettingsDecision::RenderFast);
+    assert(!setting.auto_showcase);
+    setting = settings.Handle({Button::Ok, Action::Click});
+    assert(setting.decision == SettingsDecision::Save);
+    assert(!setting.auto_showcase);
+    assert(settings.Handle({Button::Ok, Action::LongPress}).decision ==
+           SettingsDecision::Home);
+    assert(settings.Handle({Button::Down, Action::LongPress}).decision ==
+           SettingsDecision::Shutdown);
 }

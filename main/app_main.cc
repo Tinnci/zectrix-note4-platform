@@ -111,6 +111,24 @@ private:
         explicit LauncherApplication(DemoApp& owner) : owner_(&owner) {}
 
         esp_err_t Enter(zectrix::app::ApplicationContext& context) override {
+            uint32_t stored = zectrix::app::kAutoShowcaseDefault;
+            const esp_err_t read = owner_->storage_->GetUInt32(
+                zectrix::app::kAutoShowcaseSettingKey, &stored);
+            bool valid = read == ESP_OK &&
+                zectrix::app::NormalizeAutoShowcaseSetting(
+                    stored, &auto_showcase_);
+            if (!valid) {
+                auto_showcase_ = true;
+                if (read == ESP_ERR_NOT_FOUND || read == ESP_OK) {
+                    const esp_err_t repair = owner_->storage_->SetUInt32(
+                        zectrix::app::kAutoShowcaseSettingKey,
+                        zectrix::app::kAutoShowcaseDefault);
+                    if (repair != ESP_OK) {
+                        ESP_LOGW(kTag, "default setting save failed: %s",
+                                 esp_err_to_name(repair));
+                    }
+                }
+            }
             return context.RequestRender({0, 0, 400, 300},
                                          zectrix::app::RenderIntent::Quality)
                        ? ESP_OK : ESP_FAIL;
@@ -129,9 +147,16 @@ private:
                 }
                 context.RequestCommand(open);
             } else if (result.decision ==
+                       zectrix::app::LauncherDecision::OpenSettings) {
+                zectrix::app::AppCommand open;
+                if (!zectrix::app::AppCommand::Open("settings", &open)) {
+                    return ESP_ERR_INVALID_STATE;
+                }
+                context.RequestCommand(open);
+            } else if (result.decision ==
                        zectrix::app::LauncherDecision::RunLegacy) {
                 owner_->legacy_action_ =
-                    static_cast<LegacyAction>(result.selected);
+                    static_cast<LegacyAction>(result.selected - 1);
             } else if (result.decision ==
                        zectrix::app::LauncherDecision::Shutdown) {
                 context.RequestCommand(zectrix::app::AppCommand::Shutdown());
@@ -139,12 +164,14 @@ private:
             return ESP_OK;
         }
         esp_err_t HandleIdle(zectrix::app::ApplicationContext&) override {
-            owner_->legacy_action_ = LegacyAction::kAutoShowcase;
+            if (auto_showcase_) {
+                owner_->legacy_action_ = LegacyAction::kAutoShowcase;
+            }
             return ESP_OK;
         }
         esp_err_t Render(const zectrix::app::RenderRequest& request) override {
             static constexpr const char* kItems[] = {
-                "CLOCK", "AUTO SHOWCASE", "DISPLAY GALLERY",
+                "CLOCK", "SETTINGS", "AUTO SHOWCASE", "DISPLAY GALLERY",
                 "HARDWARE TESTS", "DEVICE INFO", "ABOUT & LICENSE"};
             return owner_->ui_.ShowMenu(
                 "ZECTRIX | LAUNCHER", kItems, std::size(kItems),
@@ -157,6 +184,7 @@ private:
     private:
         DemoApp* owner_;
         zectrix::app::LauncherController controller_;
+        bool auto_showcase_ = true;
     };
 
     class ClockApplication final : public zectrix::app::Application {
@@ -189,6 +217,79 @@ private:
         DemoApp* owner_;
     };
 
+    class SettingsApplication final : public zectrix::app::Application {
+    public:
+        explicit SettingsApplication(DemoApp& owner)
+            : owner_(&owner), controller_(true) {}
+
+        esp_err_t Enter(zectrix::app::ApplicationContext& context) override {
+            uint32_t stored = zectrix::app::kAutoShowcaseDefault;
+            const esp_err_t read = owner_->storage_->GetUInt32(
+                zectrix::app::kAutoShowcaseSettingKey, &stored);
+            bool value = true;
+            bool repair = false;
+            if (read == ESP_ERR_NOT_FOUND) {
+                status_ = "DEFAULT CREATED";
+                repair = true;
+            } else if (read != ESP_OK) {
+                status_ = "LOAD FAILED - DEFAULT";
+            } else if (!zectrix::app::NormalizeAutoShowcaseSetting(stored,
+                                                                   &value)) {
+                status_ = "INVALID RESET";
+                value = true;
+                repair = true;
+            } else {
+                status_ = "LOADED";
+            }
+            if (repair) {
+                const esp_err_t save = owner_->storage_->SetUInt32(
+                    zectrix::app::kAutoShowcaseSettingKey,
+                    zectrix::app::kAutoShowcaseDefault);
+                if (save != ESP_OK) status_ = "DEFAULT NOT SAVED";
+            }
+            controller_ = zectrix::app::SettingsController(value);
+            return context.RequestRender({0, 0, 400, 300},
+                                         zectrix::app::RenderIntent::Quality)
+                       ? ESP_OK : ESP_FAIL;
+        }
+
+        esp_err_t HandleEvent(const zectrix::input::InputEvent& event,
+                              zectrix::app::ApplicationContext& context) override {
+            const zectrix::app::SettingsResult result = controller_.Handle(event);
+            if (result.decision == zectrix::app::SettingsDecision::RenderFast) {
+                status_ = "NOT SAVED";
+                context.RequestRender({0, 36, 400, 234},
+                                      zectrix::app::RenderIntent::Fast);
+            } else if (result.decision == zectrix::app::SettingsDecision::Save) {
+                const esp_err_t save = owner_->storage_->SetUInt32(
+                    zectrix::app::kAutoShowcaseSettingKey,
+                    result.auto_showcase ? 1 : 0);
+                status_ = save == ESP_OK ? "SAVED" : "SAVE FAILED";
+                context.RequestRender({0, 36, 400, 234},
+                                      zectrix::app::RenderIntent::Fast);
+            } else if (result.decision == zectrix::app::SettingsDecision::Home) {
+                context.RequestCommand(zectrix::app::AppCommand::Home());
+            } else if (result.decision ==
+                       zectrix::app::SettingsDecision::Shutdown) {
+                context.RequestCommand(zectrix::app::AppCommand::Shutdown());
+            }
+            return ESP_OK;
+        }
+
+        esp_err_t Render(const zectrix::app::RenderRequest& request) override {
+            return owner_->ui_.ShowSettings(
+                controller_.auto_showcase(), status_,
+                request.intent == zectrix::app::RenderIntent::Quality);
+        }
+
+        esp_err_t Exit() override { return ESP_OK; }
+
+    private:
+        DemoApp* owner_;
+        zectrix::app::SettingsController controller_;
+        const char* status_ = "";
+    };
+
     static esp_err_t MakeLauncher(
         zectrix::Platform&, const zectrix::app::ApplicationRegistry&,
         zectrix::app::ApplicationFactoryContext* context,
@@ -209,10 +310,21 @@ private:
         return *output == nullptr ? ESP_ERR_NO_MEM : ESP_OK;
     }
 
+    static esp_err_t MakeSettings(
+        zectrix::Platform&, const zectrix::app::ApplicationRegistry&,
+        zectrix::app::ApplicationFactoryContext* context,
+        zectrix::app::Application** output) {
+        if (context == nullptr || output == nullptr) return ESP_ERR_INVALID_ARG;
+        *output = new (std::nothrow) SettingsApplication(
+            *static_cast<DemoApp*>(context));
+        return *output == nullptr ? ESP_ERR_NO_MEM : ESP_OK;
+    }
+
     void RunApplicationShell() {
         const zectrix::app::ApplicationDescriptor descriptors[] = {
             {"launcher", "Launcher", MakeLauncher, this},
             {"clock", "Clock", MakeClock, this},
+            {"settings", "Settings", MakeSettings, this},
         };
         while (true) {
             legacy_action_ = LegacyAction::kNone;

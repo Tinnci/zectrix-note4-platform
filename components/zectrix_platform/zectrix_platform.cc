@@ -39,6 +39,7 @@ esp_err_t Platform::Initialize() {
     if (err == ESP_OK) err = power::PowerService::Attach(impl_->board, &impl_->power);
     if (err == ESP_OK) err = time::TimeService::Attach(impl_->board, &impl_->time);
     if (err == ESP_OK) err = storage::StorageService::Create(&impl_->storage);
+    if (err == ESP_OK) err = impl_->storage->Initialize();
     if (err == ESP_OK) err = system::SystemService::Attach(impl_->board, &impl_->system);
     if (err == ESP_OK) err = display::DisplayService::Create(&impl_->display);
     if (err == ESP_OK) {

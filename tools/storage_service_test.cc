@@ -104,7 +104,14 @@ int main() {
     assert(service->GetBlob("blob", restored, &blob_length) == ESP_OK);
     assert(std::memcmp(blob, restored, sizeof(blob)) == 0);
     assert(service->Erase("flag") == ESP_OK);
-    assert(service->GetBool("flag", &flag) == ESP_ERR_NVS_NOT_FOUND);
+    assert(service->GetBool("flag", &flag) == ESP_ERR_NOT_FOUND);
     assert(commit_count == 6);
+    delete service;
+
+    service = nullptr;
+    assert(StorageService::Create(&service) == ESP_OK);
+    assert(service->Initialize() == ESP_OK);
+    count = 0;
+    assert(service->GetUInt32("count", &count) == ESP_OK && count == 42);
     delete service;
 }

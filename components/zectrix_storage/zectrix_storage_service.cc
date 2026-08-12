@@ -14,6 +14,10 @@ bool InvalidKey(const char* key) {
     return key == nullptr || key[0] == '\0';
 }
 
+esp_err_t PublicResult(esp_err_t result) {
+    return result == ESP_ERR_NVS_NOT_FOUND ? ESP_ERR_NOT_FOUND : result;
+}
+
 }  // namespace
 
 struct StorageService::Impl {
@@ -54,7 +58,7 @@ esp_err_t StorageService::Initialize() {
     if (err != ESP_OK) return err;
     err = nvs_open(kNamespace, NVS_READWRITE, &impl_->handle);
     if (err == ESP_OK) impl_->initialized = true;
-    return err;
+    return PublicResult(err);
 }
 
 bool StorageService::IsInitialized() const {
@@ -73,7 +77,7 @@ esp_err_t StorageService::GetBool(const char* key, bool* value) const {
     uint8_t raw = 0;
     const esp_err_t err = nvs_get_u8(impl_->handle, key, &raw);
     if (err == ESP_OK) *value = raw != 0;
-    return err;
+    return PublicResult(err);
 }
 
 esp_err_t StorageService::SetInt32(const char* key, int32_t value) {
@@ -85,7 +89,7 @@ esp_err_t StorageService::SetInt32(const char* key, int32_t value) {
 esp_err_t StorageService::GetInt32(const char* key, int32_t* value) const {
     if (!IsInitialized()) return ESP_ERR_INVALID_STATE;
     if (InvalidKey(key) || value == nullptr) return ESP_ERR_INVALID_ARG;
-    return nvs_get_i32(impl_->handle, key, value);
+    return PublicResult(nvs_get_i32(impl_->handle, key, value));
 }
 
 esp_err_t StorageService::SetUInt32(const char* key, uint32_t value) {
@@ -97,7 +101,7 @@ esp_err_t StorageService::SetUInt32(const char* key, uint32_t value) {
 esp_err_t StorageService::GetUInt32(const char* key, uint32_t* value) const {
     if (!IsInitialized()) return ESP_ERR_INVALID_STATE;
     if (InvalidKey(key) || value == nullptr) return ESP_ERR_INVALID_ARG;
-    return nvs_get_u32(impl_->handle, key, value);
+    return PublicResult(nvs_get_u32(impl_->handle, key, value));
 }
 
 esp_err_t StorageService::SetString(const char* key, const char* value) {
@@ -110,7 +114,7 @@ esp_err_t StorageService::GetString(const char* key, char* value,
                                     std::size_t* length) const {
     if (!IsInitialized()) return ESP_ERR_INVALID_STATE;
     if (InvalidKey(key) || length == nullptr) return ESP_ERR_INVALID_ARG;
-    return nvs_get_str(impl_->handle, key, value, length);
+    return PublicResult(nvs_get_str(impl_->handle, key, value, length));
 }
 
 esp_err_t StorageService::SetBlob(const char* key, const void* value,
@@ -126,13 +130,13 @@ esp_err_t StorageService::GetBlob(const char* key, void* value,
                                   std::size_t* length) const {
     if (!IsInitialized()) return ESP_ERR_INVALID_STATE;
     if (InvalidKey(key) || length == nullptr) return ESP_ERR_INVALID_ARG;
-    return nvs_get_blob(impl_->handle, key, value, length);
+    return PublicResult(nvs_get_blob(impl_->handle, key, value, length));
 }
 
 esp_err_t StorageService::Erase(const char* key) {
     if (!IsInitialized()) return ESP_ERR_INVALID_STATE;
     if (InvalidKey(key)) return ESP_ERR_INVALID_ARG;
-    return Commit(nvs_erase_key(impl_->handle, key));
+    return PublicResult(Commit(nvs_erase_key(impl_->handle, key)));
 }
 
 esp_err_t StorageService::Commit(esp_err_t operation_result) {
