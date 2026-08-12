@@ -33,7 +33,10 @@ deep-sleep calls.
 
 Goal: run multiple statically linked applications through one lifecycle.
 
+Status: Active from qualified M2 baseline `e568cf3`.
+
 - Add application descriptors and a static registry.
+- Use owned deferred commands and foreground-generation render requests.
 - Add Launcher, Settings, Diagnostics and Clock.
 - Keep platform implementation types out of public application headers.
 

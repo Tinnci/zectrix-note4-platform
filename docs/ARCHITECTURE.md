@@ -42,8 +42,11 @@ Applications submit display intent such as `AUTO`, `FAST`, `QUALITY` or
 ## Application boundary
 
 The first application model is a static registry. Do not add a dynamic ELF or
-WebAssembly runtime yet. First exercise the static API with at least three
-independent applications and freeze the SDK ABI.
+WebAssembly runtime yet. The runtime owns one active foreground application and
+uses owned deferred commands. It processes navigation only after the current
+callback returns. Private pages stay inside their application. First exercise
+the draft API with at least three independent applications. SDK and ABI
+stabilization is an M4 decision.
 
 ## Update boundary
 
