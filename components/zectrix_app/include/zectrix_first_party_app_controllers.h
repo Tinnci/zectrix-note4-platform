@@ -12,6 +12,7 @@ enum class LauncherDecision : uint8_t {
     RenderFast,
     OpenClock,
     OpenSettings,
+    OpenDiagnostics,
     RunLegacy,
     Shutdown,
 };
@@ -65,5 +66,35 @@ constexpr uint32_t kAutoShowcaseDefault = 1;
 constexpr char kAutoShowcaseSettingKey[] = "ui.auto_demo";
 
 bool NormalizeAutoShowcaseSetting(uint32_t stored, bool* value);
+
+enum class DiagnosticsPage : uint8_t { Mode, Individual, Summary };
+enum class DiagnosticsDecision : uint8_t {
+    None,
+    RenderFast,
+    RunAll,
+    RunSelected,
+    Home,
+    Shutdown,
+};
+
+struct DiagnosticsResult {
+    DiagnosticsDecision decision = DiagnosticsDecision::None;
+    DiagnosticsPage page = DiagnosticsPage::Mode;
+    std::size_t selected = 0;
+};
+
+class DiagnosticsController {
+public:
+    static constexpr std::size_t kTestCount = 7;
+
+    DiagnosticsResult Handle(const input::InputEvent& event);
+    void ShowSummary() { page_ = DiagnosticsPage::Summary; }
+    DiagnosticsPage page() const { return page_; }
+    std::size_t selected() const { return selected_; }
+
+private:
+    DiagnosticsPage page_ = DiagnosticsPage::Mode;
+    std::size_t selected_ = 0;
+};
 
 }  // namespace zectrix::app

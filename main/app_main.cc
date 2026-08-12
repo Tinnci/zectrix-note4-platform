@@ -101,7 +101,6 @@ private:
         kNone,
         kAutoShowcase,
         kDisplayGallery,
-        kHardwareTests,
         kDeviceInfo,
         kAbout,
     };
@@ -154,9 +153,23 @@ private:
                 }
                 context.RequestCommand(open);
             } else if (result.decision ==
+                       zectrix::app::LauncherDecision::OpenDiagnostics) {
+                zectrix::app::AppCommand open;
+                if (!zectrix::app::AppCommand::Open("diagnostics", &open)) {
+                    return ESP_ERR_INVALID_STATE;
+                }
+                context.RequestCommand(open);
+            } else if (result.decision ==
                        zectrix::app::LauncherDecision::RunLegacy) {
-                owner_->legacy_action_ =
-                    static_cast<LegacyAction>(result.selected - 1);
+                if (result.selected == 2) {
+                    owner_->legacy_action_ = LegacyAction::kAutoShowcase;
+                } else if (result.selected == 3) {
+                    owner_->legacy_action_ = LegacyAction::kDisplayGallery;
+                } else if (result.selected == 5) {
+                    owner_->legacy_action_ = LegacyAction::kDeviceInfo;
+                } else if (result.selected == 6) {
+                    owner_->legacy_action_ = LegacyAction::kAbout;
+                }
             } else if (result.decision ==
                        zectrix::app::LauncherDecision::Shutdown) {
                 context.RequestCommand(zectrix::app::AppCommand::Shutdown());
@@ -290,6 +303,133 @@ private:
         const char* status_ = "";
     };
 
+    class DiagnosticsApplication final : public zectrix::app::Application {
+    public:
+        explicit DiagnosticsApplication(DemoApp& owner) : owner_(&owner) {}
+
+        esp_err_t Enter(zectrix::app::ApplicationContext& context) override {
+            owner_->test_states_.fill(ZectrixTestState::kWait);
+            return context.RequestRender({0, 0, 400, 300},
+                                         zectrix::app::RenderIntent::Quality)
+                       ? ESP_OK : ESP_FAIL;
+        }
+
+        esp_err_t HandleEvent(const zectrix::input::InputEvent& event,
+                              zectrix::app::ApplicationContext& context) override {
+            const zectrix::app::DiagnosticsResult result = controller_.Handle(event);
+            if (result.decision == zectrix::app::DiagnosticsDecision::RenderFast) {
+                context.RequestRender({0, 36, 400, 234},
+                                      zectrix::app::RenderIntent::Fast);
+                return ESP_OK;
+            }
+            if (result.decision == zectrix::app::DiagnosticsDecision::Home) {
+                context.RequestCommand(zectrix::app::AppCommand::Home());
+                return ESP_OK;
+            }
+            if (result.decision == zectrix::app::DiagnosticsDecision::Shutdown) {
+                context.RequestCommand(zectrix::app::AppCommand::Shutdown());
+                return ESP_OK;
+            }
+            if (result.decision == zectrix::app::DiagnosticsDecision::RunAll) {
+                return RunAll(context);
+            }
+            if (result.decision ==
+                zectrix::app::DiagnosticsDecision::RunSelected) {
+                return RunSelected(result.selected, context);
+            }
+            return ESP_OK;
+        }
+
+        esp_err_t Render(const zectrix::app::RenderRequest& request) override {
+            if (controller_.page() == zectrix::app::DiagnosticsPage::Summary) {
+                return owner_->ui_.ShowTestSummary(owner_->test_states_);
+            }
+            if (controller_.page() == zectrix::app::DiagnosticsPage::Individual) {
+                return owner_->ui_.ShowTestMenu(
+                    controller_.selected(), owner_->test_states_,
+                    request.intent == zectrix::app::RenderIntent::Quality);
+            }
+            static constexpr const char* kItems[] = {
+                "RUN ALL TESTS", "SELECT INDIVIDUAL TEST"};
+            return owner_->ui_.ShowMenu(
+                "HARDWARE TESTS", kItems, std::size(kItems),
+                controller_.selected(),
+                "UP/DOWN Move  OK Select  Hold OK Home",
+                request.intent == zectrix::app::RenderIntent::Quality);
+        }
+
+        esp_err_t Exit() override { return ESP_OK; }
+
+    private:
+        ZectrixTestResult Execute(ZectrixTestId id) {
+            owner_->test_states_[static_cast<size_t>(id)] =
+                ZectrixTestState::kRunning;
+            return owner_->tests_->Run(
+                id, [this](const ZectrixTestUpdate& update) {
+                    owner_->test_states_[static_cast<size_t>(update.id)] =
+                        update.state;
+                    const esp_err_t draw = owner_->ui_.ShowTestUpdate(
+                        update, owner_->test_states_);
+                    if (draw != ESP_OK) {
+                        ESP_LOGE(kTag, "diagnostic update failed: %s",
+                                 esp_err_to_name(draw));
+                    }
+                });
+        }
+
+        esp_err_t RunAll(zectrix::app::ApplicationContext& context) {
+            owner_->test_states_.fill(ZectrixTestState::kWait);
+            for (size_t index = 0;
+                 index < static_cast<size_t>(ZectrixTestId::kCount); ++index) {
+                esp_err_t draw = owner_->ui_.ShowTestMenu(
+                    index, owner_->test_states_, true);
+                if (draw != ESP_OK) return draw;
+                const ZectrixTestResult result =
+                    Execute(static_cast<ZectrixTestId>(index));
+                if (result == ZectrixTestResult::kShutdown) {
+                    context.RequestCommand(zectrix::app::AppCommand::Shutdown());
+                    return ESP_OK;
+                }
+                if (result == ZectrixTestResult::kCancelled) break;
+                owner_->test_states_[index] =
+                    result == ZectrixTestResult::kPass
+                        ? ZectrixTestState::kPass : ZectrixTestState::kFail;
+                if (owner_->Wait(pdMS_TO_TICKS(800), false) ==
+                    ControlResult::kShutdown) {
+                    context.RequestCommand(zectrix::app::AppCommand::Shutdown());
+                    return ESP_OK;
+                }
+            }
+            controller_.ShowSummary();
+            return owner_->ui_.ShowTestSummary(owner_->test_states_);
+        }
+
+        esp_err_t RunSelected(size_t selected,
+                              zectrix::app::ApplicationContext& context) {
+            const ZectrixTestResult result =
+                Execute(static_cast<ZectrixTestId>(selected));
+            if (result == ZectrixTestResult::kShutdown) {
+                context.RequestCommand(zectrix::app::AppCommand::Shutdown());
+                return ESP_OK;
+            }
+            if (result == ZectrixTestResult::kPass) {
+                owner_->test_states_[selected] = ZectrixTestState::kPass;
+            } else if (result == ZectrixTestResult::kFail) {
+                owner_->test_states_[selected] = ZectrixTestState::kFail;
+            }
+            if (owner_->Wait(pdMS_TO_TICKS(1200), true) ==
+                ControlResult::kShutdown) {
+                context.RequestCommand(zectrix::app::AppCommand::Shutdown());
+                return ESP_OK;
+            }
+            return owner_->ui_.ShowTestMenu(
+                selected, owner_->test_states_, true);
+        }
+
+        DemoApp* owner_;
+        zectrix::app::DiagnosticsController controller_;
+    };
+
     static esp_err_t MakeLauncher(
         zectrix::Platform&, const zectrix::app::ApplicationRegistry&,
         zectrix::app::ApplicationFactoryContext* context,
@@ -320,11 +460,22 @@ private:
         return *output == nullptr ? ESP_ERR_NO_MEM : ESP_OK;
     }
 
+    static esp_err_t MakeDiagnostics(
+        zectrix::Platform&, const zectrix::app::ApplicationRegistry&,
+        zectrix::app::ApplicationFactoryContext* context,
+        zectrix::app::Application** output) {
+        if (context == nullptr || output == nullptr) return ESP_ERR_INVALID_ARG;
+        *output = new (std::nothrow) DiagnosticsApplication(
+            *static_cast<DemoApp*>(context));
+        return *output == nullptr ? ESP_ERR_NO_MEM : ESP_OK;
+    }
+
     void RunApplicationShell() {
         const zectrix::app::ApplicationDescriptor descriptors[] = {
             {"launcher", "Launcher", MakeLauncher, this},
             {"clock", "Clock", MakeClock, this},
             {"settings", "Settings", MakeSettings, this},
+            {"diagnostics", "Diagnostics", MakeDiagnostics, this},
         };
         while (true) {
             legacy_action_ = LegacyAction::kNone;
@@ -357,7 +508,6 @@ private:
         ControlResult result = ControlResult::kBack;
         if (action == LegacyAction::kAutoShowcase) result = RunAutoShowcase();
         else if (action == LegacyAction::kDisplayGallery) result = RunDisplayGallery();
-        else if (action == LegacyAction::kHardwareTests) result = RunHardwareTests();
         else if (action == LegacyAction::kDeviceInfo) result = RunDeviceInfo();
         else if (action == LegacyAction::kAbout) {
             ESP_ERROR_CHECK(ui_.ShowAbout());
@@ -620,92 +770,6 @@ private:
                     event.action == zectrix::input::Action::LongPress) {
                     break;
                 }
-            }
-        }
-    }
-
-    ControlResult RunHardwareTests() {
-        static constexpr const char* kItems[] = {
-            "RUN ALL TESTS", "SELECT INDIVIDUAL TEST"};
-        size_t selected = 0;
-        const ControlResult menu = RunMenu(
-            "HARDWARE TESTS", kItems, std::size(kItems),
-            "UP/DOWN Move  OK Select  Hold OK Back", &selected);
-        if (menu == ControlResult::kShutdown) return menu;
-        if (menu == ControlResult::kBack) return menu;
-        return selected == 0 ? RunAllTests() : RunIndividualTests();
-    }
-
-    ZectrixTestResult ExecuteTest(ZectrixTestId id) {
-        test_states_[static_cast<size_t>(id)] = ZectrixTestState::kRunning;
-        return tests_->Run(id, [this](const ZectrixTestUpdate& update) {
-            test_states_[static_cast<size_t>(update.id)] = update.state;
-            const esp_err_t err = ui_.ShowTestUpdate(update, test_states_);
-            if (err != ESP_OK) {
-                ESP_LOGE(kTag, "test UI refresh failed: %s", esp_err_to_name(err));
-            }
-        });
-    }
-
-    ControlResult RunAllTests() {
-        test_states_.fill(ZectrixTestState::kWait);
-        for (size_t i = 0; i < static_cast<size_t>(ZectrixTestId::kCount); ++i) {
-            const ZectrixTestId id = static_cast<ZectrixTestId>(i);
-            ESP_ERROR_CHECK(ui_.ShowTestMenu(i, test_states_, true));
-            const ZectrixTestResult result = ExecuteTest(id);
-            if (result == ZectrixTestResult::kShutdown) {
-                return ControlResult::kShutdown;
-            }
-            if (result == ZectrixTestResult::kCancelled) {
-                break;
-            }
-            test_states_[i] = result == ZectrixTestResult::kPass
-                                  ? ZectrixTestState::kPass
-                                  : ZectrixTestState::kFail;
-            const ControlResult pause = Wait(pdMS_TO_TICKS(800), false);
-            if (pause == ControlResult::kShutdown) return pause;
-        }
-        ESP_ERROR_CHECK(ui_.ShowTestSummary(test_states_));
-        return Wait(portMAX_DELAY, true);
-    }
-
-    ControlResult RunIndividualTests() {
-        size_t selected = 0;
-        ESP_ERROR_CHECK(ui_.ShowTestMenu(selected, test_states_, true));
-        while (true) {
-            zectrix::input::InputEvent event;
-            if (!input_->Wait(&event, portMAX_DELAY)) continue;
-            if (event.button == zectrix::input::Button::Down &&
-                event.action == zectrix::input::Action::LongPress) {
-                return ControlResult::kShutdown;
-            }
-            if (event.button == zectrix::input::Button::Ok &&
-                event.action == zectrix::input::Action::LongPress) {
-                return ControlResult::kBack;
-            }
-            if (event.action != zectrix::input::Action::Click) continue;
-            if (event.button == zectrix::input::Button::Up) {
-                selected = (selected + 6) % 7;
-                ESP_ERROR_CHECK(ui_.ShowTestMenu(selected, test_states_, false));
-            } else if (event.button == zectrix::input::Button::Down) {
-                selected = (selected + 1) % 7;
-                ESP_ERROR_CHECK(ui_.ShowTestMenu(selected, test_states_, false));
-            } else if (event.button == zectrix::input::Button::Ok) {
-                const ZectrixTestId id = static_cast<ZectrixTestId>(selected);
-                const ZectrixTestResult result = ExecuteTest(id);
-                if (result == ZectrixTestResult::kShutdown) {
-                    return ControlResult::kShutdown;
-                }
-                test_states_[selected] = result == ZectrixTestResult::kPass
-                                             ? ZectrixTestState::kPass
-                                             : (result == ZectrixTestResult::kFail
-                                                    ? ZectrixTestState::kFail
-                                                    : test_states_[selected]);
-                const ControlResult pause = Wait(pdMS_TO_TICKS(1200), true);
-                if (pause == ControlResult::kShutdown) {
-                    return pause;
-                }
-                ESP_ERROR_CHECK(ui_.ShowTestMenu(selected, test_states_, true));
             }
         }
     }

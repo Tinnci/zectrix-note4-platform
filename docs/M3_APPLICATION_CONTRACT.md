@@ -36,6 +36,17 @@ resolution, and display calls. M3 does not add a render task or a general event
 bus. Platform continues to own hardware and services. Applications use public
 Platform services only.
 
+FreeRTOS is a mechanism layer below the product architecture. An application,
+activity, controller, service, or navigation request is not a FreeRTOS task.
+Product boundaries define lifecycle, ownership, navigation, render intent, and
+power transitions. An implementation can use a task, queue, notification,
+mutex, or no separate RTOS object after measurement justifies that mechanism.
+Task topology must not define the product dependency graph.
+
+M3 builds an application runtime and firmware framework on ESP-IDF and IDF
+FreeRTOS. It does not build a new operating system. M4 can stabilize the
+application-facing source API after real applications exercise these bounds.
+
 An application callback can request a command or a render. It must not destroy
 itself, replace itself, or call another application directly. The runtime acts
 only after the callback returns.
@@ -93,6 +104,16 @@ invalid. Settings uses the default and attempts to replace the invalid value.
 If a read or write fails, Settings remains active and shows the failure. It
 does not abort or restart the device. Settings pages are private application
 state and are not registry entries.
+
+## Diagnostics adapter
+
+Platform owns the diagnostic engine. Diagnostics is a foreground application
+that references `Platform::Diagnostics()` and does not create board support or
+the engine. Its controller owns mode and test selection. The engine runs
+synchronously on the application task in M3. Progress display calls therefore
+also run on that task. Interactive tests can take up to 60 seconds. Their
+existing cancellation loop reads `InputService` while the synchronous engine
+is active. M3 does not add a worker task, queue, or event bus for this adapter.
 
 ## Lifecycle
 

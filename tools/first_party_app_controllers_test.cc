@@ -65,4 +65,27 @@ int main() {
            SettingsDecision::Home);
     assert(settings.Handle({Button::Down, Action::LongPress}).decision ==
            SettingsDecision::Shutdown);
+
+    DiagnosticsController diagnostics;
+    DiagnosticsResult diagnostic =
+        diagnostics.Handle({Button::Down, Action::Click});
+    assert(diagnostic.decision == DiagnosticsDecision::RenderFast);
+    assert(diagnostic.selected == 1);
+    diagnostic = diagnostics.Handle({Button::Ok, Action::Click});
+    assert(diagnostic.page == DiagnosticsPage::Individual);
+    diagnostic = diagnostics.Handle({Button::Up, Action::Click});
+    assert(diagnostic.selected == DiagnosticsController::kTestCount - 1);
+    diagnostic = diagnostics.Handle({Button::Ok, Action::Click});
+    assert(diagnostic.decision == DiagnosticsDecision::RunSelected);
+    diagnostic = diagnostics.Handle({Button::Ok, Action::LongPress});
+    assert(diagnostic.decision == DiagnosticsDecision::RenderFast);
+    assert(diagnostic.page == DiagnosticsPage::Mode);
+    diagnostic = diagnostics.Handle({Button::Ok, Action::Click});
+    assert(diagnostic.decision == DiagnosticsDecision::RunAll);
+    diagnostics.ShowSummary();
+    diagnostic = diagnostics.Handle({Button::Up, Action::Click});
+    assert(diagnostic.decision == DiagnosticsDecision::Home);
+    assert(DiagnosticsController().Handle(
+               {Button::Down, Action::LongPress}).decision ==
+           DiagnosticsDecision::Shutdown);
 }
