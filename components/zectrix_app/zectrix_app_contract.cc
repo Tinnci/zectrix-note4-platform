@@ -21,8 +21,16 @@ int Priority(CommandKind kind) {
 
 bool ApplicationId::Copy(const char* source, ApplicationId* output) {
     if (source == nullptr || output == nullptr) return false;
-    const std::size_t length = std::strlen(source);
+    std::size_t length = 0;
+    while (length <= kCapacity && source[length] != '\0') ++length;
     if (length == 0 || length > kCapacity) return false;
+    for (std::size_t index = 0; index < length; ++index) {
+        const char value = source[index];
+        const bool valid = (value >= 'a' && value <= 'z') ||
+                           (value >= '0' && value <= '9') || value == '-' ||
+                           value == '_' || value == '.';
+        if (!valid) return false;
+    }
     ApplicationId candidate;
     std::memcpy(candidate.value_.data(), source, length);
     candidate.value_[length] = '\0';

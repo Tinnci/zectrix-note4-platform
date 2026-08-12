@@ -43,6 +43,7 @@ enum class SubmitResult : uint8_t {
     Accepted,
     Superseded,
     Conflict,
+    Rejected,
 };
 
 class CommandArbiter {

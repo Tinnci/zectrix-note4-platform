@@ -18,6 +18,13 @@ An `ApplicationId` is a stable string value. Code must not persist a registry
 index. If M3 persists an application ID, that ID becomes a persistent-data
 contract immediately and requires a rename or migration policy.
 
+The registry is an immutable array view with deterministic order. Each
+descriptor contains an ID, a display name, and a factory. The runtime validates
+empty IDs, invalid IDs, duplicate IDs, missing factories, and a missing
+Launcher before it creates an application. The factory receives Platform and
+the read-only registry explicitly. It must only create an inactive candidate;
+it must not perform application entry or hardware operations.
+
 ## Task and ownership rules
 
 One application task performs lifecycle calls, input dispatch, command
@@ -46,6 +53,11 @@ The runtime performs these operations in order:
 7. Execute at most one render through `DisplayService`.
 
 No callback-time command can destroy the object that is executing the callback.
+
+`ApplicationRuntime` implements this sequence without a FreeRTOS task, queue,
+global singleton, or heap allocation for the registry. Application factories
+return explicit `esp_err_t` results and transfer one candidate pointer to the
+runtime. The runtime owns that pointer immediately.
 
 ## Lifecycle
 

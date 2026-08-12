@@ -12,6 +12,8 @@ int main() {
     mutable_id[0] = 'X';
     assert(std::strcmp(open_clock.target.c_str(), "clock") == 0);
     assert(!AppCommand::Open("", &open_clock));
+    assert(!AppCommand::Open("Clock", &open_clock));
+    assert(!AppCommand::Open("this-application-id-is-far-too-long", &open_clock));
 
     CommandArbiter commands;
     assert(commands.Submit(open_clock) == SubmitResult::Accepted);

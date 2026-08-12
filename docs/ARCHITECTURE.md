@@ -48,6 +48,11 @@ callback returns. Private pages stay inside their application. First exercise
 the draft API with at least three independent applications. SDK and ABI
 stabilization is an M4 decision.
 
+The application registry is an explicit immutable table. The runtime validates
+it before launch and creates one inactive candidate at a time. A factory gets
+Platform and the read-only registry through explicit dependency injection.
+Application code does not use an application-runtime singleton.
+
 ## Update boundary
 
 The partition table is not frozen. Measure A/B OTA, rollback, assets and
