@@ -45,6 +45,7 @@ public:
     esp_err_t ShowDeviceInfo(const zectrix::power::PowerSnapshot& power,
                              const zectrix::system::SystemSnapshot& system);
     esp_err_t ShowAbout();
+    esp_err_t ShowClock(const zectrix::time::DateTime& value);
     esp_err_t ClearDisplay();
 
     ZectrixCanvas& canvas() { return canvas_; }

@@ -77,8 +77,11 @@ esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
                                   const char* const* items, size_t count,
                                   size_t selected, const char* footer,
                                   bool full_refresh) {
+    if (items == nullptr || count == 0 || selected >= count) {
+        return ESP_ERR_INVALID_ARG;
+    }
     DrawFrame(title, footer);
-    constexpr int row_height = 42;
+    const int row_height = std::min(42, 215 / static_cast<int>(count));
     const int start_y = 46;
     for (size_t i = 0; i < count; ++i) {
         const int y = start_y + static_cast<int>(i) * row_height;
@@ -93,6 +96,19 @@ esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
     }
     return full_refresh ? RefreshFull()
                         : RefreshPartial({0, 36, 400, 234});
+}
+
+esp_err_t ZectrixDemoUi::ShowClock(const zectrix::time::DateTime& value) {
+    DrawFrame("CLOCK", "Hold OK Home   Hold DOWN Off");
+    char line[32] = {};
+    std::snprintf(line, sizeof(line), "%04d-%02d-%02d", value.year,
+                  value.month, value.day);
+    canvas_.TextCentered(92, line, 2);
+    std::snprintf(line, sizeof(line), "%02d:%02d:%02d", value.hour,
+                  value.minute, value.second);
+    canvas_.TextCentered(154, line, 3);
+    canvas_.TextCentered(224, "RTC", 1);
+    return RefreshFull();
 }
 
 esp_err_t ZectrixDemoUi::ShowSceneInfo(const char* title, const char* mode,

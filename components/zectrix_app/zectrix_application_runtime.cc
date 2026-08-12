@@ -79,7 +79,8 @@ esp_err_t ApplicationRuntime::SwitchTo(const ApplicationId& id,
     state_ = LifecycleState::Creating;
     Application* raw_candidate = nullptr;
     const esp_err_t create_result =
-        descriptor->factory(*platform_, registry_, &raw_candidate);
+        descriptor->factory(*platform_, registry_, descriptor->factory_context,
+                            &raw_candidate);
     std::unique_ptr<Application> candidate(raw_candidate);
     if (create_result != ESP_OK || candidate == nullptr) {
         const esp_err_t failure =
@@ -157,6 +158,22 @@ esp_err_t ApplicationRuntime::Step(const input::InputEvent* event) {
             [this, event] { return foreground_->HandleEvent(*event, context_); });
         if (result != ESP_OK) last_error_ = result;
     }
+    const esp_err_t command_result = ProcessCommand();
+    if (command_result != ESP_OK) result = command_result;
+    if (state_ == LifecycleState::Active) {
+        const esp_err_t render_result = ProcessRender();
+        if (render_result != ESP_OK) result = render_result;
+    }
+    return result;
+}
+
+esp_err_t ApplicationRuntime::Idle() {
+    if (state_ != LifecycleState::Active || !foreground_) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    esp_err_t result = InvokeCallback(
+        [this] { return foreground_->HandleIdle(context_); });
+    if (result != ESP_OK) last_error_ = result;
     const esp_err_t command_result = ProcessCommand();
     if (command_result != ESP_OK) result = command_result;
     if (state_ == LifecycleState::Active) {

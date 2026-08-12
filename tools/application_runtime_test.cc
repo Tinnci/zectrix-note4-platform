@@ -24,6 +24,7 @@ struct Behavior {
     bool event_shutdown = false;
     bool event_render = false;
     bool enter_two_renders = false;
+    bool idle_home = false;
 };
 
 Behavior launcher_behavior;
@@ -83,6 +84,15 @@ public:
         return behavior_->event_result;
     }
 
+    esp_err_t HandleIdle(ApplicationContext& context) override {
+        events.emplace_back("idle:" + name_);
+        if (behavior_->idle_home) {
+            assert(context.RequestCommand(AppCommand::Home()) ==
+                   SubmitResult::Accepted);
+        }
+        return ESP_OK;
+    }
+
     esp_err_t Render(const RenderRequest& request) override {
         events.emplace_back("render:" + name_);
         last_render = request;
@@ -110,14 +120,26 @@ esp_err_t Make(const char* name, Behavior& behavior, Application** output) {
 }
 
 esp_err_t MakeLauncher(zectrix::Platform&, const ApplicationRegistry&,
+                       ApplicationFactoryContext*,
                        Application** output) {
     return Make("launcher", launcher_behavior, output);
 }
+
+class FactoryContext final : public ApplicationFactoryContext {};
+FactoryContext factory_context_marker;
+esp_err_t MakeWithContext(zectrix::Platform&, const ApplicationRegistry&,
+                          ApplicationFactoryContext* context,
+                          Application** output) {
+    assert(context == &factory_context_marker);
+    return Make("launcher", launcher_behavior, output);
+}
 esp_err_t MakeClock(zectrix::Platform&, const ApplicationRegistry&,
+                    ApplicationFactoryContext*,
                     Application** output) {
     return Make("clock", clock_behavior, output);
 }
 esp_err_t MakeBroken(zectrix::Platform&, const ApplicationRegistry&,
+                     ApplicationFactoryContext*,
                      Application** output) {
     return Make("broken", broken_behavior, output);
 }
@@ -228,6 +250,26 @@ int main() {
             "factory:launcher", "enter:launcher", "event-begin:launcher",
             "event-end:launcher", "factory:clock", "exit:launcher",
             "destroy:launcher", "enter:clock"}));
+    }
+
+
+    Reset();
+    {
+        Delegate delegate;
+        const ApplicationDescriptor descriptors[] = {
+            {"launcher", "Launcher", MakeWithContext,
+             &factory_context_marker},
+        };
+        ApplicationRuntime runtime(descriptors, 1, "launcher", platform,
+                                   delegate);
+        assert(runtime.Start() == ESP_OK);
+        launcher_behavior.idle_home = true;
+        assert(runtime.Idle() == ESP_OK);
+        assert(IsForeground(runtime, "launcher"));
+        assert((events == std::vector<std::string>{
+            "factory:launcher", "enter:launcher", "idle:launcher",
+            "factory:launcher", "exit:launcher", "destroy:launcher",
+            "enter:launcher"}));
     }
 
     Reset();

@@ -19,10 +19,14 @@ index. If M3 persists an application ID, that ID becomes a persistent-data
 contract immediately and requires a rename or migration policy.
 
 The registry is an immutable array view with deterministic order. Each
-descriptor contains an ID, a display name, and a factory. The runtime validates
+descriptor contains an ID, a display name, a factory, and an optional typed
+factory context. The runtime validates
 empty IDs, invalid IDs, duplicate IDs, missing factories, and a missing
 Launcher before it creates an application. The factory receives Platform and
-the read-only registry explicitly. It must only create an inactive candidate;
+the read-only registry explicitly. The context implements only the generic
+`ApplicationFactoryContext` marker interface. The runtime forwards it without
+inspecting or owning it. The composition root must keep the context valid for
+the runtime lifetime. A factory must only create an inactive candidate;
 it must not perform application entry or hardware operations.
 
 ## Task and ownership rules
@@ -58,6 +62,22 @@ No callback-time command can destroy the object that is executing the callback.
 global singleton, or heap allocation for the registry. Application factories
 return explicit `esp_err_t` results and transfer one candidate pointer to the
 runtime. The runtime owns that pointer immediately.
+
+`Idle()` is an explicit runtime input. It calls the foreground idle callback.
+The runtime processes a command from that callback only after the callback
+returns.
+
+During M3 migration, `main` can use a private transition adapter for an
+application that is not migrated. This adapter is not an `AppCommand`. The
+Launcher records a value in the adapter and returns from its callback. The
+composition root then ends the current lifecycle before it runs the old flow.
+It creates a new Launcher lifecycle after that flow returns. Remove an adapter
+entry when its application migrates.
+
+The Launcher-to-Clock hardware regression passed on 2026-08-12. The test
+covered Launcher navigation, Clock entry and return, the old automatic test
+flow, and return from the old flow. The device did not show an unexpected
+reset, panic, or display failure during this test.
 
 ## Lifecycle
 

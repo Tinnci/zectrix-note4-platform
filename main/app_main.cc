@@ -5,11 +5,14 @@
 #include <cstdio>
 #include <cstring>
 #include <iterator>
+#include <new>
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "zectrix_demo_ui.h"
+#include "zectrix_application_runtime.h"
+#include "zectrix_first_party_app_controllers.h"
 #include "zectrix_display_service.h"
 #include "zectrix_input_service.h"
 #include "zectrix_power_service.h"
@@ -64,7 +67,8 @@ uint16_t ReadLe16(const uint8_t* data) {
            static_cast<uint16_t>(data[1] << 8);
 }
 
-class DemoApp {
+class DemoApp final : public zectrix::app::RuntimeDelegate,
+                      public zectrix::app::ApplicationFactoryContext {
 public:
     DemoApp() : ui_(nullptr) {
         test_states_.fill(ZectrixTestState::kWait);
@@ -89,15 +93,175 @@ public:
         ESP_ERROR_CHECK(ui_.ShowSplash());
         Wait(pdMS_TO_TICKS(1500), false);
 
-        while (true) {
-            const ControlResult result = RunHome();
-            if (result == ControlResult::kShutdown) {
-                Shutdown();
-            }
-        }
+        RunApplicationShell();
     }
 
 private:
+    enum class LegacyAction : uint8_t {
+        kNone,
+        kAutoShowcase,
+        kDisplayGallery,
+        kHardwareTests,
+        kDeviceInfo,
+        kAbout,
+    };
+
+    class LauncherApplication final : public zectrix::app::Application {
+    public:
+        explicit LauncherApplication(DemoApp& owner) : owner_(&owner) {}
+
+        esp_err_t Enter(zectrix::app::ApplicationContext& context) override {
+            return context.RequestRender({0, 0, 400, 300},
+                                         zectrix::app::RenderIntent::Quality)
+                       ? ESP_OK : ESP_FAIL;
+        }
+        esp_err_t HandleEvent(const zectrix::input::InputEvent& event,
+                              zectrix::app::ApplicationContext& context) override {
+            const zectrix::app::LauncherResult result = controller_.Handle(event);
+            if (result.decision == zectrix::app::LauncherDecision::RenderFast) {
+                context.RequestRender({0, 36, 400, 234},
+                                      zectrix::app::RenderIntent::Fast);
+            } else if (result.decision ==
+                       zectrix::app::LauncherDecision::OpenClock) {
+                zectrix::app::AppCommand open;
+                if (!zectrix::app::AppCommand::Open("clock", &open)) {
+                    return ESP_ERR_INVALID_STATE;
+                }
+                context.RequestCommand(open);
+            } else if (result.decision ==
+                       zectrix::app::LauncherDecision::RunLegacy) {
+                owner_->legacy_action_ =
+                    static_cast<LegacyAction>(result.selected);
+            } else if (result.decision ==
+                       zectrix::app::LauncherDecision::Shutdown) {
+                context.RequestCommand(zectrix::app::AppCommand::Shutdown());
+            }
+            return ESP_OK;
+        }
+        esp_err_t HandleIdle(zectrix::app::ApplicationContext&) override {
+            owner_->legacy_action_ = LegacyAction::kAutoShowcase;
+            return ESP_OK;
+        }
+        esp_err_t Render(const zectrix::app::RenderRequest& request) override {
+            static constexpr const char* kItems[] = {
+                "CLOCK", "AUTO SHOWCASE", "DISPLAY GALLERY",
+                "HARDWARE TESTS", "DEVICE INFO", "ABOUT & LICENSE"};
+            return owner_->ui_.ShowMenu(
+                "ZECTRIX | LAUNCHER", kItems, std::size(kItems),
+                controller_.selected(),
+                "UP/DOWN Move  OK Select  Hold DOWN Off",
+                request.intent == zectrix::app::RenderIntent::Quality);
+        }
+        esp_err_t Exit() override { return ESP_OK; }
+
+    private:
+        DemoApp* owner_;
+        zectrix::app::LauncherController controller_;
+    };
+
+    class ClockApplication final : public zectrix::app::Application {
+    public:
+        explicit ClockApplication(DemoApp& owner) : owner_(&owner) {}
+        esp_err_t Enter(zectrix::app::ApplicationContext& context) override {
+            return context.RequestRender({0, 0, 400, 300},
+                                         zectrix::app::RenderIntent::Quality)
+                       ? ESP_OK : ESP_FAIL;
+        }
+        esp_err_t HandleEvent(const zectrix::input::InputEvent& event,
+                              zectrix::app::ApplicationContext& context) override {
+            const zectrix::app::ClockDecision decision =
+                zectrix::app::HandleClockInput(event);
+            if (decision == zectrix::app::ClockDecision::Shutdown) {
+                context.RequestCommand(zectrix::app::AppCommand::Shutdown());
+            } else if (decision == zectrix::app::ClockDecision::Home) {
+                context.RequestCommand(zectrix::app::AppCommand::Home());
+            }
+            return ESP_OK;
+        }
+        esp_err_t Render(const zectrix::app::RenderRequest&) override {
+            zectrix::time::DateTime value;
+            const esp_err_t result = owner_->time_->ReadRtc(&value);
+            return result == ESP_OK ? owner_->ui_.ShowClock(value) : result;
+        }
+        esp_err_t Exit() override { return ESP_OK; }
+
+    private:
+        DemoApp* owner_;
+    };
+
+    static esp_err_t MakeLauncher(
+        zectrix::Platform&, const zectrix::app::ApplicationRegistry&,
+        zectrix::app::ApplicationFactoryContext* context,
+        zectrix::app::Application** output) {
+        if (context == nullptr || output == nullptr) return ESP_ERR_INVALID_ARG;
+        *output = new (std::nothrow) LauncherApplication(
+            *static_cast<DemoApp*>(context));
+        return *output == nullptr ? ESP_ERR_NO_MEM : ESP_OK;
+    }
+
+    static esp_err_t MakeClock(
+        zectrix::Platform&, const zectrix::app::ApplicationRegistry&,
+        zectrix::app::ApplicationFactoryContext* context,
+        zectrix::app::Application** output) {
+        if (context == nullptr || output == nullptr) return ESP_ERR_INVALID_ARG;
+        *output = new (std::nothrow) ClockApplication(
+            *static_cast<DemoApp*>(context));
+        return *output == nullptr ? ESP_ERR_NO_MEM : ESP_OK;
+    }
+
+    void RunApplicationShell() {
+        const zectrix::app::ApplicationDescriptor descriptors[] = {
+            {"launcher", "Launcher", MakeLauncher, this},
+            {"clock", "Clock", MakeClock, this},
+        };
+        while (true) {
+            legacy_action_ = LegacyAction::kNone;
+            {
+                zectrix::app::ApplicationRuntime runtime(
+                    descriptors, std::size(descriptors), "launcher", platform_,
+                    *this);
+                if (runtime.Start() != ESP_OK) return;
+                if (runtime.Step() != ESP_OK) return;
+                while (legacy_action_ == LegacyAction::kNone) {
+                    zectrix::input::InputEvent event;
+                    const bool received = input_->Wait(&event, kHomeIdleTimeout);
+                    const esp_err_t result = received ? runtime.Step(&event)
+                                                      : runtime.Idle();
+                    if (result != ESP_OK) {
+                        ESP_LOGE(kTag, "application step failed: %s",
+                                 esp_err_to_name(result));
+                    }
+                    if (runtime.state() == zectrix::app::LifecycleState::Stopped ||
+                        runtime.state() == zectrix::app::LifecycleState::Failsafe) {
+                        return;
+                    }
+                }
+            }
+            RunLegacyAction(legacy_action_);
+        }
+    }
+
+    void RunLegacyAction(LegacyAction action) {
+        ControlResult result = ControlResult::kBack;
+        if (action == LegacyAction::kAutoShowcase) result = RunAutoShowcase();
+        else if (action == LegacyAction::kDisplayGallery) result = RunDisplayGallery();
+        else if (action == LegacyAction::kHardwareTests) result = RunHardwareTests();
+        else if (action == LegacyAction::kDeviceInfo) result = RunDeviceInfo();
+        else if (action == LegacyAction::kAbout) {
+            ESP_ERROR_CHECK(ui_.ShowAbout());
+            result = Wait(portMAX_DELAY, false);
+        }
+        if (result == ControlResult::kShutdown) PowerOff();
+    }
+
+    esp_err_t Shutdown() override {
+        PowerOff();
+    }
+
+    void EnterFailsafe(esp_err_t reason) override {
+        ESP_LOGE(kTag, "application runtime failsafe: %s", esp_err_to_name(reason));
+    }
+
     ControlResult Wait(TickType_t duration, bool any_click_returns) {
         const TickType_t start = xTaskGetTickCount();
         while (xTaskGetTickCount() - start < duration) {
@@ -154,47 +318,6 @@ private:
                                              footer, false));
             } else if (event.button == zectrix::input::Button::Ok) {
                 return ControlResult::kSelected;
-            }
-        }
-    }
-
-    ControlResult RunHome() {
-        static constexpr const char* kItems[] = {
-            "AUTO SHOWCASE", "DISPLAY GALLERY", "HARDWARE TESTS",
-            "DEVICE INFO", "ABOUT & LICENSE"};
-        size_t selected = 0;
-        while (true) {
-            const ControlResult menu = RunMenu(
-                "ZECTRIX | HARDWARE SHOWCASE", kItems, std::size(kItems),
-                "UP/DOWN Move  OK Select  Hold DOWN Off", &selected,
-                kHomeIdleTimeout);
-            if (menu == ControlResult::kShutdown) {
-                return menu;
-            }
-            if (menu == ControlResult::kBack) {
-                continue;
-            }
-            if (menu == ControlResult::kContinue) {
-                selected = 0;
-            }
-            // A timeout and selecting AUTO SHOWCASE intentionally share the
-            // same first action.
-            if (selected == 0) {
-                const ControlResult result = RunAutoShowcase();
-                if (result == ControlResult::kShutdown) return result;
-            } else if (selected == 1) {
-                const ControlResult result = RunDisplayGallery();
-                if (result == ControlResult::kShutdown) return result;
-            } else if (selected == 2) {
-                const ControlResult result = RunHardwareTests();
-                if (result == ControlResult::kShutdown) return result;
-            } else if (selected == 3) {
-                const ControlResult result = RunDeviceInfo();
-                if (result == ControlResult::kShutdown) return result;
-            } else if (selected == 4) {
-                ESP_ERROR_CHECK(ui_.ShowAbout());
-                const ControlResult result = Wait(portMAX_DELAY, false);
-                if (result == ControlResult::kShutdown) return result;
             }
         }
     }
@@ -482,7 +605,7 @@ private:
         return Wait(portMAX_DELAY, false);
     }
 
-    [[noreturn]] void Shutdown() {
+    [[noreturn]] void PowerOff() {
         ESP_LOGI(kTag, "clearing display before shutdown");
         const esp_err_t clear = ui_.ClearDisplay();
         if (clear != ESP_OK) {
@@ -503,6 +626,7 @@ private:
     ZectrixSelfTest* tests_ = nullptr;
     std::array<ZectrixTestState,
                static_cast<size_t>(ZectrixTestId::kCount)> test_states_;
+    LegacyAction legacy_action_ = LegacyAction::kNone;
 };
 
 }  // namespace

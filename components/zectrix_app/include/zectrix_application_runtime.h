@@ -14,6 +14,10 @@ namespace zectrix::app {
 
 class ApplicationContext;
 class ApplicationRegistry;
+class ApplicationFactoryContext {
+public:
+    virtual ~ApplicationFactoryContext() = default;
+};
 
 class Application {
 public:
@@ -21,18 +25,21 @@ public:
     virtual esp_err_t Enter(ApplicationContext& context) = 0;
     virtual esp_err_t HandleEvent(const input::InputEvent& event,
                                   ApplicationContext& context) = 0;
+    virtual esp_err_t HandleIdle(ApplicationContext&) { return ESP_OK; }
     virtual esp_err_t Render(const RenderRequest& request) = 0;
     virtual esp_err_t Exit() = 0;
 };
 
 using ApplicationFactory = esp_err_t (*)(Platform& platform,
                                          const ApplicationRegistry& registry,
+                                         ApplicationFactoryContext* factory_context,
                                          Application** output);
 
 struct ApplicationDescriptor {
     const char* id = nullptr;
     const char* display_name = nullptr;
     ApplicationFactory factory = nullptr;
+    ApplicationFactoryContext* factory_context = nullptr;
 };
 
 class ApplicationRegistry {
@@ -95,6 +102,7 @@ public:
 
     esp_err_t Start();
     esp_err_t Step(const input::InputEvent* event = nullptr);
+    esp_err_t Idle();
     esp_err_t Stop();
 
     LifecycleState state() const { return state_; }
