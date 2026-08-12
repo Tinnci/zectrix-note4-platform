@@ -40,6 +40,13 @@ ClockDecision HandleClockInput(const input::InputEvent& event) {
     return ClockDecision::None;
 }
 
+bool ClockDisplayChanged(const ClockMinute& displayed,
+                         const ClockMinute& current) {
+    return displayed.year != current.year || displayed.month != current.month ||
+           displayed.day != current.day || displayed.hour != current.hour ||
+           displayed.minute != current.minute;
+}
+
 SettingsResult SettingsController::Handle(const input::InputEvent& event) {
     if (event.button == input::Button::Down &&
         event.action == input::Action::LongPress) {

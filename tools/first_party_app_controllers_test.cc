@@ -45,6 +45,12 @@ int main() {
            ClockDecision::None);
     assert(HandleClockInput({Button::Up, Action::LongPress}) ==
            ClockDecision::None);
+    assert(!ClockDisplayChanged({2026, 8, 12, 10, 30},
+                                {2026, 8, 12, 10, 30}));
+    assert(ClockDisplayChanged({2026, 8, 12, 10, 30},
+                               {2026, 8, 12, 10, 31}));
+    assert(ClockDisplayChanged({2026, 8, 12, 23, 59},
+                               {2026, 8, 13, 0, 0}));
 
     bool normalized = false;
     assert(NormalizeAutoShowcaseSetting(0, &normalized));

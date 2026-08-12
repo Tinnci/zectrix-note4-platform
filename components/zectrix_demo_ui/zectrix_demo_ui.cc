@@ -99,7 +99,8 @@ esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
                         : RefreshPartial({0, 36, 400, 234});
 }
 
-esp_err_t ZectrixDemoUi::ShowClock(const zectrix::time::DateTime& value) {
+esp_err_t ZectrixDemoUi::ShowClock(const zectrix::time::DateTime& value,
+                                   bool full_refresh) {
     DrawFrame("CLOCK", "Hold OK Home   Hold DOWN Off");
     char line[32] = {};
     std::snprintf(line, sizeof(line), "%04d-%02d-%02d", value.year,
@@ -109,7 +110,8 @@ esp_err_t ZectrixDemoUi::ShowClock(const zectrix::time::DateTime& value) {
                   value.minute, value.second);
     canvas_.TextCentered(154, line, 3);
     canvas_.TextCentered(224, "RTC", 1);
-    return RefreshFull();
+    return full_refresh ? RefreshFull()
+                        : RefreshPartial({0, 36, 400, 234});
 }
 
 esp_err_t ZectrixDemoUi::ShowSettings(bool auto_showcase, const char* status,

@@ -88,6 +88,7 @@ public:
         storage_ = &platform_.Storage();
         system_ = &platform_.System();
         tests_ = &platform_.Diagnostics();
+        LogHeap("M2-equivalent platform");
         ui_.SetDisplay(display_);
         ui_.SetTime(time_);
         ESP_ERROR_CHECK(ui_.ShowSplash());
@@ -204,6 +205,8 @@ private:
     public:
         explicit ClockApplication(DemoApp& owner) : owner_(&owner) {}
         esp_err_t Enter(zectrix::app::ApplicationContext& context) override {
+            const esp_err_t read = owner_->time_->ReadRtc(&value_);
+            if (read != ESP_OK) return read;
             return context.RequestRender({0, 0, 400, 300},
                                          zectrix::app::RenderIntent::Quality)
                        ? ESP_OK : ESP_FAIL;
@@ -219,15 +222,34 @@ private:
             }
             return ESP_OK;
         }
-        esp_err_t Render(const zectrix::app::RenderRequest&) override {
-            zectrix::time::DateTime value;
-            const esp_err_t result = owner_->time_->ReadRtc(&value);
-            return result == ESP_OK ? owner_->ui_.ShowClock(value) : result;
+        esp_err_t HandleIdle(zectrix::app::ApplicationContext& context) override {
+            zectrix::time::DateTime current;
+            const esp_err_t read = owner_->time_->ReadRtc(&current);
+            if (read != ESP_OK) return read;
+            const zectrix::app::ClockMinute displayed{
+                value_.year, value_.month, value_.day,
+                value_.hour, value_.minute};
+            const zectrix::app::ClockMinute next{
+                current.year, current.month, current.day,
+                current.hour, current.minute};
+            const bool changed =
+                zectrix::app::ClockDisplayChanged(displayed, next);
+            value_ = current;
+            if (changed) {
+                context.RequestRender({0, 36, 400, 234},
+                                      zectrix::app::RenderIntent::Fast);
+            }
+            return ESP_OK;
+        }
+        esp_err_t Render(const zectrix::app::RenderRequest& request) override {
+            return owner_->ui_.ShowClock(
+                value_, request.intent == zectrix::app::RenderIntent::Quality);
         }
         esp_err_t Exit() override { return ESP_OK; }
 
     private:
         DemoApp* owner_;
+        zectrix::time::DateTime value_{};
     };
 
     class SettingsApplication final : public zectrix::app::Application {
@@ -484,6 +506,10 @@ private:
                     descriptors, std::size(descriptors), "launcher", platform_,
                     *this);
                 if (runtime.Start() != ESP_OK) return;
+                if (!runtime_heap_logged_) {
+                    LogHeap("M3 runtime active");
+                    runtime_heap_logged_ = true;
+                }
                 if (runtime.Step() != ESP_OK) return;
                 while (legacy_action_ == LegacyAction::kNone) {
                     zectrix::input::InputEvent event;
@@ -522,6 +548,22 @@ private:
 
     void EnterFailsafe(esp_err_t reason) override {
         ESP_LOGE(kTag, "application runtime failsafe: %s", esp_err_to_name(reason));
+    }
+
+    void LogHeap(const char* phase) {
+        zectrix::system::SystemSnapshot snapshot;
+        const esp_err_t read = system_->ReadSnapshot(&snapshot);
+        if (read != ESP_OK) {
+            ESP_LOGW(kTag, "heap snapshot failed: %s", esp_err_to_name(read));
+            return;
+        }
+        ESP_LOGI(kTag, "heap %s: free=%lu min=%lu largest=%lu", phase,
+                 static_cast<unsigned long>(
+                     snapshot.diagnostics.free_internal_heap_bytes),
+                 static_cast<unsigned long>(
+                     snapshot.diagnostics.minimum_free_internal_heap_bytes),
+                 static_cast<unsigned long>(
+                     snapshot.diagnostics.largest_internal_heap_block_bytes));
     }
 
     ControlResult Wait(TickType_t duration, bool any_click_returns) {
@@ -803,6 +845,7 @@ private:
     std::array<ZectrixTestState,
                static_cast<size_t>(ZectrixTestId::kCount)> test_states_;
     LegacyAction legacy_action_ = LegacyAction::kNone;
+    bool runtime_heap_logged_ = false;
 };
 
 }  // namespace

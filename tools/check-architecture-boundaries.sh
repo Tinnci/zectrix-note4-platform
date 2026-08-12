@@ -30,6 +30,13 @@ check_root() {
     return "$found"
 }
 
+check_application_headers() {
+    local scan_root="$1"
+    rg -n --glob '*.{h,hh,hpp}' \
+        '#include[[:space:]]*[<"]freertos/|\b(TaskHandle_t|QueueHandle_t|SemaphoreHandle_t)\b' \
+        "$scan_root"
+}
+
 is_infrastructure_component() {
     case "$1" in
         zectrix_board|zectrix_display|zectrix_epd|zectrix_input|zectrix_platform|\
@@ -57,7 +64,12 @@ run_self_test() {
         '#include "zectrix_board.h"' \
         'ZectrixBoard second_board;' \
         'const char* rtc = "PCF8563";' > "$temp_dir/bad/app.cc"
-    if ! check_root "$temp_dir/good" || check_root "$temp_dir/bad"; then
+    printf '%s\n' \
+        '#include "freertos/task.h"' \
+        'TaskHandle_t product_architecture;' > "$temp_dir/bad/app.h"
+    if ! check_root "$temp_dir/good" || check_root "$temp_dir/bad" ||
+        check_application_headers "$temp_dir/good" ||
+        ! check_application_headers "$temp_dir/bad"; then
         echo 'FAIL: architecture boundary checker self-test.' >&2
         return 1
     fi
@@ -95,6 +107,7 @@ for relative_root in "${!scan_roots[@]}"; do
         found_root=1
         echo "Checking application boundary: $relative_root"
         check_root "$scan_root" || status=1
+        if check_application_headers "$scan_root"; then status=1; fi
     fi
 done
 if [[ "$found_root" == 0 ]]; then echo 'No application root exists.'; fi

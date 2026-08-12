@@ -37,6 +37,17 @@ enum class ClockDecision : uint8_t { None, Home, Shutdown };
 
 ClockDecision HandleClockInput(const input::InputEvent& event);
 
+struct ClockMinute {
+    int year = 0;
+    int month = 0;
+    int day = 0;
+    int hour = 0;
+    int minute = 0;
+};
+
+bool ClockDisplayChanged(const ClockMinute& displayed,
+                         const ClockMinute& current);
+
 enum class SettingsDecision : uint8_t {
     None,
     RenderFast,

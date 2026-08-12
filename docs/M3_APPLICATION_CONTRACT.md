@@ -115,6 +115,18 @@ also run on that task. Interactive tests can take up to 60 seconds. Their
 existing cancellation loop reads `InputService` while the synchronous engine
 is active. M3 does not add a worker task, queue, or event bus for this adapter.
 
+## Clock and power behavior
+
+Clock reads RTC state on entry. The application shell supplies an idle input
+every 15 seconds. Clock reads RTC on that input and requests one `Fast` render
+only when the displayed minute or date changes. The first draw is `Quality`.
+`DisplayService` can promote subsequent partial draws to a full refresh.
+
+M3 does not add light-sleep suspend hooks. Qualified shutdown ends the current
+application lifecycle, clears the display, preserves the established rail
+timing, and enters deep sleep through `PowerService`. Wake starts a fresh boot
+and a fresh application lifecycle. This is the M3 suspend/resume boundary.
+
 ## Lifecycle
 
 The normal lifecycle is:

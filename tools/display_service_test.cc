@@ -17,6 +17,7 @@ struct zectrix_epd_t {
 
 static zectrix_epd_t driver;
 static bool fail_service_allocation = false;
+static bool fail_next_partial = false;
 static int delete_count = 0;
 
 void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
@@ -61,6 +62,10 @@ esp_err_t zectrix_epd_refresh_partial_1bpp(zectrix_epd_handle_t handle,
                                            const zectrix_epd_rect_t*,
                                            const std::uint8_t*, std::size_t) {
     ++handle->partial_count;
+    if (fail_next_partial) {
+        fail_next_partial = false;
+        return ESP_FAIL;
+    }
     return ESP_OK;
 }
 esp_err_t zectrix_epd_refresh_full_4bpp(zectrix_epd_handle_t handle,
@@ -110,6 +115,20 @@ int main() {
     assert(service->Present4Bpp(DisplayIntent::Quality, gray_frame.data(),
                                 gray_frame.size()) == ESP_OK);
     assert(!service->CanUsePartial());
+    assert(service->Present1Bpp(DisplayIntent::Auto,
+                                frame.data(), frame.size(),
+                                {0, 0, 8, 1}, pixel.data(), 1) == ESP_OK);
+    fail_next_partial = true;
+    assert(service->Present1Bpp(DisplayIntent::Auto,
+                                frame.data(), frame.size(),
+                                {0, 0, 8, 1}, pixel.data(), 1) == ESP_FAIL);
+    assert(!service->CanUsePartial());
+    const int full_before_recovery = driver.full_1bpp_count;
+    assert(service->Present1Bpp(DisplayIntent::Auto,
+                                frame.data(), frame.size(),
+                                {0, 0, 8, 1}, pixel.data(), 1) == ESP_OK);
+    assert(driver.full_1bpp_count == full_before_recovery + 1);
+    assert(service->CanUsePartial());
     delete service;
     assert(delete_count == 2);
 }
