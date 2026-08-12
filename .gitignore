@@ -4,6 +4,9 @@
 /sdkconfig
 /sdkconfig.old
 /managed_components/
+/android-companion/.gradle/
+/android-companion/.kotlin/
+/android-companion/**/build/
 !dependencies.lock
 !main/assets/*.bin
 .DS_Store
