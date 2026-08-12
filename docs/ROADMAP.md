@@ -46,6 +46,8 @@ Exit: at least three applications use only the draft public API.
 
 Goal: freeze a source-stable SDK v1 for statically linked applications.
 
+Status: Complete on qualified firmware commit `91043ea`.
+
 - Keep ESP-IDF and FreeRTOS below the application source contract.
 - Add API compatibility tests and semantic versioning.
 - Define ownership, lifecycle, execution, error and deprecation policy.

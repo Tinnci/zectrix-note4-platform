@@ -1,6 +1,6 @@
 # M4 SDK v1 exit gate
 
-Status: Implementation candidate. Hardware qualification is required.
+Status: PASS on firmware commit `91043ea`.
 
 M4 closes only when all checks in this document pass on one pushed commit.
 Closure freezes the SDK v1 source contract. It does not promise a binary ABI,
@@ -49,3 +49,27 @@ Flash the clean-build candidate and verify all written hashes. Then verify:
 
 The device must show no panic, watchdog, unexpected reset, EPD BUSY timeout,
 or new functional regression.
+
+## Qualification record
+
+The strict host suite, SDK checker and self-test, architecture checker and
+self-test, and ESP-IDF v5.5.2 fullclean build passed on 2026-08-12. The
+application image was `0xf9dd0` bytes. The smallest application partition had
+67 percent free.
+
+The clean commit image reported `v1.0.0-34-g91043ea`. It was written to the
+qualified ESP32-S3 at `/dev/ttyACM1`. The bootloader, partition table, and
+application writes passed the esptool hash check. Boot completed with no panic,
+watchdog, or unexpected reset. Board, RTC, NFC, PSRAM, and the application
+runtime initialized.
+
+The same-boot internal-heap checkpoints were:
+
+| Checkpoint | Free bytes | Minimum free bytes | Largest block bytes |
+| --- | ---: | ---: | ---: |
+| M2-equivalent platform | 244827 | 244827 | 163840 |
+| SDK v1 runtime active | 244803 | 244803 | 163840 |
+
+The runtime delta was 24 bytes at this checkpoint. The largest internal block
+did not change. The user confirmed that all functional hardware tests passed
+after the firmware update.
