@@ -72,6 +72,24 @@ accepts only the exact next offset. The normative examples are in
 - A repeated idempotent command returns the stored result.
 - A non-idempotent command with an unknown outcome is not retried silently.
 
+### Sync persistence format 1
+
+The first engine tracks at most eight durable keys. Each pending value is at
+most 256 bytes. It retains 16 command results with at most 32 response bytes
+for duplicate suppression. These are sync-state limits, not the larger wire
+frame limits.
+
+The persistent record starts with `ZSYN`, format version 1, a 16-byte header,
+generation and body length. The body contains bounded outbox, bidirectional
+cursor and command-result records. An IEEE CRC-32 closes the record. Loading
+rejects an unknown format, duplicate key or request ID, zero identifier,
+invalid record length, oversized value, nonzero reserved field or CRC failure.
+
+An enqueue, ACK, receive-cursor commit or command result is successful only
+after `SyncStore::Save` succeeds. An unsuccessful save restores the prior
+in-memory state. A corrupt record produces a diagnostic recovery result and an
+empty controlled resynchronization state. It is never partially applied.
+
 ## Resource gateway
 
 The first resource capability is `public_test_document_v1`. The phone owns the

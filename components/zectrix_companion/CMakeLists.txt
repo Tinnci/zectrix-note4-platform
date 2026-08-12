@@ -1,5 +1,7 @@
 idf_component_register(
-    SRCS "zectrix_companion_protocol.cc"
+    SRCS
+        "zectrix_companion_protocol.cc"
+        "zectrix_sync_engine.cc"
     INCLUDE_DIRS "include"
 )
 
