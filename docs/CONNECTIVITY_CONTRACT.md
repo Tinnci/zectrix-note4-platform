@@ -12,6 +12,19 @@ lifecycle. `PowerService` remains the owner of product power transitions.
 An application can request a product operation. It cannot select a GATT
 characteristic, connection handle, Wi-Fi mode, task, queue or socket.
 
+The first semantic boundary is internal and draft. `ResourceRequest` describes
+a capability, expected bounded size, deadline and durability. Policy consumes
+phone presence, user mode, product power state, external power, battery,
+credential availability and bounded retry delays. It returns one of
+`PhoneProxy`, `DirectWifi` or `Defer` with a stable reason. This does not add or
+change an SDK 1.0 header.
+
+Automatic policy prefers the connected phone for responses up to 2048 bytes.
+It can select Wi-Fi for larger data, urgent work, phone absence or phone
+backoff. Wi-Fi requires stored credentials and either external power or at
+least 20 percent battery. Phone-only, Wi-Fi-only and offline user modes are
+strict. A shutdown state always defers new work.
+
 ## Protocol limits
 
 Protocol 1.0 uses these hard limits:

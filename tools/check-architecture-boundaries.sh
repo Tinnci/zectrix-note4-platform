@@ -19,6 +19,10 @@ check_root() {
         'esp_flash_get_size[[:space:]]*\('
         'esp_read_mac[[:space:]]*\('
         'heap_caps_get_[a-zA-Z0-9_]*[[:space:]]*\('
+        '#include[[:space:]]*[<"]host/ble_|#include[[:space:]]*[<"]nimble/'
+        '#include[[:space:]]*[<"]esp_(bt|nimble|wifi|netif)[^">]*[>"]'
+        '\bble_(gap|gatt|hs|sm)_[a-zA-Z0-9_]*[[:space:]]*\('
+        '\besp_(wifi|netif)_[a-zA-Z0-9_]*[[:space:]]*\('
         '(DisplayService|InputService|PowerService|TimeService|StorageService|SystemService)::(Attach|Create)[[:space:]]*\('
         'BoardForSelfTest[[:space:]]*\('
         '#include[[:space:]]*[<"]zectrix_board\.h[>"]'
@@ -39,7 +43,7 @@ check_application_headers() {
 
 is_infrastructure_component() {
     case "$1" in
-        zectrix_board|zectrix_display|zectrix_epd|zectrix_input|zectrix_platform|\
+        zectrix_board|zectrix_companion|zectrix_display|zectrix_epd|zectrix_input|zectrix_platform|\
         zectrix_power|zectrix_self_test|zectrix_storage|zectrix_system|zectrix_time)
             return 0
             ;;
@@ -62,6 +66,9 @@ run_self_test() {
         'void identity() { esp_read_mac(nullptr, 0); }' \
         'void service() { InputService::Attach(board, nullptr); }' \
         '#include "zectrix_board.h"' \
+        '#include "host/ble_gap.h"' \
+        '#include "esp_wifi.h"' \
+        'void radio() { ble_gap_adv_start(0, nullptr, 0, nullptr, nullptr, nullptr); esp_wifi_start(); }' \
         'ZectrixBoard second_board;' \
         'const char* rtc = "PCF8563";' > "$temp_dir/bad/app.cc"
     printf '%s\n' \
