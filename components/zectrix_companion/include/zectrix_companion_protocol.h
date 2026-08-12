@@ -1,0 +1,142 @@
+#pragma once
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+
+namespace zectrix::companion {
+
+constexpr uint16_t kFrameMagic = 0x435a;
+constexpr uint8_t kProtocolMajor = 1;
+constexpr uint8_t kProtocolMinor = 0;
+constexpr std::size_t kFrameHeaderSize = 24;
+constexpr std::size_t kMaximumPayloadSize = 4096;
+constexpr std::size_t kMaximumFrameSize =
+    kFrameHeaderSize + kMaximumPayloadSize;
+constexpr std::size_t kMaximumTlvValueSize = 2048;
+constexpr std::size_t kFragmentHeaderSize = 8;
+constexpr uint16_t kRequiredFieldBit = 0x8000;
+
+enum class MessageClass : uint8_t {
+    kControl = 0,
+    kDurableState = 1,
+    kCommand = 2,
+    kStream = 3,
+};
+
+enum FrameFlag : uint8_t {
+    kAckRequested = 1U << 0,
+    kResponse = 1U << 1,
+    kRetriable = 1U << 2,
+};
+
+enum class ProtocolStatus : uint8_t {
+    kOk = 0,
+    kInvalidArgument,
+    kBufferTooSmall,
+    kBadMagic,
+    kUnsupportedVersion,
+    kInvalidMessageClass,
+    kInvalidFlags,
+    kInvalidReservedField,
+    kOversized,
+    kTruncated,
+    kCrcMismatch,
+    kMalformedTlv,
+    kUnexpectedFragment,
+    kOutOfOrderFragment,
+    kFragmentAccepted,
+    kFrameComplete,
+};
+
+struct FrameHeader {
+    uint8_t major = kProtocolMajor;
+    uint8_t minor = kProtocolMinor;
+    MessageClass message_class = MessageClass::kControl;
+    uint8_t flags = 0;
+    uint16_t message_type = 0;
+    uint32_t request_id = 0;
+    uint32_t sequence = 0;
+};
+
+struct FrameView {
+    FrameHeader header{};
+    const uint8_t* payload = nullptr;
+    std::size_t payload_size = 0;
+};
+
+uint32_t Crc32(const uint8_t* data, std::size_t size,
+               uint32_t previous = 0);
+
+ProtocolStatus EncodeFrame(const FrameHeader& header, const uint8_t* payload,
+                           std::size_t payload_size, uint8_t* output,
+                           std::size_t output_capacity,
+                           std::size_t* output_size);
+
+ProtocolStatus DecodeFrame(const uint8_t* frame, std::size_t frame_size,
+                           uint8_t supported_major,
+                           uint8_t maximum_supported_minor,
+                           FrameView* output);
+
+class TlvWriter {
+public:
+    TlvWriter(uint8_t* output, std::size_t capacity)
+        : output_(output), capacity_(capacity) {}
+
+    ProtocolStatus Add(uint16_t type, const uint8_t* value,
+                       std::size_t value_size);
+    ProtocolStatus AddUInt32(uint16_t type, uint32_t value);
+    std::size_t Size() const { return size_; }
+
+private:
+    uint8_t* output_ = nullptr;
+    std::size_t capacity_ = 0;
+    std::size_t size_ = 0;
+};
+
+struct TlvField {
+    uint16_t type = 0;
+    bool required = false;
+    const uint8_t* value = nullptr;
+    std::size_t value_size = 0;
+};
+
+class TlvReader {
+public:
+    TlvReader(const uint8_t* input, std::size_t size)
+        : input_(input), size_(size) {}
+
+    ProtocolStatus Next(TlvField* field, bool* has_field);
+
+private:
+    const uint8_t* input_ = nullptr;
+    std::size_t size_ = 0;
+    std::size_t offset_ = 0;
+};
+
+std::size_t FragmentCount(std::size_t frame_size,
+                          std::size_t packet_capacity);
+
+ProtocolStatus EncodeFragment(const uint8_t* frame, std::size_t frame_size,
+                              uint16_t frame_id, std::size_t fragment_index,
+                              std::size_t packet_capacity, uint8_t* output,
+                              std::size_t output_capacity,
+                              std::size_t* output_size);
+
+class FragmentReassembler {
+public:
+    ProtocolStatus Accept(const uint8_t* packet, std::size_t packet_size);
+    const uint8_t* Data() const { return buffer_.data(); }
+    std::size_t Size() const { return size_; }
+    uint16_t FrameId() const { return frame_id_; }
+    void Reset();
+
+private:
+    std::array<uint8_t, kMaximumFrameSize> buffer_{};
+    std::size_t size_ = 0;
+    std::size_t expected_size_ = 0;
+    uint16_t frame_id_ = 0;
+    bool active_ = false;
+};
+
+}  // namespace zectrix::companion

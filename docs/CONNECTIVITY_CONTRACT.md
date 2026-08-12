@@ -30,6 +30,27 @@ Every length is checked before allocation, copy or field access. A limit can
 increase only through a negotiated compatible version and measured memory
 evidence.
 
+The frame header is little-endian:
+
+| Offset | Size | Field |
+| ---: | ---: | --- |
+| 0 | 2 | magic `0x435a` (`5a 43` on wire) |
+| 2 | 1 | protocol major |
+| 3 | 1 | protocol minor |
+| 4 | 1 | message class |
+| 5 | 1 | flags |
+| 6 | 2 | message type |
+| 8 | 4 | request ID |
+| 12 | 4 | sequence |
+| 16 | 2 | payload length |
+| 18 | 2 | reserved, zero in version 1 |
+| 20 | 4 | IEEE CRC-32 of bytes 0–19 followed by the payload |
+
+The transport fragment header is eight bytes: magic `0xa7`, fragment version
+1, start/end flags, one zero reserved byte, frame ID and byte offset. A peer
+accepts only the exact next offset. The normative examples are in
+`protocol/golden-vectors.json`.
+
 ## Version rules
 
 - Peers must have the same protocol major version.

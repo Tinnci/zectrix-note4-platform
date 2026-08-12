@@ -1,0 +1,27 @@
+{
+  "format": "zectrix-companion-golden-vectors",
+  "format_version": 1,
+  "protocol_major": 1,
+  "protocol_minor": 0,
+  "byte_order": "little-endian",
+  "vectors": [
+    {
+      "name": "command_with_required_revision_and_optional_text",
+      "header": {
+        "message_class": 2,
+        "flags": 5,
+        "message_type": 258,
+        "request_id": 287454020,
+        "sequence": 1432778632
+      },
+      "payload_hex": "0180040078563412020002006f6b",
+      "crc32": 29077087,
+      "frame_hex": "5a4301000205020144332211887766550e0000005faebb010180040078563412020002006f6b",
+      "fragments_at_packet_capacity_23": [
+        "a70101002a0000005a4301000205020144332211887766",
+        "a70100002a000f00550e0000005faebb01018004007856",
+        "a70102002a001e003412020002006f6b"
+      ]
+    }
+  ]
+}
