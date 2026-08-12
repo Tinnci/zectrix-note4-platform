@@ -4,9 +4,9 @@
 
 int main() {
     using namespace zectrix::app;
-    using zectrix::input::Action;
-    using zectrix::input::Button;
-    using zectrix::input::InputEvent;
+    using Action = zectrix::sdk::InputAction;
+    using zectrix::sdk::Button;
+    using zectrix::sdk::InputEvent;
 
     LauncherController launcher;
     LauncherResult result = launcher.Handle({Button::Ok, Action::Click});

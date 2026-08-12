@@ -4,18 +4,15 @@
 
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
+#include "zectrix/sdk/input.h"
 
 class ZectrixBoard;
 
 namespace zectrix::input {
 
-enum class Button : uint8_t { Up, Down, Ok };
-enum class Action : uint8_t { Click, LongPress };
-
-struct InputEvent {
-    Button button = Button::Ok;
-    Action action = Action::Click;
-};
+using Button = sdk::Button;
+using Action = sdk::InputAction;
+using InputEvent = sdk::InputEvent;
 
 class InputService {
 public:

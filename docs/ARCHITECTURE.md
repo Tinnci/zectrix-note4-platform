@@ -39,19 +39,26 @@ budgets, refresh profiles and ghosting cleanup.
 Applications submit display intent such as `AUTO`, `FAST`, `QUALITY` or
 `FULL_CLEAN`. Applications do not select a waveform.
 
-## Application boundary
+## Application and kernel boundary
 
 The first application model is a static registry. Do not add a dynamic ELF or
 WebAssembly runtime yet. The runtime owns one active foreground application and
 uses owned deferred commands. It processes navigation only after the current
-callback returns. Private pages stay inside their application. First exercise
-the draft API with at least three independent applications. SDK and ABI
-stabilization is an M4 decision.
+callback returns. Private pages stay inside their application.
+
+SDK v1 is the source-stable application-control boundary. It contains no
+ESP-IDF, FreeRTOS, board, driver, or Platform implementation type. It promises
+source compatibility for statically linked C++17 applications. It does not
+promise a binary ABI.
 
 The application registry is an explicit immutable table. The runtime validates
-it before launch and creates one inactive candidate at a time. A factory gets
-Platform and the read-only registry through explicit dependency injection.
-Application code does not use an application-runtime singleton.
+it before launch and creates one inactive candidate at a time. A typed factory
+object creates the candidate and receives the read-only registry. Application
+code does not use an application-runtime singleton.
+
+IDF FreeRTOS is the kernel and scheduler. It is a mechanism layer below the
+Zectrix runtime. Product architecture does not use task topology as its
+dependency graph. See `docs/adr/0003-freertos-runtime-sdk-boundary.md`.
 
 ## Update boundary
 

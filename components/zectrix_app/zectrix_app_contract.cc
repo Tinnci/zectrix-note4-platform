@@ -1,9 +1,10 @@
-#include "zectrix_app_contract.h"
+#include "zectrix/sdk/application.h"
 
 #include <algorithm>
 #include <cstring>
 
-namespace zectrix::app {
+namespace zectrix::sdk {
+inline namespace v1 {
 namespace {
 
 int Priority(CommandKind kind) {
@@ -116,4 +117,5 @@ bool RenderAccumulator::TakeFor(uint32_t current_generation,
     return true;
 }
 
-}  // namespace zectrix::app
+}  // namespace v1
+}  // namespace zectrix::sdk

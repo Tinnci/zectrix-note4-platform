@@ -33,7 +33,7 @@ deep-sleep calls.
 
 Goal: run multiple statically linked applications through one lifecycle.
 
-Status: Active from qualified M2 baseline `e568cf3`.
+Status: Complete on qualified commit `4dc371a`.
 
 - Add application descriptors and a static registry.
 - Use owned deferred commands and foreground-generation render requests.
@@ -42,20 +42,32 @@ Status: Active from qualified M2 baseline `e568cf3`.
 
 Exit: at least three applications use only the draft public API.
 
-## M4 — SDK and update architecture
+## M4 — SDK v1
 
-Goal: freeze SDK v1 and select a safe update layout.
+Goal: freeze a source-stable SDK v1 for statically linked applications.
 
+- Keep ESP-IDF and FreeRTOS below the application source contract.
 - Add API compatibility tests and semantic versioning.
-- Measure maximum firmware, assets and user-data requirements.
-- Select an A/B OTA and rollback design. Record the selection in an
-  architecture decision record.
+- Define ownership, lifecycle, execution, error and deprecation policy.
+- Migrate all M3 applications to the versioned contract.
 
-Exit: SDK v1 and the partition layout have explicit compatibility guarantees.
+Exit: SDK v1 has an explicit source-compatibility guarantee and passes the
+unified software and hardware gate. No binary ABI is promised.
+
+## M5 — Update architecture
+
+Goal: select a safe update and partition layout from measured requirements.
+
+- Measure maximum firmware, assets and user-data requirements.
+- Select an A/B OTA, rollback and recovery design.
+- Record the selection in an architecture decision record.
+
+Exit: the partition layout and update path have explicit compatibility and
+recovery guarantees.
 
 ## Deferred research
 
-The following work is not a prerequisite for M1–M3:
+The following work is not a prerequisite for M1–M4:
 
 - `.zapp` packaging.
 - native ELF loading.

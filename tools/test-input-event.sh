@@ -5,6 +5,7 @@ test_binary=$(mktemp)
 trap 'rm -f "$test_binary"' EXIT
 c++ -std=c++17 -Wall -Wextra -Werror \
   -I"$root_dir/tools/host_include" \
+  -I"$root_dir/components/zectrix_app/include" \
   -I"$root_dir/components/zectrix_input/include" \
   "$root_dir/components/zectrix_input/zectrix_input_service.cc" \
   "$root_dir/tools/input_event_test.cc" -o "$test_binary"

@@ -1,10 +1,10 @@
-#include "zectrix_app_contract.h"
+#include "zectrix/sdk/application.h"
 
 #include <cassert>
 #include <cstring>
 
 int main() {
-    using namespace zectrix::app;
+    using namespace zectrix::sdk;
 
     char mutable_id[] = "clock";
     AppCommand open_clock;

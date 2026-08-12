@@ -1,7 +1,7 @@
 # M3 application contract
 
-Status: Draft. This contract controls M3 implementation. It does not freeze the
-source API or ABI.
+Status: Accepted on commit `4dc371a`. This document records the M3 contract.
+M4 replaced its draft public signatures with SDK v1. See `docs/SDK_V1.md`.
 
 ## Scope
 
@@ -18,16 +18,12 @@ An `ApplicationId` is a stable string value. Code must not persist a registry
 index. If M3 persists an application ID, that ID becomes a persistent-data
 contract immediately and requires a rename or migration policy.
 
-The registry is an immutable array view with deterministic order. Each
-descriptor contains an ID, a display name, a factory, and an optional typed
-factory context. The runtime validates
-empty IDs, invalid IDs, duplicate IDs, missing factories, and a missing
-Launcher before it creates an application. The factory receives Platform and
-the read-only registry explicitly. The context implements only the generic
-`ApplicationFactoryContext` marker interface. The runtime forwards it without
-inspecting or owning it. The composition root must keep the context valid for
-the runtime lifetime. A factory must only create an inactive candidate;
-it must not perform application entry or hardware operations.
+The registry is an immutable array view with deterministic order. M3 used a
+function factory, a Platform parameter, and a typed marker context during
+validation. M4 removed these details from the public contract. SDK v1 uses a
+typed factory object. The composition root owns the factory, and the runtime
+receives only the inactive candidate. A factory must not perform application
+entry or hardware operations.
 
 ## Task and ownership rules
 

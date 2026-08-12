@@ -1,14 +1,12 @@
-#include "zectrix_application_runtime.h"
+#include "zectrix/sdk/application.h"
 
-#include <cstring>
+namespace zectrix::sdk {
+inline namespace v1 {
 
-namespace zectrix::app {
-
-esp_err_t ApplicationRegistry::Validate(
-    const ApplicationId& launcher_id) const {
+Status ApplicationRegistry::Validate(const ApplicationId& launcher_id) const {
     if (descriptors_ == nullptr || descriptor_count_ == 0 ||
         launcher_id.empty()) {
-        return ESP_ERR_INVALID_ARG;
+        return Status::InvalidArgument;
     }
     for (std::size_t index = 0; index < descriptor_count_; ++index) {
         const auto& descriptor = descriptors_[index];
@@ -16,17 +14,17 @@ esp_err_t ApplicationRegistry::Validate(
         if (!ApplicationId::Copy(descriptor.id, &id) ||
             descriptor.display_name == nullptr ||
             descriptor.display_name[0] == '\0' || descriptor.factory == nullptr) {
-            return ESP_ERR_INVALID_ARG;
+            return Status::InvalidArgument;
         }
         for (std::size_t other = 0; other < index; ++other) {
             ApplicationId other_id;
             if (ApplicationId::Copy(descriptors_[other].id, &other_id) &&
                 id == other_id) {
-                return ESP_ERR_INVALID_STATE;
+                return Status::InvalidState;
             }
         }
     }
-    return Find(launcher_id) == nullptr ? ESP_ERR_NOT_FOUND : ESP_OK;
+    return Find(launcher_id) == nullptr ? Status::NotFound : Status::Ok;
 }
 
 const ApplicationDescriptor* ApplicationRegistry::Find(
@@ -50,9 +48,8 @@ const ApplicationDescriptor* ApplicationRegistry::At(std::size_t index) const {
 
 ApplicationRuntime::ApplicationRuntime(
     const ApplicationDescriptor* descriptors, std::size_t descriptor_count,
-    const char* launcher_id, Platform& platform, RuntimeDelegate& delegate)
+    const char* launcher_id, RuntimeDelegate& delegate)
     : registry_(descriptors, descriptor_count),
-      platform_(&platform),
       delegate_(&delegate),
       context_(*this) {
     ApplicationId::Copy(launcher_id, &launcher_id_);
@@ -60,31 +57,30 @@ ApplicationRuntime::ApplicationRuntime(
 
 ApplicationRuntime::~ApplicationRuntime() { ExitAndDestroyForeground(); }
 
-esp_err_t ApplicationRuntime::Start() {
-    if (state_ == LifecycleState::Active) return ESP_OK;
-    if (state_ != LifecycleState::Absent) return ESP_ERR_INVALID_STATE;
-    const esp_err_t validation = registry_.Validate(launcher_id_);
-    if (validation != ESP_OK) {
+Status ApplicationRuntime::Start() {
+    if (state_ == LifecycleState::Active) return Status::Ok;
+    if (state_ != LifecycleState::Absent) return Status::InvalidState;
+    const Status validation = registry_.Validate(launcher_id_);
+    if (!IsOk(validation)) {
         last_error_ = validation;
         return validation;
     }
     return SwitchTo(launcher_id_, false);
 }
 
-esp_err_t ApplicationRuntime::SwitchTo(const ApplicationId& id,
-                                       bool allow_fallback) {
+Status ApplicationRuntime::SwitchTo(const ApplicationId& id,
+                                    bool allow_fallback) {
     const ApplicationDescriptor* descriptor = registry_.Find(id);
-    if (descriptor == nullptr) return ESP_ERR_NOT_FOUND;
+    if (descriptor == nullptr) return Status::NotFound;
 
     state_ = LifecycleState::Creating;
     Application* raw_candidate = nullptr;
-    const esp_err_t create_result =
-        descriptor->factory(*platform_, registry_, descriptor->factory_context,
-                            &raw_candidate);
+    const Status create_result =
+        descriptor->factory->Create(registry_, &raw_candidate);
     std::unique_ptr<Application> candidate(raw_candidate);
-    if (create_result != ESP_OK || candidate == nullptr) {
-        const esp_err_t failure =
-            create_result == ESP_OK ? ESP_ERR_NO_MEM : create_result;
+    if (!IsOk(create_result) || candidate == nullptr) {
+        const Status failure =
+            IsOk(create_result) ? Status::NoMemory : create_result;
         last_error_ = failure;
         state_ = foreground_ ? LifecycleState::Active : LifecycleState::Absent;
         if (!foreground_ && allow_fallback) return EnterLauncherFallback(failure);
@@ -99,11 +95,11 @@ esp_err_t ApplicationRuntime::SwitchTo(const ApplicationId& id,
     foreground_id_ = id;
     foreground_ = std::move(candidate);
     state_ = LifecycleState::Entering;
-    const esp_err_t enter_result = InvokeCallback(
+    const Status enter_result = InvokeCallback(
         [this] { return foreground_->Enter(context_); });
-    if (enter_result == ESP_OK) {
+    if (IsOk(enter_result)) {
         state_ = LifecycleState::Active;
-        return ESP_OK;
+        return Status::Ok;
     }
 
     last_error_ = enter_result;
@@ -117,15 +113,15 @@ esp_err_t ApplicationRuntime::SwitchTo(const ApplicationId& id,
     return enter_result;
 }
 
-esp_err_t ApplicationRuntime::EnterLauncherFallback(esp_err_t reason) {
-    const esp_err_t result = SwitchTo(launcher_id_, false);
-    if (result != ESP_OK && state_ != LifecycleState::Failsafe) {
+Status ApplicationRuntime::EnterLauncherFallback(Status reason) {
+    const Status result = SwitchTo(launcher_id_, false);
+    if (!IsOk(result) && state_ != LifecycleState::Failsafe) {
         EnterFailsafe(reason);
     }
     return result;
 }
 
-void ApplicationRuntime::EnterFailsafe(esp_err_t reason) {
+void ApplicationRuntime::EnterFailsafe(Status reason) {
     ExitAndDestroyForeground();
     renders_.Discard();
     commands_ = {};
@@ -140,52 +136,52 @@ void ApplicationRuntime::ExitAndDestroyForeground() {
         return;
     }
     state_ = LifecycleState::Exiting;
-    const esp_err_t exit_result = InvokeCallback(
+    const Status exit_result = InvokeCallback(
         [this] { return foreground_->Exit(); });
-    if (exit_result != ESP_OK) last_error_ = exit_result;
+    if (!IsOk(exit_result)) last_error_ = exit_result;
     foreground_.reset();
     foreground_id_ = {};
     state_ = LifecycleState::Absent;
 }
 
-esp_err_t ApplicationRuntime::Step(const input::InputEvent* event) {
+Status ApplicationRuntime::Step(const InputEvent* event) {
     if (state_ != LifecycleState::Active || !foreground_) {
-        return ESP_ERR_INVALID_STATE;
+        return Status::InvalidState;
     }
-    esp_err_t result = ESP_OK;
+    Status result = Status::Ok;
     if (event != nullptr) {
         result = InvokeCallback(
             [this, event] { return foreground_->HandleEvent(*event, context_); });
-        if (result != ESP_OK) last_error_ = result;
+        if (!IsOk(result)) last_error_ = result;
     }
-    const esp_err_t command_result = ProcessCommand();
-    if (command_result != ESP_OK) result = command_result;
+    const Status command_result = ProcessCommand();
+    if (!IsOk(command_result)) result = command_result;
     if (state_ == LifecycleState::Active) {
-        const esp_err_t render_result = ProcessRender();
-        if (render_result != ESP_OK) result = render_result;
+        const Status render_result = ProcessRender();
+        if (!IsOk(render_result)) result = render_result;
     }
     return result;
 }
 
-esp_err_t ApplicationRuntime::Idle() {
+Status ApplicationRuntime::Idle() {
     if (state_ != LifecycleState::Active || !foreground_) {
-        return ESP_ERR_INVALID_STATE;
+        return Status::InvalidState;
     }
-    esp_err_t result = InvokeCallback(
+    Status result = InvokeCallback(
         [this] { return foreground_->HandleIdle(context_); });
-    if (result != ESP_OK) last_error_ = result;
-    const esp_err_t command_result = ProcessCommand();
-    if (command_result != ESP_OK) result = command_result;
+    if (!IsOk(result)) last_error_ = result;
+    const Status command_result = ProcessCommand();
+    if (!IsOk(command_result)) result = command_result;
     if (state_ == LifecycleState::Active) {
-        const esp_err_t render_result = ProcessRender();
-        if (render_result != ESP_OK) result = render_result;
+        const Status render_result = ProcessRender();
+        if (!IsOk(render_result)) result = render_result;
     }
     return result;
 }
 
-esp_err_t ApplicationRuntime::ProcessCommand() {
+Status ApplicationRuntime::ProcessCommand() {
     AppCommand command;
-    if (!commands_.Take(&command)) return ESP_OK;
+    if (!commands_.Take(&command)) return Status::Ok;
     switch (command.kind) {
         case CommandKind::Open:
             return SwitchTo(command.target, true);
@@ -195,27 +191,27 @@ esp_err_t ApplicationRuntime::ProcessCommand() {
         case CommandKind::Shutdown:
             return Stop();
         case CommandKind::None:
-            return ESP_OK;
+            return Status::Ok;
     }
-    return ESP_ERR_INVALID_ARG;
+    return Status::InvalidArgument;
 }
 
-esp_err_t ApplicationRuntime::ProcessRender() {
+Status ApplicationRuntime::ProcessRender() {
     RenderRequest request;
-    if (!renders_.TakeFor(generation_, &request)) return ESP_OK;
-    const esp_err_t result = InvokeCallback(
+    if (!renders_.TakeFor(generation_, &request)) return Status::Ok;
+    const Status result = InvokeCallback(
         [this, &request] { return foreground_->Render(request); });
-    if (result != ESP_OK) last_error_ = result;
+    if (!IsOk(result)) last_error_ = result;
     return result;
 }
 
-esp_err_t ApplicationRuntime::Stop() {
-    if (state_ == LifecycleState::Stopped) return ESP_OK;
+Status ApplicationRuntime::Stop() {
+    if (state_ == LifecycleState::Stopped) return Status::Ok;
     ExitAndDestroyForeground();
     renders_.Discard();
     commands_ = {};
-    const esp_err_t result = delegate_->Shutdown();
-    if (result != ESP_OK) last_error_ = result;
+    const Status result = delegate_->Shutdown();
+    if (!IsOk(result)) last_error_ = result;
     state_ = LifecycleState::Stopped;
     return result;
 }
@@ -246,8 +242,9 @@ bool ApplicationContext::RequestRender(const DirtyRegion& dirty,
     return runtime_->SubmitRender(dirty, intent);
 }
 
-uint32_t ApplicationContext::foreground_generation() const {
+std::uint32_t ApplicationContext::foreground_generation() const {
     return runtime_->foreground_generation();
 }
 
-}  // namespace zectrix::app
+}  // namespace v1
+}  // namespace zectrix::sdk

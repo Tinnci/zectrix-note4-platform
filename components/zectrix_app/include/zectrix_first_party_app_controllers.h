@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "zectrix_input_service.h"
+#include "zectrix/sdk/input.h"
 
 namespace zectrix::app {
 
@@ -26,7 +26,7 @@ class LauncherController {
 public:
     static constexpr std::size_t kItemCount = 7;
 
-    LauncherResult Handle(const input::InputEvent& event);
+    LauncherResult Handle(const sdk::InputEvent& event);
     std::size_t selected() const { return selected_; }
 
 private:
@@ -35,7 +35,7 @@ private:
 
 enum class ClockDecision : uint8_t { None, Home, Shutdown };
 
-ClockDecision HandleClockInput(const input::InputEvent& event);
+ClockDecision HandleClockInput(const sdk::InputEvent& event);
 
 struct ClockMinute {
     int year = 0;
@@ -66,7 +66,7 @@ public:
     explicit SettingsController(bool auto_showcase)
         : auto_showcase_(auto_showcase) {}
 
-    SettingsResult Handle(const input::InputEvent& event);
+    SettingsResult Handle(const sdk::InputEvent& event);
     bool auto_showcase() const { return auto_showcase_; }
 
 private:
@@ -98,7 +98,7 @@ class DiagnosticsController {
 public:
     static constexpr std::size_t kTestCount = 7;
 
-    DiagnosticsResult Handle(const input::InputEvent& event);
+    DiagnosticsResult Handle(const sdk::InputEvent& event);
     void ShowSummary() { page_ = DiagnosticsPage::Summary; }
     DiagnosticsPage page() const { return page_; }
     std::size_t selected() const { return selected_; }

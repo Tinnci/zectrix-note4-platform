@@ -10,8 +10,8 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "zectrix/zectrix_sdk.h"
 #include "zectrix_demo_ui.h"
-#include "zectrix_application_runtime.h"
 #include "zectrix_first_party_app_controllers.h"
 #include "zectrix_display_service.h"
 #include "zectrix_input_service.h"
@@ -43,6 +43,8 @@ extern const uint8_t kMountain4bppEnd[]
 
 namespace {
 
+namespace sdk = zectrix::sdk;
+
 constexpr char kTag[] = "epd_showcase";
 constexpr uint8_t kFootprintMagic[] = {'Z', 'F', 'P', '1'};
 constexpr size_t kAnimationHeaderSize = 8;
@@ -62,13 +64,25 @@ struct SceneResult {
     ControlResult control = ControlResult::kContinue;
 };
 
+sdk::Status ToSdkStatus(esp_err_t result) {
+    switch (result) {
+        case ESP_OK: return sdk::Status::Ok;
+        case ESP_ERR_INVALID_ARG: return sdk::Status::InvalidArgument;
+        case ESP_ERR_INVALID_STATE: return sdk::Status::InvalidState;
+        case ESP_ERR_NOT_FOUND: return sdk::Status::NotFound;
+        case ESP_ERR_NO_MEM: return sdk::Status::NoMemory;
+        case ESP_ERR_TIMEOUT: return sdk::Status::Timeout;
+        case ESP_ERR_NOT_SUPPORTED: return sdk::Status::Unsupported;
+        default: return sdk::Status::IoError;
+    }
+}
+
 uint16_t ReadLe16(const uint8_t* data) {
     return static_cast<uint16_t>(data[0]) |
            static_cast<uint16_t>(data[1] << 8);
 }
 
-class DemoApp final : public zectrix::app::RuntimeDelegate,
-                      public zectrix::app::ApplicationFactoryContext {
+class DemoApp final : public sdk::RuntimeDelegate {
 public:
     DemoApp() : ui_(nullptr) {
         test_states_.fill(ZectrixTestState::kWait);
@@ -106,11 +120,27 @@ private:
         kAbout,
     };
 
-    class LauncherApplication final : public zectrix::app::Application {
+    template <typename ApplicationType>
+    class OwnedFactory final : public sdk::ApplicationFactory {
+    public:
+        explicit OwnedFactory(DemoApp& owner) : owner_(&owner) {}
+
+        sdk::Status Create(const sdk::ApplicationRegistry&,
+                           sdk::Application** output) override {
+            if (output == nullptr) return sdk::Status::InvalidArgument;
+            *output = new (std::nothrow) ApplicationType(*owner_);
+            return *output == nullptr ? sdk::Status::NoMemory : sdk::Status::Ok;
+        }
+
+    private:
+        DemoApp* owner_;
+    };
+
+    class LauncherApplication final : public sdk::Application {
     public:
         explicit LauncherApplication(DemoApp& owner) : owner_(&owner) {}
 
-        esp_err_t Enter(zectrix::app::ApplicationContext& context) override {
+        sdk::Status Enter(sdk::ApplicationContext& context) override {
             uint32_t stored = zectrix::app::kAutoShowcaseDefault;
             const esp_err_t read = owner_->storage_->GetUInt32(
                 zectrix::app::kAutoShowcaseSettingKey, &stored);
@@ -130,34 +160,34 @@ private:
                 }
             }
             return context.RequestRender({0, 0, 400, 300},
-                                         zectrix::app::RenderIntent::Quality)
-                       ? ESP_OK : ESP_FAIL;
+                                         sdk::RenderIntent::Quality)
+                       ? sdk::Status::Ok : sdk::Status::InternalError;
         }
-        esp_err_t HandleEvent(const zectrix::input::InputEvent& event,
-                              zectrix::app::ApplicationContext& context) override {
+        sdk::Status HandleEvent(const sdk::InputEvent& event,
+                              sdk::ApplicationContext& context) override {
             const zectrix::app::LauncherResult result = controller_.Handle(event);
             if (result.decision == zectrix::app::LauncherDecision::RenderFast) {
                 context.RequestRender({0, 36, 400, 234},
-                                      zectrix::app::RenderIntent::Fast);
+                                      sdk::RenderIntent::Fast);
             } else if (result.decision ==
                        zectrix::app::LauncherDecision::OpenClock) {
-                zectrix::app::AppCommand open;
-                if (!zectrix::app::AppCommand::Open("clock", &open)) {
-                    return ESP_ERR_INVALID_STATE;
+                sdk::AppCommand open;
+                if (!sdk::AppCommand::Open("clock", &open)) {
+                    return sdk::Status::InvalidState;
                 }
                 context.RequestCommand(open);
             } else if (result.decision ==
                        zectrix::app::LauncherDecision::OpenSettings) {
-                zectrix::app::AppCommand open;
-                if (!zectrix::app::AppCommand::Open("settings", &open)) {
-                    return ESP_ERR_INVALID_STATE;
+                sdk::AppCommand open;
+                if (!sdk::AppCommand::Open("settings", &open)) {
+                    return sdk::Status::InvalidState;
                 }
                 context.RequestCommand(open);
             } else if (result.decision ==
                        zectrix::app::LauncherDecision::OpenDiagnostics) {
-                zectrix::app::AppCommand open;
-                if (!zectrix::app::AppCommand::Open("diagnostics", &open)) {
-                    return ESP_ERR_INVALID_STATE;
+                sdk::AppCommand open;
+                if (!sdk::AppCommand::Open("diagnostics", &open)) {
+                    return sdk::Status::InvalidState;
                 }
                 context.RequestCommand(open);
             } else if (result.decision ==
@@ -173,27 +203,27 @@ private:
                 }
             } else if (result.decision ==
                        zectrix::app::LauncherDecision::Shutdown) {
-                context.RequestCommand(zectrix::app::AppCommand::Shutdown());
+                context.RequestCommand(sdk::AppCommand::Shutdown());
             }
-            return ESP_OK;
+            return sdk::Status::Ok;
         }
-        esp_err_t HandleIdle(zectrix::app::ApplicationContext&) override {
+        sdk::Status HandleIdle(sdk::ApplicationContext&) override {
             if (auto_showcase_) {
                 owner_->legacy_action_ = LegacyAction::kAutoShowcase;
             }
-            return ESP_OK;
+            return sdk::Status::Ok;
         }
-        esp_err_t Render(const zectrix::app::RenderRequest& request) override {
+        sdk::Status Render(const sdk::RenderRequest& request) override {
             static constexpr const char* kItems[] = {
                 "CLOCK", "SETTINGS", "AUTO SHOWCASE", "DISPLAY GALLERY",
                 "HARDWARE TESTS", "DEVICE INFO", "ABOUT & LICENSE"};
-            return owner_->ui_.ShowMenu(
+            return ToSdkStatus(owner_->ui_.ShowMenu(
                 "ZECTRIX | LAUNCHER", kItems, std::size(kItems),
                 controller_.selected(),
                 "UP/DOWN Move  OK Select  Hold DOWN Off",
-                request.intent == zectrix::app::RenderIntent::Quality);
+                request.intent == sdk::RenderIntent::Quality));
         }
-        esp_err_t Exit() override { return ESP_OK; }
+        sdk::Status Exit() override { return sdk::Status::Ok; }
 
     private:
         DemoApp* owner_;
@@ -201,31 +231,31 @@ private:
         bool auto_showcase_ = true;
     };
 
-    class ClockApplication final : public zectrix::app::Application {
+    class ClockApplication final : public sdk::Application {
     public:
         explicit ClockApplication(DemoApp& owner) : owner_(&owner) {}
-        esp_err_t Enter(zectrix::app::ApplicationContext& context) override {
+        sdk::Status Enter(sdk::ApplicationContext& context) override {
             const esp_err_t read = owner_->time_->ReadRtc(&value_);
-            if (read != ESP_OK) return read;
+            if (read != ESP_OK) return ToSdkStatus(read);
             return context.RequestRender({0, 0, 400, 300},
-                                         zectrix::app::RenderIntent::Quality)
-                       ? ESP_OK : ESP_FAIL;
+                                         sdk::RenderIntent::Quality)
+                       ? sdk::Status::Ok : sdk::Status::InternalError;
         }
-        esp_err_t HandleEvent(const zectrix::input::InputEvent& event,
-                              zectrix::app::ApplicationContext& context) override {
+        sdk::Status HandleEvent(const sdk::InputEvent& event,
+                              sdk::ApplicationContext& context) override {
             const zectrix::app::ClockDecision decision =
                 zectrix::app::HandleClockInput(event);
             if (decision == zectrix::app::ClockDecision::Shutdown) {
-                context.RequestCommand(zectrix::app::AppCommand::Shutdown());
+                context.RequestCommand(sdk::AppCommand::Shutdown());
             } else if (decision == zectrix::app::ClockDecision::Home) {
-                context.RequestCommand(zectrix::app::AppCommand::Home());
+                context.RequestCommand(sdk::AppCommand::Home());
             }
-            return ESP_OK;
+            return sdk::Status::Ok;
         }
-        esp_err_t HandleIdle(zectrix::app::ApplicationContext& context) override {
+        sdk::Status HandleIdle(sdk::ApplicationContext& context) override {
             zectrix::time::DateTime current;
             const esp_err_t read = owner_->time_->ReadRtc(&current);
-            if (read != ESP_OK) return read;
+            if (read != ESP_OK) return ToSdkStatus(read);
             const zectrix::app::ClockMinute displayed{
                 value_.year, value_.month, value_.day,
                 value_.hour, value_.minute};
@@ -237,27 +267,27 @@ private:
             value_ = current;
             if (changed) {
                 context.RequestRender({0, 36, 400, 234},
-                                      zectrix::app::RenderIntent::Fast);
+                                      sdk::RenderIntent::Fast);
             }
-            return ESP_OK;
+            return sdk::Status::Ok;
         }
-        esp_err_t Render(const zectrix::app::RenderRequest& request) override {
-            return owner_->ui_.ShowClock(
-                value_, request.intent == zectrix::app::RenderIntent::Quality);
+        sdk::Status Render(const sdk::RenderRequest& request) override {
+            return ToSdkStatus(owner_->ui_.ShowClock(
+                value_, request.intent == sdk::RenderIntent::Quality));
         }
-        esp_err_t Exit() override { return ESP_OK; }
+        sdk::Status Exit() override { return sdk::Status::Ok; }
 
     private:
         DemoApp* owner_;
         zectrix::time::DateTime value_{};
     };
 
-    class SettingsApplication final : public zectrix::app::Application {
+    class SettingsApplication final : public sdk::Application {
     public:
         explicit SettingsApplication(DemoApp& owner)
             : owner_(&owner), controller_(true) {}
 
-        esp_err_t Enter(zectrix::app::ApplicationContext& context) override {
+        sdk::Status Enter(sdk::ApplicationContext& context) override {
             uint32_t stored = zectrix::app::kAutoShowcaseDefault;
             const esp_err_t read = owner_->storage_->GetUInt32(
                 zectrix::app::kAutoShowcaseSettingKey, &stored);
@@ -284,40 +314,40 @@ private:
             }
             controller_ = zectrix::app::SettingsController(value);
             return context.RequestRender({0, 0, 400, 300},
-                                         zectrix::app::RenderIntent::Quality)
-                       ? ESP_OK : ESP_FAIL;
+                                         sdk::RenderIntent::Quality)
+                       ? sdk::Status::Ok : sdk::Status::InternalError;
         }
 
-        esp_err_t HandleEvent(const zectrix::input::InputEvent& event,
-                              zectrix::app::ApplicationContext& context) override {
+        sdk::Status HandleEvent(const sdk::InputEvent& event,
+                              sdk::ApplicationContext& context) override {
             const zectrix::app::SettingsResult result = controller_.Handle(event);
             if (result.decision == zectrix::app::SettingsDecision::RenderFast) {
                 status_ = "NOT SAVED";
                 context.RequestRender({0, 36, 400, 234},
-                                      zectrix::app::RenderIntent::Fast);
+                                      sdk::RenderIntent::Fast);
             } else if (result.decision == zectrix::app::SettingsDecision::Save) {
                 const esp_err_t save = owner_->storage_->SetUInt32(
                     zectrix::app::kAutoShowcaseSettingKey,
                     result.auto_showcase ? 1 : 0);
                 status_ = save == ESP_OK ? "SAVED" : "SAVE FAILED";
                 context.RequestRender({0, 36, 400, 234},
-                                      zectrix::app::RenderIntent::Fast);
+                                      sdk::RenderIntent::Fast);
             } else if (result.decision == zectrix::app::SettingsDecision::Home) {
-                context.RequestCommand(zectrix::app::AppCommand::Home());
+                context.RequestCommand(sdk::AppCommand::Home());
             } else if (result.decision ==
                        zectrix::app::SettingsDecision::Shutdown) {
-                context.RequestCommand(zectrix::app::AppCommand::Shutdown());
+                context.RequestCommand(sdk::AppCommand::Shutdown());
             }
-            return ESP_OK;
+            return sdk::Status::Ok;
         }
 
-        esp_err_t Render(const zectrix::app::RenderRequest& request) override {
-            return owner_->ui_.ShowSettings(
+        sdk::Status Render(const sdk::RenderRequest& request) override {
+            return ToSdkStatus(owner_->ui_.ShowSettings(
                 controller_.auto_showcase(), status_,
-                request.intent == zectrix::app::RenderIntent::Quality);
+                request.intent == sdk::RenderIntent::Quality));
         }
 
-        esp_err_t Exit() override { return ESP_OK; }
+        sdk::Status Exit() override { return sdk::Status::Ok; }
 
     private:
         DemoApp* owner_;
@@ -325,32 +355,32 @@ private:
         const char* status_ = "";
     };
 
-    class DiagnosticsApplication final : public zectrix::app::Application {
+    class DiagnosticsApplication final : public sdk::Application {
     public:
         explicit DiagnosticsApplication(DemoApp& owner) : owner_(&owner) {}
 
-        esp_err_t Enter(zectrix::app::ApplicationContext& context) override {
+        sdk::Status Enter(sdk::ApplicationContext& context) override {
             owner_->test_states_.fill(ZectrixTestState::kWait);
             return context.RequestRender({0, 0, 400, 300},
-                                         zectrix::app::RenderIntent::Quality)
-                       ? ESP_OK : ESP_FAIL;
+                                         sdk::RenderIntent::Quality)
+                       ? sdk::Status::Ok : sdk::Status::InternalError;
         }
 
-        esp_err_t HandleEvent(const zectrix::input::InputEvent& event,
-                              zectrix::app::ApplicationContext& context) override {
+        sdk::Status HandleEvent(const sdk::InputEvent& event,
+                              sdk::ApplicationContext& context) override {
             const zectrix::app::DiagnosticsResult result = controller_.Handle(event);
             if (result.decision == zectrix::app::DiagnosticsDecision::RenderFast) {
                 context.RequestRender({0, 36, 400, 234},
-                                      zectrix::app::RenderIntent::Fast);
-                return ESP_OK;
+                                      sdk::RenderIntent::Fast);
+                return sdk::Status::Ok;
             }
             if (result.decision == zectrix::app::DiagnosticsDecision::Home) {
-                context.RequestCommand(zectrix::app::AppCommand::Home());
-                return ESP_OK;
+                context.RequestCommand(sdk::AppCommand::Home());
+                return sdk::Status::Ok;
             }
             if (result.decision == zectrix::app::DiagnosticsDecision::Shutdown) {
-                context.RequestCommand(zectrix::app::AppCommand::Shutdown());
-                return ESP_OK;
+                context.RequestCommand(sdk::AppCommand::Shutdown());
+                return sdk::Status::Ok;
             }
             if (result.decision == zectrix::app::DiagnosticsDecision::RunAll) {
                 return RunAll(context);
@@ -359,28 +389,29 @@ private:
                 zectrix::app::DiagnosticsDecision::RunSelected) {
                 return RunSelected(result.selected, context);
             }
-            return ESP_OK;
+            return sdk::Status::Ok;
         }
 
-        esp_err_t Render(const zectrix::app::RenderRequest& request) override {
+        sdk::Status Render(const sdk::RenderRequest& request) override {
             if (controller_.page() == zectrix::app::DiagnosticsPage::Summary) {
-                return owner_->ui_.ShowTestSummary(owner_->test_states_);
+                return ToSdkStatus(
+                    owner_->ui_.ShowTestSummary(owner_->test_states_));
             }
             if (controller_.page() == zectrix::app::DiagnosticsPage::Individual) {
-                return owner_->ui_.ShowTestMenu(
+                return ToSdkStatus(owner_->ui_.ShowTestMenu(
                     controller_.selected(), owner_->test_states_,
-                    request.intent == zectrix::app::RenderIntent::Quality);
+                    request.intent == sdk::RenderIntent::Quality));
             }
             static constexpr const char* kItems[] = {
                 "RUN ALL TESTS", "SELECT INDIVIDUAL TEST"};
-            return owner_->ui_.ShowMenu(
+            return ToSdkStatus(owner_->ui_.ShowMenu(
                 "HARDWARE TESTS", kItems, std::size(kItems),
                 controller_.selected(),
                 "UP/DOWN Move  OK Select  Hold OK Home",
-                request.intent == zectrix::app::RenderIntent::Quality);
+                request.intent == sdk::RenderIntent::Quality));
         }
 
-        esp_err_t Exit() override { return ESP_OK; }
+        sdk::Status Exit() override { return sdk::Status::Ok; }
 
     private:
         ZectrixTestResult Execute(ZectrixTestId id) {
@@ -399,18 +430,18 @@ private:
                 });
         }
 
-        esp_err_t RunAll(zectrix::app::ApplicationContext& context) {
+        sdk::Status RunAll(sdk::ApplicationContext& context) {
             owner_->test_states_.fill(ZectrixTestState::kWait);
             for (size_t index = 0;
                  index < static_cast<size_t>(ZectrixTestId::kCount); ++index) {
                 esp_err_t draw = owner_->ui_.ShowTestMenu(
                     index, owner_->test_states_, true);
-                if (draw != ESP_OK) return draw;
+                if (draw != ESP_OK) return ToSdkStatus(draw);
                 const ZectrixTestResult result =
                     Execute(static_cast<ZectrixTestId>(index));
                 if (result == ZectrixTestResult::kShutdown) {
-                    context.RequestCommand(zectrix::app::AppCommand::Shutdown());
-                    return ESP_OK;
+                    context.RequestCommand(sdk::AppCommand::Shutdown());
+                    return sdk::Status::Ok;
                 }
                 if (result == ZectrixTestResult::kCancelled) break;
                 owner_->test_states_[index] =
@@ -418,21 +449,22 @@ private:
                         ? ZectrixTestState::kPass : ZectrixTestState::kFail;
                 if (owner_->Wait(pdMS_TO_TICKS(800), false) ==
                     ControlResult::kShutdown) {
-                    context.RequestCommand(zectrix::app::AppCommand::Shutdown());
-                    return ESP_OK;
+                    context.RequestCommand(sdk::AppCommand::Shutdown());
+                    return sdk::Status::Ok;
                 }
             }
             controller_.ShowSummary();
-            return owner_->ui_.ShowTestSummary(owner_->test_states_);
+            return ToSdkStatus(
+                owner_->ui_.ShowTestSummary(owner_->test_states_));
         }
 
-        esp_err_t RunSelected(size_t selected,
-                              zectrix::app::ApplicationContext& context) {
+        sdk::Status RunSelected(size_t selected,
+                              sdk::ApplicationContext& context) {
             const ZectrixTestResult result =
                 Execute(static_cast<ZectrixTestId>(selected));
             if (result == ZectrixTestResult::kShutdown) {
-                context.RequestCommand(zectrix::app::AppCommand::Shutdown());
-                return ESP_OK;
+                context.RequestCommand(sdk::AppCommand::Shutdown());
+                return sdk::Status::Ok;
             }
             if (result == ZectrixTestResult::kPass) {
                 owner_->test_states_[selected] = ZectrixTestState::kPass;
@@ -441,87 +473,50 @@ private:
             }
             if (owner_->Wait(pdMS_TO_TICKS(1200), true) ==
                 ControlResult::kShutdown) {
-                context.RequestCommand(zectrix::app::AppCommand::Shutdown());
-                return ESP_OK;
+                context.RequestCommand(sdk::AppCommand::Shutdown());
+                return sdk::Status::Ok;
             }
-            return owner_->ui_.ShowTestMenu(
-                selected, owner_->test_states_, true);
+            return ToSdkStatus(owner_->ui_.ShowTestMenu(
+                selected, owner_->test_states_, true));
         }
 
         DemoApp* owner_;
         zectrix::app::DiagnosticsController controller_;
     };
 
-    static esp_err_t MakeLauncher(
-        zectrix::Platform&, const zectrix::app::ApplicationRegistry&,
-        zectrix::app::ApplicationFactoryContext* context,
-        zectrix::app::Application** output) {
-        if (context == nullptr || output == nullptr) return ESP_ERR_INVALID_ARG;
-        *output = new (std::nothrow) LauncherApplication(
-            *static_cast<DemoApp*>(context));
-        return *output == nullptr ? ESP_ERR_NO_MEM : ESP_OK;
-    }
-
-    static esp_err_t MakeClock(
-        zectrix::Platform&, const zectrix::app::ApplicationRegistry&,
-        zectrix::app::ApplicationFactoryContext* context,
-        zectrix::app::Application** output) {
-        if (context == nullptr || output == nullptr) return ESP_ERR_INVALID_ARG;
-        *output = new (std::nothrow) ClockApplication(
-            *static_cast<DemoApp*>(context));
-        return *output == nullptr ? ESP_ERR_NO_MEM : ESP_OK;
-    }
-
-    static esp_err_t MakeSettings(
-        zectrix::Platform&, const zectrix::app::ApplicationRegistry&,
-        zectrix::app::ApplicationFactoryContext* context,
-        zectrix::app::Application** output) {
-        if (context == nullptr || output == nullptr) return ESP_ERR_INVALID_ARG;
-        *output = new (std::nothrow) SettingsApplication(
-            *static_cast<DemoApp*>(context));
-        return *output == nullptr ? ESP_ERR_NO_MEM : ESP_OK;
-    }
-
-    static esp_err_t MakeDiagnostics(
-        zectrix::Platform&, const zectrix::app::ApplicationRegistry&,
-        zectrix::app::ApplicationFactoryContext* context,
-        zectrix::app::Application** output) {
-        if (context == nullptr || output == nullptr) return ESP_ERR_INVALID_ARG;
-        *output = new (std::nothrow) DiagnosticsApplication(
-            *static_cast<DemoApp*>(context));
-        return *output == nullptr ? ESP_ERR_NO_MEM : ESP_OK;
-    }
-
     void RunApplicationShell() {
-        const zectrix::app::ApplicationDescriptor descriptors[] = {
-            {"launcher", "Launcher", MakeLauncher, this},
-            {"clock", "Clock", MakeClock, this},
-            {"settings", "Settings", MakeSettings, this},
-            {"diagnostics", "Diagnostics", MakeDiagnostics, this},
+        OwnedFactory<LauncherApplication> launcher_factory(*this);
+        OwnedFactory<ClockApplication> clock_factory(*this);
+        OwnedFactory<SettingsApplication> settings_factory(*this);
+        OwnedFactory<DiagnosticsApplication> diagnostics_factory(*this);
+        const sdk::ApplicationDescriptor descriptors[] = {
+            {"launcher", "Launcher", &launcher_factory},
+            {"clock", "Clock", &clock_factory},
+            {"settings", "Settings", &settings_factory},
+            {"diagnostics", "Diagnostics", &diagnostics_factory},
         };
         while (true) {
             legacy_action_ = LegacyAction::kNone;
             {
-                zectrix::app::ApplicationRuntime runtime(
-                    descriptors, std::size(descriptors), "launcher", platform_,
-                    *this);
-                if (runtime.Start() != ESP_OK) return;
+                sdk::ApplicationRuntime runtime(
+                    descriptors, std::size(descriptors), "launcher", *this);
+                if (!sdk::IsOk(runtime.Start())) return;
                 if (!runtime_heap_logged_) {
                     LogHeap("M3 runtime active");
                     runtime_heap_logged_ = true;
                 }
-                if (runtime.Step() != ESP_OK) return;
+                if (!sdk::IsOk(runtime.Step())) return;
                 while (legacy_action_ == LegacyAction::kNone) {
-                    zectrix::input::InputEvent event;
+                    sdk::InputEvent event;
                     const bool received = input_->Wait(&event, kHomeIdleTimeout);
-                    const esp_err_t result = received ? runtime.Step(&event)
-                                                      : runtime.Idle();
-                    if (result != ESP_OK) {
+                    const sdk::Status result = received ? runtime.Step(&event)
+                                                        : runtime.Idle();
+                    if (!sdk::IsOk(result)) {
                         ESP_LOGE(kTag, "application step failed: %s",
-                                 esp_err_to_name(result));
+                                 sdk::StatusName(result));
                     }
-                    if (runtime.state() == zectrix::app::LifecycleState::Stopped ||
-                        runtime.state() == zectrix::app::LifecycleState::Failsafe) {
+                    if (runtime.state() == sdk::LifecycleState::Stopped ||
+                        runtime.state() == sdk::LifecycleState::Failsafe) {
                         return;
                     }
                 }
@@ -542,12 +537,13 @@ private:
         if (result == ControlResult::kShutdown) PowerOff();
     }
 
-    esp_err_t Shutdown() override {
+    sdk::Status Shutdown() override {
         PowerOff();
     }
 
-    void EnterFailsafe(esp_err_t reason) override {
-        ESP_LOGE(kTag, "application runtime failsafe: %s", esp_err_to_name(reason));
+    void EnterFailsafe(sdk::Status reason) override {
+        ESP_LOGE(kTag, "application runtime failsafe: %s",
+                 sdk::StatusName(reason));
     }
 
     void LogHeap(const char* phase) {
@@ -569,7 +565,7 @@ private:
     ControlResult Wait(TickType_t duration, bool any_click_returns) {
         const TickType_t start = xTaskGetTickCount();
         while (xTaskGetTickCount() - start < duration) {
-            zectrix::input::InputEvent event;
+            sdk::InputEvent event;
             const TickType_t elapsed = xTaskGetTickCount() - start;
             const TickType_t remaining = duration > elapsed ? duration - elapsed : 0;
             if (!input_->Wait(&event,
@@ -597,7 +593,7 @@ private:
                           size_t* selected, TickType_t idle_timeout = portMAX_DELAY) {
         ESP_ERROR_CHECK(ui_.ShowMenu(title, items, count, *selected, footer, true));
         while (true) {
-            zectrix::input::InputEvent event;
+            sdk::InputEvent event;
             if (!input_->Wait(&event, idle_timeout)) {
                 return ControlResult::kContinue;
             }
@@ -798,7 +794,7 @@ private:
                     : zectrix::display::DisplayService::kFrameBytes1Bpp,
                 result.elapsed_ms, result.error));
             while (true) {
-                zectrix::input::InputEvent event;
+                sdk::InputEvent event;
                 if (!input_->Wait(&event, portMAX_DELAY)) continue;
                 if (event.button == zectrix::input::Button::Down &&
                     event.action == zectrix::input::Action::LongPress) {
