@@ -64,3 +64,12 @@ dependency graph. See `docs/adr/0003-freertos-runtime-sdk-boundary.md`.
 
 The partition table is not frozen. Measure A/B OTA, rollback, assets and
 user-data requirements before accepting a replacement layout.
+
+## Connectivity boundary
+
+Connectivity uses a BLE-first companion protocol and an on-demand direct
+Wi-Fi backend. Applications request durable state, commands or resources. They
+do not select a transport and do not receive ESP-NimBLE, GATT, Wi-Fi, socket or
+RTOS types. The initial connectivity semantic boundary is internal and draft;
+SDK 1.0 remains unchanged. See `docs/adr/0004-connectivity-platform.md` and
+`docs/CONNECTIVITY_CONTRACT.md`.
