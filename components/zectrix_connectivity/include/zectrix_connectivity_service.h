@@ -11,7 +11,7 @@ enum class ConnectivityState : uint8_t {
     kPairing,
     kSecuring,
     kSecure,
-    kReady,
+    kLinkReady,
     kFault,
 };
 

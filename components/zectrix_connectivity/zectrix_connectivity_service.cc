@@ -72,7 +72,7 @@ ConnectivityState ConnectivityService::State() const {
         case BleState::kPairing: return ConnectivityState::kPairing;
         case BleState::kConnectedUnsecured: return ConnectivityState::kSecuring;
         case BleState::kConnectedSecured: return ConnectivityState::kSecure;
-        case BleState::kReady: return ConnectivityState::kReady;
+        case BleState::kTransportReady: return ConnectivityState::kLinkReady;
         case BleState::kFault: return ConnectivityState::kFault;
         default: return ConnectivityState::kStopped;
     }

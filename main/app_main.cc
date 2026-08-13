@@ -421,7 +421,7 @@ private:
                 if (current_state ==
                         zectrix::connectivity::ConnectivityState::kSecure ||
                     current_state ==
-                        zectrix::connectivity::ConnectivityState::kReady) {
+                        zectrix::connectivity::ConnectivityState::kLinkReady) {
                     std::memset(passkey_, 0, sizeof(passkey_));
                     status_ = "LINK SECURED";
                 }
@@ -458,7 +458,8 @@ private:
                     return "SECURING";
                 case zectrix::connectivity::ConnectivityState::kSecure:
                     return "SECURE";
-                case zectrix::connectivity::ConnectivityState::kReady: return "READY";
+                case zectrix::connectivity::ConnectivityState::kLinkReady:
+                    return "LINK READY";
                 case zectrix::connectivity::ConnectivityState::kFault: return "FAULT";
                 default: return "STOPPED";
             }

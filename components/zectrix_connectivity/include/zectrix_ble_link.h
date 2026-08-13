@@ -15,7 +15,7 @@ enum class BleState : uint8_t {
     kPairing,
     kConnectedUnsecured,
     kConnectedSecured,
-    kReady,
+    kTransportReady,
     kFault,
 };
 

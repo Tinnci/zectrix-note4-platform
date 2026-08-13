@@ -247,7 +247,7 @@ struct BleLink::Impl {
                 instance->state = secure ? BleState::kConnectedSecured
                                          : BleState::kConnectedUnsecured;
                 if (secure && instance->subscribed) {
-                    instance->state = BleState::kReady;
+                    instance->state = BleState::kTransportReady;
                 }
                 instance->pairing_authorized = false;
                 xSemaphoreGive(instance->lock);
@@ -274,7 +274,7 @@ struct BleLink::Impl {
                     instance->subscribed = event->subscribe.cur_notify != 0;
                     if (secure) {
                         instance->state = instance->subscribed
-                            ? BleState::kReady
+                            ? BleState::kTransportReady
                             : BleState::kConnectedSecured;
                     }
                     xSemaphoreGive(instance->lock);
@@ -317,7 +317,13 @@ struct BleLink::Impl {
                              "(display only, value not logged)");
                     ble_sm_io io{};
                     io.action = BLE_SM_IOACT_DISP;
-                    io.passkey = 100000U + (esp_random() % 900000U);
+                    // Uniform 000000-999999 passkey: reject the tail above
+                    // 10^9 to avoid modulo bias, then take mod 10^6.
+                    uint32_t random_value = 0;
+                    do {
+                        random_value = esp_random();
+                    } while (random_value >= 1000000000U);
+                    io.passkey = random_value % 1000000U;
                     xSemaphoreTake(instance->lock, portMAX_DELAY);
                     instance->passkey = io.passkey;
                     instance->passkey_pending = true;
@@ -363,6 +369,8 @@ struct BleLink::Impl {
         ble_gap_adv_params parameters{};
         parameters.conn_mode = BLE_GAP_CONN_MODE_UND;
         parameters.disc_mode = BLE_GAP_DISC_MODE_GEN;
+        // Advertising intervals are in 0.625 ms units: pairing 160-240 units
+        // (100-150 ms), reconnect 2560-3200 units (1.6-2.0 s).
         parameters.itvl_min = pairing ? 0x00a0 : 0x0a00;
         parameters.itvl_max = pairing ? 0x00f0 : 0x0c80;
         const int32_t duration = pairing ? kPairingWindowMs
@@ -498,6 +506,9 @@ companion::LinkResult BleLink::Initialize() {
     ble_hs_cfg.sm_io_cap = BLE_SM_IO_CAP_DISP_ONLY;
     ble_hs_cfg.sm_bonding = 1;
     ble_hs_cfg.sm_mitm = 1;
+    // LE Secure Connections is enabled and preferred; legacy authenticated
+    // pairing remains available as a fallback because
+    // CONFIG_BT_NIMBLE_SM_SC_ONLY is not enabled. This is not an SC-only gate.
     ble_hs_cfg.sm_sc = 1;
     ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC |
                                  BLE_SM_PAIR_KEY_DIST_ID;
@@ -583,7 +594,7 @@ companion::LinkResult BleLink::Send(const uint8_t* frame,
         return companion::LinkResult::kInvalidArgument;
     }
     xSemaphoreTake(impl_->lock, portMAX_DELAY);
-    if (impl_->state != BleState::kReady || !impl_->subscribed) {
+    if (impl_->state != BleState::kTransportReady || !impl_->subscribed) {
         xSemaphoreGive(impl_->lock);
         return companion::LinkResult::kUnavailable;
     }
@@ -624,7 +635,9 @@ void BleLink::Stop() {
 companion::LinkStatus BleLink::Status() const {
     const BleState state = State();
     if (state == BleState::kStopped) return companion::LinkStatus::kStopped;
-    if (state == BleState::kReady) return companion::LinkStatus::kReady;
+    if (state == BleState::kTransportReady) {
+        return companion::LinkStatus::kReady;
+    }
     if (state == BleState::kFault) return companion::LinkStatus::kFailed;
     return companion::LinkStatus::kStarting;
 }
