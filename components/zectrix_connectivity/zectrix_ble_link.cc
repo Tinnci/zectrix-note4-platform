@@ -181,6 +181,8 @@ struct BleLink::Impl {
         switch (event->type) {
             case BLE_GAP_EVENT_CONNECT:
                 if (event->connect.status != 0) {
+                    ESP_LOGW(kTag, "gap: connect failed: %d",
+                             event->connect.status);
                     bool pairing = false;
                     xSemaphoreTake(instance->lock, portMAX_DELAY);
                     pairing = instance->pairing_requested;
@@ -188,6 +190,8 @@ struct BleLink::Impl {
                     instance->Advertise(pairing);
                     return 0;
                 }
+                ESP_LOGI(kTag, "gap: connected handle=%u",
+                         static_cast<unsigned>(event->connect.conn_handle));
                 xSemaphoreTake(instance->lock, portMAX_DELAY);
                 instance->connection_handle = event->connect.conn_handle;
                 instance->state = BleState::kConnectedUnsecured;
@@ -198,6 +202,9 @@ struct BleLink::Impl {
                 return 0;
 
             case BLE_GAP_EVENT_DISCONNECT:
+                ESP_LOGI(kTag, "gap: disconnected handle=%u reason=%d",
+                         static_cast<unsigned>(event->disconnect.conn.conn_handle),
+                         event->disconnect.reason);
                 xSemaphoreTake(instance->lock, portMAX_DELAY);
                 instance->connection_handle = kNoConnection;
                 instance->subscribed = false;
@@ -232,6 +239,9 @@ struct BleLink::Impl {
                     descriptor.sec_state.encrypted &&
                     descriptor.sec_state.authenticated &&
                     descriptor.sec_state.bonded;
+                ESP_LOGI(kTag, "gap: enc change handle=%u status=%d secure=%d",
+                         static_cast<unsigned>(event->enc_change.conn_handle),
+                         event->enc_change.status, secure ? 1 : 0);
                 xSemaphoreTake(instance->lock, portMAX_DELAY);
                 instance->state = secure ? BleState::kConnectedSecured
                                          : BleState::kConnectedUnsecured;
@@ -250,6 +260,8 @@ struct BleLink::Impl {
             case BLE_GAP_EVENT_SUBSCRIBE:
                 if (event->subscribe.attr_handle ==
                     instance->notify_value_handle) {
+                    ESP_LOGI(kTag, "gap: subscribe notify=%d",
+                             event->subscribe.cur_notify);
                     ble_gap_conn_desc descriptor{};
                     const bool secure =
                         ble_gap_conn_find(event->subscribe.conn_handle,
