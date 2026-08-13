@@ -198,6 +198,7 @@ struct BleLink::Impl {
                 instance->pairing_authorized = instance->pairing_requested;
                 instance->pairing_requested = false;
                 xSemaphoreGive(instance->lock);
+                ESP_LOGI(kTag, "security: initiate encryption for peer");
                 ble_gap_security_initiate(event->connect.conn_handle);
                 return 0;
 
@@ -271,8 +272,10 @@ struct BleLink::Impl {
                         descriptor.sec_state.bonded;
                     xSemaphoreTake(instance->lock, portMAX_DELAY);
                     instance->subscribed = event->subscribe.cur_notify != 0;
-                    if (secure && instance->subscribed) {
-                        instance->state = BleState::kReady;
+                    if (secure) {
+                        instance->state = instance->subscribed
+                            ? BleState::kReady
+                            : BleState::kConnectedSecured;
                     }
                     xSemaphoreGive(instance->lock);
                 }
@@ -309,6 +312,9 @@ struct BleLink::Impl {
                             event->passkey.conn_handle;
                     xSemaphoreGive(instance->lock);
                     if (!authorized) return BLE_HS_EAUTHEN;
+                    ESP_LOGI(kTag,
+                             "security: new pairing passkey requested "
+                             "(display only, value not logged)");
                     ble_sm_io io{};
                     io.action = BLE_SM_IOACT_DISP;
                     io.passkey = 100000U + (esp_random() % 900000U);
@@ -350,6 +356,10 @@ struct BleLink::Impl {
             ESP_LOGW(kTag, "advertise: set scan response failed: %d", result);
             return result;
         }
+        // Reconnect advertising is intentionally non-pairable general
+        // discoverability: any central may connect, but encryption and bonding
+        // are required, and a new pairing only succeeds inside the local
+        // pairing window. This is not a whitelist/directed advertisement.
         ble_gap_adv_params parameters{};
         parameters.conn_mode = BLE_GAP_CONN_MODE_UND;
         parameters.disc_mode = BLE_GAP_DISC_MODE_GEN;
