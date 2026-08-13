@@ -5,6 +5,7 @@
 class ZectrixSelfTest;
 
 namespace zectrix::display { class DisplayService; }
+namespace zectrix::connectivity { class ConnectivityService; }
 namespace zectrix::input { class InputService; }
 namespace zectrix::power { class PowerService; }
 namespace zectrix::storage { class StorageService; }
@@ -33,6 +34,7 @@ public:
     time::TimeService& Time() const;
     storage::StorageService& Storage() const;
     system::SystemService& System() const;
+    connectivity::ConnectivityService& Connectivity() const;
     ZectrixSelfTest& Diagnostics() const;
 
 private:

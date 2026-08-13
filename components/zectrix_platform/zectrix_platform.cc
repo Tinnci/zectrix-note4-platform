@@ -4,6 +4,7 @@
 #include <new>
 
 #include "zectrix_board.h"
+#include "zectrix_connectivity_service.h"
 #include "zectrix_display_service.h"
 #include "zectrix_input_service.h"
 #include "zectrix_power_service.h"
@@ -23,6 +24,7 @@ struct Platform::Impl {
     system::SystemService* system = nullptr;
     display::DisplayService* display = nullptr;
     ZectrixSelfTest* diagnostics = nullptr;
+    connectivity::ConnectivityService* connectivity = nullptr;
 };
 
 Platform::~Platform() { ResetServices(); }
@@ -48,6 +50,16 @@ esp_err_t Platform::Initialize() {
             *impl_->storage, *impl_->system);
         if (impl_->diagnostics == nullptr) err = ESP_ERR_NO_MEM;
     }
+    if (err == ESP_OK) {
+        const auto result = connectivity::ConnectivityService::Create(
+            &impl_->connectivity);
+        if (result != connectivity::ConnectivityResult::kOk) err = ESP_ERR_NO_MEM;
+    }
+    if (err == ESP_OK &&
+        impl_->connectivity->Initialize() !=
+            connectivity::ConnectivityResult::kOk) {
+        err = ESP_FAIL;
+    }
     if (err != ESP_OK) {
         ResetServices();
         return err;
@@ -68,6 +80,8 @@ ZECTRIX_PLATFORM_ACCESSOR(power::PowerService, Power, power)
 ZECTRIX_PLATFORM_ACCESSOR(time::TimeService, Time, time)
 ZECTRIX_PLATFORM_ACCESSOR(storage::StorageService, Storage, storage)
 ZECTRIX_PLATFORM_ACCESSOR(system::SystemService, System, system)
+ZECTRIX_PLATFORM_ACCESSOR(connectivity::ConnectivityService, Connectivity,
+                          connectivity)
 ZECTRIX_PLATFORM_ACCESSOR(ZectrixSelfTest, Diagnostics, diagnostics)
 
 #undef ZECTRIX_PLATFORM_ACCESSOR
@@ -75,6 +89,7 @@ ZECTRIX_PLATFORM_ACCESSOR(ZectrixSelfTest, Diagnostics, diagnostics)
 void Platform::ResetServices() {
     if (impl_ == nullptr) return;
     // Destruction is the reverse of the initialization order.
+    delete impl_->connectivity;
     delete impl_->diagnostics;
     delete impl_->display;
     delete impl_->system;

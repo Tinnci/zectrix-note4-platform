@@ -2,6 +2,7 @@ idf_component_register(SRCS "app_main.cc"
                        REQUIRES
                        zectrix_demo_ui
                        zectrix_app
+                       zectrix_connectivity
                        zectrix_display
                        zectrix_input
                        zectrix_power

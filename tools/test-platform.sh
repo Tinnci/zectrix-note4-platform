@@ -7,6 +7,7 @@ c++ -std=c++17 -Wall -Wextra -Werror \
   -I"$root_dir/tools/host_include" \
   -I"$root_dir/components/zectrix_app/include" \
   -I"$root_dir/components/zectrix_platform/include" \
+  -I"$root_dir/components/zectrix_connectivity/include" \
   -I"$root_dir/components/zectrix_display/include" \
   -I"$root_dir/components/zectrix_input/include" \
   -I"$root_dir/components/zectrix_power/include" \

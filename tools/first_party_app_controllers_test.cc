@@ -23,7 +23,7 @@ int main() {
     result = launcher.Handle({Button::Down, Action::Click});
     assert(result.selected == 2);
     result = launcher.Handle({Button::Ok, Action::Click});
-    assert(result.decision == LauncherDecision::RunLegacy);
+    assert(result.decision == LauncherDecision::OpenConnectivity);
 
     result = launcher.Handle({Button::Up, Action::Click});
     assert(result.selected == 1);
@@ -45,6 +45,18 @@ int main() {
            ClockDecision::None);
     assert(HandleClockInput({Button::Up, Action::LongPress}) ==
            ClockDecision::None);
+    assert(HandleConnectivityInput({Button::Ok, Action::Click}) ==
+           ConnectivityDecision::StartPairing);
+    assert(HandleConnectivityInput({Button::Up, Action::LongPress}) ==
+           ConnectivityDecision::ClearBonds);
+    assert(HandleConnectivityInput({Button::Ok, Action::LongPress}) ==
+           ConnectivityDecision::Home);
+    assert(HandleConnectivityInput({Button::Down, Action::LongPress}) ==
+           ConnectivityDecision::Shutdown);
+    assert(HandleConnectivityInput({Button::Down, Action::Click}) ==
+           ConnectivityDecision::None);
+    assert(HandleConnectivityInput({Button::Up, Action::Click}) ==
+           ConnectivityDecision::None);
     assert(!ClockDisplayChanged({2026, 8, 12, 10, 30},
                                 {2026, 8, 12, 10, 30}));
     assert(ClockDisplayChanged({2026, 8, 12, 10, 30},

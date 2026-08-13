@@ -130,6 +130,23 @@ esp_err_t ZectrixDemoUi::ShowSettings(bool auto_showcase, const char* status,
                         : RefreshPartial({0, 36, 400, 234});
 }
 
+esp_err_t ZectrixDemoUi::ShowConnectivity(const char* state,
+                                          const char* status,
+                                          const char* passkey,
+                                          bool full_refresh) {
+    DrawFrame("CONNECTIVITY", "OK Pair  Hold UP Reset  Hold OK Home");
+    canvas_.Text(24, 58, "BLE STATE:");
+    canvas_.Text(150, 58, state == nullptr ? "UNKNOWN" : state);
+    canvas_.Line(20, 94, 379, 94);
+    canvas_.Text(24, 118, "PAIRING WINDOW: 120 SECONDS");
+    canvas_.Text(24, 150, "PASSKEY:");
+    canvas_.Text(150, 144, passkey == nullptr ? "------" : passkey, 2);
+    canvas_.Text(24, 202, "STATUS:");
+    canvas_.Text(112, 202, status == nullptr ? "" : status);
+    return full_refresh ? RefreshFull()
+                        : RefreshPartial({0, 36, 400, 234});
+}
+
 esp_err_t ZectrixDemoUi::ShowSceneInfo(const char* title, const char* mode,
                                        const char* format, size_t bytes,
                                        int64_t elapsed_ms, esp_err_t result) {

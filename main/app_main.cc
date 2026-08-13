@@ -11,6 +11,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "zectrix/zectrix_sdk.h"
+#include "zectrix_connectivity_service.h"
 #include "zectrix_demo_ui.h"
 #include "zectrix_first_party_app_controllers.h"
 #include "zectrix_display_service.h"
@@ -50,6 +51,7 @@ constexpr uint8_t kFootprintMagic[] = {'Z', 'F', 'P', '1'};
 constexpr size_t kAnimationHeaderSize = 8;
 constexpr size_t kStepHeaderSize = 12;
 constexpr TickType_t kHomeIdleTimeout = pdMS_TO_TICKS(15000);
+constexpr TickType_t kConnectivityPollTimeout = pdMS_TO_TICKS(250);
 
 enum class ControlResult {
     kContinue,
@@ -101,6 +103,7 @@ public:
         time_ = &platform_.Time();
         storage_ = &platform_.Storage();
         system_ = &platform_.System();
+        connectivity_ = &platform_.Connectivity();
         tests_ = &platform_.Diagnostics();
         LogHeap("M2-equivalent platform");
         ui_.SetDisplay(display_);
@@ -191,14 +194,21 @@ private:
                 }
                 context.RequestCommand(open);
             } else if (result.decision ==
+                       zectrix::app::LauncherDecision::OpenConnectivity) {
+                sdk::AppCommand open;
+                if (!sdk::AppCommand::Open("connectivity", &open)) {
+                    return sdk::Status::InvalidState;
+                }
+                context.RequestCommand(open);
+            } else if (result.decision ==
                        zectrix::app::LauncherDecision::RunLegacy) {
-                if (result.selected == 2) {
+                if (result.selected == 3) {
                     owner_->legacy_action_ = LegacyAction::kAutoShowcase;
-                } else if (result.selected == 3) {
+                } else if (result.selected == 4) {
                     owner_->legacy_action_ = LegacyAction::kDisplayGallery;
-                } else if (result.selected == 5) {
-                    owner_->legacy_action_ = LegacyAction::kDeviceInfo;
                 } else if (result.selected == 6) {
+                    owner_->legacy_action_ = LegacyAction::kDeviceInfo;
+                } else if (result.selected == 7) {
                     owner_->legacy_action_ = LegacyAction::kAbout;
                 }
             } else if (result.decision ==
@@ -215,8 +225,9 @@ private:
         }
         sdk::Status Render(const sdk::RenderRequest& request) override {
             static constexpr const char* kItems[] = {
-                "CLOCK", "SETTINGS", "AUTO SHOWCASE", "DISPLAY GALLERY",
-                "HARDWARE TESTS", "DEVICE INFO", "ABOUT & LICENSE"};
+                "CLOCK", "SETTINGS", "CONNECTIVITY", "AUTO SHOWCASE",
+                "DISPLAY GALLERY", "HARDWARE TESTS", "DEVICE INFO",
+                "ABOUT & LICENSE"};
             return ToSdkStatus(owner_->ui_.ShowMenu(
                 "ZECTRIX | LAUNCHER", kItems, std::size(kItems),
                 controller_.selected(),
@@ -355,6 +366,111 @@ private:
         const char* status_ = "";
     };
 
+    class ConnectivityApplication final : public sdk::Application {
+    public:
+        explicit ConnectivityApplication(DemoApp& owner) : owner_(&owner) {}
+
+        sdk::Status Enter(sdk::ApplicationContext& context) override {
+            status_ = "LOCAL ACTION REQUIRED";
+            passkey_[0] = '\0';
+            displayed_state_ = owner_->connectivity_->State();
+            return context.RequestRender({0, 0, 400, 300},
+                                         sdk::RenderIntent::Quality)
+                       ? sdk::Status::Ok : sdk::Status::InternalError;
+        }
+
+        sdk::Status HandleEvent(const sdk::InputEvent& event,
+                                sdk::ApplicationContext& context) override {
+            const auto decision =
+                zectrix::app::HandleConnectivityInput(event);
+            if (decision == zectrix::app::ConnectivityDecision::Home) {
+                context.RequestCommand(sdk::AppCommand::Home());
+            } else if (decision ==
+                       zectrix::app::ConnectivityDecision::Shutdown) {
+                context.RequestCommand(sdk::AppCommand::Shutdown());
+            } else if (decision ==
+                       zectrix::app::ConnectivityDecision::StartPairing) {
+                const auto result = owner_->connectivity_->StartLocalPairing();
+                status_ = result == zectrix::connectivity::ConnectivityResult::kOk
+                              ? "PAIRING STARTED" : "PAIRING NOT STARTED";
+                context.RequestRender({0, 36, 400, 234},
+                                      sdk::RenderIntent::Fast);
+            } else if (decision ==
+                       zectrix::app::ConnectivityDecision::ClearBonds) {
+                const auto result = owner_->connectivity_->ClearPeerBonds();
+                status_ = result == zectrix::connectivity::ConnectivityResult::kOk
+                              ? "BONDS CLEARED" : "RESET NOT ALLOWED";
+                context.RequestRender({0, 36, 400, 234},
+                                      sdk::RenderIntent::Fast);
+            }
+            return sdk::Status::Ok;
+        }
+
+        sdk::Status HandleIdle(sdk::ApplicationContext& context) override {
+            bool changed = false;
+            uint32_t passkey = 0;
+            if (owner_->connectivity_->TakePairingPasskey(&passkey)) {
+                std::snprintf(passkey_, sizeof(passkey_), "%06lu",
+                              static_cast<unsigned long>(passkey));
+                status_ = "ENTER ON PHONE";
+                changed = true;
+            }
+            const auto current_state = owner_->connectivity_->State();
+            if (current_state != displayed_state_) {
+                displayed_state_ = current_state;
+                if (current_state ==
+                        zectrix::connectivity::ConnectivityState::kSecure ||
+                    current_state ==
+                        zectrix::connectivity::ConnectivityState::kReady) {
+                    std::memset(passkey_, 0, sizeof(passkey_));
+                    status_ = "LINK SECURED";
+                }
+                changed = true;
+            }
+            if (changed) {
+                context.RequestRender({0, 36, 400, 234},
+                                      sdk::RenderIntent::Fast);
+            }
+            return sdk::Status::Ok;
+        }
+
+        sdk::Status Render(const sdk::RenderRequest& request) override {
+            return ToSdkStatus(owner_->ui_.ShowConnectivity(
+                StateText(owner_->connectivity_->State()), status_,
+                passkey_[0] == '\0' ? nullptr : passkey_,
+                request.intent == sdk::RenderIntent::Quality));
+        }
+
+        sdk::Status Exit() override {
+            std::memset(passkey_, 0, sizeof(passkey_));
+            return sdk::Status::Ok;
+        }
+
+    private:
+        static const char* StateText(
+            zectrix::connectivity::ConnectivityState state) {
+            switch (state) {
+                case zectrix::connectivity::ConnectivityState::kIdle: return "IDLE";
+                case zectrix::connectivity::ConnectivityState::kAdvertising:
+                    return "ADVERTISING";
+                case zectrix::connectivity::ConnectivityState::kPairing: return "PAIRING";
+                case zectrix::connectivity::ConnectivityState::kSecuring:
+                    return "SECURING";
+                case zectrix::connectivity::ConnectivityState::kSecure:
+                    return "SECURE";
+                case zectrix::connectivity::ConnectivityState::kReady: return "READY";
+                case zectrix::connectivity::ConnectivityState::kFault: return "FAULT";
+                default: return "STOPPED";
+            }
+        }
+
+        DemoApp* owner_;
+        const char* status_ = "";
+        char passkey_[7]{};
+        zectrix::connectivity::ConnectivityState displayed_state_ =
+            zectrix::connectivity::ConnectivityState::kStopped;
+    };
+
     class DiagnosticsApplication final : public sdk::Application {
     public:
         explicit DiagnosticsApplication(DemoApp& owner) : owner_(&owner) {}
@@ -488,11 +604,13 @@ private:
         OwnedFactory<LauncherApplication> launcher_factory(*this);
         OwnedFactory<ClockApplication> clock_factory(*this);
         OwnedFactory<SettingsApplication> settings_factory(*this);
+        OwnedFactory<ConnectivityApplication> connectivity_factory(*this);
         OwnedFactory<DiagnosticsApplication> diagnostics_factory(*this);
         const sdk::ApplicationDescriptor descriptors[] = {
             {"launcher", "Launcher", &launcher_factory},
             {"clock", "Clock", &clock_factory},
             {"settings", "Settings", &settings_factory},
+            {"connectivity", "Connectivity", &connectivity_factory},
             {"diagnostics", "Diagnostics", &diagnostics_factory},
         };
         while (true) {
@@ -508,7 +626,12 @@ private:
                 if (!sdk::IsOk(runtime.Step())) return;
                 while (legacy_action_ == LegacyAction::kNone) {
                     sdk::InputEvent event;
-                    const bool received = input_->Wait(&event, kHomeIdleTimeout);
+                    const TickType_t timeout =
+                        std::strcmp(runtime.foreground_id().c_str(),
+                                    "connectivity") == 0
+                            ? kConnectivityPollTimeout
+                            : kHomeIdleTimeout;
+                    const bool received = input_->Wait(&event, timeout);
                     const sdk::Status result = received ? runtime.Step(&event)
                                                         : runtime.Idle();
                     if (!sdk::IsOk(result)) {
@@ -836,6 +959,7 @@ private:
     zectrix::time::TimeService* time_ = nullptr;
     zectrix::storage::StorageService* storage_ = nullptr;
     zectrix::system::SystemService* system_ = nullptr;
+    zectrix::connectivity::ConnectivityService* connectivity_ = nullptr;
     ZectrixDemoUi ui_;
     ZectrixSelfTest* tests_ = nullptr;
     std::array<ZectrixTestState,

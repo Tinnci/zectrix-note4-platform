@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "zectrix_display_service.h"
+#include "zectrix_connectivity_service.h"
 #include "zectrix_input_service.h"
 #include "zectrix_power_service.h"
 #include "zectrix_storage_service.h"
@@ -93,6 +94,25 @@ esp_err_t DisplayService::Create(DisplayService** output) {
 }
 DisplayService::~DisplayService() { events.emplace_back("delete:display"); }
 }
+namespace zectrix::connectivity {
+struct ConnectivityService::Impl {};
+ConnectivityResult ConnectivityService::Create(ConnectivityService** output) {
+    events.emplace_back("create:connectivity");
+    if (fail_at == "connectivity") return ConnectivityResult::kUnavailable;
+    *output = new ConnectivityService(new Impl);
+    return ConnectivityResult::kOk;
+}
+ConnectivityResult ConnectivityService::Initialize() {
+    events.emplace_back("create:connectivity-init");
+    return fail_at == "connectivity-init"
+               ? ConnectivityResult::kTransportError
+               : ConnectivityResult::kOk;
+}
+ConnectivityService::~ConnectivityService() {
+    delete impl_;
+    events.emplace_back("delete:connectivity");
+}
+}
 
 int main() {
     {
@@ -107,16 +127,18 @@ int main() {
         (void)platform.Time();
         (void)platform.Storage();
         (void)platform.System();
+        (void)platform.Connectivity();
         assert((events == std::vector<std::string>{
             "init:board", "create:input", "create:power", "create:time",
             "create:storage", "create:storage-init", "create:system",
-            "create:display"}));
+            "create:display", "create:connectivity",
+            "create:connectivity-init"}));
     }
     assert((events == std::vector<std::string>{
         "init:board", "create:input", "create:power", "create:time",
         "create:storage", "create:storage-init", "create:system",
-        "create:display",
-        "delete:display", "delete:system", "delete:storage", "delete:time",
+        "create:display", "create:connectivity", "create:connectivity-init",
+        "delete:connectivity", "delete:display", "delete:system", "delete:storage", "delete:time",
         "delete:power", "delete:input"}));
 
     events.clear();

@@ -7,11 +7,12 @@
 class I2cDevice {
 public:
     I2cDevice(i2c_master_bus_handle_t i2c_bus, uint8_t addr);
+    ~I2cDevice();
 
 protected:
     esp_err_t initialization_status() const { return initialization_status_; }
     esp_err_t ResetBus(const char* reason);
-    i2c_master_dev_handle_t i2c_device_;
+    i2c_master_dev_handle_t i2c_device_ = nullptr;
     i2c_master_bus_handle_t i2c_bus_;
     uint8_t device_address_ = 0;
     esp_err_t initialization_status_ = ESP_OK;

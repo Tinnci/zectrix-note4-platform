@@ -22,10 +22,33 @@ LauncherResult LauncherController::Handle(const sdk::InputEvent& event) {
         LauncherDecision decision = LauncherDecision::RunLegacy;
         if (selected_ == 0) decision = LauncherDecision::OpenClock;
         if (selected_ == 1) decision = LauncherDecision::OpenSettings;
-        if (selected_ == 4) decision = LauncherDecision::OpenDiagnostics;
+        if (selected_ == 2) decision = LauncherDecision::OpenConnectivity;
+        if (selected_ == 5) decision = LauncherDecision::OpenDiagnostics;
         return {decision, selected_};
     }
     return {LauncherDecision::None, selected_};
+}
+
+ConnectivityDecision HandleConnectivityInput(const sdk::InputEvent& event) {
+    if (event.button == sdk::Button::Down &&
+        event.action == sdk::InputAction::LongPress) {
+        return ConnectivityDecision::Shutdown;
+    }
+    if (event.button == sdk::Button::Ok &&
+        event.action == sdk::InputAction::LongPress) {
+        return ConnectivityDecision::Home;
+    }
+    if (event.button == sdk::Button::Up &&
+        event.action == sdk::InputAction::LongPress) {
+        return ConnectivityDecision::ClearBonds;
+    }
+    if (event.action != sdk::InputAction::Click) {
+        return ConnectivityDecision::None;
+    }
+    if (event.button == sdk::Button::Ok) {
+        return ConnectivityDecision::StartPairing;
+    }
+    return ConnectivityDecision::None;
 }
 
 ClockDecision HandleClockInput(const sdk::InputEvent& event) {

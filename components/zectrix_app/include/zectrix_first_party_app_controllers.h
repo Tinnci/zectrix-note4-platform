@@ -12,6 +12,7 @@ enum class LauncherDecision : uint8_t {
     RenderFast,
     OpenClock,
     OpenSettings,
+    OpenConnectivity,
     OpenDiagnostics,
     RunLegacy,
     Shutdown,
@@ -24,7 +25,7 @@ struct LauncherResult {
 
 class LauncherController {
 public:
-    static constexpr std::size_t kItemCount = 7;
+    static constexpr std::size_t kItemCount = 8;
 
     LauncherResult Handle(const sdk::InputEvent& event);
     std::size_t selected() const { return selected_; }
@@ -36,6 +37,16 @@ private:
 enum class ClockDecision : uint8_t { None, Home, Shutdown };
 
 ClockDecision HandleClockInput(const sdk::InputEvent& event);
+
+enum class ConnectivityDecision : uint8_t {
+    None,
+    StartPairing,
+    ClearBonds,
+    Home,
+    Shutdown,
+};
+
+ConnectivityDecision HandleConnectivityInput(const sdk::InputEvent& event);
 
 struct ClockMinute {
     int year = 0;

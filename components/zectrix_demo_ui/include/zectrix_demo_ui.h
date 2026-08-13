@@ -49,6 +49,8 @@ public:
                         bool full_refresh);
     esp_err_t ShowSettings(bool auto_showcase, const char* status,
                            bool full_refresh);
+    esp_err_t ShowConnectivity(const char* state, const char* status,
+                               const char* passkey, bool full_refresh);
     esp_err_t ClearDisplay();
 
     ZectrixCanvas& canvas() { return canvas_; }

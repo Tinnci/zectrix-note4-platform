@@ -35,6 +35,13 @@ I2cDevice::I2cDevice(i2c_master_bus_handle_t i2c_bus, uint8_t addr)
     }
 }
 
+I2cDevice::~I2cDevice() {
+    if (initialization_status_ == ESP_OK && i2c_device_ != nullptr) {
+        i2c_master_bus_rm_device(i2c_device_);
+        i2c_device_ = nullptr;
+    }
+}
+
 esp_err_t I2cDevice::ResetBus(const char* reason) {
     if (initialization_status_ != ESP_OK) return initialization_status_;
     ScopedI2cBusLock bus_lock("I2cDevice::ResetBus");
