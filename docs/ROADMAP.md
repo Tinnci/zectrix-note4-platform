@@ -89,6 +89,26 @@ golden vectors. A real Android device and Note4 pass the end-to-end gate.
 Power and resource measurements are recorded. A missing physical device keeps
 the affected gate and Issue open.
 
+## D1 — Maintenance CLI
+
+Goal: provide a bounded USB maintenance interface without bypassing platform
+ownership, application lifecycle or local security policy.
+
+Status: In progress. This milestone can develop beside C1. Mutating
+connectivity commands remain blocked by the applicable C1 authorization gate.
+
+- Use a static hierarchical command tree and bounded parser.
+- Keep terminal work in the CLI task and execute platform operations through a
+  fixed typed dispatcher at the application-owner safe point.
+- Start with `system info`, then add copied status snapshots.
+- Add bounded log and input observation with cooperative cancellation.
+- Add confirmed mutations only after read-only and streaming gates pass.
+- Keep Android maintenance typed; do not transport terminal text over BLE.
+
+Exit: host, architecture, SDK and clean-build checks pass. A real Note4 passes
+USB reconnect, command, cancellation, log/input stream, sleep and shutdown
+tests without bypassing resource ownership.
+
 ## Deferred research
 
 The following work is not a prerequisite for M1–M4:
