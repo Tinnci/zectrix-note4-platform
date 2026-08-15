@@ -12,7 +12,7 @@ enum class ConnectivityState : uint8_t {
     kSecuring,
     kSecure,
     kLinkReady,
-    kProtocolReady,
+    kProtocolNegotiatedLocal,
     kFault,
 };
 
@@ -34,7 +34,9 @@ struct ConnectivitySnapshot {
     bool authenticated = false;
     bool bonded = false;
     bool notifications_enabled = false;
-    bool protocol_session_ready = false;
+    // The firmware accepted Hello and started HelloAck transport. This does not prove
+    // that Android received the response, and it does not authorize the peer.
+    bool protocol_negotiated_local = false;
     // Protocol peer authorization is a separate gate. Hello does not set it.
     bool peer_authorized = false;
 };

@@ -157,6 +157,12 @@ The firmware services Hello in the background through `ConnectivityService`;
 the internal FreeRTOS task is an implementation mechanism, not an
 application-facing lifecycle or architecture boundary.
 
+The firmware state `ProtocolNegotiatedLocal` means that it accepted Hello and
+started HelloAck transport for the same BLE session. It does not prove that Android received
+HelloAck. Android enters `READY` only after it receives and validates the
+matching response. Product readiness additionally requires peer authorization
+and synchronization convergence.
+
 Reconnect advertising rejects an unknown peer unless a local pairing window
 is active. This prevents an untrusted central from occupying the connection
 for a full security timeout. Pairing failure and automatic reconnect use

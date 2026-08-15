@@ -425,11 +425,11 @@ private:
                     current_state ==
                         zectrix::connectivity::ConnectivityState::kLinkReady ||
                     current_state == zectrix::connectivity::
-                        ConnectivityState::kProtocolReady) {
+                        ConnectivityState::kProtocolNegotiatedLocal) {
                     std::memset(passkey_, 0, sizeof(passkey_));
                     status_ = current_state == zectrix::connectivity::
-                                      ConnectivityState::kProtocolReady
-                                  ? "PROTOCOL READY; AUTHORIZATION NEXT"
+                                      ConnectivityState::kProtocolNegotiatedLocal
+                                  ? "HELLO ACCEPTED; AUTHORIZATION NEXT"
                                   : current_state ==
                                       zectrix::connectivity::ConnectivityState::kLinkReady
                                   ? "SECURE BLE READY; VERIFYING PHONE"
@@ -480,8 +480,8 @@ private:
                     return "SECURE LINK";
                 case zectrix::connectivity::ConnectivityState::kLinkReady:
                     return "BLE READY";
-                case zectrix::connectivity::ConnectivityState::kProtocolReady:
-                    return "PROTOCOL READY";
+                case zectrix::connectivity::ConnectivityState::kProtocolNegotiatedLocal:
+                    return "PROTOCOL NEGOTIATED";
                 case zectrix::connectivity::ConnectivityState::kFault: return "FAULT";
                 default: return "STOPPED";
             }

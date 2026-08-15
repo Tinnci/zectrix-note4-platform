@@ -98,6 +98,14 @@ object CompanionProtocol {
         )
     }
 
+    fun matchesHelloAck(frame: Frame, requestId: Long, sequence: Long): Boolean =
+        frame.header.messageClass == MessageClass.CONTROL &&
+            frame.header.messageType == CONTROL_HELLO_ACK &&
+            frame.header.flags and FLAG_RESPONSE != 0 &&
+            frame.header.requestId == requestId &&
+            frame.header.sequence == sequence &&
+            frame.payload.isEmpty()
+
     fun encodeTlv(type: Int, required: Boolean, value: ByteArray): ByteArray {
         require(type in 0 until REQUIRED_FIELD_BIT)
         require(value.size <= MAX_TLV_VALUE_SIZE)

@@ -22,6 +22,7 @@ enum class BleState : uint8_t {
 struct ReceivedFrame {
     const uint8_t* data = nullptr;
     std::size_t size = 0;
+    uint32_t session_id = 0;
 };
 
 struct BleSnapshot {
@@ -54,12 +55,20 @@ public:
     companion::LinkResult Start() override;
     companion::LinkResult Send(const uint8_t* frame,
                                std::size_t frame_size) override;
+    companion::LinkResult SendForSession(uint32_t expected_session_id,
+                                         const uint8_t* frame,
+                                         std::size_t frame_size);
     void Stop() override;
     companion::LinkStatus Status() const override;
 
     BleState State() const;
     BleSnapshot Snapshot() const;
     bool TakePairingPasskey(uint32_t* passkey);
+    // Wait for a link-state change or a complete received frame. Events can
+    // coalesce; callers must inspect the current state and drain available
+    // frames after each wake.
+    bool WaitForSessionEvent(uint32_t timeout_ms);
+    void WakeSessionWaiter();
     bool TakeReceivedFrame(ReceivedFrame* frame);
     void ReleaseReceivedFrame();
     companion::LinkResult ClearBonds();

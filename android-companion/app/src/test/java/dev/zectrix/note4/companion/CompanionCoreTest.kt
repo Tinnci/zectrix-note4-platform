@@ -79,6 +79,9 @@ class CompanionCoreTest {
         assertEquals(7, decodedAck.frame.header.requestId)
         assertEquals(1, decodedAck.frame.header.sequence)
         assertEquals(CompanionProtocol.FLAG_RESPONSE, decodedAck.frame.header.flags)
+        assertTrue(CompanionProtocol.matchesHelloAck(decodedAck.frame, 7, 1))
+        assertFalse(CompanionProtocol.matchesHelloAck(decodedAck.frame, 7, 2))
+        assertFalse(CompanionProtocol.matchesHelloAck(decodedAck.frame, 8, 1))
     }
 
     @Test fun durableQueueSurvivesRestartAndRejectsCorruption() {

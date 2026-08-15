@@ -51,6 +51,7 @@ class BleGattClient(
         private const val TAG = "ZectrixCompanion"
         private const val REQUESTED_MTU = 185
         private const val MAX_QUEUED_PACKETS = 32
+        private const val HELLO_SEQUENCE = 1L
         private val sessionSequence = AtomicInteger(0)
     }
 
@@ -261,11 +262,9 @@ class BleGattClient(
         when (val result = CompanionProtocol.decode(frame)) {
             is CompanionProtocol.DecodeResult.Success -> {
                 receivedFrames++
-                val header = result.frame.header
-                val helloAck = header.messageClass == CompanionProtocol.MessageClass.CONTROL &&
-                    header.messageType == CompanionProtocol.CONTROL_HELLO_ACK &&
-                    header.flags and CompanionProtocol.FLAG_RESPONSE != 0 &&
-                    header.requestId == helloRequestId && result.frame.payload.isEmpty()
+                val helloAck = CompanionProtocol.matchesHelloAck(
+                    result.frame, helloRequestId, HELLO_SEQUENCE,
+                )
                 if (helloAck) {
                     report(GattState.READY, "Secure link and protocol handshake complete")
                 } else {
@@ -299,7 +298,7 @@ class BleGattClient(
                 flags = 0,
                 messageType = CompanionProtocol.CONTROL_HELLO,
                 requestId = helloRequestId,
-                sequence = 1,
+                sequence = HELLO_SEQUENCE,
             ),
             byteArrayOf(),
         )

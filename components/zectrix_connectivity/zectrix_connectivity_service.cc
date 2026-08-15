@@ -5,6 +5,7 @@
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 #include "zectrix_ble_link.h"
@@ -33,9 +34,9 @@ struct ConnectivityService::Impl {
     BleLink ble;
     bool initialized = false;
     std::atomic<bool> stop_session_task{false};
-    std::atomic<bool> protocol_session_ready{false};
+    std::atomic<bool> protocol_negotiated_local{false};
     std::atomic<uint32_t> protocol_session_id{0};
-    std::atomic<TaskHandle_t> session_task{nullptr};
+    SemaphoreHandle_t session_task_done = nullptr;
 
     static void SessionTask(void* argument) {
         auto* self = static_cast<Impl*>(argument);
@@ -43,17 +44,22 @@ struct ConnectivityService::Impl {
             const BleSnapshot link = self->ble.Snapshot();
             if (link.session_id != self->protocol_session_id.load()) {
                 self->protocol_session_id.store(link.session_id);
-                self->protocol_session_ready.store(false);
+                self->protocol_negotiated_local.store(false);
             }
-            if (self->protocol_session_ready.load()) {
+            if (link.state != BleState::kTransportReady) {
+                self->protocol_negotiated_local.store(false);
+                self->ble.WaitForSessionEvent(UINT32_MAX);
+                continue;
+            }
+            if (self->protocol_negotiated_local.load()) {
                 // The session layer owns only Hello in this slice. Leave all
                 // later frames queued for the next protocol consumer.
-                vTaskDelay(pdMS_TO_TICKS(20));
+                self->ble.WaitForSessionEvent(UINT32_MAX);
                 continue;
             }
             ReceivedFrame received{};
             if (!self->ble.TakeReceivedFrame(&received)) {
-                vTaskDelay(pdMS_TO_TICKS(20));
+                self->ble.WaitForSessionEvent(UINT32_MAX);
                 continue;
             }
             companion::FrameView frame{};
@@ -67,6 +73,7 @@ struct ConnectivityService::Impl {
                 (frame.header.flags & companion::kResponse) == 0;
             const uint32_t request_id = frame.header.request_id;
             const uint32_t sequence = frame.header.sequence;
+            const uint32_t received_session_id = received.session_id;
             self->ble.ReleaseReceivedFrame();
             if (!hello) {
                 ESP_LOGW(kTag, "event=protocol_frame_rejected session=%lu reason=expected_hello",
@@ -85,10 +92,13 @@ struct ConnectivityService::Impl {
             if (companion::EncodeFrame(header, nullptr, 0, response,
                                        sizeof(response), &response_size) ==
                     companion::ProtocolStatus::kOk &&
-                self->ble.Send(response, response_size) ==
+                received_session_id == link.session_id &&
+                self->ble.SendForSession(received_session_id, response,
+                                         response_size) ==
                     companion::LinkResult::kOk) {
-                self->protocol_session_ready.store(true);
-                ESP_LOGI(kTag, "event=protocol_ready session=%lu request=%lu",
+                self->protocol_negotiated_local.store(true);
+                ESP_LOGI(kTag,
+                         "event=protocol_negotiated_local session=%lu request=%lu",
                          static_cast<unsigned long>(link.session_id),
                          static_cast<unsigned long>(request_id));
             } else {
@@ -96,7 +106,7 @@ struct ConnectivityService::Impl {
                          static_cast<unsigned long>(link.session_id));
             }
         }
-        self->session_task.store(nullptr);
+        xSemaphoreGive(self->session_task_done);
         vTaskDelete(nullptr);
     }
 };
@@ -118,7 +128,12 @@ ConnectivityResult ConnectivityService::Create(ConnectivityService** output) {
 ConnectivityService::~ConnectivityService() {
     if (impl_ != nullptr) {
         impl_->stop_session_task.store(true);
-        while (impl_->session_task.load() != nullptr) vTaskDelay(pdMS_TO_TICKS(1));
+        impl_->ble.WakeSessionWaiter();
+        if (impl_->session_task_done != nullptr) {
+            xSemaphoreTake(impl_->session_task_done, portMAX_DELAY);
+            vSemaphoreDelete(impl_->session_task_done);
+            impl_->session_task_done = nullptr;
+        }
     }
     delete impl_;
 }
@@ -129,14 +144,20 @@ ConnectivityResult ConnectivityService::Initialize() {
     const ConnectivityResult result = Map(impl_->ble.Initialize());
     if (result == ConnectivityResult::kOk) {
         impl_->initialized = true;
-        TaskHandle_t session_task = nullptr;
-        if (xTaskCreate(&Impl::SessionTask, "zectrix_session", 4096, impl_, 4,
-                        &session_task) != pdPASS) {
+        impl_->session_task_done = xSemaphoreCreateBinary();
+        if (impl_->session_task_done == nullptr) {
             impl_->ble.Stop();
             impl_->initialized = false;
             return ConnectivityResult::kUnavailable;
         }
-        impl_->session_task.store(session_task);
+        if (xTaskCreate(&Impl::SessionTask, "zectrix_session", 4096, impl_, 4,
+                        nullptr) != pdPASS) {
+            vSemaphoreDelete(impl_->session_task_done);
+            impl_->session_task_done = nullptr;
+            impl_->ble.Stop();
+            impl_->initialized = false;
+            return ConnectivityResult::kUnavailable;
+        }
     }
     return result;
 }
@@ -169,8 +190,9 @@ ConnectivitySnapshot ConnectivityService::Snapshot() const {
     snapshot.authenticated = ble.authenticated;
     snapshot.bonded = ble.bonded;
     snapshot.notifications_enabled = ble.notifications_enabled;
-    snapshot.protocol_session_ready =
-        impl_->protocol_session_ready.load() &&
+    snapshot.protocol_negotiated_local =
+        ble.state == BleState::kTransportReady &&
+        impl_->protocol_negotiated_local.load() &&
         impl_->protocol_session_id.load() == ble.session_id;
     switch (ble.state) {
         case BleState::kIdle: snapshot.state = ConnectivityState::kIdle; break;
@@ -182,8 +204,8 @@ ConnectivitySnapshot ConnectivityService::Snapshot() const {
         case BleState::kConnectedSecured:
             snapshot.state = ConnectivityState::kSecure; break;
         case BleState::kTransportReady:
-            snapshot.state = snapshot.protocol_session_ready
-                ? ConnectivityState::kProtocolReady
+            snapshot.state = snapshot.protocol_negotiated_local
+                ? ConnectivityState::kProtocolNegotiatedLocal
                 : ConnectivityState::kLinkReady;
             break;
         case BleState::kFault: snapshot.state = ConnectivityState::kFault; break;

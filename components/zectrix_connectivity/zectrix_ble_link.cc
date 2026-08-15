@@ -85,11 +85,13 @@ struct BleLink::Impl {
     struct QueuedFrame {
         std::array<uint8_t, companion::kMaximumFrameSize> data{};
         std::size_t size = 0;
+        uint32_t session_id = 0;
         bool occupied = false;
     };
 
     static Impl* instance;
     SemaphoreHandle_t lock = nullptr;
+    SemaphoreHandle_t session_event = nullptr;
     BleState state = BleState::kStopped;
     bool initialized = false;
     bool synchronized = false;
@@ -146,13 +148,16 @@ struct BleLink::Impl {
         const companion::ProtocolStatus status =
             instance->reassembler.Accept(packet.data(), copied);
         int result = 0;
+        bool frame_queued = false;
         if (status == companion::ProtocolStatus::kFrameComplete) {
             if (instance->received_count == kReceivedQueueCapacity) {
+                instance->reassembler.Reset();
                 result = BLE_ATT_ERR_INSUFFICIENT_RES;
             } else {
                 QueuedFrame& destination =
                     instance->received[instance->received_write];
                 destination.size = instance->reassembler.Size();
+                destination.session_id = instance->session_id;
                 std::memcpy(destination.data.data(),
                             instance->reassembler.Data(), destination.size);
                 destination.occupied = true;
@@ -160,12 +165,14 @@ struct BleLink::Impl {
                     (instance->received_write + 1) % kReceivedQueueCapacity;
                 ++instance->received_count;
                 instance->reassembler.Reset();
+                frame_queued = true;
             }
         } else if (status != companion::ProtocolStatus::kFragmentAccepted) {
             instance->reassembler.Reset();
             result = BLE_ATT_ERR_VALUE_NOT_ALLOWED;
         }
         xSemaphoreGive(instance->lock);
+        if (frame_queued) xSemaphoreGive(instance->session_event);
         return result;
     }
 
@@ -180,6 +187,7 @@ struct BleLink::Impl {
         instance->synchronized = false;
         instance->state = BleState::kFault;
         xSemaphoreGive(instance->lock);
+        xSemaphoreGive(instance->session_event);
         ESP_LOGE(kTag, "event=host_reset state=fault");
     }
 
@@ -198,6 +206,7 @@ struct BleLink::Impl {
         if (instance->state != BleState::kFault) instance->state = BleState::kIdle;
         start_pairing = instance->pairing_requested;
         xSemaphoreGive(instance->lock);
+        xSemaphoreGive(instance->session_event);
         instance->Advertise(start_pairing);
     }
 
@@ -227,6 +236,7 @@ struct BleLink::Impl {
                 pairing_authorized = instance->pairing_authorized;
                 instance->pairing_requested = false;
                 xSemaphoreGive(instance->lock);
+                xSemaphoreGive(instance->session_event);
                 ESP_LOGI(kTag, "event=connected session=%lu",
                          static_cast<unsigned long>(session));
                 if (!pairing_authorized &&
@@ -261,6 +271,7 @@ struct BleLink::Impl {
                 instance->authenticated = false;
                 instance->bonded = false;
                 xSemaphoreGive(instance->lock);
+                xSemaphoreGive(instance->session_event);
                 ESP_LOGI(kTag,
                          "event=disconnected session=%lu reason=%d",
                          static_cast<unsigned long>(disconnected_session),
@@ -307,6 +318,7 @@ struct BleLink::Impl {
                 }
                 instance->pairing_authorized = false;
                 xSemaphoreGive(instance->lock);
+                xSemaphoreGive(instance->session_event);
                 ESP_LOGI(kTag,
                          "event=security_complete session=%lu status=%d secure=%d",
                          static_cast<unsigned long>(secure_session),
@@ -338,6 +350,7 @@ struct BleLink::Impl {
                             : BleState::kConnectedSecured;
                     }
                     xSemaphoreGive(instance->lock);
+                    xSemaphoreGive(instance->session_event);
                     ESP_LOGI(kTag,
                              "event=notification_subscription session=%lu enabled=%d secure=%d",
                              static_cast<unsigned long>(subscribe_session),
@@ -457,7 +470,7 @@ struct BleLink::Impl {
         return result;
     }
 
-    void PumpTransmit() {
+    bool PumpTransmit() {
         std::array<uint8_t, 512> packet{};
         std::size_t packet_size = 0;
         uint16_t connection = kNoConnection;
@@ -465,7 +478,7 @@ struct BleLink::Impl {
         xSemaphoreTake(lock, portMAX_DELAY);
         if (!transmit_active) {
             xSemaphoreGive(lock);
-            return;
+            return false;
         }
         const std::size_t count = companion::FragmentCount(
             transmit_size, transmit_packet_capacity);
@@ -473,7 +486,7 @@ struct BleLink::Impl {
             transmit_active = false;
             transmit_size = 0;
             xSemaphoreGive(lock);
-            return;
+            return true;
         }
         const auto status = companion::EncodeFragment(
             transmit_frame.data(), transmit_size, transmit_frame_id,
@@ -485,7 +498,7 @@ struct BleLink::Impl {
             transmit_active = false;
             transmit_size = 0;
             xSemaphoreGive(lock);
-            return;
+            return false;
         }
         ++transmit_fragment;
         xSemaphoreGive(lock);
@@ -499,7 +512,9 @@ struct BleLink::Impl {
             transmit_active = false;
             transmit_size = 0;
             xSemaphoreGive(lock);
+            return false;
         }
+        return true;
     }
 };
 
@@ -547,6 +562,9 @@ BleLink::BleLink() : impl_(new (std::nothrow) Impl()) {}
 
 BleLink::~BleLink() {
     Stop();
+    if (impl_ != nullptr && impl_->session_event != nullptr) {
+        vSemaphoreDelete(impl_->session_event);
+    }
     if (impl_ != nullptr && impl_->lock != nullptr) {
         vSemaphoreDelete(impl_->lock);
     }
@@ -559,14 +577,25 @@ companion::LinkResult BleLink::Initialize() {
     if (Impl::instance != nullptr) return companion::LinkResult::kBusy;
     impl_->lock = xSemaphoreCreateMutex();
     if (impl_->lock == nullptr) return companion::LinkResult::kUnavailable;
+    impl_->session_event = xSemaphoreCreateBinary();
+    if (impl_->session_event == nullptr) {
+        vSemaphoreDelete(impl_->lock);
+        impl_->lock = nullptr;
+        return companion::LinkResult::kUnavailable;
+    }
+    const auto release_primitives = [this]() {
+        vSemaphoreDelete(impl_->lock);
+        impl_->lock = nullptr;
+        vSemaphoreDelete(impl_->session_event);
+        impl_->session_event = nullptr;
+    };
     Impl::instance = impl_;
     const esp_err_t result = nimble_port_init();
     if (result != ESP_OK) {
         ESP_LOGE(kTag, "initialize: nimble_port_init failed: %s",
                  esp_err_to_name(result));
         Impl::instance = nullptr;
-        vSemaphoreDelete(impl_->lock);
-        impl_->lock = nullptr;
+        release_primitives();
         return companion::LinkResult::kTransportError;
     }
     ESP_LOGD(kTag, "initialize: nimble_port_init ok");
@@ -592,6 +621,7 @@ companion::LinkResult BleLink::Initialize() {
         ESP_LOGE(kTag, "initialize: device name set failed: %d", name_result);
         nimble_port_deinit();
         Impl::instance = nullptr;
+        release_primitives();
         return companion::LinkResult::kTransportError;
     }
     kCharacteristics[1].val_handle = &impl_->notify_value_handle;
@@ -600,6 +630,7 @@ companion::LinkResult BleLink::Initialize() {
         ESP_LOGE(kTag, "initialize: gatts count failed: %d", count_result);
         nimble_port_deinit();
         Impl::instance = nullptr;
+        release_primitives();
         return companion::LinkResult::kTransportError;
     }
     const int add_result = ble_gatts_add_svcs(kServices);
@@ -607,6 +638,7 @@ companion::LinkResult BleLink::Initialize() {
         ESP_LOGE(kTag, "initialize: gatts add failed: %d", add_result);
         nimble_port_deinit();
         Impl::instance = nullptr;
+        release_primitives();
         return companion::LinkResult::kTransportError;
     }
     ESP_LOGD(kTag, "initialize: gatts configured");
@@ -653,6 +685,12 @@ companion::LinkResult BleLink::Start() {
 
 companion::LinkResult BleLink::Send(const uint8_t* frame,
                                     std::size_t frame_size) {
+    return SendForSession(0, frame, frame_size);
+}
+
+companion::LinkResult BleLink::SendForSession(uint32_t expected_session_id,
+                                              const uint8_t* frame,
+                                              std::size_t frame_size) {
     if (impl_ == nullptr || frame == nullptr || frame_size == 0) {
         return companion::LinkResult::kInvalidArgument;
     }
@@ -666,6 +704,11 @@ companion::LinkResult BleLink::Send(const uint8_t* frame,
         return companion::LinkResult::kInvalidArgument;
     }
     xSemaphoreTake(impl_->lock, portMAX_DELAY);
+    if (expected_session_id != 0 &&
+        impl_->session_id != expected_session_id) {
+        xSemaphoreGive(impl_->lock);
+        return companion::LinkResult::kUnavailable;
+    }
     if (impl_->state != BleState::kTransportReady || !impl_->subscribed) {
         xSemaphoreGive(impl_->lock);
         return companion::LinkResult::kUnavailable;
@@ -681,8 +724,8 @@ companion::LinkResult BleLink::Send(const uint8_t* frame,
     if (impl_->transmit_frame_id == 0) impl_->transmit_frame_id = 1;
     impl_->transmit_active = true;
     xSemaphoreGive(impl_->lock);
-    impl_->PumpTransmit();
-    return companion::LinkResult::kOk;
+    return impl_->PumpTransmit() ? companion::LinkResult::kOk
+                                 : companion::LinkResult::kTransportError;
 }
 
 void BleLink::Stop() {
@@ -754,6 +797,19 @@ bool BleLink::TakePairingPasskey(uint32_t* passkey) {
     return available;
 }
 
+bool BleLink::WaitForSessionEvent(uint32_t timeout_ms) {
+    if (impl_ == nullptr || impl_->session_event == nullptr) return false;
+    const TickType_t timeout = timeout_ms == UINT32_MAX
+        ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms);
+    return xSemaphoreTake(impl_->session_event, timeout) == pdTRUE;
+}
+
+void BleLink::WakeSessionWaiter() {
+    if (impl_ != nullptr && impl_->session_event != nullptr) {
+        xSemaphoreGive(impl_->session_event);
+    }
+}
+
 bool BleLink::TakeReceivedFrame(ReceivedFrame* frame) {
     if (impl_ == nullptr || frame == nullptr || impl_->lock == nullptr) {
         return false;
@@ -766,6 +822,7 @@ bool BleLink::TakeReceivedFrame(ReceivedFrame* frame) {
     const Impl::QueuedFrame& source = impl_->received[impl_->received_read];
     frame->data = source.data.data();
     frame->size = source.size;
+    frame->session_id = source.session_id;
     impl_->received_borrowed = true;
     xSemaphoreGive(impl_->lock);
     return true;
