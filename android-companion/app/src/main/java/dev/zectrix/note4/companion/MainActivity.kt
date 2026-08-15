@@ -2,12 +2,19 @@ package dev.zectrix.note4.companion
 
 import android.Manifest
 import android.app.Activity
+import android.app.PendingIntent
 import android.companion.AssociationRequest
 import android.companion.BluetoothLeDeviceFilter
 import android.companion.CompanionDeviceManager
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.content.Intent
+import android.content.IntentFilter
+import android.nfc.NdefMessage
+import android.nfc.NdefRecord
+import android.nfc.NfcAdapter
+import android.nfc.NfcManager
 import android.os.Handler
 import android.os.Looper
 import androidx.activity.ComponentActivity
@@ -54,6 +61,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private var snapshot by mutableStateOf(CompanionConnectionManager.snapshot())
+    private var nfcAdapter: NfcAdapter? = null
+    private var nfcPendingIntent: PendingIntent? = null
+    private var nfcTechLists: Array<Array<String>> = arrayOf(arrayOf("android.nfc.tech.Ndef"))
     private var associationCount by mutableIntStateOf(0)
     private val connectionObserver: (GattSnapshot) -> Unit = { latest ->
         runOnUiThread { snapshot = latest }
@@ -78,6 +88,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         CompanionConnectionManager.initialize(this)
+        nfcAdapter = (getSystemService(NFC_SERVICE) as NfcManager).defaultAdapter
+        nfcPendingIntent = PendingIntent.getActivity(
+            this, 0, Intent(this, javaClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_MUTABLE,
+        )
         refreshAssociations()
         requestBluetoothPermissionsIfNeeded()
         observeApprovedDevice()
@@ -89,9 +104,63 @@ class MainActivity : ComponentActivity() {
         CompanionConnectionManager.observe(connectionObserver)
     }
 
+    override fun onResume() {
+        super.onResume()
+        val adapter = nfcAdapter
+        if (adapter != null) {
+            val intent = nfcPendingIntent
+            val filters = arrayOf(
+                IntentFilter(NfcAdapter.ACTION_NDEF_DISCOVERED).apply {
+                    addDataType(NfcEnrollmentParser.MIME_TYPE)
+                },
+            )
+            if (intent != null) {
+                adapter.enableForegroundDispatch(this, intent, filters, nfcTechLists)
+            }
+        }
+    }
+
+    override fun onPause() {
+        nfcAdapter?.disableForegroundDispatch(this)
+        super.onPause()
+    }
+
     override fun onStop() {
         CompanionConnectionManager.removeObserver(connectionObserver)
         super.onStop()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleNfcIntent(intent)
+    }
+
+    private fun handleNfcIntent(intent: Intent) {
+        val messages = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES)
+            ?: return
+        val record = messages
+            .filterIsInstance<NdefMessage>()
+            .flatMap { it.records.asList() }
+            .firstOrNull {
+                it.tnf == NdefRecord.TNF_MIME_MEDIA &&
+                    it.type.contentEquals(NfcEnrollmentParser.MIME_TYPE.toByteArray(Charsets.US_ASCII))
+            } ?: return
+        val enrollment = NfcEnrollmentParser.parsePayload(record.payload) ?: run {
+            snapshot = GattSnapshot(GattState.FAULT, "Malformed Note4 enrollment record")
+            return
+        }
+        val accepted = CompanionConnectionManager.setEnrollmentProof(
+            enrollment.generation, enrollment.token,
+        )
+        if (accepted) {
+            snapshot = GattSnapshot(
+                GattState.IDLE,
+                "NFC enrollment read. Connect to the Note4 to continue.",
+            )
+            connectApprovedDevice()
+        } else {
+            snapshot = GattSnapshot(GattState.FAULT, "Bluetooth transport is not ready")
+        }
     }
 
     private fun beginAssociation() {

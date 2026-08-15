@@ -127,13 +127,14 @@ class BleGattClient(
      * Supplies a single-use NFC enrollment proof for the next protocol Hello.
      * The proof is cleared as soon as the Hello frame is queued.
      */
-    fun setEnrollmentProof(generation: Long, token: ByteArray) {
+    fun setEnrollmentProof(generation: Long, token: ByteArray): Boolean {
         val value = CompanionProtocol.encodeHelloEnrollmentProof(
             generation, token, companionIdentity,
         )
         enrollmentProofPayload = CompanionProtocol.encodeTlv(
             CompanionProtocol.HELLO_ENROLLMENT_PROOF_TYPE, required = true, value = value,
         )
+        return true
     }
 
     /** Queue one complete protocol frame. Android GATT writes are serialized. */

@@ -62,6 +62,10 @@ object CompanionConnectionManager {
         return client?.connect(device) == true
     }
 
+    fun setEnrollmentProof(generation: Long, token: ByteArray): Boolean {
+        return client?.setEnrollmentProof(generation, token) ?: false
+    }
+
     fun stop() {
         client?.close()
     }

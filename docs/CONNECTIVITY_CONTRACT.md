@@ -147,15 +147,25 @@ The implementation must not collapse these states:
 | Peer authorized | stored protocol identity and authorization decision | Product commands and resources can run. |
 
 Protocol 1.0 reserves control message type `1` for Hello and type `2` for
-HelloAck. HelloAck has the response flag, repeats the request ID and sequence,
-and has an empty payload in the first vertical slice. This exchange proves the
-current link and protocol path. It does not authorize the peer.
+HelloAck. Hello may carry either TLV payload:
+
+- `kHelloEnrollmentProofType = 1`: generation `uint32 LE`, 16-byte
+  enrollment token and 16-byte companion identity. The firmware consumes the
+  token and persists the companion identity after successful validation.
+- `kHelloCompanionIdentityType = 2`: 16-byte companion identity for
+  reconnect authorization after a completed enrollment.
+
+HelloAck has the response flag and repeats the request ID and sequence. Its
+payload carries `kHelloAckStatusType = 3`: status byte (`0` accepted, `1`
+rejected), flags byte (`0x01` peer authorized) and error reason `uint16 LE`.
+The exchange proves the current link and protocol path. A successful status
+does not authorize a peer unless the peer-authorized flag is also set.
 
 The Android application serializes all GATT writes and completes MTU setup
-before Hello. It reaches its connected state only after a matching HelloAck.
-The firmware services Hello in the background through `ConnectivityService`;
-the internal FreeRTOS task is an implementation mechanism, not an
-application-facing lifecycle or architecture boundary.
+before Hello. It reaches its connected state only after a matching accepted
+HelloAck. The firmware services Hello in the background through
+`ConnectivityService`; the internal FreeRTOS task is an implementation
+mechanism, not an application-facing lifecycle or architecture boundary.
 
 The firmware state `ProtocolNegotiatedLocal` means that it accepted Hello and
 started HelloAck transport for the same BLE session. It does not prove that Android received
