@@ -5,6 +5,37 @@
 namespace zectrix::companion {
 namespace {
 
+bool IsAllZero(const uint8_t* data, std::size_t size) {
+    for (std::size_t i = 0; i < size; ++i) {
+        if (data[i] != 0) return false;
+    }
+    return true;
+}
+
+EnrollmentNdefStatus ValidatePayload(const EnrollmentNdefPayload& payload) {
+    if (payload.version != kEnrollmentNdefVersion) {
+        return EnrollmentNdefStatus::kUnsupportedVersion;
+    }
+    if (payload.ble_role != kEnrollmentNdefBleRolePeripheral &&
+        payload.ble_role != kEnrollmentNdefBleRoleCentral) {
+        return EnrollmentNdefStatus::kInvalidPayload;
+    }
+    if ((payload.flags & ~kEnrollmentNdefFlagBleAddressValid) != 0) {
+        return EnrollmentNdefStatus::kInvalidArgument;
+    }
+    if ((payload.flags & kEnrollmentNdefFlagBleAddressValid) != 0) {
+        if (payload.ble_address_type == kEnrollmentNdefBleAddressTypeUnknown ||
+            IsAllZero(payload.ble_address.data(), payload.ble_address.size())) {
+            return EnrollmentNdefStatus::kInvalidPayload;
+        }
+    }
+    if (payload.generation == 0 ||
+        IsAllZero(payload.token.data(), payload.token.size())) {
+        return EnrollmentNdefStatus::kInvalidPayload;
+    }
+    return EnrollmentNdefStatus::kOk;
+}
+
 void PutUInt32(uint8_t* output, uint32_t value) {
     output[0] = static_cast<uint8_t>(value & 0xffU);
     output[1] = static_cast<uint8_t>((value >> 8U) & 0xffU);
@@ -75,11 +106,9 @@ EnrollmentNdefStatus EncodeEnrollmentNdefMessage(
         return EnrollmentNdefStatus::kInvalidArgument;
     }
     *output_size = 0;
-    if (payload.version != kEnrollmentNdefVersion) {
-        return EnrollmentNdefStatus::kUnsupportedVersion;
-    }
-    if ((payload.flags & ~kEnrollmentNdefFlagBleAddressValid) != 0) {
-        return EnrollmentNdefStatus::kInvalidArgument;
+    const EnrollmentNdefStatus payload_status = ValidatePayload(payload);
+    if (payload_status != EnrollmentNdefStatus::kOk) {
+        return payload_status;
     }
     const std::size_t message_size = EnrollmentNdefMessageSize();
     if (output_capacity < message_size) {
@@ -119,8 +148,13 @@ EnrollmentNdefStatus DecodeEnrollmentNdefMessage(
                     kEnrollmentNdefMimeTypeLength) != 0) {
         return EnrollmentNdefStatus::kBadType;
     }
-    return DecodePayload(message + 3 + kEnrollmentNdefMimeTypeLength,
-                         kEnrollmentNdefPayloadSize, payload);
+    const EnrollmentNdefStatus payload_status =
+        DecodePayload(message + 3 + kEnrollmentNdefMimeTypeLength,
+                      kEnrollmentNdefPayloadSize, payload);
+    if (payload_status != EnrollmentNdefStatus::kOk) {
+        return payload_status;
+    }
+    return ValidatePayload(*payload);
 }
 
 }  // namespace zectrix::companion

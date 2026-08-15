@@ -15,7 +15,12 @@ object CompanionProtocol {
     const val CONTROL_HELLO = 1
     const val CONTROL_HELLO_ACK = 2
     const val HELLO_ENROLLMENT_PROOF_TYPE = 1
-    const val HELLO_ENROLLMENT_PROOF_SIZE = 20
+    const val HELLO_COMPANION_IDENTITY_TYPE = 2
+    const val HELLO_ACK_STATUS_TYPE = 3
+    const val HELLO_ENROLLMENT_PROOF_SIZE = 36
+    const val HELLO_ACK_STATUS_OK = 0
+    const val HELLO_ACK_STATUS_REJECTED = 1
+    const val HELLO_ACK_PEER_AUTHORIZED_FLAG = 1
 
     enum class MessageClass(val wire: Int) {
         CONTROL(0), DURABLE_STATE(1), COMMAND(2), STREAM(3);
@@ -100,18 +105,58 @@ object CompanionProtocol {
         )
     }
 
-    fun encodeHelloEnrollmentProof(generation: Long, token: ByteArray): ByteArray {
+    fun encodeHelloEnrollmentProof(
+        generation: Long,
+        token: ByteArray,
+        companionId: ByteArray,
+    ): ByteArray {
         require(token.size == 16)
+        require(companionId.size == 16)
         require(generation in 0..0xffff_ffffL)
         return ByteArray(HELLO_ENROLLMENT_PROOF_SIZE).also { value ->
             put32(value, 0, generation)
             token.copyInto(value, 4)
+            companionId.copyInto(value, 20)
         }
     }
 
-    fun decodeHelloEnrollmentProof(value: ByteArray): Pair<Long, ByteArray>? {
+    fun decodeHelloEnrollmentProof(value: ByteArray): Triple<Long, ByteArray, ByteArray>? {
         if (value.size != HELLO_ENROLLMENT_PROOF_SIZE) return null
-        return get32(value, 0) to value.copyOfRange(4, value.size)
+        return Triple(
+            get32(value, 0),
+            value.copyOfRange(4, 20),
+            value.copyOfRange(20, value.size),
+        )
+    }
+
+    fun encodeCompanionIdentity(companionId: ByteArray): ByteArray {
+        require(companionId.size == 16)
+        return companionId.copyOf()
+    }
+
+    fun decodeCompanionIdentity(value: ByteArray): ByteArray? {
+        if (value.size != 16) return null
+        return value.copyOf()
+    }
+
+    fun encodeHelloAckStatus(status: Int, peerAuthorized: Boolean, errorReason: Int): ByteArray {
+        require(status in 0..255 && errorReason in 0..0xffff)
+        return ByteArray(4).also { value ->
+            value[0] = status.toByte()
+            value[1] = (if (peerAuthorized) HELLO_ACK_PEER_AUTHORIZED_FLAG else 0).toByte()
+            put16(value, 2, errorReason)
+        }
+    }
+
+    data class HelloAckStatus(val status: Int, val peerAuthorized: Boolean, val errorReason: Int)
+
+    fun decodeHelloAckStatus(value: ByteArray): HelloAckStatus? {
+        if (value.size != 4) return null
+        return HelloAckStatus(
+            u8(value[0]),
+            u8(value[1]) and HELLO_ACK_PEER_AUTHORIZED_FLAG != 0,
+            get16(value, 2),
+        )
     }
 
     fun matchesHelloAck(frame: Frame, requestId: Long, sequence: Long): Boolean =
@@ -119,8 +164,7 @@ object CompanionProtocol {
             frame.header.messageType == CONTROL_HELLO_ACK &&
             frame.header.flags and FLAG_RESPONSE != 0 &&
             frame.header.requestId == requestId &&
-            frame.header.sequence == sequence &&
-            frame.payload.isEmpty()
+            frame.header.sequence == sequence
 
     fun encodeTlv(type: Int, required: Boolean, value: ByteArray): ByteArray {
         require(type in 0 until REQUIRED_FIELD_BIT)

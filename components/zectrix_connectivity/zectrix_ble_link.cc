@@ -29,7 +29,7 @@ namespace {
 
 constexpr char kTag[] = "zectrix_ble";
 constexpr char kDeviceName[] = "Zectrix Note4";
-constexpr int32_t kPairingWindowMs = 120000;
+constexpr int32_t kDefaultPairingWindowMs = 120000;
 constexpr int32_t kReconnectAdvertisingForever = BLE_HS_FOREVER;
 constexpr uint16_t kNoConnection = BLE_HS_CONN_HANDLE_NONE;
 constexpr std::size_t kReceivedQueueCapacity = 2;
@@ -207,7 +207,7 @@ struct BleLink::Impl {
         start_pairing = instance->pairing_requested;
         xSemaphoreGive(instance->lock);
         xSemaphoreGive(instance->session_event);
-        instance->Advertise(start_pairing);
+        instance->Advertise(start_pairing, kDefaultPairingWindowMs);
     }
 
     static int GapEvent(ble_gap_event* event, void*) {
@@ -221,7 +221,7 @@ struct BleLink::Impl {
                     xSemaphoreTake(instance->lock, portMAX_DELAY);
                     pairing = instance->pairing_requested;
                     xSemaphoreGive(instance->lock);
-                    instance->Advertise(pairing);
+                    instance->Advertise(pairing, kDefaultPairingWindowMs);
                     return 0;
                 }
                 uint32_t session = 0;
@@ -276,7 +276,7 @@ struct BleLink::Impl {
                          "event=disconnected session=%lu reason=%d",
                          static_cast<unsigned long>(disconnected_session),
                          event->disconnect.reason);
-                instance->Advertise(false);
+                instance->Advertise(false, kDefaultPairingWindowMs);
                 return 0;
             }
 
@@ -293,7 +293,7 @@ struct BleLink::Impl {
                 if (pairing_expired) {
                     ESP_LOGI(kTag, "event=pairing_window_closed reason=expired");
                 }
-                instance->Advertise(false);
+                instance->Advertise(false, kDefaultPairingWindowMs);
                 return 0;
             }
 
@@ -420,7 +420,7 @@ struct BleLink::Impl {
         }
     }
 
-    int Advertise(bool pairing) {
+    int Advertise(bool pairing, int32_t pairing_window_ms) {
         if (!synchronized || ble_gap_adv_active()) return 0;
         ble_hs_adv_fields fields{};
         fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
@@ -452,7 +452,7 @@ struct BleLink::Impl {
         // (100-150 ms), reconnect 2560-3200 units (1.6-2.0 s).
         parameters.itvl_min = pairing ? 0x00a0 : 0x0a00;
         parameters.itvl_max = pairing ? 0x00f0 : 0x0c80;
-        const int32_t duration = pairing ? kPairingWindowMs
+        const int32_t duration = pairing ? pairing_window_ms
                                          : kReconnectAdvertisingForever;
         result = ble_gap_adv_start(own_address_type, nullptr, duration,
                                    &parameters, GapEvent, nullptr);
@@ -651,8 +651,15 @@ companion::LinkResult BleLink::Initialize() {
 }
 
 companion::LinkResult BleLink::Start() {
+    return Start(static_cast<uint32_t>(kDefaultPairingWindowMs));
+}
+
+companion::LinkResult BleLink::Start(uint32_t pairing_window_ms) {
     if (impl_ == nullptr || !impl_->initialized) {
         return companion::LinkResult::kUnavailable;
+    }
+    if (pairing_window_ms == 0 || pairing_window_ms > 0x7fffffffU) {
+        return companion::LinkResult::kInvalidArgument;
     }
     xSemaphoreTake(impl_->lock, portMAX_DELAY);
     if (impl_->connection_handle != kNoConnection ||
@@ -663,8 +670,8 @@ companion::LinkResult BleLink::Start() {
     impl_->pairing_requested = true;
     const bool synchronized = impl_->synchronized;
     xSemaphoreGive(impl_->lock);
-    ESP_LOGI(kTag, "event=pairing_window_opened duration_ms=%ld",
-             static_cast<long>(kPairingWindowMs));
+    ESP_LOGI(kTag, "event=pairing_window_opened duration_ms=%lu",
+             static_cast<unsigned long>(pairing_window_ms));
     if (!synchronized) return companion::LinkResult::kOk;
     if (ble_gap_adv_active()) {
         if (ble_gap_adv_stop() != 0) {
@@ -674,7 +681,7 @@ companion::LinkResult BleLink::Start() {
             return companion::LinkResult::kTransportError;
         }
     }
-    if (impl_->Advertise(true) != 0) {
+    if (impl_->Advertise(true, static_cast<int32_t>(pairing_window_ms)) != 0) {
         xSemaphoreTake(impl_->lock, portMAX_DELAY);
         impl_->pairing_requested = false;
         xSemaphoreGive(impl_->lock);

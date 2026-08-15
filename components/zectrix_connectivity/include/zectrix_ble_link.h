@@ -53,6 +53,8 @@ public:
     // peer can reconnect. Start temporarily replaces it with a time-bounded,
     // locally authorized pairing window for one new peer.
     companion::LinkResult Start() override;
+    // Opens a time-bounded pairing window with the supplied duration.
+    companion::LinkResult Start(uint32_t pairing_window_ms);
     companion::LinkResult Send(const uint8_t* frame,
                                std::size_t frame_size) override;
     companion::LinkResult SendForSession(uint32_t expected_session_id,

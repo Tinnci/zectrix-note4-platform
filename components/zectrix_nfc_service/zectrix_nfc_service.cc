@@ -1,6 +1,7 @@
 #include "zectrix_nfc_service.h"
 
 #include <new>
+#include <utility>
 #include <vector>
 
 #include "zectrix_nfc.h"
@@ -13,6 +14,7 @@ esp_err_t NfcService::Attach(ZectrixNfc& nfc, NfcService** out_service) {
     auto* service = new (std::nothrow) NfcService(nfc);
     if (service == nullptr) return ESP_ERR_NO_MEM;
     *out_service = service;
+    service->field_present_.store(nfc.HasField(), std::memory_order_release);
     nfc.SetFieldCallback([service](bool present) {
         service->OnFieldChanged(present);
     });
@@ -26,7 +28,8 @@ NfcService::~NfcService() {
 }
 
 esp_err_t NfcService::PrepareEnrollmentNdef(
-    uint32_t generation, const std::array<uint8_t, 16>& token) {
+    uint32_t generation, const std::array<uint8_t, 16>& token,
+    const EnrollmentNdefInfo& info) {
     if (nfc_ == nullptr || generation == 0) return ESP_ERR_INVALID_ARG;
     bool all_zero = true;
     for (uint8_t value : token) {
@@ -40,6 +43,13 @@ esp_err_t NfcService::PrepareEnrollmentNdef(
     companion::EnrollmentNdefPayload payload{};
     payload.generation = generation;
     payload.token = token;
+    if (info.ble_address_type !=
+        companion::kEnrollmentNdefBleAddressTypeUnknown) {
+        payload.flags |= companion::kEnrollmentNdefFlagBleAddressValid;
+    }
+    payload.ble_address_type = info.ble_address_type;
+    payload.ble_address = info.ble_address;
+    payload.device_id = info.device_id;
 
     std::vector<uint8_t> message(companion::EnrollmentNdefMessageSize());
     std::size_t message_size = 0;
@@ -69,6 +79,11 @@ esp_err_t NfcService::ClearEnrollmentNdef() {
     return err;
 }
 
+void NfcService::SetEventCallback(std::function<void()> callback) {
+    std::lock_guard<std::mutex> lock(event_callback_mutex_);
+    event_callback_ = std::move(callback);
+}
+
 NfcSnapshot NfcService::Snapshot() const {
     NfcSnapshot snapshot{};
     snapshot.initialized = true;
@@ -92,6 +107,12 @@ void NfcService::OnFieldChanged(bool present) {
     if (present && !previous) {
         field_rising_pending_.store(true, std::memory_order_release);
     }
+    std::function<void()> callback;
+    {
+        std::lock_guard<std::mutex> lock(event_callback_mutex_);
+        callback = event_callback_;
+    }
+    if (callback) callback();
 }
 
 }  // namespace zectrix::nfc

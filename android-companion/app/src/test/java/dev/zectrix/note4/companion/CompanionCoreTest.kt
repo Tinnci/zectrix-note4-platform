@@ -57,15 +57,18 @@ class CompanionCoreTest {
 
     @Test fun enrollmentProofTlvMatchesFirmwareValue() {
         val token = ByteArray(16) { (it + 1).toByte() }
-        val value = CompanionProtocol.encodeHelloEnrollmentProof(0x89abcdef, token)
+        val companionId = ByteArray(16) { (0xa0 + it).toByte() }
+        val value = CompanionProtocol.encodeHelloEnrollmentProof(0x89abcdef, token, companionId)
         assertEquals(
-            "efcdab890102030405060708090a0b0c0d0e0f10",
+            "efcdab890102030405060708090a0b0c0d0e0f10a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
             CompanionProtocol.hex(value),
         )
-        val (generation, decodedToken) = CompanionProtocol.decodeHelloEnrollmentProof(value)!!
+        val (generation, decodedToken, decodedCompanionId) =
+            CompanionProtocol.decodeHelloEnrollmentProof(value)!!
         assertEquals(0x89abcdef, generation)
         assertArrayEquals(token, decodedToken)
-        assertNull(CompanionProtocol.decodeHelloEnrollmentProof(ByteArray(19)))
+        assertArrayEquals(companionId, decodedCompanionId)
+        assertNull(CompanionProtocol.decodeHelloEnrollmentProof(ByteArray(35)))
 
         val tlv = CompanionProtocol.encodeTlv(
             CompanionProtocol.HELLO_ENROLLMENT_PROOF_TYPE, required = true, value = value,
@@ -75,6 +78,20 @@ class CompanionCoreTest {
         assertTrue(fields[0].required)
         assertEquals(CompanionProtocol.HELLO_ENROLLMENT_PROOF_TYPE, fields[0].type)
         assertArrayEquals(value, fields[0].value)
+
+        val identity = CompanionProtocol.encodeCompanionIdentity(companionId)
+        assertArrayEquals(companionId, CompanionProtocol.decodeCompanionIdentity(identity))
+        assertNull(CompanionProtocol.decodeCompanionIdentity(ByteArray(15)))
+
+        val ack = CompanionProtocol.encodeHelloAckStatus(
+            CompanionProtocol.HELLO_ACK_STATUS_OK, peerAuthorized = true, errorReason = 0,
+        )
+        assertEquals("00010000", CompanionProtocol.hex(ack))
+        val decodedAck = CompanionProtocol.decodeHelloAckStatus(ack)!!
+        assertEquals(CompanionProtocol.HELLO_ACK_STATUS_OK, decodedAck.status)
+        assertTrue(decodedAck.peerAuthorized)
+        assertEquals(0, decodedAck.errorReason)
+        assertNull(CompanionProtocol.decodeHelloAckStatus(ByteArray(3)))
     }
 
     @Test fun helloAndHelloAckHaveDistinctSessionSemantics() {
@@ -104,6 +121,25 @@ class CompanionCoreTest {
         assertTrue(CompanionProtocol.matchesHelloAck(decodedAck.frame, 7, 1))
         assertFalse(CompanionProtocol.matchesHelloAck(decodedAck.frame, 7, 2))
         assertFalse(CompanionProtocol.matchesHelloAck(decodedAck.frame, 8, 1))
+    }
+
+    @Test fun nfcEnrollmentParserValidatesPayload() {
+        val payload = ByteArray(NfcEnrollmentParser.PAYLOAD_SIZE)
+        "ZEN1".toByteArray(Charsets.US_ASCII).copyInto(payload, 0)
+        payload[4] = 1
+        payload[6] = 1
+        payload[7] = 0
+        val token = ByteArray(16) { (it + 1).toByte() }
+        token.copyInto(payload, 34)
+        put32(payload, 30, 0x12345678)
+        val record = NfcEnrollmentParser.parsePayload(payload)!!
+        assertEquals(1, record.version)
+        assertEquals(0x12345678, record.generation)
+        assertArrayEquals(token, record.token)
+        assertNull(NfcEnrollmentParser.parsePayload(payload.copyOf(49)))
+        val zeroToken = payload.copyOf()
+        zeroToken.fill(0, 34, 50)
+        assertNull(NfcEnrollmentParser.parsePayload(zeroToken))
     }
 
     @Test fun durableQueueSurvivesRestartAndRejectsCorruption() {
@@ -139,6 +175,10 @@ class CompanionCoreTest {
         assertTrue(lifecycle.accept(ConnectionEvent.LOST))
         assertTrue(lifecycle.accept(ConnectionEvent.RETRY))
         assertEquals(ConnectionState.CONNECTING, lifecycle.state)
+    }
+
+    private fun put32(output: ByteArray, offset: Int, value: Long) {
+        repeat(4) { output[offset + it] = (value ushr (it * 8)).toByte() }
     }
 
     private fun assertFails(block: () -> Unit) {

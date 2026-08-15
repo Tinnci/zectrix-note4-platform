@@ -147,18 +147,21 @@ ProtocolStatus DecodeFrame(const uint8_t* frame, std::size_t frame_size,
 }
 
 ProtocolStatus EncodeEnrollmentProofValue(
-    uint32_t generation, const uint8_t token[16], uint8_t* output,
+    uint32_t generation, const uint8_t token[16],
+    const uint8_t companion_id[16], uint8_t* output,
     std::size_t output_capacity, std::size_t* output_size) {
-    if (token == nullptr || output == nullptr || output_size == nullptr) {
+    if (token == nullptr || companion_id == nullptr || output == nullptr ||
+        output_size == nullptr) {
         return ProtocolStatus::kInvalidArgument;
     }
     *output_size = 0;
-    constexpr std::size_t kEnrollmentProofValueSize = 4 + 16;
+    constexpr std::size_t kEnrollmentProofValueSize = 4 + 16 + 16;
     if (output_capacity < kEnrollmentProofValueSize) {
         return ProtocolStatus::kBufferTooSmall;
     }
     PutUInt32(output, generation);
     std::memcpy(output + 4, token, 16);
+    std::memcpy(output + 20, companion_id, 16);
     *output_size = kEnrollmentProofValueSize;
     return ProtocolStatus::kOk;
 }
@@ -166,13 +169,74 @@ ProtocolStatus EncodeEnrollmentProofValue(
 ProtocolStatus DecodeEnrollmentProofValue(const uint8_t* value,
                                           std::size_t value_size,
                                           uint32_t* generation,
-                                          uint8_t* token) {
-    if (value == nullptr || generation == nullptr || token == nullptr) {
+                                          uint8_t* token,
+                                          uint8_t* companion_id) {
+    if (value == nullptr || generation == nullptr || token == nullptr ||
+        companion_id == nullptr) {
         return ProtocolStatus::kInvalidArgument;
     }
-    if (value_size != 20) return ProtocolStatus::kMalformedTlv;
+    if (value_size != 36) return ProtocolStatus::kMalformedTlv;
     *generation = GetUInt32(value);
     std::memcpy(token, value + 4, 16);
+    std::memcpy(companion_id, value + 20, 16);
+    return ProtocolStatus::kOk;
+}
+
+ProtocolStatus EncodeCompanionIdentityValue(const uint8_t companion_id[16],
+                                            uint8_t* output,
+                                            std::size_t output_capacity,
+                                            std::size_t* output_size) {
+    if (companion_id == nullptr || output == nullptr ||
+        output_size == nullptr) {
+        return ProtocolStatus::kInvalidArgument;
+    }
+    *output_size = 0;
+    if (output_capacity < 16) return ProtocolStatus::kBufferTooSmall;
+    std::memcpy(output, companion_id, 16);
+    *output_size = 16;
+    return ProtocolStatus::kOk;
+}
+
+ProtocolStatus DecodeCompanionIdentityValue(const uint8_t* value,
+                                            std::size_t value_size,
+                                            uint8_t* companion_id) {
+    if (value == nullptr || companion_id == nullptr) {
+        return ProtocolStatus::kInvalidArgument;
+    }
+    if (value_size != 16) return ProtocolStatus::kMalformedTlv;
+    std::memcpy(companion_id, value, 16);
+    return ProtocolStatus::kOk;
+}
+
+ProtocolStatus EncodeHelloAckStatusValue(uint8_t status, uint8_t flags,
+                                         uint16_t error_reason,
+                                         uint8_t* output,
+                                         std::size_t output_capacity,
+                                         std::size_t* output_size) {
+    if (output == nullptr || output_size == nullptr) {
+        return ProtocolStatus::kInvalidArgument;
+    }
+    *output_size = 0;
+    if (output_capacity < 4) return ProtocolStatus::kBufferTooSmall;
+    output[0] = status;
+    output[1] = flags;
+    PutUInt16(output + 2, error_reason);
+    *output_size = 4;
+    return ProtocolStatus::kOk;
+}
+
+ProtocolStatus DecodeHelloAckStatusValue(const uint8_t* value,
+                                         std::size_t value_size,
+                                         uint8_t* status, uint8_t* flags,
+                                         uint16_t* error_reason) {
+    if (value == nullptr || status == nullptr || flags == nullptr ||
+        error_reason == nullptr) {
+        return ProtocolStatus::kInvalidArgument;
+    }
+    if (value_size != 4) return ProtocolStatus::kMalformedTlv;
+    *status = value[0];
+    *flags = value[1];
+    *error_reason = GetUInt16(value + 2);
     return ProtocolStatus::kOk;
 }
 

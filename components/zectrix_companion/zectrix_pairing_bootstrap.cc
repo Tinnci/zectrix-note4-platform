@@ -13,6 +13,8 @@ PairingBootstrap::PairingBootstrap(PairingBootstrapClock& clock,
     if (config_.pairing_window_ms == 0) config_.pairing_window_ms = 120000;
 }
 
+PairingBootstrap::~PairingBootstrap() { token_.fill(0); }
+
 BootstrapStatus PairingBootstrap::Prepare() {
     BootstrapToken generated{};
     if (!random_.Fill(&generated)) {
@@ -37,7 +39,7 @@ BootstrapStatus PairingBootstrap::OpenPairingWindow() {
     }
     const uint32_t now = clock_.MonotonicMilliseconds();
     if (state_ == BootstrapState::kPairingWindowOpen &&
-        now >= pairing_window_expires_at_ms_) {
+        DeadlineReached(now, pairing_window_expires_at_ms_)) {
         state_ = BootstrapState::kExpired;
         return BootstrapStatus::kExpired;
     }
@@ -139,10 +141,14 @@ BootstrapStatus PairingBootstrap::Cancel() {
 
 bool PairingBootstrap::IsExpired(uint32_t now_ms) const {
     if (state_ == BootstrapState::kPairingWindowOpen) {
-        return now_ms >= token_expires_at_ms_ ||
-               now_ms >= pairing_window_expires_at_ms_;
+        return DeadlineReached(now_ms, token_expires_at_ms_) ||
+               DeadlineReached(now_ms, pairing_window_expires_at_ms_);
     }
-    return now_ms >= token_expires_at_ms_;
+    return DeadlineReached(now_ms, token_expires_at_ms_);
+}
+
+bool PairingBootstrap::DeadlineReached(uint32_t now_ms, uint32_t deadline_ms) {
+    return static_cast<int32_t>(now_ms - deadline_ms) >= 0;
 }
 
 bool PairingBootstrap::ConstantTimeTokenEqual(const uint8_t* first,

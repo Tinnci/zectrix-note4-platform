@@ -37,7 +37,7 @@ public:
                gpio_num_t power_gpio,
                gpio_num_t fd_gpio,
                int fd_active_level);
-    ~ZectrixNfc() = default;
+    ~ZectrixNfc();
 
     bool Init();
     bool PowerOn();
@@ -79,11 +79,14 @@ private:
     void UpdateFieldState(bool field_present, bool invoke_callback);
     void DispatchFieldState(bool field_present);
     void FieldTask();
+    void StopFieldTask();
 
     gpio_num_t power_gpio_ = GPIO_NUM_NC;
     gpio_num_t fd_gpio_ = GPIO_NUM_NC;
     int fd_active_level_ = 1;
     TaskHandle_t field_task_ = nullptr;
+    SemaphoreHandle_t field_task_done_ = nullptr;
+    std::atomic<bool> field_task_stop_{false};
     std::atomic<bool> initialized_{false};
     std::atomic<bool> powered_{false};
     std::atomic<bool> field_present_{false};

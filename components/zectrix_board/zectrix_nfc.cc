@@ -132,6 +132,11 @@ ZectrixNfc::ZectrixNfc(i2c_master_bus_handle_t i2c_bus,
       fd_gpio_(fd_gpio),
       fd_active_level_(fd_active_level) {}
 
+ZectrixNfc::~ZectrixNfc() {
+    StopFieldTask();
+    PowerOff();
+}
+
 bool ZectrixNfc::Init() {
     if (initialization_status() != ESP_OK) {
         ESP_LOGE(kTag, "I2C device initialization failed: %s",
@@ -173,10 +178,19 @@ bool ZectrixNfc::Init() {
         return false;
     }
 
+    field_task_done_ = xSemaphoreCreateBinary();
+    if (field_task_done_ == nullptr) {
+        ESP_LOGE(kTag, "failed to create NFC field task completion semaphore");
+        initialized_.store(false, std::memory_order_release);
+        return false;
+    }
+
     BaseType_t task_ok =
         xTaskCreate(&ZectrixNfc::FieldTaskEntry, "zectrix_nfc_fd", 3 * 1024, this, 3, &field_task_);
     if (task_ok != pdPASS || field_task_ == nullptr) {
         ESP_LOGE(kTag, "failed to create NFC field task");
+        vSemaphoreDelete(field_task_done_);
+        field_task_done_ = nullptr;
         initialized_.store(false, std::memory_order_release);
         return false;
     }
@@ -184,11 +198,14 @@ bool ZectrixNfc::Init() {
     esp_err_t isr_ret = gpio_isr_handler_add(fd_gpio_, &ZectrixNfc::FieldIsrHandler, this);
     if (isr_ret != ESP_OK) {
         ESP_LOGE(kTag, "failed to install NFC FD ISR: %s", esp_err_to_name(isr_ret));
+        StopFieldTask();
         initialized_.store(false, std::memory_order_release);
         return false;
     }
 
     if (!PowerOn()) {
+        ESP_LOGE(kTag, "failed to power NFC device");
+        StopFieldTask();
         initialized_.store(false, std::memory_order_release);
         return false;
     }
@@ -768,8 +785,11 @@ void ZectrixNfc::DispatchFieldState(bool field_present) {
 }
 
 void ZectrixNfc::FieldTask() {
-    while (true) {
+    while (!field_task_stop_.load(std::memory_order_acquire)) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        if (field_task_stop_.load(std::memory_order_acquire)) {
+            break;
+        }
         vTaskDelay(kFieldEnterDebounce);
         bool field_present = IsPowered() && IsFieldLevelActive();
         const bool previously_present = field_present_.load(std::memory_order_acquire);
@@ -788,4 +808,22 @@ void ZectrixNfc::FieldTask() {
         }
         UpdateFieldState(field_present, true);
     }
+    if (field_task_done_ != nullptr) {
+        xSemaphoreGive(field_task_done_);
+    }
+    vTaskDelete(nullptr);
+}
+
+void ZectrixNfc::StopFieldTask() {
+    if (field_task_ == nullptr) return;
+    field_task_stop_.store(true, std::memory_order_release);
+    gpio_isr_handler_remove(fd_gpio_);
+    xTaskNotifyGive(field_task_);
+    if (field_task_done_ != nullptr) {
+        xSemaphoreTake(field_task_done_, pdMS_TO_TICKS(1000));
+        vSemaphoreDelete(field_task_done_);
+        field_task_done_ = nullptr;
+    }
+    field_task_ = nullptr;
+    field_task_stop_.store(false, std::memory_order_release);
 }

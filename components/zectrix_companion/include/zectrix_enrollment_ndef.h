@@ -57,6 +57,7 @@ enum class EnrollmentNdefStatus : uint8_t {
     kTruncated,
     kOversized,
     kBadType,
+    kInvalidPayload,
 };
 
 std::size_t EnrollmentNdefMessageSize();

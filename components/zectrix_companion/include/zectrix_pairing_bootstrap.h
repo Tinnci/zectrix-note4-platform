@@ -59,6 +59,7 @@ public:
     PairingBootstrap(PairingBootstrapClock& clock,
                      PairingBootstrapRandom& random,
                      BootstrapConfig config = {});
+    ~PairingBootstrap();
 
     PairingBootstrap(const PairingBootstrap&) = delete;
     PairingBootstrap& operator=(const PairingBootstrap&) = delete;
@@ -67,6 +68,10 @@ public:
     uint32_t generation() const { return generation_; }
     uint32_t session_id() const { return session_id_; }
     uint32_t pairing_window_ms() const { return config_.pairing_window_ms; }
+    uint32_t token_expires_at_ms() const { return token_expires_at_ms_; }
+    uint32_t pairing_window_expires_at_ms() const {
+        return pairing_window_expires_at_ms_;
+    }
 
     // Generates a fresh token and advances the generation. The previous
     // material becomes invalid immediately. State moves to kPrepared.
@@ -101,6 +106,7 @@ public:
 
 private:
     bool IsExpired(uint32_t now_ms) const;
+    static bool DeadlineReached(uint32_t now_ms, uint32_t deadline_ms);
     static bool ConstantTimeTokenEqual(const uint8_t* first,
                                        const uint8_t* second,
                                        std::size_t size);

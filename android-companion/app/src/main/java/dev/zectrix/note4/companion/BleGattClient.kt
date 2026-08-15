@@ -125,8 +125,8 @@ class BleGattClient(
      * Supplies a single-use NFC enrollment proof for the next protocol Hello.
      * The proof is cleared as soon as the Hello frame is queued.
      */
-    fun setEnrollmentProof(generation: Long, token: ByteArray) {
-        val value = CompanionProtocol.encodeHelloEnrollmentProof(generation, token)
+    fun setEnrollmentProof(generation: Long, token: ByteArray, companionId: ByteArray) {
+        val value = CompanionProtocol.encodeHelloEnrollmentProof(generation, token, companionId)
         enrollmentProofPayload = CompanionProtocol.encodeTlv(
             CompanionProtocol.HELLO_ENROLLMENT_PROOF_TYPE, required = true, value = value,
         )
@@ -278,7 +278,23 @@ class BleGattClient(
                     result.frame, helloRequestId, HELLO_SEQUENCE,
                 )
                 if (helloAck) {
-                    report(GattState.READY, "Secure link and protocol handshake complete")
+                    enrollmentProofPayload = null
+                    var detail = "Secure link and protocol handshake complete"
+                    if (result.frame.payload.isNotEmpty()) {
+                        val ackStatus = CompanionProtocol.decodeTlvs(result.frame.payload)
+                            .firstOrNull { it.type == CompanionProtocol.HELLO_ACK_STATUS_TYPE }
+                            ?.let { CompanionProtocol.decodeHelloAckStatus(it.value) }
+                        if (ackStatus != null) {
+                            detail = if (ackStatus.status == CompanionProtocol.HELLO_ACK_STATUS_REJECTED) {
+                                "Enrollment rejected (code ${ackStatus.errorReason})"
+                            } else if (ackStatus.peerAuthorized) {
+                                "Secure link, protocol handshake, peer authorized"
+                            } else {
+                                "Secure link and protocol handshake complete"
+                            }
+                        }
+                    }
+                    report(GattState.READY, detail)
                 } else {
                     event("protocol_frame_ignored", "reason=unexpected_session_frame")
                 }
@@ -305,7 +321,6 @@ class BleGattClient(
         if (state != GattState.VERIFYING_LINK || pendingWrites.isNotEmpty() || writeInFlight) return
         helloRequestId = sessionId.toLong()
         val payload = enrollmentProofPayload ?: ByteArray(0)
-        enrollmentProofPayload = null
         val hello = CompanionProtocol.encode(
             CompanionProtocol.Header(
                 messageClass = CompanionProtocol.MessageClass.CONTROL,

@@ -6,9 +6,13 @@
 
 #include "zectrix_companion_protocol.h"
 
+using zectrix::companion::DecodeCompanionIdentityValue;
 using zectrix::companion::DecodeEnrollmentProofValue;
 using zectrix::companion::DecodeFrame;
+using zectrix::companion::DecodeHelloAckStatusValue;
+using zectrix::companion::EncodeCompanionIdentityValue;
 using zectrix::companion::EncodeEnrollmentProofValue;
+using zectrix::companion::EncodeHelloAckStatusValue;
 using zectrix::companion::ControlMessage;
 using zectrix::companion::EncodeFragment;
 using zectrix::companion::EncodeFrame;
@@ -119,29 +123,82 @@ void TestBoundsAndTlvErrors() {
 
 void TestEnrollmentProof() {
     uint8_t token[16];
+    uint8_t companion_id[16];
     for (std::size_t i = 0; i < sizeof(token); ++i) token[i] = static_cast<uint8_t>(i + 1);
-    std::array<uint8_t, 20> value{};
+    for (std::size_t i = 0; i < sizeof(companion_id); ++i) {
+        companion_id[i] = static_cast<uint8_t>(0xa0 + i);
+    }
+    std::array<uint8_t, 36> value{};
     std::size_t value_size = 0;
-    assert(EncodeEnrollmentProofValue(0x89abcdef, token, value.data(),
-                                      value.size(), &value_size) ==
-           ProtocolStatus::kOk);
-    assert(value_size == 20);
+    assert(EncodeEnrollmentProofValue(0x89abcdef, token, companion_id,
+                                      value.data(), value.size(),
+                                      &value_size) == ProtocolStatus::kOk);
+    assert(value_size == 36);
     assert(value[0] == 0xef && value[1] == 0xcd && value[2] == 0xab &&
            value[3] == 0x89);
     assert(value[4] == 1 && value[19] == 16);
+    assert(value[20] == 0xa0 && value[35] == 0xaf);
 
     uint32_t generation = 0;
     uint8_t decoded_token[16]{};
+    uint8_t decoded_companion_id[16]{};
     assert(DecodeEnrollmentProofValue(value.data(), value_size, &generation,
-                                      decoded_token) == ProtocolStatus::kOk);
+                                      decoded_token,
+                                      decoded_companion_id) ==
+           ProtocolStatus::kOk);
     assert(generation == 0x89abcdef);
     assert(std::memcmp(token, decoded_token, sizeof(token)) == 0);
-    assert(DecodeEnrollmentProofValue(value.data(), 19, &generation,
-                                      decoded_token) ==
+    assert(std::memcmp(companion_id, decoded_companion_id,
+                       sizeof(companion_id)) == 0);
+    assert(DecodeEnrollmentProofValue(value.data(), 35, &generation,
+                                      decoded_token,
+                                      decoded_companion_id) ==
            ProtocolStatus::kMalformedTlv);
-    assert(EncodeEnrollmentProofValue(1, token, value.data(), 19,
-                                      &value_size) ==
+    assert(EncodeEnrollmentProofValue(1, token, companion_id, value.data(),
+                                      35, &value_size) ==
            ProtocolStatus::kBufferTooSmall);
+}
+
+void TestCompanionIdentityAndHelloAckStatus() {
+    uint8_t companion_id[16];
+    for (std::size_t i = 0; i < sizeof(companion_id); ++i) {
+        companion_id[i] = static_cast<uint8_t>(0x10 + i);
+    }
+    std::array<uint8_t, 16> identity{};
+    std::size_t identity_size = 0;
+    assert(EncodeCompanionIdentityValue(companion_id, identity.data(),
+                                        identity.size(), &identity_size) ==
+           ProtocolStatus::kOk);
+    assert(identity_size == 16);
+    uint8_t decoded_identity[16]{};
+    assert(DecodeCompanionIdentityValue(identity.data(), identity_size,
+                                        decoded_identity) ==
+           ProtocolStatus::kOk);
+    assert(std::memcmp(companion_id, decoded_identity, sizeof(companion_id)) == 0);
+    assert(DecodeCompanionIdentityValue(identity.data(), 15,
+                                        decoded_identity) ==
+           ProtocolStatus::kMalformedTlv);
+
+    std::array<uint8_t, 4> status{};
+    std::size_t status_size = 0;
+    assert(EncodeHelloAckStatusValue(
+               zectrix::companion::kHelloAckStatusOk,
+               zectrix::companion::kHelloAckPeerAuthorizedFlag, 0,
+               status.data(), status.size(), &status_size) ==
+           ProtocolStatus::kOk);
+    assert(status_size == 4);
+    assert(status[0] == 0 && status[1] == 1 && status[2] == 0 &&
+           status[3] == 0);
+    uint8_t decoded_status = 0;
+    uint8_t decoded_flags = 0;
+    uint16_t decoded_reason = 0;
+    assert(DecodeHelloAckStatusValue(status.data(), status_size,
+                                     &decoded_status, &decoded_flags,
+                                     &decoded_reason) == ProtocolStatus::kOk);
+    assert(decoded_status == 0 && decoded_flags == 1 && decoded_reason == 0);
+    assert(DecodeHelloAckStatusValue(status.data(), 3, &decoded_status,
+                                     &decoded_flags, &decoded_reason) ==
+           ProtocolStatus::kMalformedTlv);
 }
 
 void TestFragmentation() {
@@ -195,6 +252,7 @@ int main() {
     TestCrcAndFrame();
     TestBoundsAndTlvErrors();
     TestEnrollmentProof();
+    TestCompanionIdentityAndHelloAckStatus();
     TestFragmentation();
     return 0;
 }

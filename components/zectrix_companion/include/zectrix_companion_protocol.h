@@ -20,6 +20,13 @@ constexpr uint16_t kRequiredFieldBit = 0x8000;
 // Hello TLV types for vertical-slice sessions. A peer ignores an unknown TLV;
 // an enrollment proof is optional in Hello v1.
 constexpr uint16_t kHelloEnrollmentProofType = 1;
+constexpr uint16_t kHelloCompanionIdentityType = 2;
+constexpr uint16_t kHelloAckStatusType = 3;
+
+constexpr uint8_t kHelloAckStatusOk = 0;
+constexpr uint8_t kHelloAckStatusRejected = 1;
+constexpr uint8_t kHelloAckPeerAuthorizedFlag = 1U << 0;
+constexpr std::size_t kHelloAckStatusValueSize = 4;
 
 enum class MessageClass : uint8_t {
     kControl = 0,
@@ -113,17 +120,41 @@ struct TlvField {
     std::size_t value_size = 0;
 };
 
-// Encodes the Hello enrollment proof TLV value: generation uint32 LE
-// followed by the 16-byte enrollment token.
+// Encodes the Hello enrollment proof TLV value: generation uint32 LE,
+// the 16-byte enrollment token, then the 16-byte companion identity that
+// Android will present again on reconnect.
 ProtocolStatus EncodeEnrollmentProofValue(
-    uint32_t generation, const uint8_t token[16], uint8_t* output,
+    uint32_t generation, const uint8_t token[16],
+    const uint8_t companion_id[16], uint8_t* output,
     std::size_t output_capacity, std::size_t* output_size);
 
 // Decodes a Hello enrollment proof TLV value.
 ProtocolStatus DecodeEnrollmentProofValue(const uint8_t* value,
                                           std::size_t value_size,
                                           uint32_t* generation,
-                                          uint8_t* token);
+                                          uint8_t* token,
+                                          uint8_t* companion_id);
+
+// Encodes/decodes the reconnect-only Hello companion identity TLV value.
+ProtocolStatus EncodeCompanionIdentityValue(const uint8_t companion_id[16],
+                                            uint8_t* output,
+                                            std::size_t output_capacity,
+                                            std::size_t* output_size);
+ProtocolStatus DecodeCompanionIdentityValue(const uint8_t* value,
+                                            std::size_t value_size,
+                                            uint8_t* companion_id);
+
+// Encodes/decodes the HelloAck status TLV value: status byte, flags byte,
+// and uint16 LE error reason.
+ProtocolStatus EncodeHelloAckStatusValue(uint8_t status, uint8_t flags,
+                                         uint16_t error_reason,
+                                         uint8_t* output,
+                                         std::size_t output_capacity,
+                                         std::size_t* output_size);
+ProtocolStatus DecodeHelloAckStatusValue(const uint8_t* value,
+                                         std::size_t value_size,
+                                         uint8_t* status, uint8_t* flags,
+                                         uint16_t* error_reason);
 
 class TlvReader {
 public:
