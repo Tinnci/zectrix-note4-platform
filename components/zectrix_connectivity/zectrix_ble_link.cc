@@ -1,6 +1,7 @@
 #include "zectrix_ble_link.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <new>
 
@@ -89,9 +90,18 @@ struct BleLink::Impl {
         bool occupied = false;
     };
 
+    enum class AdvertiseIntent : uint8_t {
+        kNone = 0,
+        kReconnect,
+        kPairing,
+    };
+
     static Impl* instance;
     SemaphoreHandle_t lock = nullptr;
     SemaphoreHandle_t session_event = nullptr;
+    SemaphoreHandle_t advertise_mutex = nullptr;
+    std::atomic<AdvertiseIntent> pending_advertise{AdvertiseIntent::kNone};
+    std::atomic<int32_t> advertise_window_ms{kDefaultPairingWindowMs};
     BleState state = BleState::kStopped;
     bool initialized = false;
     bool synchronized = false;
@@ -131,6 +141,62 @@ struct BleLink::Impl {
         received_write = 0;
         received_count = 0;
         discard_received_after_release = false;
+    }
+
+    // Host GAP callbacks publish a coalesced advertising intent instead of
+    // restarting advertising synchronously from inside the current host event.
+    // The session task owns ProcessAdvertiseRequest(); xSemaphoreGive() is a
+    // non-blocking wake, so host callbacks never wait on a full event queue.
+    void RequestAdvertise(bool pairing, int32_t pairing_window_ms) {
+        const AdvertiseIntent intent = pairing
+            ? AdvertiseIntent::kPairing
+            : AdvertiseIntent::kReconnect;
+        if (intent == AdvertiseIntent::kPairing) {
+            advertise_window_ms.store(pairing_window_ms,
+                                      std::memory_order_release);
+            pending_advertise.store(intent, std::memory_order_release);
+        } else {
+            AdvertiseIntent expected = AdvertiseIntent::kNone;
+            pending_advertise.compare_exchange_strong(
+                expected, intent, std::memory_order_release,
+                std::memory_order_relaxed);
+        }
+        xSemaphoreGive(session_event);
+    }
+
+    // Runs outside the NimBLE host task, typically from the session owner.
+    // Re-checks state before touching GAP so a stale deferred request cannot
+    // restart advertising after a newer connection has already been made.
+    void ProcessAdvertiseRequest() {
+        AdvertiseIntent intent = AdvertiseIntent::kNone;
+        int32_t window_ms = kDefaultPairingWindowMs;
+        const char* skip_reason = nullptr;
+        xSemaphoreTake(lock, portMAX_DELAY);
+        intent = pending_advertise.exchange(AdvertiseIntent::kNone,
+                                            std::memory_order_acq_rel);
+        window_ms = advertise_window_ms.load(std::memory_order_acquire);
+        if (!synchronized) {
+            skip_reason = "not_synchronized";
+        } else if (state == BleState::kFault) {
+            skip_reason = "fault";
+        } else if (connection_handle != kNoConnection) {
+            skip_reason = "connected";
+        }
+        xSemaphoreGive(lock);
+
+        if (skip_reason != nullptr) {
+            if (intent != AdvertiseIntent::kNone) {
+                ESP_LOGI(kTag, "event=advertising_skipped reason=%s",
+                         skip_reason);
+            }
+            return;
+        }
+        if (intent == AdvertiseIntent::kNone) return;
+        if (ble_gap_adv_active()) {
+            ESP_LOGI(kTag, "event=advertising_skipped reason=already_active");
+            return;
+        }
+        Advertise(intent == AdvertiseIntent::kPairing, window_ms);
     }
 
     static int Access(uint16_t connection, uint16_t attribute,
@@ -220,7 +286,7 @@ struct BleLink::Impl {
         start_pairing = instance->pairing_requested;
         xSemaphoreGive(instance->lock);
         xSemaphoreGive(instance->session_event);
-        instance->Advertise(start_pairing, kDefaultPairingWindowMs);
+        instance->RequestAdvertise(start_pairing, kDefaultPairingWindowMs);
     }
 
     static int GapEvent(ble_gap_event* event, void*) {
@@ -234,7 +300,7 @@ struct BleLink::Impl {
                     xSemaphoreTake(instance->lock, portMAX_DELAY);
                     pairing = instance->pairing_requested;
                     xSemaphoreGive(instance->lock);
-                    instance->Advertise(pairing, kDefaultPairingWindowMs);
+                    instance->RequestAdvertise(pairing, kDefaultPairingWindowMs);
                     return 0;
                 }
                 uint32_t session = 0;
@@ -290,7 +356,7 @@ struct BleLink::Impl {
                          "event=disconnected session=%lu reason=%d",
                          static_cast<unsigned long>(disconnected_session),
                          event->disconnect.reason);
-                instance->Advertise(false, kDefaultPairingWindowMs);
+                instance->RequestAdvertise(false, kDefaultPairingWindowMs);
                 return 0;
             }
 
@@ -307,7 +373,7 @@ struct BleLink::Impl {
                 if (pairing_expired) {
                     ESP_LOGI(kTag, "event=pairing_window_closed reason=expired");
                 }
-                instance->Advertise(false, kDefaultPairingWindowMs);
+                instance->RequestAdvertise(false, kDefaultPairingWindowMs);
                 return 0;
             }
 
@@ -435,52 +501,64 @@ struct BleLink::Impl {
     }
 
     int Advertise(bool pairing, int32_t pairing_window_ms) {
-        if (!synchronized || ble_gap_adv_active()) return 0;
-        ble_hs_adv_fields fields{};
-        fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-        fields.name = reinterpret_cast<uint8_t*>(const_cast<char*>(kDeviceName));
-        fields.name_len = sizeof(kDeviceName) - 1;
-        fields.name_is_complete = 1;
-        int result = ble_gap_adv_set_fields(&fields);
-        if (result != 0) {
-            ESP_LOGW(kTag, "advertise: set fields failed: %d", result);
-            return result;
-        }
-        ble_hs_adv_fields response{};
-        response.uuids128 = const_cast<ble_uuid128_t*>(&kServiceUuid);
-        response.num_uuids128 = 1;
-        response.uuids128_is_complete = 1;
-        result = ble_gap_adv_rsp_set_fields(&response);
-        if (result != 0) {
-            ESP_LOGW(kTag, "advertise: set scan response failed: %d", result);
-            return result;
-        }
-        // Reconnect advertising is intentionally non-pairable general
-        // discoverability: any central may connect, but encryption and bonding
-        // are required, and a new pairing only succeeds inside the local
-        // pairing window. This is not a whitelist/directed advertisement.
-        ble_gap_adv_params parameters{};
-        parameters.conn_mode = BLE_GAP_CONN_MODE_UND;
-        parameters.disc_mode = BLE_GAP_DISC_MODE_GEN;
-        // Advertising intervals are in 0.625 ms units: pairing 160-240 units
-        // (100-150 ms), reconnect 2560-3200 units (1.6-2.0 s).
-        parameters.itvl_min = pairing ? 0x00a0 : 0x0a00;
-        parameters.itvl_max = pairing ? 0x00f0 : 0x0c80;
-        const int32_t duration = pairing ? pairing_window_ms
-                                         : kReconnectAdvertisingForever;
-        result = ble_gap_adv_start(own_address_type, nullptr, duration,
-                                   &parameters, GapEvent, nullptr);
-        if (result == 0) {
-            xSemaphoreTake(lock, portMAX_DELAY);
-            state = pairing ? BleState::kPairing : BleState::kAdvertising;
-            xSemaphoreGive(lock);
-            ESP_LOGI(kTag,
-                     "event=advertising_started mode=%s duration_ms=%ld",
-                     pairing ? "pairing" : "reconnect",
-                     static_cast<long>(duration));
-        } else {
-            ESP_LOGW(kTag, "advertise: start failed: %d", result);
-        }
+        if (advertise_mutex == nullptr) return BLE_HS_EBUSY;
+        xSemaphoreTake(advertise_mutex, portMAX_DELAY);
+        int result = 0;
+        do {
+            if (!synchronized || ble_gap_adv_active()) {
+                result = 0;
+                break;
+            }
+            ble_hs_adv_fields fields{};
+            fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
+            fields.name = reinterpret_cast<uint8_t*>(
+                const_cast<char*>(kDeviceName));
+            fields.name_len = sizeof(kDeviceName) - 1;
+            fields.name_is_complete = 1;
+            result = ble_gap_adv_set_fields(&fields);
+            if (result != 0) {
+                ESP_LOGW(kTag, "advertise: set fields failed: %d", result);
+                break;
+            }
+            ble_hs_adv_fields response{};
+            response.uuids128 = const_cast<ble_uuid128_t*>(&kServiceUuid);
+            response.num_uuids128 = 1;
+            response.uuids128_is_complete = 1;
+            result = ble_gap_adv_rsp_set_fields(&response);
+            if (result != 0) {
+                ESP_LOGW(kTag, "advertise: set scan response failed: %d",
+                         result);
+                break;
+            }
+            // Reconnect advertising is intentionally non-pairable general
+            // discoverability: any central may connect, but encryption and
+            // bonding are required, and a new pairing only succeeds inside
+            // the local pairing window. This is not a whitelist/directed
+            // advertisement.
+            ble_gap_adv_params parameters{};
+            parameters.conn_mode = BLE_GAP_CONN_MODE_UND;
+            parameters.disc_mode = BLE_GAP_DISC_MODE_GEN;
+            // Advertising intervals are in 0.625 ms units: pairing 160-240
+            // units (100-150 ms), reconnect 2560-3200 units (1.6-2.0 s).
+            parameters.itvl_min = pairing ? 0x00a0 : 0x0a00;
+            parameters.itvl_max = pairing ? 0x00f0 : 0x0c80;
+            const int32_t duration = pairing ? pairing_window_ms
+                                             : kReconnectAdvertisingForever;
+            result = ble_gap_adv_start(own_address_type, nullptr, duration,
+                                       &parameters, GapEvent, nullptr);
+            if (result == 0) {
+                xSemaphoreTake(lock, portMAX_DELAY);
+                state = pairing ? BleState::kPairing : BleState::kAdvertising;
+                xSemaphoreGive(lock);
+                ESP_LOGI(kTag,
+                         "event=advertising_started mode=%s duration_ms=%ld",
+                         pairing ? "pairing" : "reconnect",
+                         static_cast<long>(duration));
+            } else {
+                ESP_LOGW(kTag, "advertise: start failed: %d", result);
+            }
+        } while (false);
+        xSemaphoreGive(advertise_mutex);
         return result;
     }
 
@@ -578,9 +656,15 @@ BleLink::~BleLink() {
     Stop();
     if (impl_ != nullptr && impl_->session_event != nullptr) {
         vSemaphoreDelete(impl_->session_event);
+        impl_->session_event = nullptr;
     }
     if (impl_ != nullptr && impl_->lock != nullptr) {
         vSemaphoreDelete(impl_->lock);
+        impl_->lock = nullptr;
+    }
+    if (impl_ != nullptr && impl_->advertise_mutex != nullptr) {
+        vSemaphoreDelete(impl_->advertise_mutex);
+        impl_->advertise_mutex = nullptr;
     }
     delete impl_;
 }
@@ -597,11 +681,21 @@ companion::LinkResult BleLink::Initialize() {
         impl_->lock = nullptr;
         return companion::LinkResult::kUnavailable;
     }
+    impl_->advertise_mutex = xSemaphoreCreateMutex();
+    if (impl_->advertise_mutex == nullptr) {
+        vSemaphoreDelete(impl_->lock);
+        impl_->lock = nullptr;
+        vSemaphoreDelete(impl_->session_event);
+        impl_->session_event = nullptr;
+        return companion::LinkResult::kUnavailable;
+    }
     const auto release_primitives = [this]() {
         vSemaphoreDelete(impl_->lock);
         impl_->lock = nullptr;
         vSemaphoreDelete(impl_->session_event);
         impl_->session_event = nullptr;
+        vSemaphoreDelete(impl_->advertise_mutex);
+        impl_->advertise_mutex = nullptr;
     };
     Impl::instance = impl_;
     const esp_err_t result = nimble_port_init();
@@ -764,6 +858,8 @@ void BleLink::Stop() {
     impl_->pairing_authorized = false;
     impl_->connection_handle = kNoConnection;
     impl_->state = BleState::kStopped;
+    impl_->pending_advertise.store(Impl::AdvertiseIntent::kNone,
+                                   std::memory_order_release);
     xSemaphoreGive(impl_->lock);
     Impl::instance = nullptr;
 }
@@ -876,6 +972,22 @@ companion::LinkResult BleLink::ClearBonds() {
     ESP_LOGI(kTag, "event=bonds_cleared result=%d", result);
     return result == 0 ? companion::LinkResult::kOk
                        : companion::LinkResult::kTransportError;
+}
+
+void BleLink::ProcessAdvertiseRequest() {
+    if (impl_ == nullptr || !impl_->initialized) return;
+    impl_->ProcessAdvertiseRequest();
+}
+
+bool BleLink::WithCurrentTransportSession(
+    uint32_t expected_session_id, const std::function<void()>& action) {
+    if (impl_ == nullptr || impl_->lock == nullptr || !action) return false;
+    xSemaphoreTake(impl_->lock, portMAX_DELAY);
+    const bool current = impl_->state == BleState::kTransportReady &&
+                         impl_->session_id == expected_session_id;
+    if (current) action();
+    xSemaphoreGive(impl_->lock);
+    return current;
 }
 
 }  // namespace zectrix::connectivity

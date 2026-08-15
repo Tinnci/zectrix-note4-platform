@@ -38,6 +38,7 @@ constexpr uint16_t kEnrollmentErrorMissingBootstrap = 4;
 constexpr uint16_t kEnrollmentErrorIdentityMismatch = 5;
 constexpr uint16_t kEnrollmentErrorNoStoredIdentity = 6;
 constexpr uint16_t kEnrollmentErrorUnknownRequiredField = 7;
+constexpr uint16_t kEnrollmentErrorDuplicateField = 8;
 
 ConnectivityResult Map(companion::LinkResult result) {
     switch (result) {
@@ -108,6 +109,11 @@ struct ConnectivityService::Impl {
     std::atomic<uint32_t> protocol_session_id{0};
     std::atomic<uint32_t> peer_authorized_session_id{0};
     SemaphoreHandle_t session_task_done = nullptr;
+    SemaphoreHandle_t clear_bonds_mutex = nullptr;
+    SemaphoreHandle_t clear_bonds_done = nullptr;
+    std::atomic<bool> clear_bonds_requested{false};
+    std::atomic<ConnectivityResult> clear_bonds_result{
+        ConnectivityResult::kTransportError};
     std::array<uint8_t, 16> stored_companion_id{};
     bool stored_companion_id_valid = false;
 
@@ -128,6 +134,35 @@ struct ConnectivityService::Impl {
             session_id) {
             peer_authorized.store(false, std::memory_order_release);
         }
+    }
+
+    // Runs in the session task only. ClearPeerBonds() submits the request
+    // through clear_bonds_requested and blocks on clear_bonds_done so that
+    // bootstrap/identity state is only ever mutated by the session owner.
+    void ProcessPendingCommands() {
+        if (!clear_bonds_requested.exchange(false, std::memory_order_acquire)) {
+            return;
+        }
+        const ConnectivityResult result = Map(ble.ClearBonds());
+        if (result == ConnectivityResult::kOk) {
+            peer_authorized.store(false, std::memory_order_release);
+            peer_authorized_session_id.store(0, std::memory_order_release);
+            stored_companion_id_valid = false;
+            stored_companion_id.fill(0);
+            if (storage_service != nullptr &&
+                storage_service->IsInitialized()) {
+                const esp_err_t erased =
+                    storage_service->Erase(kCompanionIdentityKey);
+                if (erased != ESP_OK && erased != ESP_ERR_NOT_FOUND) {
+                    ESP_LOGW(kTag,
+                             "event=companion_identity_erase_failed reason=%s",
+                             esp_err_to_name(erased));
+                }
+            }
+            if (bootstrap != nullptr) bootstrap->Cancel();
+        }
+        clear_bonds_result.store(result, std::memory_order_release);
+        xSemaphoreGive(clear_bonds_done);
     }
 
     bool PrepareNfcEnrollment() {
@@ -247,6 +282,12 @@ struct ConnectivityService::Impl {
             }
             if (!present) break;
             if (field.type == companion::kHelloEnrollmentProofType) {
+                if (has_proof) {
+                    LogEnrollmentRejection("duplicate_proof", session_id);
+                    decision.status = companion::kHelloAckStatusRejected;
+                    decision.error_reason = kEnrollmentErrorDuplicateField;
+                    return decision;
+                }
                 has_proof = true;
                 if (companion::DecodeEnrollmentProofValue(
                         field.value, field.value_size, &proof_generation,
@@ -259,6 +300,12 @@ struct ConnectivityService::Impl {
                     return decision;
                 }
             } else if (field.type == companion::kHelloCompanionIdentityType) {
+                if (has_identity) {
+                    LogEnrollmentRejection("duplicate_identity", session_id);
+                    decision.status = companion::kHelloAckStatusRejected;
+                    decision.error_reason = kEnrollmentErrorDuplicateField;
+                    return decision;
+                }
                 has_identity = true;
                 if (companion::DecodeCompanionIdentityValue(
                         field.value, field.value_size,
@@ -293,11 +340,24 @@ struct ConnectivityService::Impl {
                 decision.status = companion::kHelloAckStatusRejected;
                 decision.error_reason = kEnrollmentErrorMissingBootstrap;
             } else {
-                const companion::BootstrapStatus status =
-                    bootstrap->ValidateEnrollmentProof(
-                        session_id, proof_generation, proof_token,
-                        sizeof(proof_token));
-                if (status != companion::BootstrapStatus::kOk) {
+                companion::BootstrapStatus status =
+                    companion::BootstrapStatus::kInvalidState;
+                // Consume the single-use token only while the session is
+                // still current and transport-ready. Holding the link lock
+                // across validation closes the window between the session
+                // check and token consumption.
+                const bool session_current = ble.WithCurrentTransportSession(
+                    session_id, [&]() {
+                        status = bootstrap->ValidateEnrollmentProof(
+                            session_id, proof_generation, proof_token,
+                            sizeof(proof_token));
+                    });
+                if (!session_current) {
+                    LogEnrollmentRejection("session_changed", session_id);
+                    peer_authorized.store(false, std::memory_order_release);
+                    decision.status = companion::kHelloAckStatusRejected;
+                    decision.error_reason = kEnrollmentErrorSessionBindFailed;
+                } else if (status != companion::BootstrapStatus::kOk) {
                     LogEnrollmentRejection("invalid_proof", session_id);
                     peer_authorized.store(false, std::memory_order_release);
                     decision.status = companion::kHelloAckStatusRejected;
@@ -397,10 +457,12 @@ struct ConnectivityService::Impl {
     static void SessionTask(void* argument) {
         auto* self = static_cast<Impl*>(argument);
         while (!self->stop_session_task.load()) {
+            self->ProcessPendingCommands();
+            self->ble.ProcessAdvertiseRequest();
             self->MaybeRefreshNfcEnrollment();
             self->PollNfcFieldAndOpenPairing();
 
-            const BleSnapshot link = self->ble.Snapshot();
+            BleSnapshot link = self->ble.Snapshot();
             if (link.session_id != self->protocol_session_id.load()) {
                 self->protocol_session_id.store(link.session_id);
                 self->protocol_negotiated_local.store(false);
@@ -425,7 +487,12 @@ struct ConnectivityService::Impl {
                 continue;
             }
             const uint32_t received_session_id = received.session_id;
-            if (received_session_id != link.session_id) {
+            // Re-read the link after borrowing the frame. The first snapshot
+            // may predate a disconnect/reconnect, and a proof from the old
+            // session must not consume the bootstrap token.
+            link = self->ble.Snapshot();
+            if (received_session_id != link.session_id ||
+                link.state != BleState::kTransportReady) {
                 self->ble.ReleaseReceivedFrame();
                 ESP_LOGW(kTag,
                          "event=stale_frame_discarded session=%lu frame_session=%lu",
@@ -528,6 +595,14 @@ ConnectivityService::~ConnectivityService() {
             vSemaphoreDelete(impl_->session_task_done);
             impl_->session_task_done = nullptr;
         }
+        if (impl_->clear_bonds_done != nullptr) {
+            vSemaphoreDelete(impl_->clear_bonds_done);
+            impl_->clear_bonds_done = nullptr;
+        }
+        if (impl_->clear_bonds_mutex != nullptr) {
+            vSemaphoreDelete(impl_->clear_bonds_mutex);
+            impl_->clear_bonds_mutex = nullptr;
+        }
     }
     delete impl_;
 }
@@ -565,8 +640,30 @@ ConnectivityResult ConnectivityService::Initialize() {
         }
     }
 
+    impl_->clear_bonds_mutex = xSemaphoreCreateMutex();
+    impl_->clear_bonds_done = xSemaphoreCreateBinary();
+    if (impl_->clear_bonds_mutex == nullptr || impl_->clear_bonds_done == nullptr) {
+        if (impl_->clear_bonds_mutex != nullptr) {
+            vSemaphoreDelete(impl_->clear_bonds_mutex);
+            impl_->clear_bonds_mutex = nullptr;
+        }
+        if (impl_->clear_bonds_done != nullptr) {
+            vSemaphoreDelete(impl_->clear_bonds_done);
+            impl_->clear_bonds_done = nullptr;
+        }
+        impl_->ble.Stop();
+        if (impl_->nfc_service != nullptr) {
+            impl_->nfc_service->SetEventCallback(nullptr);
+        }
+        return ConnectivityResult::kUnavailable;
+    }
+
     impl_->session_task_done = xSemaphoreCreateBinary();
     if (impl_->session_task_done == nullptr) {
+        vSemaphoreDelete(impl_->clear_bonds_mutex);
+        vSemaphoreDelete(impl_->clear_bonds_done);
+        impl_->clear_bonds_mutex = nullptr;
+        impl_->clear_bonds_done = nullptr;
         impl_->ble.Stop();
         if (impl_->nfc_service != nullptr) {
             impl_->nfc_service->SetEventCallback(nullptr);
@@ -577,6 +674,10 @@ ConnectivityResult ConnectivityService::Initialize() {
                     nullptr) != pdPASS) {
         vSemaphoreDelete(impl_->session_task_done);
         impl_->session_task_done = nullptr;
+        vSemaphoreDelete(impl_->clear_bonds_mutex);
+        vSemaphoreDelete(impl_->clear_bonds_done);
+        impl_->clear_bonds_mutex = nullptr;
+        impl_->clear_bonds_done = nullptr;
         impl_->ble.Stop();
         if (impl_->nfc_service != nullptr) {
             impl_->nfc_service->SetEventCallback(nullptr);
@@ -599,25 +700,17 @@ ConnectivityResult ConnectivityService::ClearPeerBonds() {
     if (impl_ == nullptr || !impl_->initialized.load()) {
         return ConnectivityResult::kInvalidState;
     }
-    const ConnectivityResult result = Map(impl_->ble.ClearBonds());
-    if (result == ConnectivityResult::kOk) {
-        impl_->peer_authorized.store(false, std::memory_order_release);
-        impl_->peer_authorized_session_id.store(0, std::memory_order_release);
-        impl_->stored_companion_id_valid = false;
-        impl_->stored_companion_id.fill(0);
-        if (impl_->storage_service != nullptr &&
-            impl_->storage_service->IsInitialized()) {
-            const esp_err_t erased =
-                impl_->storage_service->Erase(kCompanionIdentityKey);
-            if (erased != ESP_OK && erased != ESP_ERR_NOT_FOUND) {
-                ESP_LOGW(kTag, "event=companion_identity_erase_failed reason=%s",
-                         esp_err_to_name(erased));
-            }
-        }
-        if (impl_->bootstrap != nullptr) {
-            impl_->bootstrap->Cancel();
-        }
+    if (impl_->clear_bonds_mutex == nullptr ||
+        impl_->clear_bonds_done == nullptr) {
+        return ConnectivityResult::kUnavailable;
     }
+    xSemaphoreTake(impl_->clear_bonds_mutex, portMAX_DELAY);
+    impl_->clear_bonds_requested.store(true, std::memory_order_release);
+    impl_->ble.WakeSessionWaiter();
+    xSemaphoreTake(impl_->clear_bonds_done, portMAX_DELAY);
+    const ConnectivityResult result =
+        impl_->clear_bonds_result.load(std::memory_order_acquire);
+    xSemaphoreGive(impl_->clear_bonds_mutex);
     return result;
 }
 

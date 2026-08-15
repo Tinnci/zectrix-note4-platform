@@ -4,13 +4,27 @@
 #include <cstring>
 
 namespace zectrix::companion {
+namespace {
+
+// The monotonic clock is a 32-bit millisecond counter. DeadlineReached uses
+// signed modular arithmetic that is valid only when the configured durations
+// are below 2^31 ms. Clamp public configuration into that envelope.
+constexpr uint32_t kMaximumDurationMs = 0x7fffffffU;
+constexpr uint32_t kDefaultDurationMs = 120000;
+
+uint32_t SanitizeDuration(uint32_t value) {
+    if (value == 0) return kDefaultDurationMs;
+    return std::min(value, kMaximumDurationMs);
+}
+
+}  // namespace
 
 PairingBootstrap::PairingBootstrap(PairingBootstrapClock& clock,
                                    PairingBootstrapRandom& random,
                                    BootstrapConfig config)
     : clock_(clock), random_(random), config_(config) {
-    if (config_.token_ttl_ms == 0) config_.token_ttl_ms = 120000;
-    if (config_.pairing_window_ms == 0) config_.pairing_window_ms = 120000;
+    config_.token_ttl_ms = SanitizeDuration(config_.token_ttl_ms);
+    config_.pairing_window_ms = SanitizeDuration(config_.pairing_window_ms);
 }
 
 PairingBootstrap::~PairingBootstrap() { token_.fill(0); }
@@ -151,6 +165,10 @@ bool PairingBootstrap::IsExpired(uint32_t now_ms) const {
 }
 
 bool PairingBootstrap::DeadlineReached(uint32_t now_ms, uint32_t deadline_ms) {
+    // Standard FreeRTOS-style 32-bit monotonic deadline comparison. It is
+    // valid for durations below 2^31 ms (enforced by SanitizeDuration) and
+    // while callers check deadlines more often than once every 2^31 ms; the
+    // bootstrap TTLs make both conditions trivially true.
     return static_cast<int32_t>(now_ms - deadline_ms) >= 0;
 }
 

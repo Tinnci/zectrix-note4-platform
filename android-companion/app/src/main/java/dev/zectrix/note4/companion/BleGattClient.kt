@@ -125,7 +125,8 @@ class BleGattClient(
 
     /**
      * Supplies a single-use NFC enrollment proof for the next protocol Hello.
-     * The proof is cleared as soon as the Hello frame is queued.
+     * The proof is cleared only after a matching HelloAck is received (or the
+     * client is closed), so an interrupted handshake can retry the same proof.
      */
     fun setEnrollmentProof(generation: Long, token: ByteArray): Boolean {
         val value = CompanionProtocol.encodeHelloEnrollmentProof(

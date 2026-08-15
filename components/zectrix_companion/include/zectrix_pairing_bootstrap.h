@@ -88,8 +88,10 @@ public:
     BootstrapStatus BindSession(uint32_t ble_session_id);
 
     // Consumes a token returned through the authenticated protocol Hello.
-    // The proof must arrive on the session bound by BindSession(). On success
-    // the bootstrap zeroizes the token and moves to kConsumed. It is
+    // The proof is validated against token and generation before any session
+    // binding occurs, then binds to ble_session_id on first use. A later
+    // proof from a different session is rejected with kSessionMismatch. On
+    // success the bootstrap zeroizes the token and moves to kConsumed. It is
     // single-use: a second valid proof must be rejected.
     BootstrapStatus ValidateEnrollmentProof(uint32_t ble_session_id,
                                             uint32_t generation,

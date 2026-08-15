@@ -820,7 +820,13 @@ void ZectrixNfc::StopFieldTask() {
     gpio_isr_handler_remove(fd_gpio_);
     xTaskNotifyGive(field_task_);
     if (field_task_done_ != nullptr) {
-        xSemaphoreTake(field_task_done_, pdMS_TO_TICKS(1000));
+        // Object destruction cannot continue while FieldTask still owns this
+        // object. Wait in bounded intervals so a delayed exit is visible in
+        // logs, but never free a semaphore that the task can still signal.
+        while (xSemaphoreTake(field_task_done_, pdMS_TO_TICKS(1000)) !=
+               pdTRUE) {
+            ESP_LOGE(kTag, "field task stop is taking longer than expected");
+        }
         vSemaphoreDelete(field_task_done_);
         field_task_done_ = nullptr;
     }

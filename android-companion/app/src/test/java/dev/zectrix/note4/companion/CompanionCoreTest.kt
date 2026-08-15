@@ -140,6 +140,12 @@ class CompanionCoreTest {
         val zeroToken = payload.copyOf()
         zeroToken.fill(0, 34, 50)
         assertNull(NfcEnrollmentParser.parsePayload(zeroToken))
+        val unknownFlags = payload.copyOf().apply { this[5] = 2 }
+        assertNull(NfcEnrollmentParser.parsePayload(unknownFlags))
+        val invalidAddressType = payload.copyOf().apply { this[7] = 2 }
+        assertNull(NfcEnrollmentParser.parsePayload(invalidAddressType))
+        val emptyValidAddress = payload.copyOf().apply { this[5] = 1 }
+        assertNull(NfcEnrollmentParser.parsePayload(emptyValidAddress))
     }
 
     @Test fun durableQueueSurvivesRestartAndRejectsCorruption() {

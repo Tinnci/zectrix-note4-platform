@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 
 #include "zectrix_connectivity_policy.h"
 
@@ -74,6 +75,14 @@ public:
     bool TakeReceivedFrame(ReceivedFrame* frame);
     void ReleaseReceivedFrame();
     companion::LinkResult ClearBonds();
+    // Drains any deferred advertising intent posted by GAP callbacks. Call
+    // from the session owner task, not from a NimBLE host callback.
+    void ProcessAdvertiseRequest();
+    // Runs action while holding the link lock, only when expected_session_id
+    // is still the current transport-ready session. Returns false when the
+    // session changed or is not ready; action is not invoked in that case.
+    bool WithCurrentTransportSession(uint32_t expected_session_id,
+                                     const std::function<void()>& action);
 
 private:
     Impl* impl_ = nullptr;

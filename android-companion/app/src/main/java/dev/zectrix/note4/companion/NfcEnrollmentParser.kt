@@ -22,10 +22,23 @@ object NfcEnrollmentParser {
         val version = u8(payload[4])
         if (version != 1) return null
         val flags = u8(payload[5])
+        if (flags and FLAG_BLE_ADDRESS_VALID.inv() != 0) return null
         val role = u8(payload[6])
-        if (role != 1 && role != 2) return null
+        if (role != BLE_ROLE_PERIPHERAL && role != BLE_ROLE_CENTRAL) return null
         val addressType = u8(payload[7])
-        if (flags and 1 != 0 && addressType == 0xff) return null
+        if (addressType != BLE_ADDRESS_PUBLIC &&
+            addressType != BLE_ADDRESS_RANDOM_STATIC &&
+            addressType != BLE_ADDRESS_UNKNOWN
+        ) {
+            return null
+        }
+        val bleAddress = payload.copyOfRange(8, 14)
+        if (flags and FLAG_BLE_ADDRESS_VALID != 0 &&
+            (addressType == BLE_ADDRESS_UNKNOWN ||
+                bleAddress.all { it.toInt() == 0 })
+        ) {
+            return null
+        }
         val generation = get32(payload, 30)
         if (generation == 0L) return null
         val token = payload.copyOfRange(34, 50)
@@ -35,7 +48,7 @@ object NfcEnrollmentParser {
             flags = flags,
             bleRole = role,
             bleAddressType = addressType,
-            bleAddress = payload.copyOfRange(8, 14),
+            bleAddress = bleAddress,
             deviceId = payload.copyOfRange(14, 30),
             generation = generation,
             token = token,
@@ -47,4 +60,11 @@ object NfcEnrollmentParser {
         (0..3).fold(0L) { result, index ->
             result or (u8(input[offset + index]).toLong() shl (index * 8))
         }
+
+    private const val FLAG_BLE_ADDRESS_VALID = 1
+    private const val BLE_ROLE_PERIPHERAL = 1
+    private const val BLE_ROLE_CENTRAL = 2
+    private const val BLE_ADDRESS_PUBLIC = 0
+    private const val BLE_ADDRESS_RANDOM_STATIC = 1
+    private const val BLE_ADDRESS_UNKNOWN = 0xff
 }
