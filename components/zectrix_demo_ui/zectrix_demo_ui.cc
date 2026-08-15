@@ -134,15 +134,20 @@ esp_err_t ZectrixDemoUi::ShowConnectivity(const char* state,
                                           const char* status,
                                           const char* passkey,
                                           bool full_refresh) {
-    DrawFrame("CONNECTIVITY", "OK Pair  Hold UP Reset  Hold OK Home");
-    canvas_.Text(24, 58, "BLE STATE:");
-    canvas_.Text(150, 58, state == nullptr ? "UNKNOWN" : state);
+    DrawFrame("PHONE CONNECTION", "OK Pair new  Hold UP Forget  Hold OK Home");
+    canvas_.Text(24, 58, "BLE:");
+    canvas_.Text(104, 58, state == nullptr ? "UNKNOWN" : state);
     canvas_.Line(20, 94, 379, 94);
-    canvas_.Text(24, 118, "PAIRING WINDOW: 120 SECONDS");
-    canvas_.Text(24, 150, "PASSKEY:");
-    canvas_.Text(150, 144, passkey == nullptr ? "------" : passkey, 2);
-    canvas_.Text(24, 202, "STATUS:");
-    canvas_.Text(112, 202, status == nullptr ? "" : status);
+    if (passkey != nullptr) {
+        canvas_.TextCentered(116, "ENTER THIS CODE ON YOUR PHONE", 1);
+        canvas_.TextCentered(150, passkey, 2);
+    } else {
+        canvas_.Text(24, 118, "PAIRING REQUIRES OK ON THIS DEVICE");
+        canvas_.Text(24, 150, "WINDOW: 120 SECONDS");
+    }
+    canvas_.Text(24, 194, "STATUS");
+    canvas_.Text(24, 220, status == nullptr ? "" : status);
+    canvas_.Text(24, 246, "PROTOCOL: NOT STARTED");
     return full_refresh ? RefreshFull()
                         : RefreshPartial({0, 36, 400, 234});
 }

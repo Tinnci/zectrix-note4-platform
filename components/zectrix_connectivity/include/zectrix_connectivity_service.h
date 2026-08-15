@@ -12,6 +12,7 @@ enum class ConnectivityState : uint8_t {
     kSecuring,
     kSecure,
     kLinkReady,
+    kProtocolReady,
     kFault,
 };
 
@@ -21,6 +22,21 @@ enum class ConnectivityResult : uint8_t {
     kBusy,
     kInvalidState,
     kTransportError,
+};
+
+// Product-level diagnostic state. It contains no GAP/GATT handles or stack
+// types, and transport readiness does not imply protocol-session readiness.
+struct ConnectivitySnapshot {
+    ConnectivityState state = ConnectivityState::kStopped;
+    uint32_t session_id = 0;
+    bool local_pairing_active = false;
+    bool encrypted = false;
+    bool authenticated = false;
+    bool bonded = false;
+    bool notifications_enabled = false;
+    bool protocol_session_ready = false;
+    // Protocol peer authorization is a separate gate. Hello does not set it.
+    bool peer_authorized = false;
 };
 
 class ConnectivityService {
@@ -35,6 +51,7 @@ public:
     ConnectivityResult StartLocalPairing();
     ConnectivityResult ClearPeerBonds();
     ConnectivityState State() const;
+    ConnectivitySnapshot Snapshot() const;
     bool TakePairingPasskey(uint32_t* passkey);
 
 private:

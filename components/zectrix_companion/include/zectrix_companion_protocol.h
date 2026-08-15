@@ -24,6 +24,14 @@ enum class MessageClass : uint8_t {
     kStream = 3,
 };
 
+// Control messages that establish a protocol session. A BLE subscription is
+// only transport readiness; Hello/HelloAck proves an authenticated write and
+// a compatible protocol peer in both directions.
+enum class ControlMessage : uint16_t {
+    kHello = 1,
+    kHelloAck = 2,
+};
+
 enum FrameFlag : uint8_t {
     kAckRequested = 1U << 0,
     kResponse = 1U << 1,

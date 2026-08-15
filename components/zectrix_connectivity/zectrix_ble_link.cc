@@ -33,6 +33,7 @@ constexpr int32_t kPairingWindowMs = 120000;
 constexpr int32_t kReconnectAdvertisingForever = BLE_HS_FOREVER;
 constexpr uint16_t kNoConnection = BLE_HS_CONN_HANDLE_NONE;
 constexpr std::size_t kReceivedQueueCapacity = 2;
+constexpr int kMaximumBondedPeers = 8;
 constexpr std::size_t kMinimumPacketCapacity =
     companion::kFragmentHeaderSize + 1;
 
@@ -59,6 +60,25 @@ int NotifyOnlyAccess(uint16_t, uint16_t, ble_gatt_access_ctxt* context,
     }
 }
 
+bool IsBondedPeer(uint16_t connection_handle) {
+    ble_gap_conn_desc descriptor{};
+    if (ble_gap_conn_find(connection_handle, &descriptor) != 0) return false;
+    std::array<ble_addr_t, kMaximumBondedPeers> peers{};
+    int peer_count = 0;
+    if (ble_store_util_bonded_peers(peers.data(), &peer_count,
+                                    peers.size()) != 0) {
+        return false;
+    }
+    for (int index = 0; index < peer_count; ++index) {
+        if (peers[index].type == descriptor.peer_id_addr.type &&
+            std::memcmp(peers[index].val, descriptor.peer_id_addr.val,
+                        sizeof(peers[index].val)) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 }  // namespace
 
 struct BleLink::Impl {
@@ -81,11 +101,15 @@ struct BleLink::Impl {
     uint8_t own_address_type = BLE_OWN_ADDR_PUBLIC;
     uint16_t connection_handle = kNoConnection;
     uint16_t notify_value_handle = 0;
+    uint32_t session_id = 0;
     uint16_t transmit_frame_id = 1;
     std::size_t transmit_fragment = 0;
     std::size_t transmit_packet_capacity = 20;
     uint32_t passkey = 0;
     bool passkey_pending = false;
+    bool encrypted = false;
+    bool authenticated = false;
+    bool bonded = false;
     companion::FragmentReassembler reassembler;
     std::array<uint8_t, companion::kMaximumFrameSize> transmit_frame{};
     std::size_t transmit_size = 0;
@@ -156,6 +180,7 @@ struct BleLink::Impl {
         instance->synchronized = false;
         instance->state = BleState::kFault;
         xSemaphoreGive(instance->lock);
+        ESP_LOGE(kTag, "event=host_reset state=fault");
     }
 
     static void OnSync() {
@@ -179,7 +204,7 @@ struct BleLink::Impl {
     static int GapEvent(ble_gap_event* event, void*) {
         if (instance == nullptr || event == nullptr) return 0;
         switch (event->type) {
-            case BLE_GAP_EVENT_CONNECT:
+            case BLE_GAP_EVENT_CONNECT: {
                 if (event->connect.status != 0) {
                     ESP_LOGW(kTag, "gap: connect failed: %d",
                              event->connect.status);
@@ -190,23 +215,39 @@ struct BleLink::Impl {
                     instance->Advertise(pairing);
                     return 0;
                 }
-                ESP_LOGI(kTag, "gap: connected handle=%u",
-                         static_cast<unsigned>(event->connect.conn_handle));
+                uint32_t session = 0;
+                bool pairing_authorized = false;
                 xSemaphoreTake(instance->lock, portMAX_DELAY);
+                ++instance->session_id;
+                if (instance->session_id == 0) ++instance->session_id;
+                session = instance->session_id;
                 instance->connection_handle = event->connect.conn_handle;
                 instance->state = BleState::kConnectedUnsecured;
                 instance->pairing_authorized = instance->pairing_requested;
+                pairing_authorized = instance->pairing_authorized;
                 instance->pairing_requested = false;
                 xSemaphoreGive(instance->lock);
-                ESP_LOGI(kTag, "security: initiate encryption for peer");
+                ESP_LOGI(kTag, "event=connected session=%lu",
+                         static_cast<unsigned long>(session));
+                if (!pairing_authorized &&
+                    !IsBondedPeer(event->connect.conn_handle)) {
+                    ESP_LOGW(kTag,
+                             "event=connection_rejected session=%lu reason=untrusted_peer",
+                             static_cast<unsigned long>(session));
+                    ble_gap_terminate(event->connect.conn_handle,
+                                      BLE_ERR_AUTH_FAIL);
+                    return 0;
+                }
+                ESP_LOGI(kTag, "event=security_started session=%lu",
+                         static_cast<unsigned long>(session));
                 ble_gap_security_initiate(event->connect.conn_handle);
                 return 0;
+            }
 
-            case BLE_GAP_EVENT_DISCONNECT:
-                ESP_LOGI(kTag, "gap: disconnected handle=%u reason=%d",
-                         static_cast<unsigned>(event->disconnect.conn.conn_handle),
-                         event->disconnect.reason);
+            case BLE_GAP_EVENT_DISCONNECT: {
+                uint32_t disconnected_session = 0;
                 xSemaphoreTake(instance->lock, portMAX_DELAY);
+                disconnected_session = instance->session_id;
                 instance->connection_handle = kNoConnection;
                 instance->subscribed = false;
                 instance->transmit_active = false;
@@ -216,18 +257,31 @@ struct BleLink::Impl {
                 instance->pairing_authorized = false;
                 instance->passkey = 0;
                 instance->passkey_pending = false;
+                instance->encrypted = false;
+                instance->authenticated = false;
+                instance->bonded = false;
                 xSemaphoreGive(instance->lock);
+                ESP_LOGI(kTag,
+                         "event=disconnected session=%lu reason=%d",
+                         static_cast<unsigned long>(disconnected_session),
+                         event->disconnect.reason);
                 instance->Advertise(false);
                 return 0;
+            }
 
             case BLE_GAP_EVENT_ADV_COMPLETE: {
+                bool pairing_expired = false;
                 xSemaphoreTake(instance->lock, portMAX_DELAY);
+                pairing_expired = instance->state == BleState::kPairing;
                 instance->pairing_requested = false;
                 if (instance->connection_handle == kNoConnection &&
                     instance->state != BleState::kFault) {
                     instance->state = BleState::kIdle;
                 }
                 xSemaphoreGive(instance->lock);
+                if (pairing_expired) {
+                    ESP_LOGI(kTag, "event=pairing_window_closed reason=expired");
+                }
                 instance->Advertise(false);
                 return 0;
             }
@@ -240,17 +294,23 @@ struct BleLink::Impl {
                     descriptor.sec_state.encrypted &&
                     descriptor.sec_state.authenticated &&
                     descriptor.sec_state.bonded;
-                ESP_LOGI(kTag, "gap: enc change handle=%u status=%d secure=%d",
-                         static_cast<unsigned>(event->enc_change.conn_handle),
-                         event->enc_change.status, secure ? 1 : 0);
+                uint32_t secure_session = 0;
                 xSemaphoreTake(instance->lock, portMAX_DELAY);
+                secure_session = instance->session_id;
                 instance->state = secure ? BleState::kConnectedSecured
                                          : BleState::kConnectedUnsecured;
+                instance->encrypted = descriptor.sec_state.encrypted;
+                instance->authenticated = descriptor.sec_state.authenticated;
+                instance->bonded = descriptor.sec_state.bonded;
                 if (secure && instance->subscribed) {
                     instance->state = BleState::kTransportReady;
                 }
                 instance->pairing_authorized = false;
                 xSemaphoreGive(instance->lock);
+                ESP_LOGI(kTag,
+                         "event=security_complete session=%lu status=%d secure=%d",
+                         static_cast<unsigned long>(secure_session),
+                         event->enc_change.status, secure ? 1 : 0);
                 if (!secure) {
                     ble_gap_terminate(event->enc_change.conn_handle,
                                       BLE_ERR_AUTH_FAIL);
@@ -258,11 +318,10 @@ struct BleLink::Impl {
                 return 0;
             }
 
-            case BLE_GAP_EVENT_SUBSCRIBE:
+            case BLE_GAP_EVENT_SUBSCRIBE: {
                 if (event->subscribe.attr_handle ==
                     instance->notify_value_handle) {
-                    ESP_LOGI(kTag, "gap: subscribe notify=%d",
-                             event->subscribe.cur_notify);
+                    uint32_t subscribe_session = 0;
                     ble_gap_conn_desc descriptor{};
                     const bool secure =
                         ble_gap_conn_find(event->subscribe.conn_handle,
@@ -271,6 +330,7 @@ struct BleLink::Impl {
                         descriptor.sec_state.authenticated &&
                         descriptor.sec_state.bonded;
                     xSemaphoreTake(instance->lock, portMAX_DELAY);
+                    subscribe_session = instance->session_id;
                     instance->subscribed = event->subscribe.cur_notify != 0;
                     if (secure) {
                         instance->state = instance->subscribed
@@ -278,8 +338,14 @@ struct BleLink::Impl {
                             : BleState::kConnectedSecured;
                     }
                     xSemaphoreGive(instance->lock);
+                    ESP_LOGI(kTag,
+                             "event=notification_subscription session=%lu enabled=%d secure=%d",
+                             static_cast<unsigned long>(subscribe_session),
+                             event->subscribe.cur_notify != 0 ? 1 : 0,
+                             secure ? 1 : 0);
                 }
                 return 0;
+            }
 
             case BLE_GAP_EVENT_NOTIFY_TX:
                 if (event->notify_tx.attr_handle ==
@@ -313,8 +379,8 @@ struct BleLink::Impl {
                     xSemaphoreGive(instance->lock);
                     if (!authorized) return BLE_HS_EAUTHEN;
                     ESP_LOGI(kTag,
-                             "security: new pairing passkey requested "
-                             "(display only, value not logged)");
+                             "event=pairing_challenge session=%lu method=display_only",
+                             static_cast<unsigned long>(instance->session_id));
                     ble_sm_io io{};
                     io.action = BLE_SM_IOACT_DISP;
                     // Uniform 000000-999999 passkey: reject the tail above
@@ -381,6 +447,10 @@ struct BleLink::Impl {
             xSemaphoreTake(lock, portMAX_DELAY);
             state = pairing ? BleState::kPairing : BleState::kAdvertising;
             xSemaphoreGive(lock);
+            ESP_LOGI(kTag,
+                     "event=advertising_started mode=%s duration_ms=%ld",
+                     pairing ? "pairing" : "reconnect",
+                     static_cast<long>(duration));
         } else {
             ESP_LOGW(kTag, "advertise: start failed: %d", result);
         }
@@ -561,6 +631,8 @@ companion::LinkResult BleLink::Start() {
     impl_->pairing_requested = true;
     const bool synchronized = impl_->synchronized;
     xSemaphoreGive(impl_->lock);
+    ESP_LOGI(kTag, "event=pairing_window_opened duration_ms=%ld",
+             static_cast<long>(kPairingWindowMs));
     if (!synchronized) return companion::LinkResult::kOk;
     if (ble_gap_adv_active()) {
         if (ble_gap_adv_stop() != 0) {
@@ -650,6 +722,23 @@ BleState BleLink::State() const {
     return state;
 }
 
+BleSnapshot BleLink::Snapshot() const {
+    BleSnapshot snapshot{};
+    if (impl_ == nullptr || impl_->lock == nullptr) return snapshot;
+    xSemaphoreTake(impl_->lock, portMAX_DELAY);
+    snapshot.state = impl_->state;
+    snapshot.session_id = impl_->session_id;
+    snapshot.local_pairing_active = impl_->pairing_requested ||
+                                    impl_->pairing_authorized ||
+                                    impl_->state == BleState::kPairing;
+    snapshot.encrypted = impl_->encrypted;
+    snapshot.authenticated = impl_->authenticated;
+    snapshot.bonded = impl_->bonded;
+    snapshot.notifications_enabled = impl_->subscribed;
+    xSemaphoreGive(impl_->lock);
+    return snapshot;
+}
+
 bool BleLink::TakePairingPasskey(uint32_t* passkey) {
     if (impl_ == nullptr || passkey == nullptr || impl_->lock == nullptr) {
         return false;
@@ -702,8 +791,10 @@ companion::LinkResult BleLink::ClearBonds() {
     if (impl_->connection_handle != kNoConnection) {
         return companion::LinkResult::kBusy;
     }
-    return ble_store_clear() == 0 ? companion::LinkResult::kOk
-                                  : companion::LinkResult::kTransportError;
+    const int result = ble_store_clear();
+    ESP_LOGI(kTag, "event=bonds_cleared result=%d", result);
+    return result == 0 ? companion::LinkResult::kOk
+                       : companion::LinkResult::kTransportError;
 }
 
 }  // namespace zectrix::connectivity

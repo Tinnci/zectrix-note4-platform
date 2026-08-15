@@ -7,19 +7,30 @@ import android.util.Log
 
 @Suppress("OVERRIDE_DEPRECATION")
 class Note4CompanionService : CompanionDeviceService() {
-    private val lifecycle = ConnectionStateMachine(ConnectionState.ASSOCIATED)
-
     @SuppressLint("MissingPermission")
     @Suppress("DEPRECATION")
     override fun onDeviceAppeared(associationInfo: AssociationInfo) {
-        if (lifecycle.accept(ConnectionEvent.APPEARED)) {
-            Log.i("ZectrixCompanion", "Associated Note4 is present")
-        }
+        Log.i("ZectrixCompanion", "event=presence state=appeared api=modern")
+        CompanionConnectionManager.connectApproved(
+            this, associationInfo.deviceMacAddress.toString(), automatic = true,
+        )
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onDeviceAppeared(address: String) {
+        Log.i("ZectrixCompanion", "event=presence state=appeared api=legacy")
+        CompanionConnectionManager.connectApproved(this, address, automatic = true)
     }
 
     @Suppress("DEPRECATION")
     override fun onDeviceDisappeared(associationInfo: AssociationInfo) {
-        lifecycle.accept(ConnectionEvent.LOST)
-        Log.i("ZectrixCompanion", "Associated Note4 is absent")
+        CompanionConnectionManager.stop()
+        Log.i("ZectrixCompanion", "event=presence state=disappeared api=modern")
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onDeviceDisappeared(address: String) {
+        CompanionConnectionManager.stop()
+        Log.i("ZectrixCompanion", "event=presence state=disappeared api=legacy")
     }
 }

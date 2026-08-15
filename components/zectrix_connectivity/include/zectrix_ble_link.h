@@ -24,6 +24,16 @@ struct ReceivedFrame {
     std::size_t size = 0;
 };
 
+struct BleSnapshot {
+    BleState state = BleState::kStopped;
+    uint32_t session_id = 0;
+    bool local_pairing_active = false;
+    bool encrypted = false;
+    bool authenticated = false;
+    bool bonded = false;
+    bool notifications_enabled = false;
+};
+
 class BleLink final : public companion::ConnectivityLink {
 public:
     // The implementation type is declared for the C callback bridge only.
@@ -48,6 +58,7 @@ public:
     companion::LinkStatus Status() const override;
 
     BleState State() const;
+    BleSnapshot Snapshot() const;
     bool TakePairingPasskey(uint32_t* passkey);
     bool TakeReceivedFrame(ReceivedFrame* frame);
     void ReleaseReceivedFrame();

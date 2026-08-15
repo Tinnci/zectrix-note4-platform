@@ -134,6 +134,43 @@ local reset action. A new link is not authorized only because it can decode a
 protocol Hello. Resource responses and commands are accepted only after link
 security, protocol negotiation and peer authorization succeed.
 
+### Readiness gates
+
+The implementation must not collapse these states:
+
+| Gate | Evidence | Meaning |
+| --- | --- | --- |
+| Associated | Android Companion Device Manager record | The user approved an app-device relationship. This is not a Bluetooth bond. |
+| Link secure | encrypted, authenticated and bonded connection | The current BLE link has stack-level security. |
+| Transport ready | secure link and notification subscription | Both GATT directions are available. |
+| Protocol negotiated | authenticated Hello write and matching HelloAck | Both peers accept protocol 1.0 framing. |
+| Peer authorized | stored protocol identity and authorization decision | Product commands and resources can run. |
+
+Protocol 1.0 reserves control message type `1` for Hello and type `2` for
+HelloAck. HelloAck has the response flag, repeats the request ID and sequence,
+and has an empty payload in the first vertical slice. This exchange proves the
+current link and protocol path. It does not authorize the peer.
+
+The Android application serializes all GATT writes and completes MTU setup
+before Hello. It reaches its connected state only after a matching HelloAck.
+The firmware services Hello in the background through `ConnectivityService`;
+the internal FreeRTOS task is an implementation mechanism, not an
+application-facing lifecycle or architecture boundary.
+
+Reconnect advertising rejects an unknown peer unless a local pairing window
+is active. This prevents an untrusted central from occupying the connection
+for a full security timeout. Pairing failure and automatic reconnect use
+explicit states and bounded retry delay.
+
+### Diagnostic events
+
+Firmware and Android logs use structured `event=... session=...` records.
+Required events cover connection, security start/result, subscription,
+Hello/HelloAck readiness, pairing-window open/expiry, rejection and
+disconnect. Logs must not contain a passkey, bond key, protocol credential or
+raw device address. A session ID is process-local diagnostic correlation; it
+is not a peer identity.
+
 ## Recovery
 
 After BLE loss or process/device reboot:

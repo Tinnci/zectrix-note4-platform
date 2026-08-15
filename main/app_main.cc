@@ -371,7 +371,7 @@ private:
         explicit ConnectivityApplication(DemoApp& owner) : owner_(&owner) {}
 
         sdk::Status Enter(sdk::ApplicationContext& context) override {
-            status_ = "LOCAL ACTION REQUIRED";
+            status_ = "PRESS OK TO PAIR A NEW PHONE";
             passkey_[0] = '\0';
             displayed_state_ = owner_->connectivity_->State();
             return context.RequestRender({0, 0, 400, 300},
@@ -392,14 +392,16 @@ private:
                        zectrix::app::ConnectivityDecision::StartPairing) {
                 const auto result = owner_->connectivity_->StartLocalPairing();
                 status_ = result == zectrix::connectivity::ConnectivityResult::kOk
-                              ? "PAIRING STARTED" : "PAIRING NOT STARTED";
+                              ? "PHONE CAN PAIR FOR 120 SECONDS"
+                              : "PAIRING IS NOT AVAILABLE";
                 context.RequestRender({0, 36, 400, 234},
                                       sdk::RenderIntent::Fast);
             } else if (decision ==
                        zectrix::app::ConnectivityDecision::ClearBonds) {
                 const auto result = owner_->connectivity_->ClearPeerBonds();
                 status_ = result == zectrix::connectivity::ConnectivityResult::kOk
-                              ? "BONDS CLEARED" : "RESET NOT ALLOWED";
+                              ? "TRUSTED PHONE FORGOTTEN"
+                              : "DISCONNECT BEFORE FORGETTING";
                 context.RequestRender({0, 36, 400, 234},
                                       sdk::RenderIntent::Fast);
             }
@@ -421,9 +423,26 @@ private:
                 if (current_state ==
                         zectrix::connectivity::ConnectivityState::kSecure ||
                     current_state ==
-                        zectrix::connectivity::ConnectivityState::kLinkReady) {
+                        zectrix::connectivity::ConnectivityState::kLinkReady ||
+                    current_state == zectrix::connectivity::
+                        ConnectivityState::kProtocolReady) {
                     std::memset(passkey_, 0, sizeof(passkey_));
-                    status_ = "LINK SECURED";
+                    status_ = current_state == zectrix::connectivity::
+                                      ConnectivityState::kProtocolReady
+                                  ? "PROTOCOL READY; AUTHORIZATION NEXT"
+                                  : current_state ==
+                                      zectrix::connectivity::ConnectivityState::kLinkReady
+                                  ? "SECURE BLE READY; VERIFYING PHONE"
+                                  : "LINK SECURED; ENABLING UPDATES";
+                } else if (current_state ==
+                           zectrix::connectivity::ConnectivityState::kPairing) {
+                    status_ = "SELECT ZECTRIX NOTE4 ON PHONE";
+                } else if (current_state ==
+                           zectrix::connectivity::ConnectivityState::kAdvertising) {
+                    status_ = "TRUSTED PHONE CAN RECONNECT";
+                } else if (current_state ==
+                           zectrix::connectivity::ConnectivityState::kFault) {
+                    status_ = "BLUETOOTH NEEDS A RESTART";
                 }
                 changed = true;
             }
@@ -450,16 +469,19 @@ private:
         static const char* StateText(
             zectrix::connectivity::ConnectivityState state) {
             switch (state) {
-                case zectrix::connectivity::ConnectivityState::kIdle: return "IDLE";
+                case zectrix::connectivity::ConnectivityState::kIdle: return "OFFLINE";
                 case zectrix::connectivity::ConnectivityState::kAdvertising:
-                    return "ADVERTISING";
-                case zectrix::connectivity::ConnectivityState::kPairing: return "PAIRING";
+                    return "READY TO RECONNECT";
+                case zectrix::connectivity::ConnectivityState::kPairing:
+                    return "PAIRING OPEN";
                 case zectrix::connectivity::ConnectivityState::kSecuring:
-                    return "SECURING";
+                    return "SECURING LINK";
                 case zectrix::connectivity::ConnectivityState::kSecure:
-                    return "SECURE";
+                    return "SECURE LINK";
                 case zectrix::connectivity::ConnectivityState::kLinkReady:
-                    return "LINK READY";
+                    return "BLE READY";
+                case zectrix::connectivity::ConnectivityState::kProtocolReady:
+                    return "PROTOCOL READY";
                 case zectrix::connectivity::ConnectivityState::kFault: return "FAULT";
                 default: return "STOPPED";
             }

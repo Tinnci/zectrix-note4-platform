@@ -7,6 +7,7 @@
 #include "zectrix_companion_protocol.h"
 
 using zectrix::companion::DecodeFrame;
+using zectrix::companion::ControlMessage;
 using zectrix::companion::EncodeFragment;
 using zectrix::companion::EncodeFrame;
 using zectrix::companion::FragmentCount;
@@ -160,6 +161,8 @@ void TestFragmentation() {
 }  // namespace
 
 int main() {
+    static_assert(static_cast<uint16_t>(ControlMessage::kHello) == 1);
+    static_assert(static_cast<uint16_t>(ControlMessage::kHelloAck) == 2);
     TestCrcAndFrame();
     TestBoundsAndTlvErrors();
     TestFragmentation();

@@ -6,6 +6,24 @@ import java.io.File
 import kotlin.io.path.createTempDirectory
 
 class CompanionCoreTest {
+    @Test
+    fun fragmentsMatchTheCppGoldenVectorAndReassemble() {
+        val frame = CompanionProtocol.unhex(
+            "5a4301000205020144332211887766550e0000005faebb010180040078563412020002006f6b",
+        )
+        val expected = listOf(
+            "a70101002a0000005a4301000205020144332211887766",
+            "a70100002a000f00550e0000005faebb01018004007856",
+            "a70102002a001e003412020002006f6b",
+        )
+        val fragments = CompanionFragments.encode(frame, 42, 23)
+        assertEquals(expected, fragments.map(CompanionProtocol::hex))
+        val reassembler = CompanionFragments.Reassembler()
+        assertNull(reassembler.accept(fragments[0]))
+        assertNull(reassembler.accept(fragments[1]))
+        assertArrayEquals(frame, reassembler.accept(fragments[2]))
+    }
+
     private val frameHex = "5a4301000205020144332211887766550e0000005faebb010180040078563412020002006f6b"
 
     @Test fun goldenVectorMatchesFirmware() {
@@ -35,6 +53,32 @@ class CompanionCoreTest {
         }
         assertTrue(CompanionProtocol.decode(frame.copyOf(frame.size - 1)) is CompanionProtocol.DecodeResult.Error)
         assertFails { CompanionProtocol.decodeTlvs(byteArrayOf(1, 0, 4, 0, 1)) }
+    }
+
+    @Test fun helloAndHelloAckHaveDistinctSessionSemantics() {
+        val hello = CompanionProtocol.encode(
+            CompanionProtocol.Header(
+                messageClass = CompanionProtocol.MessageClass.CONTROL,
+                flags = 0,
+                messageType = CompanionProtocol.CONTROL_HELLO,
+                requestId = 7,
+                sequence = 1,
+            ), byteArrayOf(),
+        )
+        val decoded = CompanionProtocol.decode(hello) as CompanionProtocol.DecodeResult.Success
+        assertEquals(CompanionProtocol.CONTROL_HELLO, decoded.frame.header.messageType)
+        assertEquals(0, decoded.frame.header.flags)
+
+        val ack = CompanionProtocol.encode(
+            decoded.frame.header.copy(
+                flags = CompanionProtocol.FLAG_RESPONSE,
+                messageType = CompanionProtocol.CONTROL_HELLO_ACK,
+            ), byteArrayOf(),
+        )
+        val decodedAck = CompanionProtocol.decode(ack) as CompanionProtocol.DecodeResult.Success
+        assertEquals(7, decodedAck.frame.header.requestId)
+        assertEquals(1, decodedAck.frame.header.sequence)
+        assertEquals(CompanionProtocol.FLAG_RESPONSE, decodedAck.frame.header.flags)
     }
 
     @Test fun durableQueueSurvivesRestartAndRejectsCorruption() {

@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -16,7 +17,7 @@ android {
     }
 
     buildFeatures {
-        viewBinding = false
+        compose = true
     }
 
     testOptions {
@@ -25,5 +26,7 @@ android {
 }
 
 dependencies {
+    implementation("androidx.activity:activity-compose:1.13.0")
+    implementation("androidx.compose.material3:material3:1.5.0-alpha26")
     testImplementation("junit:junit:4.13.2")
 }

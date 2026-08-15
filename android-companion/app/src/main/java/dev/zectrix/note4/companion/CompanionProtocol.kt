@@ -11,6 +11,9 @@ object CompanionProtocol {
     const val MAX_TLV_VALUE_SIZE = 2048
     const val REQUIRED_FIELD_BIT = 0x8000
     private const val ALLOWED_FLAGS = 0x07
+    const val FLAG_RESPONSE = 1 shl 1
+    const val CONTROL_HELLO = 1
+    const val CONTROL_HELLO_ACK = 2
 
     enum class MessageClass(val wire: Int) {
         CONTROL(0), DURABLE_STATE(1), COMMAND(2), STREAM(3);

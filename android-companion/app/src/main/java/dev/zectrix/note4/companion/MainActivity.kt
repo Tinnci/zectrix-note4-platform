@@ -1,44 +1,97 @@
 package dev.zectrix.note4.companion
 
+import android.Manifest
 import android.app.Activity
 import android.companion.AssociationRequest
 import android.companion.BluetoothLeDeviceFilter
 import android.companion.CompanionDeviceManager
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.text.InputType
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
+import android.os.Handler
+import android.os.Looper
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.MaterialExpressiveTheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.Typography
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import java.util.regex.Pattern
 
-class MainActivity : Activity() {
-    private lateinit var status: TextView
+class MainActivity : ComponentActivity() {
+    companion object {
+        private const val ASSOCIATION_RESULT_OK = Activity.RESULT_OK
+    }
+
+    private var snapshot by mutableStateOf(CompanionConnectionManager.snapshot())
+    private var associationCount by mutableIntStateOf(0)
+    private val connectionObserver: (GattSnapshot) -> Unit = { latest ->
+        runOnUiThread { snapshot = latest }
+    }
+    private val associationLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult(),
+    ) { result ->
+        if (result.resultCode == ASSOCIATION_RESULT_OK) {
+            refreshAssociations()
+            observeApprovedDevice()
+            connectApprovedDevice()
+        } else {
+            snapshot = GattSnapshot(GattState.IDLE, "Association cancelled")
+        }
+    }
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { results ->
+        if (results.isNotEmpty() && results.values.all { it }) connectApprovedDevice()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        status = TextView(this).apply {
-            text = "Not associated\nBLE: idle\nSync: idle"
-            textSize = 18f
-            setPadding(24, 24, 24, 24)
-            inputType = InputType.TYPE_CLASS_TEXT
-        }
-        val associate = Button(this).apply {
-            text = "Associate Note4"
-            setOnClickListener { beginAssociation() }
-        }
-        val diagnostics = Button(this).apply {
-            text = "Refresh diagnostics"
-            setOnClickListener { showDiagnostics() }
-        }
-        setContentView(LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(32, 48, 32, 32)
-            addView(status)
-            addView(associate)
-            addView(diagnostics)
-        })
-        showDiagnostics()
+        CompanionConnectionManager.initialize(this)
+        refreshAssociations()
+        requestBluetoothPermissionsIfNeeded()
+        observeApprovedDevice()
+        setContent { ZectrixCompanionScreen() }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        CompanionConnectionManager.observe(connectionObserver)
+    }
+
+    override fun onStop() {
+        CompanionConnectionManager.removeObserver(connectionObserver)
+        super.onStop()
     }
 
     private fun beginAssociation() {
@@ -50,25 +103,230 @@ class MainActivity : Activity() {
             .addDeviceFilter(filter)
             .setSingleDevice(true)
             .build()
-        status.text = "Association chooser requested"
-        manager.associate(request, mainExecutor,
-            object : CompanionDeviceManager.Callback() {
-                override fun onAssociationPending(intentSender: android.content.IntentSender) {
-                    @Suppress("DEPRECATION")
-                    startIntentSenderForResult(intentSender, 100, null, 0, 0, 0)
-                }
-                override fun onAssociationCreated(associationInfo: android.companion.AssociationInfo) {
-                    status.text = "Associated\nID: ${associationInfo.id}\nBLE: waiting for presence"
-                }
-                override fun onFailure(errorMessage: CharSequence?) {
-                    status.text = "Association failed: ${errorMessage ?: "unknown"}"
-                }
-            })
+        val callback = object : CompanionDeviceManager.Callback() {
+            @Suppress("DEPRECATION")
+            @Deprecated("Used on Android 12")
+            override fun onDeviceFound(intentSender: android.content.IntentSender) {
+                launchAssociationChooser(intentSender)
+            }
+
+            override fun onAssociationPending(intentSender: android.content.IntentSender) {
+                launchAssociationChooser(intentSender)
+            }
+
+            override fun onAssociationCreated(associationInfo: android.companion.AssociationInfo) {
+                refreshAssociations()
+                observeApprovedDevice()
+                connectApprovedDevice()
+            }
+
+            override fun onFailure(errorMessage: CharSequence?) {
+                snapshot = GattSnapshot(
+                    GattState.FAULT,
+                    "Association failed: ${errorMessage ?: "unknown error"}",
+                )
+            }
+        }
+        if (Build.VERSION.SDK_INT >= 33) {
+            manager.associate(request, mainExecutor, callback)
+        } else {
+            @Suppress("DEPRECATION")
+            manager.associate(request, callback, Handler(Looper.getMainLooper()))
+        }
     }
 
-    private fun showDiagnostics() {
+    private fun launchAssociationChooser(intentSender: android.content.IntentSender) {
+        associationLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+    }
+
+    private fun requestBluetoothPermissionsIfNeeded() {
+        if (Build.VERSION.SDK_INT < 31) return
+        val required = arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+            .filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        if (required.isNotEmpty()) permissionLauncher.launch(required.toTypedArray())
+    }
+
+    private fun connectApprovedDevice() {
+        if (Build.VERSION.SDK_INT >= 31 &&
+            checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            requestBluetoothPermissionsIfNeeded()
+            return
+        }
+        val address = approvedAddress()
+        if (address == null) {
+            snapshot = GattSnapshot(GattState.IDLE, "Pair a Note4 to continue")
+            return
+        }
+        CompanionConnectionManager.connectApproved(this, address)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun observeApprovedDevice() {
+        val address = approvedAddress() ?: return
+        try {
+            getSystemService(CompanionDeviceManager::class.java)
+                .startObservingDevicePresence(address)
+        } catch (_: Exception) {
+            // Presence is an optimization. Explicit connect remains available.
+        }
+    }
+
+    private fun refreshAssociations() {
         val manager = getSystemService(CompanionDeviceManager::class.java)
-        val count = if (Build.VERSION.SDK_INT >= 33) manager.myAssociations.size else 0
-        status.text = "Associations: $count\nBLE: transport not connected\nSync: queue available\nProtocol: 1.0"
+        associationCount = if (Build.VERSION.SDK_INT >= 33) {
+            manager.myAssociations.size
+        } else {
+            @Suppress("DEPRECATION")
+            manager.associations.size
+        }
+    }
+
+    private fun approvedAddress(): String? {
+        val manager = getSystemService(CompanionDeviceManager::class.java)
+        return if (Build.VERSION.SDK_INT >= 33) {
+            manager.myAssociations.firstOrNull()?.deviceMacAddress?.toString()
+        } else {
+            @Suppress("DEPRECATION")
+            manager.associations.firstOrNull()
+        }
+    }
+
+    @OptIn(ExperimentalMaterial3ExpressiveApi::class)
+    @androidx.compose.runtime.Composable
+    private fun ZectrixCompanionScreen() {
+        MaterialExpressiveTheme(
+            typography = Typography(),
+        ) {
+            Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+                Column(
+                    modifier = Modifier.fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 24.dp, vertical = 28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        "Zectrix Note4",
+                        modifier = Modifier.fillMaxWidth(),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.height(44.dp))
+                    ConnectionHero(snapshot)
+                    Spacer(Modifier.height(32.dp))
+                    PrimaryAction()
+                    Spacer(Modifier.height(36.dp))
+                    Diagnostics(snapshot, associationCount)
+                }
+            }
+        }
+    }
+
+    @OptIn(ExperimentalMaterial3ExpressiveApi::class)
+    @androidx.compose.runtime.Composable
+    private fun ConnectionHero(value: GattSnapshot) {
+        val active = value.state in setOf(
+            GattState.CONNECTING, GattState.DISCOVERING, GattState.SUBSCRIBING,
+            GattState.PAIRING, GattState.VERIFYING_LINK, GattState.NEGOTIATING_PROTOCOL,
+        )
+        Surface(
+            modifier = Modifier.size(104.dp),
+            shape = CircleShape,
+            color = when (value.state) {
+                GattState.READY -> MaterialTheme.colorScheme.primaryContainer
+                GattState.FAULT -> MaterialTheme.colorScheme.errorContainer
+                else -> MaterialTheme.colorScheme.secondaryContainer
+            },
+        ) {
+            Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                if (active) LoadingIndicator(modifier = Modifier.size(54.dp))
+                else Text(
+                    when (value.state) {
+                        GattState.READY -> "Ready"
+                        GattState.FAULT -> "Error"
+                        else -> "Note4"
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+        Spacer(Modifier.height(24.dp))
+        Text(
+            when (value.state) {
+                GattState.CONNECTING -> "Connecting…"
+                GattState.DISCOVERING, GattState.SUBSCRIBING -> "Setting up the connection…"
+                GattState.PAIRING -> "Secure pairing required"
+                GattState.VERIFYING_LINK -> "Verifying secure link…"
+                GattState.NEGOTIATING_PROTOCOL -> "Starting the Note4 session…"
+                GattState.READY -> "Connected securely"
+                GattState.FAULT -> "Connection needs attention"
+                GattState.DISCONNECTED -> "Note4 is disconnected"
+                else -> if (associationCount == 0) "Pair your Note4" else "Ready to connect"
+            },
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            value.detail,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
+        )
+    }
+
+    @androidx.compose.runtime.Composable
+    private fun PrimaryAction() {
+        val busy = snapshot.state in setOf(
+            GattState.CONNECTING, GattState.DISCOVERING, GattState.SUBSCRIBING,
+            GattState.PAIRING, GattState.VERIFYING_LINK, GattState.NEGOTIATING_PROTOCOL,
+        )
+        if (associationCount == 0) {
+            Button(onClick = ::beginAssociation, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                Text("Pair a Note4")
+            }
+        } else if (snapshot.state == GattState.READY) {
+            FilledTonalButton(
+                onClick = {}, enabled = false,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+            ) { Text("Connected") }
+        } else {
+            Button(
+                onClick = ::connectApprovedDevice,
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+            ) { Text(if (busy) "Connecting…" else "Connect") }
+        }
+    }
+
+    @androidx.compose.runtime.Composable
+    private fun Diagnostics(value: GattSnapshot, associations: Int) {
+        androidx.compose.material3.ElevatedCard(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.elevatedCardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            ),
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Text("Connection details", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(14.dp))
+                DetailRow("Approved device", if (associations == 1) "Yes" else "$associations")
+                HorizontalDivider(Modifier.padding(vertical = 10.dp))
+                DetailRow("BLE transport", value.state.name.lowercase().replace('_', ' '))
+                HorizontalDivider(Modifier.padding(vertical = 10.dp))
+                DetailRow("Protocol", if (value.state == GattState.READY) "Negotiated" else "Not ready")
+                HorizontalDivider(Modifier.padding(vertical = 10.dp))
+                DetailRow("Received frames", value.receivedFrames.toString())
+            }
+        }
+    }
+
+    @androidx.compose.runtime.Composable
+    private fun DetailRow(label: String, value: String) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, fontWeight = FontWeight.Medium)
+        }
     }
 }
