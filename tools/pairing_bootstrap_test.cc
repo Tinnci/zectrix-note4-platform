@@ -83,20 +83,10 @@ void TestValidationFlowAndSingleUse() {
     assert(bootstrap.OpenPairingWindow() == BootstrapStatus::kOk);
     assert(bootstrap.state() == BootstrapState::kPairingWindowOpen);
 
-    // Session binding is required before a proof can be accepted.
-    assert(bootstrap.ValidateEnrollmentProof(42, generation, token.data(),
-                                             token.size()) ==
-           BootstrapStatus::kSessionMismatch);
-    assert(bootstrap.BindSession(0) == BootstrapStatus::kInvalidArgument);
-    assert(bootstrap.BindSession(42) == BootstrapStatus::kOk);
-    assert(bootstrap.BindSession(43) == BootstrapStatus::kSessionMismatch);
-
+    // Proof validation binds the session only after the material is valid.
     assert(bootstrap.ValidateEnrollmentProof(0, generation, token.data(),
                                              token.size()) ==
            BootstrapStatus::kInvalidArgument);
-    assert(bootstrap.ValidateEnrollmentProof(43, generation, token.data(),
-                                             token.size()) ==
-           BootstrapStatus::kSessionMismatch);
     assert(bootstrap.ValidateEnrollmentProof(42, generation, nullptr,
                                              token.size()) ==
            BootstrapStatus::kInvalidArgument);
@@ -113,6 +103,10 @@ void TestValidationFlowAndSingleUse() {
     assert(bootstrap.ValidateEnrollmentProof(42, generation + 1, token.data(),
                                              token.size()) ==
            BootstrapStatus::kGenerationMismatch);
+    // A rejected proof must not bind the bootstrap to the attacker session.
+    assert(bootstrap.BindSession(42) == BootstrapStatus::kOk);
+    assert(bootstrap.BindSession(43) == BootstrapStatus::kSessionMismatch);
+    assert(bootstrap.session_id() == 42);
 
     assert(bootstrap.ValidateEnrollmentProof(42, generation, token.data(),
                                              token.size()) ==

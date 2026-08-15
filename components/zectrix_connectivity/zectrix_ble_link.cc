@@ -119,6 +119,19 @@ struct BleLink::Impl {
     std::size_t received_read = 0;
     std::size_t received_write = 0;
     std::size_t received_count = 0;
+    bool discard_received_after_release = false;
+
+    void ClearReceivedQueue() {
+        if (received_borrowed) {
+            discard_received_after_release = true;
+            return;
+        }
+        for (auto& frame : received) frame = {};
+        received_read = 0;
+        received_write = 0;
+        received_count = 0;
+        discard_received_after_release = false;
+    }
 
     static int Access(uint16_t connection, uint16_t attribute,
                       ble_gatt_access_ctxt* context, void*) {
@@ -263,6 +276,7 @@ struct BleLink::Impl {
                 instance->transmit_active = false;
                 instance->transmit_size = 0;
                 instance->reassembler.Reset();
+                instance->ClearReceivedQueue();
                 instance->state = BleState::kIdle;
                 instance->pairing_authorized = false;
                 instance->passkey = 0;
@@ -844,6 +858,9 @@ void BleLink::ReleaseReceivedFrame() {
             (impl_->received_read + 1) % kReceivedQueueCapacity;
         --impl_->received_count;
         impl_->received_borrowed = false;
+    }
+    if (impl_->discard_received_after_release && !impl_->received_borrowed) {
+        impl_->ClearReceivedQueue();
     }
     xSemaphoreGive(impl_->lock);
 }

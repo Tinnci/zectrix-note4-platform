@@ -92,9 +92,6 @@ BootstrapStatus PairingBootstrap::ValidateEnrollmentProof(
     if (state_ != BootstrapState::kPairingWindowOpen) {
         return BootstrapStatus::kInvalidState;
     }
-    if (session_id_ == 0 || ble_session_id != session_id_) {
-        return BootstrapStatus::kSessionMismatch;
-    }
     const uint32_t now = clock_.MonotonicMilliseconds();
     if (IsExpired(now)) {
         state_ = BootstrapState::kExpired;
@@ -105,6 +102,12 @@ BootstrapStatus PairingBootstrap::ValidateEnrollmentProof(
     }
     if (!ConstantTimeTokenEqual(token_.data(), token, token_.size())) {
         return BootstrapStatus::kTokenMismatch;
+    }
+    // Bind only after the proof material is known to be valid. A wrong
+    // token or generation must not lock the bootstrap to an attacker's
+    // session.
+    if (session_id_ != 0 && session_id_ != ble_session_id) {
+        return BootstrapStatus::kSessionMismatch;
     }
     session_id_ = ble_session_id;
     token_.fill(0);

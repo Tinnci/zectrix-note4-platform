@@ -56,6 +56,8 @@ class BleGattClient(
     }
 
     private val applicationContext = context.applicationContext
+    private val identityStore = CompanionIdentityStore(applicationContext)
+    private val companionIdentity = identityStore.getOrCreate()
     private var gatt: BluetoothGatt? = null
     private var tx: BluetoothGattCharacteristic? = null
     private var state = GattState.IDLE
@@ -125,8 +127,10 @@ class BleGattClient(
      * Supplies a single-use NFC enrollment proof for the next protocol Hello.
      * The proof is cleared as soon as the Hello frame is queued.
      */
-    fun setEnrollmentProof(generation: Long, token: ByteArray, companionId: ByteArray) {
-        val value = CompanionProtocol.encodeHelloEnrollmentProof(generation, token, companionId)
+    fun setEnrollmentProof(generation: Long, token: ByteArray) {
+        val value = CompanionProtocol.encodeHelloEnrollmentProof(
+            generation, token, companionIdentity,
+        )
         enrollmentProofPayload = CompanionProtocol.encodeTlv(
             CompanionProtocol.HELLO_ENROLLMENT_PROOF_TYPE, required = true, value = value,
         )
@@ -285,12 +289,16 @@ class BleGattClient(
                             .firstOrNull { it.type == CompanionProtocol.HELLO_ACK_STATUS_TYPE }
                             ?.let { CompanionProtocol.decodeHelloAckStatus(it.value) }
                         if (ackStatus != null) {
-                            detail = if (ackStatus.status == CompanionProtocol.HELLO_ACK_STATUS_REJECTED) {
-                                "Enrollment rejected (code ${ackStatus.errorReason})"
-                            } else if (ackStatus.peerAuthorized) {
-                                "Secure link, protocol handshake, peer authorized"
+                            if (ackStatus.status == CompanionProtocol.HELLO_ACK_STATUS_REJECTED) {
+                                identityStore.setEnrolled(false)
+                                detail = "Enrollment rejected (code ${ackStatus.errorReason})"
                             } else {
-                                "Secure link and protocol handshake complete"
+                                if (ackStatus.peerAuthorized) {
+                                    identityStore.setEnrolled(true)
+                                    detail = "Secure link, protocol handshake, peer authorized"
+                                } else {
+                                    detail = "Secure link and protocol handshake complete"
+                                }
                             }
                         }
                     }
@@ -320,7 +328,14 @@ class BleGattClient(
     private fun sendHello(gatt: BluetoothGatt) {
         if (state != GattState.VERIFYING_LINK || pendingWrites.isNotEmpty() || writeInFlight) return
         helloRequestId = sessionId.toLong()
-        val payload = enrollmentProofPayload ?: ByteArray(0)
+        val payload = enrollmentProofPayload ?: if (identityStore.isEnrolled()) {
+            CompanionProtocol.encodeTlv(
+                CompanionProtocol.HELLO_COMPANION_IDENTITY_TYPE, required = true,
+                value = CompanionProtocol.encodeCompanionIdentity(companionIdentity),
+            )
+        } else {
+            ByteArray(0)
+        }
         val hello = CompanionProtocol.encode(
             CompanionProtocol.Header(
                 messageClass = CompanionProtocol.MessageClass.CONTROL,

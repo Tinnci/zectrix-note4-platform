@@ -16,6 +16,7 @@
 #include "freertos/task.h"
 
 #include "zectrix_ble_link.h"
+#include "zectrix_companion_identity.h"
 #include "zectrix_companion_protocol.h"
 #include "zectrix_nfc_service.h"
 #include "zectrix_pairing_bootstrap.h"
@@ -28,7 +29,6 @@ constexpr char kTag[] = "connectivity";
 constexpr char kCompanionIdentityKey[] = "comp_identity";
 constexpr uint32_t kCompanionIdentityMagic = 0x3150435aU;  // "ZCP1" LE
 constexpr uint16_t kCompanionIdentityVersion = 1;
-constexpr std::size_t kCompanionIdentitySize = 24;
 
 constexpr uint16_t kEnrollmentErrorNone = 0;
 constexpr uint16_t kEnrollmentErrorMalformedProof = 1;
@@ -37,14 +37,7 @@ constexpr uint16_t kEnrollmentErrorInvalidProof = 3;
 constexpr uint16_t kEnrollmentErrorMissingBootstrap = 4;
 constexpr uint16_t kEnrollmentErrorIdentityMismatch = 5;
 constexpr uint16_t kEnrollmentErrorNoStoredIdentity = 6;
-
-struct CompanionIdentityRecord {
-    uint32_t magic = 0;
-    uint16_t version = 0;
-    uint16_t reserved = 0;
-    uint8_t companion_id[16] = {};
-    uint32_t enrollment_generation = 0;
-};
+constexpr uint16_t kEnrollmentErrorUnknownRequiredField = 7;
 
 ConnectivityResult Map(companion::LinkResult result) {
     switch (result) {
@@ -92,54 +85,6 @@ bool ConstantTimeEqual(const uint8_t* first, const uint8_t* second,
         difference |= static_cast<uint8_t>(first[index] ^ second[index]);
     }
     return difference == 0;
-}
-
-void PutUInt16(uint8_t* output, uint16_t value) {
-    output[0] = static_cast<uint8_t>(value & 0xffU);
-    output[1] = static_cast<uint8_t>((value >> 8U) & 0xffU);
-}
-
-void PutUInt32(uint8_t* output, uint32_t value) {
-    output[0] = static_cast<uint8_t>(value & 0xffU);
-    output[1] = static_cast<uint8_t>((value >> 8U) & 0xffU);
-    output[2] = static_cast<uint8_t>((value >> 16U) & 0xffU);
-    output[3] = static_cast<uint8_t>((value >> 24U) & 0xffU);
-}
-
-uint16_t GetUInt16(const uint8_t* input) {
-    return static_cast<uint16_t>(input[0]) |
-           static_cast<uint16_t>(input[1]) << 8U;
-}
-
-uint32_t GetUInt32(const uint8_t* input) {
-    return static_cast<uint32_t>(input[0]) |
-           static_cast<uint32_t>(input[1]) << 8U |
-           static_cast<uint32_t>(input[2]) << 16U |
-           static_cast<uint32_t>(input[3]) << 24U;
-}
-
-void EncodeCompanionIdentityRecord(const CompanionIdentityRecord& record,
-                                   uint8_t* output) {
-    PutUInt32(output, record.magic);
-    PutUInt16(output + 4, record.version);
-    PutUInt16(output + 6, record.reserved);
-    std::memcpy(output + 8, record.companion_id, sizeof(record.companion_id));
-    PutUInt32(output + 24 - 4, record.enrollment_generation);
-}
-
-bool DecodeCompanionIdentityRecord(const uint8_t* input, std::size_t size,
-                                   CompanionIdentityRecord* record) {
-    if (input == nullptr || record == nullptr ||
-        size != kCompanionIdentitySize) {
-        return false;
-    }
-    record->magic = GetUInt32(input);
-    record->version = GetUInt16(input + 4);
-    record->reserved = GetUInt16(input + 6);
-    std::memcpy(record->companion_id, input + 8,
-                sizeof(record->companion_id));
-    record->enrollment_generation = GetUInt32(input + 24 - 4);
-    return true;
 }
 
 void LogEnrollmentRejection(const char* reason, uint32_t session_id) {
@@ -220,7 +165,9 @@ struct ConnectivityService::Impl {
         if (nfc_service == nullptr || bootstrap == nullptr) return;
         const nfc::NfcSnapshot nfc = nfc_service->Snapshot();
         if (nfc.field_present) return;
-        if (bootstrap->state() == companion::BootstrapState::kIdle) {
+        if (bootstrap->state() == companion::BootstrapState::kIdle ||
+            bootstrap->state() == companion::BootstrapState::kExpired) {
+            bootstrap->Cancel();
             PrepareNfcEnrollment();
             return;
         }
@@ -271,7 +218,8 @@ struct ConnectivityService::Impl {
         uint16_t error_reason = kEnrollmentErrorNone;
     };
 
-    HelloAckDecision ProcessHelloPayload(const BleSnapshot& link,
+    HelloAckDecision ProcessHelloPayload(uint32_t session_id,
+                                         const BleSnapshot& link,
                                          const companion::FrameView& frame) {
         HelloAckDecision decision{};
         if (frame.payload_size == 0) {
@@ -279,99 +227,116 @@ struct ConnectivityService::Impl {
             return decision;
         }
 
+        bool has_proof = false;
+        bool has_identity = false;
+        uint32_t proof_generation = 0;
+        uint8_t proof_token[16] = {};
+        uint8_t proof_companion_id[16] = {};
+        uint8_t identity_companion_id[16] = {};
+
         companion::TlvReader reader(frame.payload, frame.payload_size);
         companion::TlvField field{};
         bool present = false;
-        bool enrollment_proof_seen = false;
-        bool identity_proof_seen = false;
-        while (reader.Next(&field, &present) == companion::ProtocolStatus::kOk &&
-               present) {
+        while (true) {
+            const companion::ProtocolStatus status = reader.Next(&field, &present);
+            if (status != companion::ProtocolStatus::kOk) {
+                LogEnrollmentRejection("malformed_tlv", session_id);
+                decision.status = companion::kHelloAckStatusRejected;
+                decision.error_reason = kEnrollmentErrorMalformedProof;
+                return decision;
+            }
+            if (!present) break;
             if (field.type == companion::kHelloEnrollmentProofType) {
-                enrollment_proof_seen = true;
-                uint32_t generation = 0;
-                uint8_t token[16] = {};
-                uint8_t companion_id[16] = {};
+                has_proof = true;
                 if (companion::DecodeEnrollmentProofValue(
-                        field.value, field.value_size, &generation, token,
-                        companion_id) != companion::ProtocolStatus::kOk) {
-                    LogEnrollmentRejection("malformed_proof", link.session_id);
+                        field.value, field.value_size, &proof_generation,
+                        proof_token, proof_companion_id) !=
+                        companion::ProtocolStatus::kOk ||
+                    IsAllZero(proof_companion_id, sizeof(proof_companion_id))) {
+                    LogEnrollmentRejection("malformed_proof", session_id);
                     decision.status = companion::kHelloAckStatusRejected;
                     decision.error_reason = kEnrollmentErrorMalformedProof;
-                    continue;
+                    return decision;
                 }
-                if (IsAllZero(companion_id, sizeof(companion_id))) {
-                    LogEnrollmentRejection("missing_identity", link.session_id);
-                    decision.status = companion::kHelloAckStatusRejected;
-                    decision.error_reason = kEnrollmentErrorMalformedProof;
-                    continue;
-                }
-                if (bootstrap == nullptr) {
-                    LogEnrollmentRejection("missing_bootstrap", link.session_id);
-                    decision.status = companion::kHelloAckStatusRejected;
-                    decision.error_reason = kEnrollmentErrorMissingBootstrap;
-                    continue;
-                }
-                if (bootstrap->BindSession(link.session_id) !=
-                    companion::BootstrapStatus::kOk) {
-                    LogEnrollmentRejection("session_bind_failed",
-                                           link.session_id);
-                    decision.status = companion::kHelloAckStatusRejected;
-                    decision.error_reason = kEnrollmentErrorSessionBindFailed;
-                    continue;
-                }
-                const companion::BootstrapStatus status =
-                    bootstrap->ValidateEnrollmentProof(
-                        link.session_id, generation, token, sizeof(token));
-                if (status != companion::BootstrapStatus::kOk) {
-                    LogEnrollmentRejection("invalid_proof", link.session_id);
-                    decision.status = companion::kHelloAckStatusRejected;
-                    decision.error_reason = kEnrollmentErrorInvalidProof;
-                    continue;
-                }
-                PersistCompanionIdentity(companion_id, generation);
-                SetSessionPeerAuthorized(link.session_id);
-                ESP_LOGI(kTag,
-                         "event=companion_enrolled session=%lu generation=%lu",
-                         static_cast<unsigned long>(link.session_id),
-                         static_cast<unsigned long>(generation));
             } else if (field.type == companion::kHelloCompanionIdentityType) {
-                identity_proof_seen = true;
-                uint8_t companion_id[16] = {};
+                has_identity = true;
                 if (companion::DecodeCompanionIdentityValue(
-                        field.value, field.value_size, companion_id) !=
-                    companion::ProtocolStatus::kOk) {
-                    LogEnrollmentRejection("malformed_identity",
-                                           link.session_id);
+                        field.value, field.value_size,
+                        identity_companion_id) !=
+                        companion::ProtocolStatus::kOk ||
+                    IsAllZero(identity_companion_id,
+                              sizeof(identity_companion_id))) {
+                    LogEnrollmentRejection("malformed_identity", session_id);
                     decision.status = companion::kHelloAckStatusRejected;
                     decision.error_reason = kEnrollmentErrorMalformedProof;
-                    continue;
+                    return decision;
                 }
-                if (!stored_companion_id_valid) {
-                    LogEnrollmentRejection("no_stored_identity",
-                                           link.session_id);
-                    decision.status = companion::kHelloAckStatusRejected;
-                    decision.error_reason = kEnrollmentErrorNoStoredIdentity;
-                    continue;
-                }
-                if (!ConstantTimeEqual(companion_id, stored_companion_id.data(),
-                                       stored_companion_id.size())) {
-                    LogEnrollmentRejection("identity_mismatch",
-                                           link.session_id);
-                    decision.status = companion::kHelloAckStatusRejected;
-                    decision.error_reason = kEnrollmentErrorIdentityMismatch;
-                    continue;
-                }
-                SetSessionPeerAuthorized(link.session_id);
-                ESP_LOGI(kTag,
-                         "event=companion_reconnected session=%lu",
-                         static_cast<unsigned long>(link.session_id));
+            } else if (field.required) {
+                LogEnrollmentRejection("unknown_required_field", session_id);
+                decision.status = companion::kHelloAckStatusRejected;
+                decision.error_reason = kEnrollmentErrorUnknownRequiredField;
+                return decision;
             }
         }
-        if (!enrollment_proof_seen && !identity_proof_seen) {
+
+        if (!has_proof && !has_identity) {
             ESP_LOGI(kTag, "event=hello_received session=%lu proof=absent",
-                     static_cast<unsigned long>(link.session_id));
+                     static_cast<unsigned long>(session_id));
+            decision.peer_authorized = IsSessionPeerAuthorized(link);
+            return decision;
         }
-        decision.peer_authorized = IsSessionPeerAuthorized(link);
+
+        if (has_proof) {
+            if (bootstrap == nullptr) {
+                LogEnrollmentRejection("missing_bootstrap", session_id);
+                peer_authorized.store(false, std::memory_order_release);
+                decision.status = companion::kHelloAckStatusRejected;
+                decision.error_reason = kEnrollmentErrorMissingBootstrap;
+            } else {
+                const companion::BootstrapStatus status =
+                    bootstrap->ValidateEnrollmentProof(
+                        session_id, proof_generation, proof_token,
+                        sizeof(proof_token));
+                if (status != companion::BootstrapStatus::kOk) {
+                    LogEnrollmentRejection("invalid_proof", session_id);
+                    peer_authorized.store(false, std::memory_order_release);
+                    decision.status = companion::kHelloAckStatusRejected;
+                    decision.error_reason = kEnrollmentErrorInvalidProof;
+                } else {
+                    PersistCompanionIdentity(proof_companion_id,
+                                             proof_generation);
+                    SetSessionPeerAuthorized(session_id);
+                    ESP_LOGI(kTag,
+                             "event=companion_enrolled session=%lu generation=%lu",
+                             static_cast<unsigned long>(session_id),
+                             static_cast<unsigned long>(proof_generation));
+                }
+            }
+        }
+
+        if (decision.status == companion::kHelloAckStatusOk && has_identity) {
+            if (!stored_companion_id_valid) {
+                LogEnrollmentRejection("no_stored_identity", session_id);
+                peer_authorized.store(false, std::memory_order_release);
+                decision.status = companion::kHelloAckStatusRejected;
+                decision.error_reason = kEnrollmentErrorNoStoredIdentity;
+            } else if (!ConstantTimeEqual(identity_companion_id,
+                                          stored_companion_id.data(),
+                                          stored_companion_id.size())) {
+                LogEnrollmentRejection("identity_mismatch", session_id);
+                peer_authorized.store(false, std::memory_order_release);
+                decision.status = companion::kHelloAckStatusRejected;
+                decision.error_reason = kEnrollmentErrorIdentityMismatch;
+            } else {
+                SetSessionPeerAuthorized(session_id);
+                ESP_LOGI(kTag, "event=companion_reconnected session=%lu",
+                         static_cast<unsigned long>(session_id));
+            }
+        }
+
+        if (decision.status == companion::kHelloAckStatusOk) {
+            decision.peer_authorized = IsSessionPeerAuthorized(link);
+        }
         return decision;
     }
 
@@ -381,14 +346,14 @@ struct ConnectivityService::Impl {
             ESP_LOGW(kTag, "event=companion_identity_persist_skipped");
             return;
         }
-        CompanionIdentityRecord record{};
+        companion::CompanionIdentityRecord record{};
         record.magic = kCompanionIdentityMagic;
         record.version = kCompanionIdentityVersion;
         std::memcpy(record.companion_id, companion_id,
                     sizeof(record.companion_id));
         record.enrollment_generation = generation;
-        std::array<uint8_t, kCompanionIdentitySize> encoded{};
-        EncodeCompanionIdentityRecord(record, encoded.data());
+        std::array<uint8_t, companion::kCompanionIdentityRecordSize> encoded{};
+        companion::EncodeCompanionIdentityRecord(record, encoded.data());
         const esp_err_t err = storage_service->SetBlob(
             kCompanionIdentityKey, encoded.data(), encoded.size());
         if (err != ESP_OK) {
@@ -407,13 +372,14 @@ struct ConnectivityService::Impl {
         if (storage_service == nullptr || !storage_service->IsInitialized()) {
             return;
         }
-        std::array<uint8_t, kCompanionIdentitySize> encoded{};
+        std::array<uint8_t, companion::kCompanionIdentityRecordSize> encoded{};
         std::size_t length = encoded.size();
         const esp_err_t err = storage_service->GetBlob(
             kCompanionIdentityKey, encoded.data(), &length);
         if (err != ESP_OK) return;
-        CompanionIdentityRecord record{};
-        if (!DecodeCompanionIdentityRecord(encoded.data(), length, &record) ||
+        companion::CompanionIdentityRecord record{};
+        if (!companion::DecodeCompanionIdentityRecord(
+                encoded.data(), length, &record) ||
             record.magic != kCompanionIdentityMagic ||
             record.version != kCompanionIdentityVersion ||
             record.reserved != 0 ||
@@ -458,6 +424,15 @@ struct ConnectivityService::Impl {
                 self->ble.WaitForSessionEvent(session_wake_ms);
                 continue;
             }
+            const uint32_t received_session_id = received.session_id;
+            if (received_session_id != link.session_id) {
+                self->ble.ReleaseReceivedFrame();
+                ESP_LOGW(kTag,
+                         "event=stale_frame_discarded session=%lu frame_session=%lu",
+                         static_cast<unsigned long>(link.session_id),
+                         static_cast<unsigned long>(received_session_id));
+                continue;
+            }
             companion::FrameView frame{};
             const companion::ProtocolStatus decoded = companion::DecodeFrame(
                 received.data, received.size, companion::kProtocolMajor,
@@ -468,19 +443,19 @@ struct ConnectivityService::Impl {
                 frame.header.message_type ==
                     static_cast<uint16_t>(companion::ControlMessage::kHello) &&
                 (frame.header.flags & companion::kResponse) == 0;
-            const uint32_t request_id = frame.header.request_id;
-            const uint32_t sequence = frame.header.sequence;
-            const uint32_t received_session_id = received.session_id;
-            self->ble.ReleaseReceivedFrame();
             if (!hello) {
+                self->ble.ReleaseReceivedFrame();
                 ESP_LOGW(kTag,
                          "event=protocol_frame_rejected session=%lu reason=expected_hello",
                          static_cast<unsigned long>(link.session_id));
                 continue;
             }
+            const uint32_t request_id = frame.header.request_id;
+            const uint32_t sequence = frame.header.sequence;
 
             const Impl::HelloAckDecision decision =
-                self->ProcessHelloPayload(link, frame);
+                self->ProcessHelloPayload(received_session_id, link, frame);
+            self->ble.ReleaseReceivedFrame();
 
             std::array<uint8_t, 4> status_value{};
             std::size_t status_size = 0;

@@ -28,13 +28,23 @@ class CompanionIdentityStore(context: Context) {
         return generated
     }
 
+    fun isEnrolled(): Boolean = preferences.getBoolean(KEY_ENROLLED, false)
+
+    fun setEnrolled(enrolled: Boolean) {
+        preferences.edit().putBoolean(KEY_ENROLLED, enrolled).apply()
+    }
+
     fun clear() {
-        preferences.edit().remove(KEY_IDENTITY).apply()
+        preferences.edit()
+            .remove(KEY_IDENTITY)
+            .remove(KEY_ENROLLED)
+            .apply()
     }
 
     private companion object {
         const val PREFERENCES_NAME = "zectrix_companion"
         const val KEY_IDENTITY = "companion_identity"
+        const val KEY_ENROLLED = "companion_enrolled"
         const val IDENTITY_SIZE = 16
     }
 }

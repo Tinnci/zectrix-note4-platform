@@ -1,5 +1,6 @@
 idf_component_register(
     SRCS
+        "zectrix_companion_identity.cc"
         "zectrix_companion_protocol.cc"
         "zectrix_connectivity_policy.cc"
         "zectrix_enrollment_ndef.cc"

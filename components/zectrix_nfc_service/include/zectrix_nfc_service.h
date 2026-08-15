@@ -2,6 +2,7 @@
 
 #include <array>
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
 #include <mutex>
@@ -75,7 +76,9 @@ private:
 
     ZectrixNfc* nfc_ = nullptr;
     std::mutex event_callback_mutex_;
+    std::condition_variable event_callback_idle_cv_;
     std::function<void()> event_callback_;
+    int event_callback_in_flight_ = 0;
     std::atomic<bool> field_present_{false};
     std::atomic<bool> field_rising_pending_{false};
     std::atomic<bool> enrollment_ndef_prepared_{false};

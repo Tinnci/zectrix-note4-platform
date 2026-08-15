@@ -22,6 +22,7 @@ esp_err_t NfcService::Attach(ZectrixNfc& nfc, NfcService** out_service) {
 }
 
 NfcService::~NfcService() {
+    SetEventCallback(nullptr);
     if (nfc_ != nullptr) {
         nfc_->SetFieldCallback(nullptr);
     }
@@ -80,8 +81,11 @@ esp_err_t NfcService::ClearEnrollmentNdef() {
 }
 
 void NfcService::SetEventCallback(std::function<void()> callback) {
-    std::lock_guard<std::mutex> lock(event_callback_mutex_);
+    std::unique_lock<std::mutex> lock(event_callback_mutex_);
     event_callback_ = std::move(callback);
+    event_callback_idle_cv_.wait(lock, [this]() {
+        return event_callback_in_flight_ == 0;
+    });
 }
 
 NfcSnapshot NfcService::Snapshot() const {
@@ -111,8 +115,16 @@ void NfcService::OnFieldChanged(bool present) {
     {
         std::lock_guard<std::mutex> lock(event_callback_mutex_);
         callback = event_callback_;
+        if (callback) ++event_callback_in_flight_;
     }
-    if (callback) callback();
+    if (callback) {
+        callback();
+        {
+            std::lock_guard<std::mutex> lock(event_callback_mutex_);
+            --event_callback_in_flight_;
+        }
+        event_callback_idle_cv_.notify_all();
+    }
 }
 
 }  // namespace zectrix::nfc
