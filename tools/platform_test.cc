@@ -9,6 +9,7 @@
 
 #include "zectrix_display_service.h"
 #include "zectrix_connectivity_service.h"
+#include "zectrix_nfc_service.h"
 #include "zectrix_input_service.h"
 #include "zectrix_power_service.h"
 #include "zectrix_storage_service.h"
@@ -94,8 +95,19 @@ esp_err_t DisplayService::Create(DisplayService** output) {
 }
 DisplayService::~DisplayService() { events.emplace_back("delete:display"); }
 }
+namespace zectrix::nfc {
+esp_err_t NfcService::Attach(ZectrixNfc& nfc, NfcService** output) {
+    events.emplace_back("create:nfc");
+    *output = new NfcService(nfc);
+    return ESP_OK;
+}
+NfcService::~NfcService() { events.emplace_back("delete:nfc"); }
+}
+
 namespace zectrix::connectivity {
 struct ConnectivityService::Impl {};
+void ConnectivityService::SetNfcService(nfc::NfcService*) {}
+void ConnectivityService::SetStorageService(storage::StorageService*) {}
 ConnectivityResult ConnectivityService::Create(ConnectivityService** output) {
     events.emplace_back("create:connectivity");
     if (fail_at == "connectivity") return ConnectivityResult::kUnavailable;

@@ -55,6 +55,28 @@ class CompanionCoreTest {
         assertFails { CompanionProtocol.decodeTlvs(byteArrayOf(1, 0, 4, 0, 1)) }
     }
 
+    @Test fun enrollmentProofTlvMatchesFirmwareValue() {
+        val token = ByteArray(16) { (it + 1).toByte() }
+        val value = CompanionProtocol.encodeHelloEnrollmentProof(0x89abcdef, token)
+        assertEquals(
+            "efcdab890102030405060708090a0b0c0d0e0f10",
+            CompanionProtocol.hex(value),
+        )
+        val (generation, decodedToken) = CompanionProtocol.decodeHelloEnrollmentProof(value)!!
+        assertEquals(0x89abcdef, generation)
+        assertArrayEquals(token, decodedToken)
+        assertNull(CompanionProtocol.decodeHelloEnrollmentProof(ByteArray(19)))
+
+        val tlv = CompanionProtocol.encodeTlv(
+            CompanionProtocol.HELLO_ENROLLMENT_PROOF_TYPE, required = true, value = value,
+        )
+        val fields = CompanionProtocol.decodeTlvs(tlv)
+        assertEquals(1, fields.size)
+        assertTrue(fields[0].required)
+        assertEquals(CompanionProtocol.HELLO_ENROLLMENT_PROOF_TYPE, fields[0].type)
+        assertArrayEquals(value, fields[0].value)
+    }
+
     @Test fun helloAndHelloAckHaveDistinctSessionSemantics() {
         val hello = CompanionProtocol.encode(
             CompanionProtocol.Header(

@@ -146,6 +146,36 @@ ProtocolStatus DecodeFrame(const uint8_t* frame, std::size_t frame_size,
     return ProtocolStatus::kOk;
 }
 
+ProtocolStatus EncodeEnrollmentProofValue(
+    uint32_t generation, const uint8_t token[16], uint8_t* output,
+    std::size_t output_capacity, std::size_t* output_size) {
+    if (token == nullptr || output == nullptr || output_size == nullptr) {
+        return ProtocolStatus::kInvalidArgument;
+    }
+    *output_size = 0;
+    constexpr std::size_t kEnrollmentProofValueSize = 4 + 16;
+    if (output_capacity < kEnrollmentProofValueSize) {
+        return ProtocolStatus::kBufferTooSmall;
+    }
+    PutUInt32(output, generation);
+    std::memcpy(output + 4, token, 16);
+    *output_size = kEnrollmentProofValueSize;
+    return ProtocolStatus::kOk;
+}
+
+ProtocolStatus DecodeEnrollmentProofValue(const uint8_t* value,
+                                          std::size_t value_size,
+                                          uint32_t* generation,
+                                          uint8_t* token) {
+    if (value == nullptr || generation == nullptr || token == nullptr) {
+        return ProtocolStatus::kInvalidArgument;
+    }
+    if (value_size != 20) return ProtocolStatus::kMalformedTlv;
+    *generation = GetUInt32(value);
+    std::memcpy(token, value + 4, 16);
+    return ProtocolStatus::kOk;
+}
+
 ProtocolStatus TlvWriter::Add(uint16_t type, const uint8_t* value,
                               std::size_t value_size) {
     if (output_ == nullptr || (value == nullptr && value_size != 0)) {

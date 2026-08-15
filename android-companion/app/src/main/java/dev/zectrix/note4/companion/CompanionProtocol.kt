@@ -14,6 +14,8 @@ object CompanionProtocol {
     const val FLAG_RESPONSE = 1 shl 1
     const val CONTROL_HELLO = 1
     const val CONTROL_HELLO_ACK = 2
+    const val HELLO_ENROLLMENT_PROOF_TYPE = 1
+    const val HELLO_ENROLLMENT_PROOF_SIZE = 20
 
     enum class MessageClass(val wire: Int) {
         CONTROL(0), DURABLE_STATE(1), COMMAND(2), STREAM(3);
@@ -96,6 +98,20 @@ object CompanionProtocol {
                 frame.copyOfRange(HEADER_SIZE, frame.size),
             ),
         )
+    }
+
+    fun encodeHelloEnrollmentProof(generation: Long, token: ByteArray): ByteArray {
+        require(token.size == 16)
+        require(generation in 0..0xffff_ffffL)
+        return ByteArray(HELLO_ENROLLMENT_PROOF_SIZE).also { value ->
+            put32(value, 0, generation)
+            token.copyInto(value, 4)
+        }
+    }
+
+    fun decodeHelloEnrollmentProof(value: ByteArray): Pair<Long, ByteArray>? {
+        if (value.size != HELLO_ENROLLMENT_PROOF_SIZE) return null
+        return get32(value, 0) to value.copyOfRange(4, value.size)
     }
 
     fun matchesHelloAck(frame: Frame, requestId: Long, sequence: Long): Boolean =

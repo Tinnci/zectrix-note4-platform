@@ -65,6 +65,7 @@ class BleGattClient(
     private var sessionId = 0
     private var writeInFlight = false
     private var helloRequestId = 0L
+    private var enrollmentProofPayload: ByteArray? = null
     private val pendingWrites = ArrayDeque<ByteArray>()
     private val reassembler = CompanionFragments.Reassembler()
     private val bondReceiver = object : BroadcastReceiver() {
@@ -119,6 +120,17 @@ class BleGattClient(
     }
 
     fun close() = closeInternal(report = true)
+
+    /**
+     * Supplies a single-use NFC enrollment proof for the next protocol Hello.
+     * The proof is cleared as soon as the Hello frame is queued.
+     */
+    fun setEnrollmentProof(generation: Long, token: ByteArray) {
+        val value = CompanionProtocol.encodeHelloEnrollmentProof(generation, token)
+        enrollmentProofPayload = CompanionProtocol.encodeTlv(
+            CompanionProtocol.HELLO_ENROLLMENT_PROOF_TYPE, required = true, value = value,
+        )
+    }
 
     /** Queue one complete protocol frame. Android GATT writes are serialized. */
     fun send(frame: ByteArray): Boolean {
@@ -292,6 +304,8 @@ class BleGattClient(
     private fun sendHello(gatt: BluetoothGatt) {
         if (state != GattState.VERIFYING_LINK || pendingWrites.isNotEmpty() || writeInFlight) return
         helloRequestId = sessionId.toLong()
+        val payload = enrollmentProofPayload ?: ByteArray(0)
+        enrollmentProofPayload = null
         val hello = CompanionProtocol.encode(
             CompanionProtocol.Header(
                 messageClass = CompanionProtocol.MessageClass.CONTROL,
@@ -300,7 +314,7 @@ class BleGattClient(
                 requestId = helloRequestId,
                 sequence = HELLO_SEQUENCE,
             ),
-            byteArrayOf(),
+            payload,
         )
         val fragments = CompanionFragments.encode(hello, nextFrameId++, mtu - 3)
         fragments.forEach(pendingWrites::addLast)

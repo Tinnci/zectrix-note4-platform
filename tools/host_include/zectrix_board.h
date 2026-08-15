@@ -5,6 +5,8 @@
 
 #include <ctime>
 
+class ZectrixNfc;
+
 enum class ZectrixButton { kUp, kDown, kOk };
 enum class ZectrixButtonAction { kClick, kLongPress };
 
@@ -54,6 +56,7 @@ public:
 
     bool HasRtc() const { return rtc_available; }
     bool HasNfc() const { return nfc_available; }
+    ZectrixNfc* nfc() const { return nullptr; }
     bool ReadRtc(tm* value) {
         if (!rtc_available || !rtc_io_ok || value == nullptr) return false;
         *value = rtc_value;

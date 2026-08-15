@@ -6,7 +6,9 @@
 
 #include "zectrix_companion_protocol.h"
 
+using zectrix::companion::DecodeEnrollmentProofValue;
 using zectrix::companion::DecodeFrame;
+using zectrix::companion::EncodeEnrollmentProofValue;
 using zectrix::companion::ControlMessage;
 using zectrix::companion::EncodeFragment;
 using zectrix::companion::EncodeFrame;
@@ -115,6 +117,33 @@ void TestBoundsAndTlvErrors() {
                        frame.size(), &size) == ProtocolStatus::kOversized);
 }
 
+void TestEnrollmentProof() {
+    uint8_t token[16];
+    for (std::size_t i = 0; i < sizeof(token); ++i) token[i] = static_cast<uint8_t>(i + 1);
+    std::array<uint8_t, 20> value{};
+    std::size_t value_size = 0;
+    assert(EncodeEnrollmentProofValue(0x89abcdef, token, value.data(),
+                                      value.size(), &value_size) ==
+           ProtocolStatus::kOk);
+    assert(value_size == 20);
+    assert(value[0] == 0xef && value[1] == 0xcd && value[2] == 0xab &&
+           value[3] == 0x89);
+    assert(value[4] == 1 && value[19] == 16);
+
+    uint32_t generation = 0;
+    uint8_t decoded_token[16]{};
+    assert(DecodeEnrollmentProofValue(value.data(), value_size, &generation,
+                                      decoded_token) == ProtocolStatus::kOk);
+    assert(generation == 0x89abcdef);
+    assert(std::memcmp(token, decoded_token, sizeof(token)) == 0);
+    assert(DecodeEnrollmentProofValue(value.data(), 19, &generation,
+                                      decoded_token) ==
+           ProtocolStatus::kMalformedTlv);
+    assert(EncodeEnrollmentProofValue(1, token, value.data(), 19,
+                                      &value_size) ==
+           ProtocolStatus::kBufferTooSmall);
+}
+
 void TestFragmentation() {
     const auto frame = MakeFrame();
     constexpr std::size_t packet_capacity = 23;
@@ -165,6 +194,7 @@ int main() {
     static_assert(static_cast<uint16_t>(ControlMessage::kHelloAck) == 2);
     TestCrcAndFrame();
     TestBoundsAndTlvErrors();
+    TestEnrollmentProof();
     TestFragmentation();
     return 0;
 }

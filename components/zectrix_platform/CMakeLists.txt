@@ -6,6 +6,7 @@ idf_component_register(
         zectrix_connectivity
         zectrix_display
         zectrix_input
+        zectrix_nfc_service
         zectrix_power
         zectrix_self_test
         zectrix_storage

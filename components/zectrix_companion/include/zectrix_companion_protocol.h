@@ -17,6 +17,10 @@ constexpr std::size_t kMaximumTlvValueSize = 2048;
 constexpr std::size_t kFragmentHeaderSize = 8;
 constexpr uint16_t kRequiredFieldBit = 0x8000;
 
+// Hello TLV types for vertical-slice sessions. A peer ignores an unknown TLV;
+// an enrollment proof is optional in Hello v1.
+constexpr uint16_t kHelloEnrollmentProofType = 1;
+
 enum class MessageClass : uint8_t {
     kControl = 0,
     kDurableState = 1,
@@ -108,6 +112,18 @@ struct TlvField {
     const uint8_t* value = nullptr;
     std::size_t value_size = 0;
 };
+
+// Encodes the Hello enrollment proof TLV value: generation uint32 LE
+// followed by the 16-byte enrollment token.
+ProtocolStatus EncodeEnrollmentProofValue(
+    uint32_t generation, const uint8_t token[16], uint8_t* output,
+    std::size_t output_capacity, std::size_t* output_size);
+
+// Decodes a Hello enrollment proof TLV value.
+ProtocolStatus DecodeEnrollmentProofValue(const uint8_t* value,
+                                          std::size_t value_size,
+                                          uint32_t* generation,
+                                          uint8_t* token);
 
 class TlvReader {
 public:

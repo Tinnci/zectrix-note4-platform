@@ -2,6 +2,9 @@
 
 #include <cstdint>
 
+namespace zectrix::nfc { class NfcService; }
+namespace zectrix::storage { class StorageService; }
+
 namespace zectrix::connectivity {
 
 enum class ConnectivityState : uint8_t {
@@ -38,6 +41,8 @@ struct ConnectivitySnapshot {
     // that Android received the response, and it does not authorize the peer.
     bool protocol_negotiated_local = false;
     // Protocol peer authorization is a separate gate. Hello does not set it.
+    // A successful NFC-assisted enrollment proof consumes the bootstrap token
+    // and sets this flag for the current product session.
     bool peer_authorized = false;
 };
 
@@ -48,6 +53,10 @@ public:
 
     ConnectivityService(const ConnectivityService&) = delete;
     ConnectivityService& operator=(const ConnectivityService&) = delete;
+
+    // Optional dependencies. Call before Initialize().
+    void SetNfcService(nfc::NfcService* nfc_service);
+    void SetStorageService(storage::StorageService* storage_service);
 
     ConnectivityResult Initialize();
     ConnectivityResult StartLocalPairing();

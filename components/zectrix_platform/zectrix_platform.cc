@@ -6,6 +6,7 @@
 #include "zectrix_board.h"
 #include "zectrix_connectivity_service.h"
 #include "zectrix_display_service.h"
+#include "zectrix_nfc_service.h"
 #include "zectrix_input_service.h"
 #include "zectrix_power_service.h"
 #include "zectrix_self_test.h"
@@ -17,6 +18,7 @@ namespace zectrix {
 
 struct Platform::Impl {
     ZectrixBoard board;
+    nfc::NfcService* nfc_service = nullptr;
     input::InputService* input = nullptr;
     power::PowerService* power = nullptr;
     time::TimeService* time = nullptr;
@@ -37,6 +39,11 @@ esp_err_t Platform::Initialize() {
     initialization_attempted_ = true;
 
     esp_err_t err = impl_->board.Init();
+    if (err == ESP_OK && impl_->board.HasNfc() &&
+        impl_->board.nfc() != nullptr) {
+        err = nfc::NfcService::Attach(*impl_->board.nfc(),
+                                      &impl_->nfc_service);
+    }
     if (err == ESP_OK) err = input::InputService::Attach(impl_->board, &impl_->input);
     if (err == ESP_OK) err = power::PowerService::Attach(impl_->board, &impl_->power);
     if (err == ESP_OK) err = time::TimeService::Attach(impl_->board, &impl_->time);
@@ -54,6 +61,10 @@ esp_err_t Platform::Initialize() {
         const auto result = connectivity::ConnectivityService::Create(
             &impl_->connectivity);
         if (result != connectivity::ConnectivityResult::kOk) err = ESP_ERR_NO_MEM;
+    }
+    if (err == ESP_OK) {
+        impl_->connectivity->SetNfcService(impl_->nfc_service);
+        impl_->connectivity->SetStorageService(impl_->storage);
     }
     if (err == ESP_OK &&
         impl_->connectivity->Initialize() !=
@@ -90,6 +101,7 @@ void Platform::ResetServices() {
     if (impl_ == nullptr) return;
     // Destruction is the reverse of the initialization order.
     delete impl_->connectivity;
+    delete impl_->nfc_service;
     delete impl_->diagnostics;
     delete impl_->display;
     delete impl_->system;
