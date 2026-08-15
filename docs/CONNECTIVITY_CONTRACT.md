@@ -191,6 +191,52 @@ After BLE loss or process/device reboot:
 Corrupt persistent state is rejected. The engine reports a diagnostic error
 and starts a controlled resynchronization. It does not use unchecked bytes.
 
+## NFC-assisted companion enrollment
+
+NFC can authorize one companion enrollment. It does not replace Bluetooth link
+security and it never carries a bond key, LTK or long-term device secret.
+
+The first implementation has two stages:
+
+1. A prepared NDEF record identifies the Note4 and its BLE peripheral role. An
+   NFC field event opens a short local pairing window. Existing authenticated
+   passkey pairing remains available.
+2. A versioned Zectrix MIME record carries a 128-bit random enrollment token
+   and generation. Android returns that token in the protocol Hello after the
+   BLE link is encrypted, authenticated, bonded and subscribed. The firmware
+   binds it to the current enrollment generation and BLE session, marks the
+   companion identity as authorized, and consumes the token.
+
+The token is generated with the platform cryptographic random source. It is
+single-use, short-lived, RAM-only and invalid after restart. It is not a peer
+identity. A successful enrollment stores a separate companion identity through
+the Storage owner. A later reconnect requires the stored BLE bond and companion
+identity; it does not require another NFC tap.
+
+The NDEF payload is written before an RF field is present. The field callback
+only submits a bounded bootstrap event. It does not perform I2C, BLE or protocol
+work and it does not call `BleLink` directly. This prevents I2C activity from
+interrupting an RF transfer and preserves execution ownership.
+
+The ownership path is:
+
+```text
+ZectrixNfc board driver
+        |
+   internal NfcService
+        |
+ PairingBootstrap
+   |           |
+   |           +-- Companion session authorization
+   +-------------- ConnectivityService pairing request
+```
+
+Standard `application/vnd.bluetooth.le.oob` carrier records and LE Secure
+Connections OOB C/R data are a later compatibility-gated enhancement. ESP-IDF
+5.5.2 NimBLE contains the required SC-OOB primitives, but Android public app
+APIs and OEM NFC handover behavior are not uniform. The passkey path remains
+the qualified fallback until a device matrix proves the standard OOB path.
+
 ## Required evidence
 
 Software evidence:

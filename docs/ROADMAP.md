@@ -80,6 +80,9 @@ Status: Planned. This milestone is independent of M5 and R1.
 - Persist unacknowledged state and resume it after a disconnect or reboot.
 - Use the phone as the default HTTPS gateway through capability-based resource
   requests.
+- Use NFC field presence and a single-use enrollment token as an optional
+  physical authorization path for one companion enrollment. Keep authenticated
+  BLE passkey pairing as the qualified fallback.
 - Start direct Wi-Fi only when policy selects it, then stop the radio.
 - Qualify pairing, reconnect, background operation, security, power and
   Wi-Fi/BLE coexistence on real hardware.

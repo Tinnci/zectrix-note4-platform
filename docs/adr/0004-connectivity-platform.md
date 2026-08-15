@@ -174,6 +174,29 @@ References:
 - <https://developer.android.com/develop/connectivity/bluetooth/companion-device-pairing>
 - <https://developer.android.com/develop/connectivity/bluetooth/ble/background>
 
+### NFC-assisted enrollment
+
+Adopt NFC field presence as a local physical enrollment action and use a
+single-use Zectrix enrollment token to complete protocol peer authorization.
+Keep BLE bonding and protocol authorization as separate gates. Pre-write NDEF
+before field entry; never start I2C writes from the field callback.
+
+Adjust NFC Forum/Bluetooth handover concepts to the public Android application
+boundary: use the companion app to consume the Zectrix enrollment record, then
+return it through the authenticated Companion Protocol session. Do not put an
+LTK, bond key or persistent device secret in NDEF.
+
+Defer direct LE Secure Connections OOB pairing until an OEM compatibility
+matrix proves the system NFC handover path. ESP-IDF 5.5.2 NimBLE exposes SC-OOB
+generation and injection, but Android's privileged OOB bonding APIs and OEM
+system NFC behavior do not provide a uniform third-party application contract.
+
+References:
+
+- <https://nfc-forum.org/build/specifications/connection-handover-technical-specification/>
+- <https://www.bluetooth.com/specifications/specs/core-specification/>
+- <https://android.googlesource.com/platform/packages/apps/Nfc/+/da099c1/src/com/android/nfc/handover/HandoverDataParser.java>
+
 ## Power and execution model
 
 Connectivity defines product states, not task topology:
