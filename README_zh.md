@@ -1,14 +1,44 @@
-# ZECTRIX NOTE4 墨水屏参考 Demo
+# ZECTRIX NOTE4 开放固件平台
 
 [English](README.md) | 中文
 
-这是面向 ZECTRIX NOTE4 4.2 英寸黑白墨水屏硬件的独立开源 ESP-IDF
-参考工程，用于向第三方开发者展示墨水屏、音频、Wi-Fi、RTC、充电、LED、按键、
-NFC 和电池检测能力。屏幕 UI 使用英文，并内置比例字宽 TRMNL16 ASCII 点阵字库。
+本项目将上游 ZECTRIX NOTE4 ESP-IDF 硬件 Demo 演进为一个可复现、低功耗的应用
+平台。项目保留原有板级支持和 SSD2683 显示驱动作为经过验证的硬件基线，并在其上
+增加系统服务、多应用运行时、稳定 SDK、伴侣设备连接和受控维护接口。
 
-工程只依赖本目录中的组件和 ESP-IDF Component Manager 下载的官方
-`espressif/esp_codec_dev`，不依赖 NOTE4 商业固件、LVGL 或外部文件系统。
-本项目是硬件能力 Demo 与驱动参考，不包含完整的 NOTE4 消费版固件或云服务。
+项目目标是让应用通过受控接口使用显示、输入、电源、时间、存储和连接能力，而不
+直接操作 GPIO、SPI、裸分区、ESP-NimBLE 或 FreeRTOS 对象。工程只依赖本目录中
+的组件和 ESP-IDF Component Manager 下载的官方依赖，不连接 NOTE4 商业固件，
+也不依赖 LVGL。本项目不是完整的 NOTE4 消费版固件或云服务。
+
+## 从参考 Demo 到应用平台
+
+仓库基于上游
+[`itopinion/zectrix-note4-epd-demo`](https://github.com/itopinion/zectrix-note4-epd-demo)
+的 `ca285c98` 提交建立；来源说明见 [UPSTREAM.md](UPSTREAM.md)。
+
+| 保留的上游基线 | 本仓库新增能力 |
+| --- | --- |
+| SSD2683 1bpp 全刷、局刷和 4bpp 显示路径 | 可复现 ESP-IDF 工具链、构建溯源、硬件验收与原厂恢复流程 |
+| NOTE4 板级适配和外设访问 | 显示、输入、电源、时间、存储和系统服务的单一所有权 |
+| 图库 UI 和硬件能力展示 | 含 Launcher、Settings、Diagnostics、Clock 的静态多应用运行时 |
+| Wi-Fi RF、音频、RTC、充电、LED、按键、NFC 和电池自检 | 具备兼容性与架构检查的源码稳定 C++17 SDK v1 |
+| 基础设备交互和关机流程 | 版本化伴侣协议、持久同步、安全 BLE、Android 伴侣端和 NFC 辅助注册 |
+| 面向硬件的串口诊断 | 有资源边界的维护 CLI 架构及已测试解析器核心 |
+
+## 开发状态
+
+项目按 [docs/ROADMAP.md](docs/ROADMAP.md) 中的依赖关系和阶段门推进。
+
+| 阶段 | 状态 | 结果 |
+| --- | --- | --- |
+| M1 | 已完成 | 可复现上游基线、硬件验收与原厂恢复 |
+| M2 | 已完成 | 平台统一管理显示、输入、电源、时间、存储和系统服务 |
+| M3 | 已完成 | 静态应用生命周期和首批内置应用 |
+| M4 | 已完成 | 源码稳定 SDK v1 和统一软硬件退出门 |
+| C1 | 进行中 | 伴侣协议、持久同步、安全 BLE/Android 路径和 NFC 辅助注册；完整硬件验收尚未结束 |
+| D1 | 进行中 | 受控维护 CLI 核心；服务命令和硬件退出门尚未结束 |
+| M5 | 计划中 | 基于实测数据设计 A/B 更新、回滚和恢复架构 |
 
 > [!IMPORTANT]
 > 本项目仅适用于黑白墨水屏版 ZECTRIX NOTE4，不适用于 NOTE4C。烧录本 Demo
@@ -16,7 +46,7 @@ NFC 和电池检测能力。屏幕 UI 使用英文，并内置比例字宽 TRMNL
 
 ![脚印局刷动画预览](main/assets/snow_path_footprints_preview.png)
 
-## 项目亮点
+## 硬件基线
 
 - 400 × 300 SSD2683 黑白墨水屏
 - 1bpp 全刷、1bpp 局刷与 4bpp / 16 灰阶全刷
@@ -48,9 +78,13 @@ components/zectrix_epd/       SSD2683 墨水屏公开驱动
 components/zectrix_board/     NOTE4 引脚与外设适配层
 components/zectrix_demo_ui/   画布、点阵字库与英文演示 UI
 components/zectrix_self_test/ 硬件自检实现
+components/zectrix_platform/  平台组合根
+components/zectrix_*          系统服务与应用运行时
+android-companion/            开发中的 Android BLE/NFC 伴侣端
+protocol/                     跨端协议黄金向量
 main/assets/                  内嵌显示素材
-tools/                        图片、动画与字库转换工具
-docs/                         集成、交互和验收文档
+tools/                        主机测试、检查与素材转换工具
+docs/                         架构、契约与验收记录
 ```
 
 ## 按键

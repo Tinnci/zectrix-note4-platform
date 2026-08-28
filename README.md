@@ -1,20 +1,48 @@
-# ZECTRIX NOTE4 E-Paper Reference Demo
-
-> This repository is the public development base for the Zectrix Note 4 open
-> firmware platform. It preserves the upstream reference demo as the initial
-> hardware baseline. See [docs/ROADMAP.md](docs/ROADMAP.md) before proposing
-> platform or application changes.
+# ZECTRIX NOTE4 Open Firmware Platform
 
 English | [中文](README_zh.md)
 
-A standalone, open-source ESP-IDF reference project for the ZECTRIX NOTE4
-4.2-inch black-and-white e-paper hardware. It demonstrates the display, audio,
-Wi-Fi, RTC, charging, LED, buttons, NFC and battery-monitoring capabilities
-through an English on-device UI.
+This project turns the upstream ZECTRIX NOTE4 ESP-IDF hardware demo into a
+reproducible, low-power application platform. It keeps the original board and
+SSD2683 display support as a qualified hardware baseline, then adds owned
+system services, a static application runtime, a source-stable SDK, companion
+connectivity and bounded maintenance interfaces.
 
-This project is self-contained in this directory. It does not link to the
-commercial NOTE4 firmware or require LVGL. It is a hardware demonstration and
-driver reference, not the full NOTE4 consumer firmware or cloud service.
+The goal is to let applications use display, input, power, time, storage and
+connectivity capabilities without directly controlling GPIO, SPI, raw
+partitions, ESP-NimBLE or FreeRTOS objects. The project remains self-contained
+and does not link to the commercial NOTE4 firmware or require LVGL. It is not
+the complete NOTE4 consumer firmware or a cloud service.
+
+## From reference demo to platform
+
+The repository started from
+[`itopinion/zectrix-note4-epd-demo`](https://github.com/itopinion/zectrix-note4-epd-demo)
+at commit `ca285c98`. See [UPSTREAM.md](UPSTREAM.md) for provenance.
+
+| Preserved upstream baseline | Added in this repository |
+| --- | --- |
+| SSD2683 1 bpp, partial and 4 bpp display paths | Reproducible ESP-IDF toolchain, build provenance, hardware qualification and factory-recovery procedure |
+| NOTE4 board adapters and peripheral access | Display, input, power, time, storage and system service ownership |
+| Gallery UI and hardware capability demo | Static multi-application runtime with Launcher, Settings, Diagnostics and Clock |
+| Wi-Fi RF, audio, RTC, charging, LED, buttons, NFC and battery self-tests | Source-stable C++17 SDK v1 with compatibility and architecture checks |
+| Basic on-device navigation and shutdown | Versioned companion protocol, durable synchronization, secure BLE transport, Android companion and NFC-assisted enrollment |
+| Hardware-oriented serial diagnostics | Bounded maintenance CLI architecture and tested parser core |
+
+## Development status
+
+Development follows dependency-aware stage gates defined in
+[docs/ROADMAP.md](docs/ROADMAP.md).
+
+| Stage | Status | Result |
+| --- | --- | --- |
+| M1 | Complete | Reproducible upstream baseline, hardware qualification and factory recovery |
+| M2 | Complete | Platform-owned display, input, power, time, storage and system services |
+| M3 | Complete | Static application lifecycle and first-party applications |
+| M4 | Complete | Source-stable SDK v1 and unified software/hardware exit gate |
+| C1 | In progress | Companion protocol, durable sync, secure BLE/Android path and NFC-assisted enrollment; full hardware qualification remains open |
+| D1 | In progress | Bounded maintenance CLI core; service commands and hardware exit gate remain open |
+| M5 | Planned | Measured A/B update, rollback and recovery architecture |
 
 > [!CAUTION]
 > This project targets the black-and-white ZECTRIX NOTE4 hardware. It is not
@@ -24,7 +52,7 @@ driver reference, not the full NOTE4 consumer firmware or cloud service.
 
 ![Footprint animation preview](main/assets/snow_path_footprints_preview.png)
 
-## Highlights
+## Hardware baseline
 
 - 400 x 300 SSD2683 e-paper display
 - Full-screen 1bpp refresh, partial 1bpp refresh and full-screen 4bpp/16-gray
@@ -118,9 +146,13 @@ components/zectrix_epd/       Public SSD2683 display driver
 components/zectrix_board/     Board pins and peripheral adapters
 components/zectrix_demo_ui/   Canvas, bitmap font and English UI
 components/zectrix_self_test/ Hardware test implementations
+components/zectrix_platform/  Platform composition root
+components/zectrix_*          Owned system services and application runtime
+android-companion/            Android BLE/NFC companion under development
+protocol/                     Shared protocol golden vectors
 main/assets/                  Embedded display assets
-tools/                        Asset and font conversion utilities
-docs/                         Integration and validation guides
+tools/                        Host tests, checks and asset conversion tools
+docs/                         Architecture, contracts and qualification records
 ```
 
 See [docs/EPD_API.md](docs/EPD_API.md) for the public EPD interface. See
