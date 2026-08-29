@@ -144,10 +144,10 @@ if [ -x "$wrapper_script" ] &&
 else
     fail_check "gradle_wrapper expected=9.6.1_with_checksum"
 fi
-if [ -d "$expected_android/platforms/android-37" ]; then
-    pass_check "android_platform=37"
+if [ -d "$expected_android/platforms/android-37.0" ]; then
+    pass_check "android_platform=37.0"
 else
-    fail_check "android_platform=37 missing_root=$expected_android"
+    fail_check "android_platform=37.0 missing_root=$expected_android"
 fi
 if [ -d "$expected_android/build-tools/37.0.0" ]; then
     pass_check "android_build_tools=37.0.0"

@@ -14,7 +14,8 @@ github-cli jq rg curl
 
 Install ESP-IDF v5.5.2 with the official installer and the `esp32s3` target.
 The qualified CMake version is 3.30.5. Install JDK 21 and Android SDK platform
-37, build-tools 37.0.0 and platform-tools for the companion application.
+37.0 (`platforms;android-37.0`), build-tools 37.0.0 and platform-tools for the
+companion application.
 
 Activate the environment per shell with the project helper. It selects
 `esp32s3`, places the IDF Python environment before CMake, selects JDK 21 when

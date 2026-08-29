@@ -19,8 +19,8 @@ case "$java_version" in
   21|21.*) ;;
   *) echo "FAIL: JDK 21 required, active version=${java_version:-unknown}." >&2; exit 1 ;;
 esac
-test -d "$ANDROID_HOME/platforms/android-37" || {
-  echo "FAIL: Android platform 37 missing under $ANDROID_HOME." >&2; exit 1;
+test -d "$ANDROID_HOME/platforms/android-37.0" || {
+  echo "FAIL: Android platform 37.0 missing under $ANDROID_HOME." >&2; exit 1;
 }
 test -d "$ANDROID_HOME/build-tools/37.0.0" || {
   echo "FAIL: Android build-tools 37.0.0 missing under $ANDROID_HOME." >&2; exit 1;

@@ -6,9 +6,9 @@ validation into independent jobs so a failure identifies its platform:
 
 - `Host tests and static checks` runs ShellCheck, architecture checks and the
   complete C++ host test suite.
-- `Android companion` installs JDK 21 and the qualified Android SDK 37 packages,
-  then runs a clean JVM test and debug APK build with the committed Gradle
-  Wrapper.
+- `Android companion` installs JDK 21 and the qualified Android SDK 37.0
+  packages, then runs a clean JVM test and debug APK build with the committed
+  Gradle Wrapper.
 - `ESP32-S3 firmware` builds with the official ESP-IDF v5.5.2 container, runs
   the size report and captures build provenance.
 

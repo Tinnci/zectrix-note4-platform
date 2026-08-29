@@ -64,7 +64,7 @@ jobs:
       - name: Install qualified Android SDK packages
         run: >-
           "${ANDROID_HOME:?}/cmdline-tools/latest/bin/sdkmanager"
-          "platforms;android-37" "build-tools;37.0.0" "platform-tools"
+          "platforms;android-37.0" "build-tools;37.0.0" "platform-tools"
 
       - name: Test and build Android companion
         env:
@@ -122,6 +122,8 @@ jobs:
             -v ${{ runner.temp }}/ccache:/root/.ccache
             -e CCACHE_DIR=/root/.ccache
           command: >-
+            apt-get update &&
+            apt-get install --yes --no-install-recommends jq &&
             tools/build-firmware.sh --clean &&
             idf.py size > build/size-report.txt &&
             cat build/size-report.txt &&
