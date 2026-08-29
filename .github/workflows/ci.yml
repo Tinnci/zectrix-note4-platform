@@ -31,10 +31,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install ShellCheck
+      - name: Install host test tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends shellcheck
+          sudo apt-get install --yes --no-install-recommends ripgrep shellcheck
 
       - name: Check shell scripts
         run: shellcheck tools/*.sh
@@ -62,7 +62,9 @@ jobs:
         uses: gradle/actions/setup-gradle@67621b124fd2e251c5e8a0e6e3b91318f2287669 # v6.3.0
 
       - name: Install qualified Android SDK packages
-        run: sdkmanager "platforms;android-37" "build-tools;37.0.0" "platform-tools"
+        run: >-
+          "${ANDROID_HOME:?}/cmdline-tools/latest/bin/sdkmanager"
+          "platforms;android-37" "build-tools;37.0.0" "platform-tools"
 
       - name: Test and build Android companion
         env:
