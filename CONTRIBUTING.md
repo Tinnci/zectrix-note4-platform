@@ -39,11 +39,18 @@ Please include the following information when reporting a problem:
 ## Validation / 验证
 
 ```bash
+shellcheck tools/*.sh
+tools/test-host.sh
 source tools/activate-dev-env.sh
 tools/check-dev-env.sh
 tools/build-firmware.sh --clean
 idf.py size
+tools/capture-build-provenance.sh
+ZECTRIX_ANDROID_CLEAN=1 tools/test-android-companion.sh
 ```
+
+Pull requests and pushes to `main` run the same host, Android and firmware
+checks in GitHub Actions. See `docs/CI.md` for job and artifact details.
 
 Do not flash hardware solely to validate a documentation-only change. If a
 hardware write is necessary, confirm that the target is the black-and-white
