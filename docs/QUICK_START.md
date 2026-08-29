@@ -14,13 +14,16 @@ idf.py --version
 From the standalone demo directory:
 
 ```bash
-idf.py set-target esp32s3
-idf.py build
+source tools/activate-dev-env.sh
+tools/check-dev-env.sh
+tools/build-firmware.sh --clean
 ```
 
-The supplied defaults select 16 MB flash, octal PSRAM and a 3 MB factory app
-partition. `set-target` creates a local `sdkconfig`. Delete that generated file
-before you change targets or apply revised defaults to a configured copy.
+The build helper fixes the target to `esp32s3`, enables ccache and checks the
+configured target after the build. The supplied defaults select 16 MB flash,
+octal PSRAM and a 3 MB factory app partition. If you invoke `idf.py` directly,
+run `idf.py set-target esp32s3` first. Delete a generated `sdkconfig` before
+you change targets or apply revised defaults to a configured copy.
 
 ## 3. Flash and monitor
 

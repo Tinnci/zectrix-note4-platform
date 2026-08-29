@@ -23,7 +23,7 @@ Please include the following information when reporting a problem:
 ## Pull requests / 代码贡献
 
 1. Keep each pull request focused on one change.
-2. Build from a clean checkout with ESP-IDF 5.4 or later.
+2. Build from a clean checkout with the qualified ESP-IDF 5.5.2 toolchain.
 3. For display or hardware changes, describe the physical device validation
    performed and attach only non-sensitive evidence.
 4. Update the relevant document under `docs/` when behavior or a public API
@@ -31,7 +31,7 @@ Please include the following information when reporting a problem:
 5. Do not commit Wi-Fi credentials, device secrets, raw flash backups, captured
    audio or generated `sdkconfig` and build directories.
 
-请保持每个 Pull Request 只解决一个明确问题；使用 ESP-IDF 5.4 或更高版本从干净
+请保持每个 Pull Request 只解决一个明确问题；使用项目验证的 ESP-IDF 5.5.2 从干净
 环境构建；涉及屏幕或硬件时说明真机验证情况；行为或公开 API 变化时同步更新
 `docs/`；严禁提交 Wi-Fi 凭据、设备密钥、原始 Flash 备份、录音、生成的
 `sdkconfig` 或构建目录。
@@ -39,8 +39,9 @@ Please include the following information when reporting a problem:
 ## Validation / 验证
 
 ```bash
-idf.py set-target esp32s3
-idf.py build
+source tools/activate-dev-env.sh
+tools/check-dev-env.sh
+tools/build-firmware.sh --clean
 idf.py size
 ```
 

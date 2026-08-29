@@ -40,9 +40,7 @@ if [[ "${1:-}" == "--self-test" ]]; then
     exit 0
 fi
 
-actual_headers=$(find "$sdk_include/zectrix" \
-    -type f \( -name '*.h' -o -name '*.hpp' \) \
-    -printf '%P\n' | sed 's#^#zectrix/#' | sort -u)
+actual_headers=$( (cd "$sdk_include" && find zectrix -type f \( -name '*.h' -o -name '*.hpp' \)) | sed 's#^\./##' | sort -u)
 
 if [[ "$actual_headers" != "$expected_headers" ]]; then
     echo 'FAIL: SDK v1 public header set changed.' >&2

@@ -25,6 +25,10 @@ An ESP-IDF version is not supported merely because it satisfies the manifest's
 current `>=5.4.0` constraint. The constraint is a dependency compatibility
 hint, not a qualification claim.
 
+The project enables ESP-IDF's `MINIMAL_BUILD` property. Every used component
+must declare its direct dependencies through `REQUIRES` or `PRIV_REQUIRES` so
+clean builds compile only `main` and its transitive dependency graph.
+
 ## Experimental lane
 
 Major-version migrations, including ESP-IDF 6.x, are non-blocking experiments

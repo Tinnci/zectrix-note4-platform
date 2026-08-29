@@ -1,3 +1,6 @@
 * text=auto
 *.bin binary
 *.png binary
+*.jar binary
+android-companion/gradlew text eol=lf
+android-companion/gradlew.bat text eol=crlf

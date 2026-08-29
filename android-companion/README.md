@@ -32,8 +32,14 @@ CCCD write alone is never reported as a secure or protocol-ready connection.
 ## Build and JVM test
 
 ```bash
+source tools/activate-dev-env.sh
 tools/test-android-companion.sh
 ```
+
+The committed Gradle Wrapper is the only supported Gradle entry point. The
+environment must expose JDK 21 and Android SDK platform 37 with build-tools
+37.0.0. Set `ZECTRIX_ANDROID_CLEAN=1` for a clean rebuild instead of an
+incremental developer build.
 
 This builds a debug APK and runs the protocol, persistent queue and lifecycle
 state-machine tests. C++ remains the normative producer of

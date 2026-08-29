@@ -11,6 +11,7 @@ idf_component_register(SRCS "app_main.cc"
                        zectrix_storage
                        zectrix_system
                        zectrix_time
+                       esp_psram
                        EMBED_FILES
                        "assets/lighthouse_400x300_1bpp.bin"
                        "assets/snow_path_400x300_1bpp.bin"

@@ -25,7 +25,7 @@ Run:
 for test in tools/test-*.sh; do "$test"; done
 tools/check-architecture-boundaries.sh --self-test
 tools/check-architecture-boundaries.sh
-idf.py fullclean build
+tools/build-firmware.sh --clean
 git diff --check
 ```
 

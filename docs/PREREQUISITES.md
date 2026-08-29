@@ -5,25 +5,52 @@ does not authorize flashing, erasing or eFuse operations.
 
 ## Host
 
-The reference host is Arch-family Linux. Required commands are:
+The supported development hosts are Linux and macOS. Required commands are:
 
 ```text
-gcc git make flex bison gperf python3 pip3 cmake ninja ccache
-dfu-util libusb github-cli jq rg curl
+gcc git make flex bison gperf python3 cmake ninja ccache
+github-cli jq rg curl
 ```
 
 Install ESP-IDF v5.5.2 with the official installer and the `esp32s3` target.
-Activate it per shell with the project helper. The helper places the IDF
-Python environment before the separate CMake 3.30.5 environment:
+The qualified CMake version is 3.30.5. Install JDK 21 and Android SDK platform
+37, build-tools 37.0.0 and platform-tools for the companion application.
+
+Activate the environment per shell with the project helper. It selects
+`esp32s3`, places the IDF Python environment before CMake, selects JDK 21 when
+it can find one and uses the normal Android SDK location for the host:
 
 ```bash
 source tools/activate-dev-env.sh
-bash tools/check-dev-env.sh
+tools/check-dev-env.sh
 ```
+
+Override non-standard locations before activation with
+`ZECTRIX_IDF_PATH`, `ZECTRIX_IDF_PYTHON_ENV_PATH`,
+`ZECTRIX_CMAKE_BIN_DIR`, `ZECTRIX_JAVA_HOME` and
+`ZECTRIX_ANDROID_SDK_ROOT`. Do not put machine-specific absolute paths in the
+repository.
 
 Do not activate an ESP-IDF environment unconditionally from the shell startup
 file. The admission test validates the controlled, materialized submodule set.
-It does not require every ESP-IDF submodule to be initialized.
+The minimal firmware build does not require unrelated MQTT, target or
+OpenThread submodules to be initialized.
+
+Build firmware through the project wrapper so a clean checkout cannot fall
+back to ESP-IDF's default `esp32` target and ccache remains enabled:
+
+```bash
+tools/build-firmware.sh --clean
+tools/capture-build-provenance.sh
+```
+
+The Android project uses its committed Gradle Wrapper. Do not require or use a
+globally installed Gradle distribution:
+
+```bash
+tools/test-android-companion.sh
+ZECTRIX_ANDROID_CLEAN=1 tools/test-android-companion.sh
+```
 
 ## Network
 
@@ -33,6 +60,8 @@ The proxy must reach all of these endpoints:
 https://github.com
 https://api.github.com
 https://components.espressif.com
+https://dl.google.com/android/repository/repository2-1.xml
+https://services.gradle.org
 ```
 
 GitHub API `EOF` failures are transport failures. Retry the request and record
