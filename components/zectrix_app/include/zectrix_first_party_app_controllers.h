@@ -41,6 +41,7 @@ ClockDecision HandleClockInput(const sdk::InputEvent& event);
 enum class ConnectivityDecision : uint8_t {
     None,
     StartPairing,
+    FetchResource,
     ClearBonds,
     Home,
     Shutdown,

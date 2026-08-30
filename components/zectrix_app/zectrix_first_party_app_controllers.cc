@@ -48,6 +48,9 @@ ConnectivityDecision HandleConnectivityInput(const sdk::InputEvent& event) {
     if (event.button == sdk::Button::Ok) {
         return ConnectivityDecision::StartPairing;
     }
+    if (event.button == sdk::Button::Up) {
+        return ConnectivityDecision::FetchResource;
+    }
     return ConnectivityDecision::None;
 }
 

@@ -134,7 +134,7 @@ esp_err_t ZectrixDemoUi::ShowConnectivity(const char* state,
                                           const char* status,
                                           const char* passkey,
                                           bool full_refresh) {
-    DrawFrame("PHONE CONNECTION", "OK Pair new  Hold UP Forget  Hold OK Home");
+    DrawFrame("PHONE CONNECTION", "OK Pair  UP Fetch  Hold UP Forget");
     canvas_.Text(24, 58, "BLE:");
     canvas_.Text(104, 58, state == nullptr ? "UNKNOWN" : state);
     canvas_.Line(20, 94, 379, 94);

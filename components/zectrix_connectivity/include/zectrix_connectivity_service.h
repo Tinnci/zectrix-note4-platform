@@ -1,6 +1,10 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
+
+#include "zectrix_resource_gateway.h"
 
 namespace zectrix::nfc { class NfcService; }
 namespace zectrix::storage { class StorageService; }
@@ -46,6 +50,17 @@ struct ConnectivitySnapshot {
     bool peer_authorized = false;
 };
 
+struct ResourceResponse {
+    uint32_t request_id = 0;
+    companion::ResourceStatus status =
+        companion::ResourceStatus::kInvalidResponse;
+    companion::ResourceContentType content_type =
+        companion::ResourceContentType::kNone;
+    std::array<uint8_t, companion::kResourceMaximumBodySize> body{};
+    std::size_t body_size = 0;
+    uint32_t retry_after_ms = 0;
+};
+
 class ConnectivityService {
 public:
     static ConnectivityResult Create(ConnectivityService** output);
@@ -64,6 +79,9 @@ public:
     ConnectivityState State() const;
     ConnectivitySnapshot Snapshot() const;
     bool TakePairingPasskey(uint32_t* passkey);
+    ConnectivityResult RequestResource(
+        const companion::ResourceRequestMessage& request);
+    bool TakeResourceResponse(ResourceResponse* response);
 
 private:
     struct Impl;
