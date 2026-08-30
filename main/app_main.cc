@@ -397,6 +397,22 @@ private:
                 context.RequestRender({0, 36, 400, 234},
                                       sdk::RenderIntent::Fast);
             } else if (decision ==
+                       zectrix::app::ConnectivityDecision::FetchResource) {
+                zectrix::companion::ResourceRequestMessage request{};
+                const auto result =
+                    owner_->connectivity_->RequestResource(request);
+                if (result ==
+                    zectrix::connectivity::ConnectivityResult::kOk) {
+                    status_ = "REQUESTING TEST DOCUMENT";
+                } else if (result ==
+                           zectrix::connectivity::ConnectivityResult::kBusy) {
+                    status_ = "RESOURCE REQUEST ALREADY ACTIVE";
+                } else {
+                    status_ = "AUTHORIZED PHONE REQUIRED";
+                }
+                context.RequestRender({0, 36, 400, 234},
+                                      sdk::RenderIntent::Fast);
+            } else if (decision ==
                        zectrix::app::ConnectivityDecision::ClearBonds) {
                 const auto result = owner_->connectivity_->ClearPeerBonds();
                 status_ = result == zectrix::connectivity::ConnectivityResult::kOk
@@ -410,6 +426,11 @@ private:
 
         sdk::Status HandleIdle(sdk::ApplicationContext& context) override {
             bool changed = false;
+            zectrix::connectivity::ResourceResponse response{};
+            if (owner_->connectivity_->TakeResourceResponse(&response)) {
+                SetResourceStatus(response);
+                changed = true;
+            }
             uint32_t passkey = 0;
             if (owner_->connectivity_->TakePairingPasskey(&passkey)) {
                 std::snprintf(passkey_, sizeof(passkey_), "%06lu",
@@ -466,6 +487,52 @@ private:
         }
 
     private:
+        void SetResourceStatus(
+            const zectrix::connectivity::ResourceResponse& response) {
+            using Status = zectrix::companion::ResourceStatus;
+            switch (response.status) {
+                case Status::kSuccess:
+                    std::snprintf(
+                        resource_status_, sizeof(resource_status_),
+                        "FETCHED %u BYTES FROM PHONE",
+                        static_cast<unsigned>(response.body_size));
+                    break;
+                case Status::kPhoneUnavailable:
+                    std::snprintf(resource_status_, sizeof(resource_status_),
+                                  "PHONE RESOURCE UNAVAILABLE");
+                    break;
+                case Status::kPhoneOffline:
+                    std::snprintf(resource_status_, sizeof(resource_status_),
+                                  "PHONE OFFLINE; RETRY QUEUED");
+                    break;
+                case Status::kTimeout:
+                    std::snprintf(resource_status_, sizeof(resource_status_),
+                                  "PHONE TIMED OUT; RETRY QUEUED");
+                    break;
+                case Status::kServerError:
+                    std::snprintf(resource_status_, sizeof(resource_status_),
+                                  "RESOURCE SERVER ERROR");
+                    break;
+                case Status::kResponseTooLarge:
+                    std::snprintf(resource_status_, sizeof(resource_status_),
+                                  "RESOURCE RESPONSE TOO LARGE");
+                    break;
+                case Status::kNotAuthorized:
+                    std::snprintf(resource_status_, sizeof(resource_status_),
+                                  "PHONE AUTHORIZATION REQUIRED");
+                    break;
+                case Status::kUnsupportedCapability:
+                    std::snprintf(resource_status_, sizeof(resource_status_),
+                                  "PHONE DOES NOT SUPPORT RESOURCE");
+                    break;
+                default:
+                    std::snprintf(resource_status_, sizeof(resource_status_),
+                                  "INVALID RESOURCE RESPONSE");
+                    break;
+            }
+            status_ = resource_status_;
+        }
+
         static const char* StateText(
             zectrix::connectivity::ConnectivityState state) {
             switch (state) {
@@ -489,6 +556,7 @@ private:
 
         DemoApp* owner_;
         const char* status_ = "";
+        char resource_status_[48]{};
         char passkey_[7]{};
         zectrix::connectivity::ConnectivityState displayed_state_ =
             zectrix::connectivity::ConnectivityState::kStopped;

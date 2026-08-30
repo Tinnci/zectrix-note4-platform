@@ -58,6 +58,7 @@ class BleGattClient(
     private val applicationContext = context.applicationContext
     private val identityStore = CompanionIdentityStore(applicationContext)
     private val companionIdentity = identityStore.getOrCreate()
+    private val resourceGateway = PhoneResourceGateway()
     private var gatt: BluetoothGatt? = null
     private var tx: BluetoothGattCharacteristic? = null
     private var state = GattState.IDLE
@@ -67,6 +68,7 @@ class BleGattClient(
     private var sessionId = 0
     private var writeInFlight = false
     private var helloRequestId = 0L
+    private var peerAuthorized = false
     private var enrollmentProofPayload: ByteArray? = null
     private val pendingWrites = ArrayDeque<ByteArray>()
     private val reassembler = CompanionFragments.Reassembler()
@@ -139,6 +141,7 @@ class BleGattClient(
     }
 
     /** Queue one complete protocol frame. Android GATT writes are serialized. */
+    @Synchronized
     fun send(frame: ByteArray): Boolean {
         val link = gatt ?: return false
         if (state != GattState.READY || tx == null) return false
@@ -285,6 +288,7 @@ class BleGattClient(
                 )
                 if (helloAck) {
                     enrollmentProofPayload = null
+                    peerAuthorized = false
                     var detail = "Secure link and protocol handshake complete"
                     if (result.frame.payload.isNotEmpty()) {
                         val ackStatus = CompanionProtocol.decodeTlvs(result.frame.payload)
@@ -296,6 +300,7 @@ class BleGattClient(
                                 detail = "Enrollment rejected (code ${ackStatus.errorReason})"
                             } else {
                                 if (ackStatus.peerAuthorized) {
+                                    peerAuthorized = true
                                     identityStore.setEnrolled(true)
                                     detail = "Secure link, protocol handshake, peer authorized"
                                 } else {
@@ -305,6 +310,18 @@ class BleGattClient(
                         }
                     }
                     report(GattState.READY, detail)
+                } else if (result.frame.header.messageClass ==
+                    CompanionProtocol.MessageClass.COMMAND &&
+                    result.frame.header.messageType == ResourceGatewayProtocol.MESSAGE_TYPE &&
+                    result.frame.header.flags and CompanionProtocol.FLAG_RESPONSE == 0) {
+                    val requestSession = sessionId
+                    resourceGateway.handle(result.frame, peerAuthorized) { response ->
+                        if (sessionId != requestSession || state != GattState.READY) {
+                            event("resource_response_deferred", "reason=session_unavailable")
+                        } else if (!send(response)) {
+                            event("resource_response_deferred", "reason=transport_busy")
+                        }
+                    }
                 } else {
                     event("protocol_frame_ignored", "reason=unexpected_session_frame")
                 }
@@ -371,6 +388,7 @@ class BleGattClient(
         pendingWrites.clear()
         reassembler.reset()
         helloRequestId = 0
+        peerAuthorized = false
     }
 
     private fun writeDescriptor(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor): Boolean =

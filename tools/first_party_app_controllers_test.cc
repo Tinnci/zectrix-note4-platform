@@ -56,7 +56,7 @@ int main() {
     assert(HandleConnectivityInput({Button::Down, Action::Click}) ==
            ConnectivityDecision::None);
     assert(HandleConnectivityInput({Button::Up, Action::Click}) ==
-           ConnectivityDecision::None);
+           ConnectivityDecision::FetchResource);
     assert(!ClockDisplayChanged({2026, 8, 12, 10, 30},
                                 {2026, 8, 12, 10, 30}));
     assert(ClockDisplayChanged({2026, 8, 12, 10, 30},

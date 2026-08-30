@@ -73,9 +73,9 @@ Goal: add a BLE-first companion channel and an on-demand Wi-Fi data path
 without exposing radio or RTOS mechanisms to applications.
 
 Status: In progress. This milestone is independent of M5 and R1. The protocol,
-durable synchronization, policy, secure BLE/Android path and NFC-assisted
-enrollment are implemented; the remaining integration and hardware exit gates
-stay open.
+durable synchronization, policy, secure BLE/Android path, NFC-assisted
+enrollment and controlled phone HTTPS resource vertical slice are implemented;
+the direct Wi-Fi path and hardware exit gates stay open.
 
 - Use ESP-NimBLE for a Note4 peripheral and an Android central.
 - Carry a versioned companion protocol over two transport characteristics.

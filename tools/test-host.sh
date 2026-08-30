@@ -17,6 +17,7 @@ host_tests=(
     test-pairing-bootstrap.sh
     test-platform.sh
     test-power-service.sh
+    test-resource-gateway.sh
     test-sdk-v1.sh
     test-storage-service.sh
     test-sync-engine.sh

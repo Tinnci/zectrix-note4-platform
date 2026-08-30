@@ -26,8 +26,15 @@ gates:
 4. protocol Hello/HelloAck;
 5. protocol peer authorization.
 
-Only gates 1-4 are implemented in the current vertical slice. A successful
-CCCD write alone is never reported as a secure or protocol-ready connection.
+All five gates are implemented in the current vertical slice. A successful
+CCCD write alone is never reported as a secure, protocol-ready or authorized
+connection.
+
+The controlled resource gateway maps the protocol capability
+`public_test_document_v1` to a fixed HTTPS endpoint owned by Android. Firmware
+cannot provide a URL or credential. The gateway applies timeout, MIME, UTF-8
+and 2048-byte limits, returns typed failures, deduplicates terminal request IDs
+and permits bounded retry after offline or timeout results.
 
 ## Build and JVM test
 

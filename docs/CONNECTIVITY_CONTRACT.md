@@ -107,7 +107,10 @@ empty controlled resynchronization state. It is never partially applied.
 
 The first resource capability is `public_test_document_v1`. The phone owns the
 HTTPS endpoint and enforces the response content type, 2048-byte body limit and
-timeout. Firmware sends no URL or credential. Stable result classes are:
+timeout. Firmware sends no URL or credential. Android maps this capability to
+`https://zectrix.com/robots.txt`, uses `GET`, rejects redirects and accepts only
+a non-empty, valid UTF-8 `text/plain` response within the requested bound.
+Stable result classes are:
 
 - success;
 - phone unavailable;
@@ -118,6 +121,19 @@ timeout. Firmware sends no URL or credential. Stable result classes are:
 - invalid response;
 - not authorized;
 - unsupported capability.
+
+The request uses command message type `0x0100`. Required TLVs carry capability,
+maximum response bytes, timeout and the durable flag; cache maximum age is an
+optional TLV. A response repeats the request ID and sequence with the response
+flag. Only an authorized current protocol session can issue or service the
+operation.
+
+Android retains at most 16 request IDs. An identical completed terminal request
+returns its stored result without another HTTPS call. Reusing an ID with a
+different payload is invalid. Offline, unavailable and timeout results are
+transient: a durable firmware request retains its ID across reconnect and uses
+the bounded retry delay. All other results are terminal. The normative complete
+request frame, including CRC, is in `protocol/golden-vectors.json`.
 
 The direct Wi-Fi backend can implement the same resource capability. This
 keeps the application semantic result independent of the selected transport.

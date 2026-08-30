@@ -11,7 +11,9 @@ object CompanionProtocol {
     const val MAX_TLV_VALUE_SIZE = 2048
     const val REQUIRED_FIELD_BIT = 0x8000
     private const val ALLOWED_FLAGS = 0x07
+    const val FLAG_ACK_REQUESTED = 1 shl 0
     const val FLAG_RESPONSE = 1 shl 1
+    const val FLAG_RETRIABLE = 1 shl 2
     const val CONTROL_HELLO = 1
     const val CONTROL_HELLO_ACK = 2
     const val HELLO_ENROLLMENT_PROOF_TYPE = 1
