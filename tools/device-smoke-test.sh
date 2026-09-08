@@ -1,87 +1,65 @@
 #!/usr/bin/env bash
-# tools/device-smoke-test.sh
-# Non-blocking automated device flash and boot verification script.
-# Returns 0 on success, or skips gracefully if no hardware is attached.
-
+# Flash the complete image set and verify a fresh six-second boot capture.
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_dir"
-
-PORT="${ZECTRIX_PORT:-/dev/cu.usbmodem14301}"
-
-# Check if target device port exists
-if [ ! -e "$PORT" ]; then
-    PORT_CANDIDATE=$(ls /dev/cu.usbmodem* 2>/dev/null | head -n 1 || true)
-    if [ -n "$PORT_CANDIDATE" ]; then
-        PORT="$PORT_CANDIDATE"
-    else
-        printf 'SKIP: No USB hardware device connected at %s\n' "$PORT"
-        exit 0
-    fi
+port="${ZECTRIX_PORT:-/dev/cu.usbmodem14301}"
+if [ ! -e "$port" ]; then
+    printf 'FAIL: USB hardware device not found at %s\n' "$port" >&2
+    exit 1
 fi
 
-# Ensure ESP-IDF environment is active
 if ! command -v idf.py >/dev/null 2>&1 || [ -z "${IDF_PATH:-}" ]; then
-    if [ -f "$repo_dir/tools/activate-dev-env.sh" ]; then
-        # shellcheck disable=SC1091
-        source "$repo_dir/tools/activate-dev-env.sh" >/dev/null 2>&1 || true
-    fi
+    # shellcheck disable=SC1091
+    source "$repo_dir/tools/activate-dev-env.sh"
 fi
-
-if ! command -v idf.py >/dev/null 2>&1; then
-    printf 'SKIP: ESP-IDF not configured; skipping hardware flash test\n'
-    exit 0
-fi
-
-printf '=== Zectrix Device Smoke Test ===\n'
-printf 'Hardware Port: %s\n' "$PORT"
-
-# 1. Build firmware
+command -v idf.py >/dev/null
+printf '=== Zectrix Device Smoke Test ===\nHardware Port: %s\n' "$port"
 printf 'Building firmware...\n'
-bash "$repo_dir/tools/build-firmware.sh" >/dev/null
-
-# 2. Flash to device via idf.py
-printf 'Flashing firmware to %s...\n' "$PORT"
-idf.py -p "$PORT" flash >/dev/null
-
-# 3. Read serial output for 6 seconds to capture bootloader and self-test banners
+bash "$repo_dir/tools/build-firmware.sh"
+printf 'Flashing firmware to %s...\n' "$port"
+idf.py -p "$port" flash
 printf 'Capturing serial boot logs for 6 seconds...\n'
-python3 - <<PYEOF
+python3 - "$port" <<'PYEOF'
+import re
 import sys
 import time
-import serial
 
-port = "$PORT"
-baud = 115200
-timeout = 6.0
+import serial
+from esptool.reset import HardReset
 
 try:
-    ser = serial.Serial(port, baud, timeout=0.5)
-except Exception as e:
-    print(f"Failed to open port {port}: {e}")
-    sys.exit(0)
+    with serial.Serial(sys.argv[1], 115200, timeout=0.2) as ser:
+        ser.reset_input_buffer()
+        # Reset after opening the port so the boot evidence is not lost during flash.
+        ser.dtr = False
+        HardReset(ser, uses_usb=True)()
+        deadline = time.monotonic() + 6.0
+        captured = bytearray()
+        while time.monotonic() < deadline:
+            captured.extend(ser.read(ser.in_waiting or 1))
+except (OSError, serial.SerialException) as error:
+    print(f"FAIL: Serial boot capture failed: {error}", file=sys.stderr)
+    sys.exit(1)
 
-start = time.time()
-captured = []
-found_boot = False
-
-while time.time() - start < timeout:
-    line = ser.readline().decode('utf-8', errors='ignore').strip()
-    if line:
-        captured.append(line)
-        if any(keyword in line for keyword in ["boot:", "zectrix", "PASS", "Self-test", "rst:"]):
-            found_boot = True
-
-ser.close()
-
-if found_boot or len(captured) > 0:
-    print("Detected hardware boot output:")
-    for l in captured[:15]:
-        print("  | " + l)
-    print("PASS: Device hardware flash and boot verified.")
-else:
-    print("WARNING: No serial output received within timeout, but flash succeeded.")
+output = captured.decode("utf-8", errors="replace")
+print(output, end="" if output.endswith("\n") else "\n")
+checks = {
+    "bootloader": "boot: ESP-IDF" in output,
+    "8 MiB PSRAM": "Found 8MB PSRAM device" in output,
+    "Octal PSRAM": "octal_psram:" in output,
+    "eFuse revision": "efuse block revision:" in output,
+    "partition table": all(re.search(rf"boot:.*\b{name}\b", output)
+                           for name in ("factory", "ota_0", "ota_1", "otadata")),
+    "application initialization": "heap M2-equivalent platform:" in output,
+    "application runtime": "heap M3 runtime active:" in output,
+}
+for label, passed in checks.items():
+    print(f"{'PASS' if passed else 'FAIL'}: {label}")
+fatal = re.search(r"Guru Meditation|panic'ed|abort\(\) was called| E \(|^E \(", output, re.M)
+if fatal or not all(checks.values()):
+    print("FAIL: Device boot verification incomplete or startup error observed.")
+    sys.exit(1)
+print("PASS: Device hardware flash and boot verified.")
 PYEOF
-
-printf 'Device smoke test completed successfully.\n'
