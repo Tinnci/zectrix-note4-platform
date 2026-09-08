@@ -60,6 +60,12 @@ unified software and hardware gate. No binary ABI is promised.
 
 Goal: select a safe update and partition layout from measured requirements.
 
+Status: In progress. M5.1 implements A/B partition validation, native OTA
+rollback and a hardware watchdog for unconfirmed startup. The owner confirms
+a trial after platform initialization and the first launcher render. See
+[ADR-0005](adr/0005-ab-ota-boot-confirmation.md). Streamed image verification,
+update delivery and hardware fault injection remain open.
+
 - Measure maximum firmware, assets and user-data requirements.
 - Select an A/B OTA, rollback and recovery design.
 - Record the selection in an architecture decision record.

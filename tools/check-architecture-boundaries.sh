@@ -44,7 +44,7 @@ check_application_headers() {
 is_infrastructure_component() {
     case "$1" in
         zectrix_board|zectrix_companion|zectrix_connectivity|zectrix_display|zectrix_epd|zectrix_input|zectrix_nfc_service|zectrix_platform|\
-        zectrix_power|zectrix_self_test|zectrix_storage|zectrix_system|zectrix_time)
+        zectrix_power|zectrix_self_test|zectrix_storage|zectrix_system|zectrix_time|zectrix_update)
             return 0
             ;;
     esac

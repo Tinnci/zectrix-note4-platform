@@ -62,8 +62,12 @@ dependency graph. See `docs/adr/0003-freertos-runtime-sdk-boundary.md`.
 
 ## Update boundary
 
-The partition table is not frozen. Measure A/B OTA, rollback, assets and
-user-data requirements before accepting a replacement layout.
+The partition table is not frozen. The M5.1 layout retains the factory and NVS
+locations and adds two OTA application slots and native OTA metadata.
+`UpdateService` validates the inactive destination and owns trial-boot
+confirmation. A retained RTC watchdog resets an unconfirmed boot even if the
+application cannot make progress. Measurements, compatibility and recovery
+limits are recorded in [ADR-0005](adr/0005-ab-ota-boot-confirmation.md).
 
 ## Connectivity boundary
 

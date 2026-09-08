@@ -18,6 +18,8 @@
 #include "zectrix_storage_service.h"
 #include "zectrix_system_service.h"
 #include "zectrix_time_service.h"
+#include "zectrix_update_esp.h"
+#include "update_test_fixture.h"
 
 namespace {
 std::vector<std::string> events;
@@ -26,6 +28,10 @@ int nothrow_allocation_count = 0;
 int fail_nothrow_allocation = 0;
 zectrix::cli::CliExecutor* cli_executor = nullptr;
 unsigned inspections = 0;
+bool boot_watchdog_armed = false;
+bool pending_boot = false;
+bool boot_confirmed = false;
+unsigned boot_probe_count = 0;
 esp_err_t Result(const char* name) {
     events.emplace_back(std::string("create:") + name);
     return fail_at == name ? ESP_FAIL : ESP_OK;
@@ -43,8 +49,30 @@ void operator delete(void* pointer, const std::nothrow_t&) noexcept {
 }
 
 esp_err_t ZectrixBoard::Init() {
+    assert(boot_probe_count != 0);
     events.emplace_back("init:board");
     return init_result;
+}
+
+namespace zectrix::update {
+Result EspUpdateBackend::ReadBootInfo(BootInfo* info) {
+    ++boot_probe_count;
+    if (fail_at == "boot") return Result::kIoError;
+    *info = UpdateBootFixture(pending_boot ? PartitionKind::kOtaA : PartitionKind::kFactory);
+    if (pending_boot && !boot_confirmed) info->image_state = ImageState::kPendingVerify;
+    return Result::kOk;
+}
+uint64_t EspUpdateBackend::Milliseconds() const { return 0; }
+Result EspUpdateBackend::ArmBootWatchdog(uint32_t timeout_ms) {
+    assert(timeout_ms == kBootConfirmationTimeoutMs);
+    boot_watchdog_armed = true;
+    return Result::kOk;
+}
+void EspUpdateBackend::DisarmBootWatchdog() { boot_watchdog_armed = false; }
+Result EspUpdateBackend::ConfirmRunningImage(const Partition&) {
+    boot_confirmed = true;
+    return Result::kOk;
+}
 }
 
 namespace zectrix::input {
@@ -185,6 +213,8 @@ int main() {
         (void)platform.Storage();
         (void)platform.System();
         (void)platform.Connectivity();
+        (void)platform.Update();
+        assert(!boot_watchdog_armed);
         assert((events == std::vector<std::string>{
             "init:board", "create:input", "create:power", "create:time",
             "create:storage", "create:storage-init", "create:system",
@@ -214,6 +244,36 @@ int main() {
         "create:cli", "delete:cli", "delete:connectivity", "delete:display",
         "delete:system", "delete:storage", "delete:time",
         "delete:power", "delete:input"}));
+
+    events.clear();
+    fail_at = "boot";
+    {
+        zectrix::Platform failed_boot;
+        assert(failed_boot.Initialize() == ESP_FAIL);
+        assert(events.empty());
+        assert(boot_watchdog_armed);
+    }
+    assert(boot_watchdog_armed);
+
+    fail_at = "system";
+    pending_boot = true;
+    {
+        zectrix::Platform failed_trial;
+        assert(failed_trial.Initialize() == ESP_FAIL);
+        assert(!boot_confirmed);
+    }
+    assert(boot_watchdog_armed);
+    fail_at.clear();
+    {
+        zectrix::Platform trial;
+        assert(trial.Initialize() == ESP_OK);
+        assert(boot_watchdog_armed);
+        assert(!boot_confirmed);
+        assert(trial.Update().ConfirmBoot() == zectrix::update::Result::kOk);
+        assert(boot_confirmed);
+        assert(!boot_watchdog_armed);
+    }
+    pending_boot = boot_confirmed = false;
 
     events.clear();
     fail_at = "system";

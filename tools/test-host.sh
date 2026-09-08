@@ -26,6 +26,7 @@ host_tests=(
     test-sync-engine.sh
     test-system-service.sh
     test-time-service.sh
+    test-update-service.sh
     test-wifi-backend.sh
     test-wifi-http.sh
 )

@@ -2,3 +2,4 @@
 #include <cstdint>
 #include "esp_err.h"
 esp_err_t esp_flash_get_size(void*, uint32_t* size);
+esp_err_t esp_flash_get_physical_size(void*, uint32_t* size);
