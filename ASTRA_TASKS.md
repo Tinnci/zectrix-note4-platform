@@ -52,3 +52,17 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Screen diffing and minimal bounding box calculation.
 - [ ] **R1.2: Ghosting Mitigation & Adaptive Full Refresh Cycle**
   - Frame count threshold and high-contrast refresh triggers.
+
+---
+
+## Quality & Continuous Regression Loop (持续质量审查与已有功能复查)
+
+- [ ] **Q1.1: Comprehensive Contract Regression & Host Test Suite Verification**
+  - Run full suite (`tools/test-host.sh`) ensuring all 21 test targets pass with zero failures.
+  - Audit thread-safety across new Wi-Fi and CLI background tasks.
+- [ ] **Q1.2: Low-Power Lifecycle & Radio Coexistence Audit**
+  - Verify Wi-Fi modem completely powers off after HTTP burst transfer.
+  - Review `PowerOff()` clean shutdown sequence ensuring zero leaked SPI/I2C peripheral state.
+- [ ] **Q1.3: Flipper Zero / Pebble Protocol Cross-Inspection**
+  - Inspect CLI command parser against Flipper Zero CDC-ACM terminal robustness standards.
+  - Verify durable sync engine cursor semantics under simulated sudden disconnects.
