@@ -162,6 +162,32 @@ handles persistence, replay and resource scheduling; no additional firmware task
 is introduced. Host and Android tests exercise both directions, lost ACKs,
 restart, coalescing, bounded retries, corruption, capacity and failed saves.
 
+### Q1.3 durable protocol cross-inspection
+
+[Pebble AppMessage](https://developer.rebble.io/docs/c/Foundation/AppMessage/)
+provides the reference for symmetric inbox/outbox messages, bounded buffers,
+busy responses and explicit ACK/NACK or timeout outcomes. Its successful
+asynchronous send call accepts work; delivery is reported later by a callback.
+Note4's durable ACK additionally requires persistence of the received value
+and cursor before the reply can be sent.
+
+While TX is busy, a duplicate frame preserves the queued reply, including a
+NACK after a failed save. It cannot trigger another save and turn that pending
+failure into success. Only committed new state or acknowledgement of an
+in-flight value advances replay progress. Duplicate traffic cannot postpone
+the 15-second progress timeout. An ACK for a frame that has not been sent
+cannot retire its pending value. Optional fields count toward the full
+274-byte durable payload limit for both states and ACKs.
+
+The C++ and Kotlin tests cut maximum-size state frames and their ACKs at every
+20-byte ATT packet boundary in both directions. Each scenario recreates the
+volatile owners from their stores, exchanges cursors and verifies convergence
+with a newer coalesced value. The tests also interrupt receive and sender ACK
+commits through failed saves, preserving the last committed record. Additional
+cases cover queued NACK retries, duplicate traffic during stalled replay and
+ACK size limits. These simulations validate application protocol ownership and
+recovery; physical BLE disconnect timing still requires device qualification.
+
 ## Resource gateway
 
 The first resource capability is `public_test_document_v1`. The phone owns the

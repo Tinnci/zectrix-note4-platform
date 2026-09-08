@@ -185,8 +185,20 @@ cleanup failures. All 26 Host targets pass; board and Wi-Fi tests also pass
 AddressSanitizer, UndefinedBehaviorSanitizer and ThreadSanitizer, and display
 tests pass AddressSanitizer/UndefinedBehaviorSanitizer. These tests do not
 measure physical leakage, radio current or RF coexistence. The ESP32-S3
-firmware build also passes. Q1.3 protocol cross-inspection remains a separate
-task.
+firmware build also passes.
+
+Q1.3 cross-inspects Flipper Zero terminal ownership and Pebble AppMessage
+delivery semantics. CLI input rejects malformed or overlong commands in full,
+and USB retains transient disconnect observations until the session cancels
+its old input. RX cleanup uses ESP-IDF 5.5.2 nonblocking reads with a fixed
+drain bound. C++ and Kotlin replay tests interrupt every state/ACK fragment
+boundary, recreate owners from storage and preserve newer pending revisions.
+They also cover failed saves, queued NACKs, duplicate traffic timeouts and
+exact ACK matching. All 26 Host targets, 25 Android JVM tests, the Android debug
+build and the ESP32-S3 build pass. CLI and sync targets also pass
+AddressSanitizer and UndefinedBehaviorSanitizer. The contracts record the
+upstream references and tested behavior; real USB and BLE qualification
+remains hardware work.
 
 ## Deferred research
 

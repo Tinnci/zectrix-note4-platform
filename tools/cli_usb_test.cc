@@ -43,6 +43,8 @@ bool fail_task = false, delay_notification = false;
 std::atomic<bool> installed{false}, vfs_driver{false}, capturing{false};
 std::atomic<bool> blocked_output{false};
 std::atomic<bool> usb_connected{true};
+std::atomic<unsigned> disconnect_after_read{0}, disconnect_in_checks{0};
+std::atomic<bool> refill_input{false};
 esp_err_t install_result = ESP_OK;
 std::mutex input_mutex, output_mutex;
 std::string input, output;
@@ -57,6 +59,8 @@ void Reset() {
     fail_task = delay_notification = false;
     blocked_output = false;
     usb_connected = true;
+    disconnect_after_read = disconnect_in_checks = 0;
+    refill_input = false;
     install_result = ESP_OK;
     input.clear();
     output.clear();
@@ -218,6 +222,80 @@ void TestTxOverflowCannotExecuteBufferedTail() {
     service.Stop();
     Reset();
 }
+
+void TestShortDisconnectResetsSession() {
+    Reset();
+    CliUsbService service;
+    RecordingExecutor executor;
+    assert(service.Start(&executor) == ESP_OK);
+    WaitForOutput("zectrix> ");
+    Send("stale");
+    WaitForOutput("stale");
+    {
+        std::lock_guard<std::mutex> lock(output_mutex);
+        output.clear();
+    }
+    // Only the post-poll TX flush sees this disconnect. The link is back
+    // before the next session poll, but the partial command must be retired.
+    disconnect_after_read = 1;
+    WaitFor([&] { return executor.cancelled != 0; });
+    WaitForOutput("Zectrix maintenance CLI\r\nzectrix> ");
+    Send("fresh\r");
+    WaitForOutput("fresh reply\r\nzectrix> ");
+    assert(executor.calls == 1);
+    service.Stop();
+    Reset();
+}
+
+void TestDisconnectDrainIsBoundedWithContinuousInput() {
+    Reset();
+    CliUsbService service;
+    RecordingExecutor executor;
+    assert(service.Start(&executor) == ESP_OK);
+    WaitForOutput("zectrix> ");
+    {
+        std::lock_guard<std::mutex> lock(input_mutex);
+        input.assign(512, 'x');
+        refill_input = true;
+        usb_connected = false;
+    }
+    // Reads keep returning bytes, but cleanup must still reach cancellation
+    // and the worker's stop check instead of draining indefinitely.
+    WaitFor([&] { return executor.cancelled != 0; });
+    service.Stop();
+    assert(!service.running() && executor.calls == 0);
+    Reset();
+}
+
+void TestSessionDisconnectDiscardsPendingOutput() {
+    Reset();
+    CliUsbService service;
+    RecordingExecutor executor;
+    assert(service.Start(&executor) == ESP_OK);
+    WaitForOutput("zectrix> ");
+    blocked_output = true;
+    Send("stale");
+    WaitFor(InputEmpty);
+    {
+        std::lock_guard<std::mutex> lock(output_mutex);
+        output.clear();
+    }
+    // Skip the post-poll and next pre-poll flush checks. Only the session
+    // sees the disconnect, so the driver must retain that observation too.
+    disconnect_after_read = 3;
+    WaitFor([&] { return executor.cancelled != 0; });
+    blocked_output = false;
+    WaitForOutput("Zectrix maintenance CLI\r\nzectrix> ");
+    {
+        std::lock_guard<std::mutex> lock(output_mutex);
+        assert(output.find("stale") == std::string::npos);
+    }
+    Send("fresh\r");
+    WaitForOutput("fresh reply\r\nzectrix> ");
+    assert(executor.calls == 1);
+    service.Stop();
+    Reset();
+}
 }  // namespace
 
 SemaphoreHandle_t xSemaphoreCreateBinary() {
@@ -282,7 +360,7 @@ void vTaskDelete(TaskHandle_t task) {
     throw TaskExit{};
 }
 
-esp_err_t usb_serial_jtag_driver_install(const usb_serial_jtag_driver_config_t* config) {
+esp_err_t usb_serial_jtag_driver_install(usb_serial_jtag_driver_config_t* config) {
     assert(config->rx_buffer_size == 512 && config->tx_buffer_size == 512);
     assert(!installed.exchange(install_result == ESP_OK));
     return install_result;
@@ -291,19 +369,23 @@ esp_err_t usb_serial_jtag_driver_uninstall() {
     assert(!capturing && !vfs_driver && installed.exchange(false));
     return ESP_OK;
 }
-bool usb_serial_jtag_is_connected() { return usb_connected; }
+bool usb_serial_jtag_is_connected() {
+    const auto remaining = disconnect_in_checks.load();
+    if (remaining != 0) {
+        disconnect_in_checks = remaining - 1;
+        if (remaining == 1) return false;
+    }
+    return usb_connected;
+}
 int usb_serial_jtag_read_bytes(void* destination, uint32_t capacity, TickType_t ticks) {
     assert(installed && ticks == 0);
     std::lock_guard<std::mutex> lock(input_mutex);
     const auto count = std::min({static_cast<std::size_t>(capacity), input.size(), read_limit});
     std::memcpy(destination, input.data(), count);
     input.erase(0, count);
+    if (refill_input) input.append(count, 'x');
+    if (const auto checks = disconnect_after_read.exchange(0)) disconnect_in_checks = checks;
     return static_cast<int>(count);
-}
-std::size_t usb_serial_jtag_get_read_bytes_available() {
-    assert(installed);
-    std::lock_guard<std::mutex> lock(input_mutex);
-    return input.size();
 }
 int usb_serial_jtag_write_bytes(const void* data, std::size_t size, TickType_t ticks) {
     assert(installed && ticks == 0);
@@ -327,5 +409,8 @@ int main() {
     TestStartupFailures();
     TestDisconnectDropsBufferedInput();
     TestTxOverflowCannotExecuteBufferedTail();
+    TestShortDisconnectResetsSession();
+    TestDisconnectDrainIsBoundedWithContinuousInput();
+    TestSessionDisconnectDiscardsPendingOutput();
     Reset();
 }

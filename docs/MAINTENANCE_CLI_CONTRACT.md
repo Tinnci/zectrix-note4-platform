@@ -271,6 +271,40 @@ owner progress during logging, cancellation and reconnect during owner delay,
 blocked or broken output, terminal hangup, and terminal restoration on exit and
 signals. `tools/test-host.sh` includes this target.
 
+## Q1.3 terminal cross-inspection
+
+The review uses Flipper Zero's
+[CDC transport](https://github.com/flipperdevices/flipperzero-firmware/blob/dev/applications/services/cli/cli_vcp.c)
+and [line editor](https://github.com/flipperdevices/flipperzero-firmware/blob/dev/lib/toolbox/cli/shell/cli_shell_line.c)
+as references for transport ownership, backpressure, disconnect cleanup and
+terminal editing. Note4 implements these properties on ESP-IDF USB Serial/JTAG
+with its existing bounded owner poll.
+
+The parser rejects an overlong line, embedded NUL or invalid byte as a whole.
+It cannot execute a valid prefix hidden before rejected input. CSI/SS3 sequences
+can span USB reads and consume at most 16 bytes after their introducer.
+Supported cursor, Home, End, Delete and history keys edit bounded RAM state;
+unsupported complete CSI/SS3 sequences are consumed without inserting their
+parameters into the command. Malformed or overlong escapes reject the line;
+an incomplete escape rejects submission. Ctrl+C also cancels inside an escape
+or rejected line. CRLF submits once across read boundaries.
+
+The USB transport retains any disconnect observed by a connection check until
+the session owner consumes it. A link that reconnects before the next poll or
+TX flush still cancels the old command, clears pending output and starts a
+fresh prompt. RX cleanup uses the ESP-IDF 5.5.2 nonblocking read API, stopping
+on an empty read or after 512 bytes.
+It handles short reads across ring-buffer wraps and remains bounded under
+continuous input. The Host USB fake uses the same public API signatures.
+
+Core tests vary read sizes and cover rejected input and ANSI editing. The real
+USB service runs over threaded fakes for short writes, overflow, queued stale
+input, disconnects observed only by TX or the session, and continuous input
+during cleanup. POSIX terminal tests also check that malformed or truncated
+commands cannot execute a valid prefix. Device qualification must establish
+which cable and terminal close/reopen events the USB Serial/JTAG connection
+signal reports.
+
 Future input tracing, mutations and local confirmation need the corresponding
 event isolation, request/origin/deadline binding and unknown-outcome tests.
 Hardware qualification must prove USB reconnect, prompt recovery, `Ctrl+C`,

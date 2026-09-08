@@ -65,6 +65,8 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Review `PowerOff()` clean shutdown sequence ensuring zero leaked SPI/I2C peripheral state.
   - Implemented ordered peripheral cleanup, NFC/audio task joins and rail-off GPIO holds.
   - Verified all 26 Host targets, sanitizer checks and the ESP32-S3 build; physical current and RF coexistence measurements remain hardware qualification work.
-- [ ] **Q1.3: Flipper Zero / Pebble Protocol Cross-Inspection**
+- [x] **Q1.3: Flipper Zero / Pebble Protocol Cross-Inspection**
   - Inspect CLI command parser against Flipper Zero CDC-ACM terminal robustness standards.
   - Verify durable sync engine cursor semantics under simulated sudden disconnects.
+  - Completed bounded terminal rejection/editing, transient USB disconnect recovery and ESP-IDF 5.5.2 RX cleanup; documented Flipper/Pebble reference comparisons.
+  - Verified fragment/commit interruption and cursor recovery in C++ and Kotlin, all 26 Host targets, 25 Android JVM tests, Android/ESP32-S3 builds and focused ASan/UBSan checks. Physical USB/BLE qualification remains hardware work.
