@@ -24,7 +24,7 @@
 | 图库 UI 和硬件能力展示 | 含 Launcher、Settings、Diagnostics、Clock 的静态多应用运行时 |
 | Wi-Fi RF、音频、RTC、充电、LED、按键、NFC 和电池自检 | 具备兼容性与架构检查的源码稳定 C++17 SDK v1 |
 | 基础设备交互和关机流程 | 版本化伴侣协议、持久同步、安全 BLE、Android 伴侣端和 NFC 辅助注册 |
-| 面向硬件的串口诊断 | 有资源边界的维护 CLI 架构及已测试解析器核心 |
+| 面向硬件的串口诊断 | 有资源边界的维护 CLI、平台诊断和交互式 Host 模拟器 |
 
 ## 开发状态
 
@@ -37,7 +37,7 @@
 | M3 | 已完成 | 静态应用生命周期和首批内置应用 |
 | M4 | 已完成 | 源码稳定 SDK v1 和统一软硬件退出门 |
 | C1 | 进行中 | 伴侣协议、持久同步、安全 BLE/Android 路径和 NFC 辅助注册；完整硬件验收尚未结束 |
-| D1 | 进行中 | 受控维护 CLI 核心；服务命令和硬件退出门尚未结束 |
+| D1 | 进行中 | USB 会话、平台诊断、日志流和 Host 模拟器已实现；输入观察和硬件验收尚未结束 |
 | M5 | 计划中 | 基于实测数据设计 A/B 更新、回滚和恢复架构 |
 
 > [!IMPORTANT]
@@ -70,6 +70,28 @@ idf.py -p /dev/ttyACM0 flash monitor
 
 根据实际情况修改串口。退出监视器使用 `Ctrl+]`。第一次构建会下载音频编解码器
 组件。详细说明见 [docs/QUICK_START.md](docs/QUICK_START.md)。
+
+## Host 维护 CLI
+
+Linux 和 macOS 上可用 C++17 编译器运行维护 CLI。模拟器复用固件的解析器、终端
+会话和诊断执行器，硬件数据为模拟值，无需 ESP-IDF 或连接开发板。
+
+```bash
+bash tools/run-cli-host.sh
+# Build once for repeated runs or piped commands.
+bash tools/build-cli-host.sh
+build-host/zectrix-cli-host --owner-delay-ms 500 --log-burst 80
+printf 'sysinfo\nheap\nepd-inspect\n' | build-host/zectrix-cli-host
+```
+
+输入 `help` 查看命令。`Ctrl+C` 取消命令，`Ctrl+R` 重连会话，`Ctrl+D` 退出。
+`--owner-delay-ms` 可模拟诊断回复延迟，期间终端保持响应；`--log-interval-ms 0`
+关闭周期日志。管道输入按顺序执行命令，EOF 后完成待处理回复并取消日志流。
+
+运行 `bash tools/test-cli-host.sh` 验证终端和管道交互，或运行
+`bash tools/test-host.sh` 执行完整 Host 测试。测试需要 Python 3 和
+[uv](https://docs.astral.sh/uv/getting-started/installation/)，仅使用 Python 标准库。
+执行模型和资源限制见[维护 CLI 契约](docs/MAINTENANCE_CLI_CONTRACT.md)。
 
 ## 目录结构
 

@@ -103,9 +103,10 @@ ownership, application lifecycle or local security policy.
 
 Status: In progress. This milestone can develop beside C1. D1.1 USB Serial/JTAG
 sessions and D1.2 owner-dispatched system/heap/task/uptime/display diagnostics
-and bounded log observation are implemented. Input observation and real USB
-qualification remain open. Mutating connectivity
-commands remain blocked by the applicable C1 authorization gate.
+and bounded log observation are implemented. D1.3 adds an interactive host
+simulator with terminal, pipe and reconnect integration tests. Input observation
+and real USB qualification remain open. Mutating connectivity commands remain
+blocked by the applicable C1 authorization gate.
 
 - Use a static hierarchical command tree and bounded parser.
 - Keep terminal work in the CLI task and execute platform operations through a

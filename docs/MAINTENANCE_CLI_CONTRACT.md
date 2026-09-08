@@ -1,8 +1,9 @@
 # Maintenance CLI contract
 
-Status: D1.1 USB transport/session and D1.2 read-only platform diagnostics and
-log observation are implemented. Input tracing and mutating commands remain
-future slices; real USB qualification remains open.
+Status: D1.1 USB transport/session, D1.2 read-only platform diagnostics and
+log observation, and D1.3 interactive host simulation are implemented. Input
+tracing and mutating commands remain future slices. Real USB qualification
+remains open.
 
 ## Purpose
 
@@ -192,9 +193,41 @@ nonblocking with a bounded 2 KiB pending buffer; exhaustion resets the session.
 The log storage outlives the USB service, and shutdown restores the previous
 sink. Early-boot and panic output retain their direct paths.
 
+## D1.3 host implementation
+
+`tools/run-cli-host.sh` builds and starts a POSIX terminal simulator on Linux
+and macOS. `tools/build-cli-host.sh [output-binary]` builds it separately with
+a C++17 compiler and no ESP-IDF dependency. `CXX` selects another compiler.
+The default binary is `build-host/zectrix-cli-host`.
+
+The simulator uses the production parser, `CliSession`, diagnostic executor,
+dispatcher and display state model. A separate owner thread supplies bounded
+synthetic system, heap, task and display snapshots. It updates the display
+state every 250 ms and produces logs independently of terminal output. Host
+results do not measure Note4 hardware or qualify the USB driver.
+
+The stdio transport saves and restores terminal settings and descriptor flags.
+Input and output use nonblocking I/O with 512-byte RX and 2 KiB TX queues.
+TX exhaustion cancels the session and recovers a prompt. `Ctrl+C` uses the
+production cancellation path. `Ctrl+R` discards pending input and replies and
+starts a fresh session. `Ctrl+D`, terminal hangup and process termination
+signals stop the owner and restore the terminal. Shutdown drains output for
+at most 500 ms.
+
+Pipes and redirected files accept one command per line. Commands wait for the
+previous reply to finish. EOF submits a final line without a newline. A closed
+pipe or finite file cancels log observation so subsequent commands can finish,
+including input larger than the RX queue. Shell syntax is not parsed by the CLI.
+
+`--owner-delay-ms N` delays owner safe points by 0 to 60000 ms.
+`--log-interval-ms N` sets the periodic log interval from 0 to 60000 ms, where
+0 disables periodic logs. `--log-burst N` emits 0 to 10000 startup records to
+exercise overflow. Defaults are 0 ms owner delay, 1000 ms log interval and no
+startup burst. Delayed requests do not delay cancellation, reconnect or exit.
+
 ## Non-goals
 
-- shell scripts, pipes, redirection or background jobs;
+- shell-language parsing, pipelines, redirection or background jobs inside the CLI;
 - variables, command substitution or persistent history;
 - arbitrary memory, file-system or peripheral access;
 - dynamic command plug-ins;
@@ -213,6 +246,13 @@ predicate-to-block window, coalesced wakeups, queue full, timeout with a late
 result, slot generation, queued/executing cancellation, shutdown during
 execution, owner identity, partial/gray framebuffer previews, reconnect,
 transport failure, log filtering/overflow and ESP log-sink restoration.
+
+`tools/test-cli-host.sh` builds the simulator and uses Python's standard-library
+pseudo-terminal and subprocess interfaces through `uv`. It verifies command
+editing and limits, paged replies, ordered pipe/file input, EOF during streams,
+owner progress during logging, cancellation and reconnect during owner delay,
+blocked or broken output, terminal hangup, and terminal restoration on exit and
+signals. `tools/test-host.sh` includes this target.
 
 Future input tracing, mutations and local confirmation need the corresponding
 event isolation, request/origin/deadline binding and unknown-outcome tests.
