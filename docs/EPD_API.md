@@ -58,7 +58,9 @@ the raw refresh API still requires the panel to be powered and ready.
 The shadow changes only after a successful refresh.
 
 Do a full refresh after eight actual partial refreshes to control ghosting.
-`DisplayService` owns this policy for platform applications.
+`DisplayService` owns this policy for platform applications and can refresh
+fully sooner based on the actual number of black/white transitions. The raw
+driver performs the requested operation without applying that service policy.
 
 ## Dirty-region query
 
@@ -81,6 +83,18 @@ A valid 1bpp shadow is required. An invalid shadow returns
 When submitting the refresh, keep the original source rectangle and packed
 buffer together. The returned dirty rectangle does not change the source
 stride or origin. The refresh operation recomputes the bounds under its lock.
+
+`zectrix_epd_analyze_1bpp()` accepts the same input and returns a
+`zectrix_epd_diff_t`: `dirty` contains the exact bounds and `changed_pixels`
+counts black-to-white and white-to-black transitions. Unchanged pixels inside
+the bounding box, byte-alignment neighbors and row padding do not contribute.
+The count ranges from zero to 120,000. This query has the same locking,
+allocation and error behavior as `zectrix_epd_find_dirty_1bpp()`.
+
+The display service uses this count to select the existing full OTP refresh
+when a submission changes at least 30,000 pixels, or the accumulated partial
+transitions plus the pending submission reach 60,000 pixels. See
+[M2_PLATFORM_CONTRACT.md](M2_PLATFORM_CONTRACT.md) for the complete policy.
 
 ## Full 4bpp refresh
 

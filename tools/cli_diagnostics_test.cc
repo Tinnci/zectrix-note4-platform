@@ -86,6 +86,7 @@ void TestCommands() {
     display.last_refresh = zectrix::display::RefreshKind::kPartial1Bpp;
     display.state.baseline = zectrix::display::BaselineState::Valid1Bpp;
     display.state.partial_refresh_count = 4;
+    display.state.partial_changed_pixels = 48000;
     display.state.has_dirty_region = true;
     display.state.dirty_region = {8, 16, 24, 32};
     for (std::size_t index = 0; index < display.preview.size(); ++index) display.preview[index] = index;
@@ -128,6 +129,7 @@ void TestCommands() {
     for (const char* command : {"epd-inspect", "display status"}) {
         const auto text = Run(executor, dispatcher, command);
         assert(text.find("partial_count=4/8") != std::string::npos);
+        assert(text.find("partial_pixels=48000/60000 high_contrast_pixels=30000") != std::string::npos);
         assert(text.find("rect=8,16 24x32") != std::string::npos);
         assert(text.find("0000: 00 01 02") != std::string::npos);
         assert(text.find("0030: 30 31 32") != std::string::npos);

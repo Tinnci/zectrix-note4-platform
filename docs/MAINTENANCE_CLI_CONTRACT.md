@@ -175,7 +175,10 @@ sampling: another core can delete a transient task at that point. The firmware
 enables the FreeRTOS trace facility needed for this inspection.
 
 `epd-inspect` reports panel power, batch state, refresh attempts/failures, last
-error and duration, partial-refresh state and dirty region. Its hex dump is the
+error and duration, partial-refresh state and dirty region. It includes the
+partial frame count, accumulated changed pixels and the single-update contrast
+threshold. `partial_pixels` counts transitions across successful partial
+refreshes; repeated changes to the same pixels count again. Its hex dump is the
 first 64 bytes of the last successful 1bpp or 4bpp frame. Partial updates copy
 the existing driver shadow; full updates copy the submitted frame before its
 caller releases it. Errors invalidate the preview. This command neither

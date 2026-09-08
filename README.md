@@ -43,7 +43,7 @@ Development follows dependency-aware stage gates defined in
 | C1 | In progress | Companion protocol, durable sync, secure BLE/Android path and NFC-assisted enrollment; full hardware qualification remains open |
 | D1 | In progress | USB sessions, platform diagnostics, log streaming and host simulator implemented; input observation and hardware qualification remain open |
 | M5 | In progress | A/B partition validation, streamed firmware verification and boot confirmation watchdog implemented; update delivery and hardware qualification remain open |
-| R1 | In progress | Minimal dirty-region updates and unchanged-frame suppression implemented; adaptive ghosting policy and hardware qualification remain open |
+| R1 | In progress | Minimal dirty-region updates, unchanged-frame suppression and adaptive full-refresh policy implemented; hardware qualification remains open |
 
 > [!CAUTION]
 > This project targets the black-and-white ZECTRIX NOTE4 hardware. It is not
@@ -160,8 +160,9 @@ Splash
 ```
 
 The 4bpp scene always performs a white 1bpp full refresh first to reduce
-ghosting. The UI performs a full refresh after eight partial refreshes to limit
-accumulated artifacts.
+ghosting. The display service allows at most eight partial refreshes between
+full refreshes. Large black/white changes or accumulated pixel transitions
+trigger a full refresh sooner; unchanged frames skip refresh entirely.
 
 ## Configuration
 

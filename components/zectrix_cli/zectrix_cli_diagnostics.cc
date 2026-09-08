@@ -292,12 +292,16 @@ ExecuteStatus DiagnosticExecutor::FormatResult(BoundedOutput* output) {
                    static_cast<unsigned long>(d.failed_refresh_count),
                    static_cast<long>(d.last_error), static_cast<unsigned long long>(d.last_duration_us));
         } else if (page_ == 1) {
-            Format(output, "baseline=%s partial_count=%lu/%lu dirty=%u rect=%d,%d %dx%d",
+            Format(output, "baseline=%s partial_count=%lu/%lu dirty=%u rect=%d,%d %dx%d\r\n"
+                   "partial_pixels=%lu/%lu high_contrast_pixels=%lu",
                    d.state.baseline == display::BaselineState::Valid1Bpp ? "valid-1bpp" : "unknown",
                    static_cast<unsigned long>(d.state.partial_refresh_count),
                    static_cast<unsigned long>(display::StateModel::kPartialRefreshLimit),
                    d.state.has_dirty_region, d.state.dirty_region.x, d.state.dirty_region.y,
-                   d.state.dirty_region.width, d.state.dirty_region.height);
+                   d.state.dirty_region.width, d.state.dirty_region.height,
+                   static_cast<unsigned long>(d.state.partial_changed_pixels),
+                   static_cast<unsigned long>(display::StateModel::kPartialPixelLimit),
+                   static_cast<unsigned long>(display::StateModel::kHighContrastPixelLimit));
         } else if (page_ == 2) {
             Format(output, "framebuffer: bpp=%u bytes=%lu valid=%u\r\n%s",
                    d.bits_per_pixel, static_cast<unsigned long>(d.framebuffer_bytes),

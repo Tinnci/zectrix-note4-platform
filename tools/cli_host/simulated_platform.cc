@@ -64,12 +64,13 @@ ControlStatus SimulatedPlatform::Inspect(const ControlRequest&, ControlResult* r
 
 void SimulatedPlatform::Refresh() {
     auto& frame = snapshot_.display;
-    if (!display_state_.CanUsePartial() || display_state_.ShouldRequestFullClean()) {
+    constexpr uint32_t changed_pixels = 16 * 8;
+    if (!display_state_.CanUsePartial() || display_state_.ShouldRequestFullClean(changed_pixels)) {
         display_state_.OnFull1BppSuccess();
         frame.last_refresh = display::RefreshKind::kFull1Bpp;
         frame.last_duration_us = 250000;
     } else {
-        display_state_.OnPartial1BppSuccess({0, 0, 16, 8});
+        display_state_.OnPartial1BppSuccess({0, 0, 16, 8}, changed_pixels);
         frame.last_refresh = display::RefreshKind::kPartial1Bpp;
         frame.last_duration_us = 50000;
     }

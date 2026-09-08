@@ -87,10 +87,11 @@ struct zectrix_epd_t {
     bool internal_power_on = false;
     bool shadow_valid = false;
 
-    zectrix_epd_rect_t FindDirty(const zectrix_epd_rect_t& rect,
-                                const uint8_t* pixels) const {
+    zectrix_epd_diff_t Analyze(const zectrix_epd_rect_t& rect,
+                              const uint8_t* pixels) const {
         const size_t stride = static_cast<size_t>((rect.width + 7) / 8);
         const unsigned shift = rect.x & 7;
+        uint32_t changed_pixels = 0;
         int left = rect.width, right = -1, top = rect.height, bottom = -1;
         for (int y = 0; y < rect.height; ++y) {
             const auto* old_row = shadow + static_cast<size_t>(rect.y + y) * kBwStride;
@@ -106,6 +107,7 @@ struct zectrix_epd_t {
                 const auto mask = static_cast<uint8_t>(0xffu << (8 - valid_bits));
                 const uint8_t difference = (old_bits ^ new_row[column]) & mask;
                 if (difference == 0) continue;
+                changed_pixels += __builtin_popcount(static_cast<unsigned>(difference));
                 // Skip equal bytes, then resolve the two horizontal pixel edges.
                 int first = 0, last = valid_bits - 1;
                 while ((difference & (0x80u >> first)) == 0) ++first;
@@ -117,7 +119,8 @@ struct zectrix_epd_t {
             }
         }
         if (right < left) return {};
-        return {rect.x + left, rect.y + top, right - left + 1, bottom - top + 1};
+        return {{rect.x + left, rect.y + top, right - left + 1, bottom - top + 1},
+                changed_pixels};
     }
 
     void SetCs(int level) { gpio_set_level(config.pin_cs, level); }
@@ -708,15 +711,25 @@ extern "C" esp_err_t zectrix_epd_find_dirty_1bpp(
     zectrix_epd_handle_t handle, const zectrix_epd_rect_t* rect,
     const uint8_t* pixels, size_t pixels_size, zectrix_epd_rect_t* dirty) {
     if (dirty == nullptr) return ESP_ERR_INVALID_ARG;
+    zectrix_epd_diff_t result{};
+    const esp_err_t err = zectrix_epd_analyze_1bpp(handle, rect, pixels, pixels_size, &result);
+    *dirty = result.dirty;
+    return err;
+}
+
+extern "C" esp_err_t zectrix_epd_analyze_1bpp(
+    zectrix_epd_handle_t handle, const zectrix_epd_rect_t* rect,
+    const uint8_t* pixels, size_t pixels_size, zectrix_epd_diff_t* result) {
+    if (result == nullptr) return ESP_ERR_INVALID_ARG;
     const zectrix_epd_rect_t source = rect != nullptr ? *rect : zectrix_epd_rect_t{};
-    *dirty = {};
+    *result = {};
     if (handle == nullptr) return ESP_ERR_INVALID_ARG;
     const esp_err_t err = ValidatePatch(&source, pixels, pixels_size);
     if (err != ESP_OK) return err;
     MutexGuard guard(handle->mutex);
     if (!guard.locked()) return ESP_FAIL;
     if (!handle->shadow_valid) return ESP_ERR_INVALID_STATE;
-    *dirty = handle->FindDirty(source, pixels);
+    *result = handle->Analyze(source, pixels);
     return ESP_OK;
 }
 
@@ -755,7 +768,7 @@ extern "C" esp_err_t zectrix_epd_refresh_partial_1bpp(
     if (!handle->powered || !handle->controller_ready || !handle->shadow_valid) {
         return ESP_ERR_INVALID_STATE;
     }
-    const auto dirty = handle->FindDirty(*rect, pixels);
+    const auto dirty = handle->Analyze(*rect, pixels).dirty;
     if (dirty.width == 0) return ESP_OK;
 
     esp_err_t err = handle->PrepareOtpRefresh();

@@ -61,12 +61,13 @@ support. They are not application API.
 ## M2.1a display state invariants
 
 - Boot starts with an unknown baseline.
-- Successful full 1bpp refresh makes the baseline valid and resets the partial count.
-- Successful partial 1bpp refresh keeps a valid baseline and increments the partial count.
+- Successful full 1bpp refresh makes the baseline valid and resets the partial frame and pixel counts.
+- Successful partial 1bpp refresh keeps a valid baseline and adds one frame and its actual changed-pixel count.
 - An unchanged `Auto` or `Fast` submission with a valid baseline does not refresh or change counters.
 - Successful 4bpp refresh makes the baseline unknown.
 - A refresh error or timeout makes the baseline unknown.
 - After eight partial refreshes, the next changed submission requests a full clean refresh.
+- Large single-frame changes or accumulated pixel transitions can require a full refresh sooner.
 - Actual changed pixel bounds are unioned until a full refresh or error clears them.
 
 The pure state model and host tests implement M2.1a. `DisplayService` provides
@@ -100,6 +101,42 @@ all display and batch methods from one task. Do not call `BeginBatch()`, a
 refresh method, or `EndBatch()` concurrently. A future multi-task consumer must
 first add service-level transaction ownership; the driver mutex alone is not a
 service transaction lock.
+
+## R1.2 adaptive full refresh policy
+
+`Auto` and `Fast` use the same policy. Once a valid 1bpp image exists, a changed
+submission uses the full OTP path if any of these conditions hold:
+
+| Condition | Threshold on the 400 x 300 panel |
+| --- | --- |
+| Completed partial refreshes since the last full refresh | 8 |
+| Black/white transitions in the pending submission | At least 30,000 pixels (25%) |
+| Transitions from successful partial refreshes plus the pending submission | At least 60,000 pixels (50%) |
+
+The driver counts actual changed bits in both directions. The policy does not
+use bounding-box area as a substitute: two distant changed pixels still count
+as two. Repeated flips of the same pixel each contribute to the accumulated
+count, including changes that restore an earlier image. For example, updates
+that each flip 12,000 pixels perform four partial refreshes, then a full
+refresh for the fifth update. Small clock updates can use the full eight-frame
+allowance. Unchanged submissions consume neither budget and do not trigger a
+scheduled cleanup.
+
+Only successful partial operations add to the counters. A successful full
+refresh resets both counters and the dirty-region union. A refresh or power
+failure clears the counters and invalidates the baseline; the next 1bpp
+submission must recover with a full frame. Grayscale also invalidates the
+1bpp baseline. Explicit packed-patch calls use their supplied full frame for
+adaptive cleanup, just as they do for the frame-count limit and recovery.
+
+`epd-inspect` exposes `partial_count`, `partial_pixels` and
+`high_contrast_pixels` for observation. The pixel thresholds are initial policy
+defaults; Host tests verify selection and state recovery. Physical ghosting,
+temperature sensitivity, latency and energy still need panel measurement.
+The policy uses the existing OTP full-refresh operation and does not change
+waveforms, BUSY handling or power sequencing.
+
+## Other platform services
 
 `InputService` attaches to initialized board support with a typed reference. It
 converts debounced physical button results to `InputEvent`. Applications use

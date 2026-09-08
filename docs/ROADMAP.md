@@ -131,8 +131,11 @@ tests without bypassing resource ownership.
 
 Status: In progress. R1.1 implements full-frame and packed-patch comparison,
 minimal dirty bounds and unchanged-frame suppression using the existing
-driver shadow. The eight-partial limit and full recovery behavior remain.
-R1.2 adaptive ghosting policy and physical panel qualification remain open.
+driver shadow. R1.2 adds actual black/white transition counts and adaptive
+cleanup: at least 25% changed pixels in one update, or 50% accumulated across
+partial updates including the pending frame, selects the existing full OTP
+path. The maximum remains eight partial refreshes. Physical panel
+qualification and threshold calibration remain open.
 
 The production driver, display service and demo UI pass the Host suite,
 AddressSanitizer/UndefinedBehaviorSanitizer and the ESP32-S3 build. The Host
@@ -141,6 +144,12 @@ selection change sends 6,808 bytes. Both previously used a 23,400-byte fixed
 window. The UI also removes a 15,000-byte patch buffer. These payload counts
 do not measure panel latency or energy. Small-window appearance, ghosting
 and physical refresh timing still need hardware measurement.
+
+R1.2 Host tests cover exact pixel thresholds, repeated inversions, sparse
+changes, unchanged submissions, batch cleanup, packed-patch fallback and
+recovery after SPI, BUSY, power and mutex failures. A 12,000-pixel repeated
+inversion now performs a full refresh on update five. The existing six-step
+footprint assets change 2,312 pixels in total, below both pixel thresholds.
 
 ## Deferred research
 

@@ -50,7 +50,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
 
 - [x] **R1.1: Partial Refresh Dirty Region Optimizer**
   - Screen diffing and minimal bounding box calculation.
-- [ ] **R1.2: Ghosting Mitigation & Adaptive Full Refresh Cycle**
+- [x] **R1.2: Ghosting Mitigation & Adaptive Full Refresh Cycle**
   - Frame count threshold and high-contrast refresh triggers.
 
 ---

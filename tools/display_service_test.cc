@@ -77,6 +77,14 @@ void PutBit(uint8_t* bytes, int stride, int x, int y, bool white) {
     byte = white ? byte | mask : byte & static_cast<uint8_t>(~mask);
 }
 
+void ToggleFirstPixels(Frame& frame, uint32_t count) {
+    assert(count <= 400 * 300);
+    for (uint32_t pixel = 0; pixel < count; ++pixel) {
+        const int x = pixel % 400, y = pixel / 400;
+        PutBit(frame.data(), 50, x, y, !Bit(frame.data(), 50, x, y));
+    }
+}
+
 std::vector<uint8_t> Crop(const Frame& frame, const zectrix_epd_rect_t& rect) {
     const int stride = (rect.width + 7) / 8;
     std::vector<uint8_t> pixels(stride * rect.height, 0xa5);
@@ -225,12 +233,14 @@ void TestAutomaticRefreshAndBudget() {
     assert(CheckPartial(before, {0, 0, 400, 300}, frame.data()) == 32);
     SameRect(service->state().dirty_region, (Rect{19, 31, 10, 8}));
     assert(service->state().partial_refresh_count == 1);
+    assert(service->state().partial_changed_pixels == 2);
     assert(Inspect(*service).last_refresh == RefreshKind::kPartial1Bpp);
     for (unsigned count = 1; count < 8; ++count) {
         PutBit(frame.data(), 50, 19, 31, count % 2 != 0);
         Present(*service, frame);
     }
     assert(service->state().partial_refresh_count == 8);
+    assert(service->state().partial_changed_pixels == 9);
     ClearTraffic();
     const auto attempts = Inspect(*service).refresh_count;
     Present(*service, frame);
@@ -239,6 +249,7 @@ void TestAutomaticRefreshAndBudget() {
     Present(*service, frame);
     CheckFull(frame);
     assert(service->state().partial_refresh_count == 0 && !service->state().has_dirty_region);
+    assert(service->state().partial_changed_pixels == 0);
     assert(Inspect(*service).preview[0] == 0x7f);
     frame[0] = 0xff;
     assert(Inspect(*service).preview[0] == 0x7f);
@@ -247,11 +258,83 @@ void TestAutomaticRefreshAndBudget() {
         Present(*service, frame, intent);
         CheckFull(frame);
     }
-    const auto old = frame;
     frame.fill(0);
     ClearTraffic();
     Present(*service, frame);
-    assert(CheckPartial(old, {0, 0, 400, 300}, frame.data()) == 30000);
+    CheckFull(frame);
+}
+
+void TestHighContrastAndSparseChanges() {
+    for (auto intent : {DisplayIntent::Auto, DisplayIntent::Fast}) {
+        Reset();
+        auto service = CreateService();
+        Frame white;
+        white.fill(0xff);
+        Present(*service, white);
+        Frame frame = white;
+        ToggleFirstPixels(frame, 29999);
+        ClearTraffic();
+        Present(*service, frame, intent);
+        CheckPartial(white, {0, 0, 400, 300}, frame.data());
+        assert(service->state().partial_refresh_count == 1);
+        assert(service->state().partial_changed_pixels == 29999);
+
+        Present(*service, white, DisplayIntent::FullClean);
+        frame = white;
+        ToggleFirstPixels(frame, 30000);
+        ClearTraffic();
+        Present(*service, frame, intent);
+        CheckFull(frame);
+        assert(service->state().partial_refresh_count == 0 && service->state().partial_changed_pixels == 0);
+        const auto attempts = Inspect(*service).refresh_count;
+        ClearTraffic();
+        Present(*service, frame, intent);
+        assert(packets.empty() && gpio_writes == 0 && Inspect(*service).refresh_count == attempts);
+        // The inverse transition must trigger cleanup too.
+        Present(*service, white, intent);
+        CheckFull(white);
+
+        frame = white;
+        PutBit(frame.data(), 50, 0, 0, false);
+        PutBit(frame.data(), 50, 399, 299, false);
+        ClearTraffic();
+        Present(*service, frame, intent);
+        // A panel-sized bounding box is not a panel-sized contrast change.
+        assert(CheckPartial(white, {0, 0, 400, 300}, frame.data()) == 30000);
+        assert(service->state().partial_changed_pixels == 2);
+    }
+}
+
+void TestAccumulatedChanges() {
+    Reset();
+    auto service = CreateService();
+    Frame frame;
+    frame.fill(0xff);
+    Present(*service, frame);
+    assert(service->BeginBatch() == ESP_OK);
+    for (unsigned cycle = 0; cycle < 2; ++cycle) {
+        for (unsigned step = 1; step <= 5; ++step) {
+            const auto before = frame;
+            ToggleFirstPixels(frame, 12000);
+            ClearTraffic();
+            Present(*service, frame);
+            if (step < 5) {
+                CheckPartial(before, {0, 0, 400, 300}, frame.data());
+                assert(service->state().partial_refresh_count == step);
+                assert(service->state().partial_changed_pixels == step * 12000);
+            } else {
+                CheckFull(frame);
+                assert(service->state().partial_refresh_count == 0);
+                assert(service->state().partial_changed_pixels == 0 && !service->state().has_dirty_region);
+            }
+            assert(service->IsPowered() && Inspect(*service).batch_active);
+            const auto attempts = Inspect(*service).refresh_count;
+            ClearTraffic();
+            Present(*service, frame);
+            assert(packets.empty() && gpio_writes == 0 && Inspect(*service).refresh_count == attempts);
+        }
+    }
+    assert(service->EndBatch() == ESP_OK && !service->IsPowered());
 }
 
 void TestPatchCompatibility() {
@@ -273,6 +356,13 @@ void TestPatchCompatibility() {
     ClearTraffic();
     Present(*service, expected);
     assert(packets.empty() && gpio_writes == 0);
+    Present(*service, fallback, DisplayIntent::FullClean);
+    ClearTraffic();
+    std::array<uint8_t, 50 * 75> large_patch{};
+    assert(service->Present1Bpp(DisplayIntent::Fast, fallback.data(), fallback.size(),
+                                {0, 0, 400, 75}, large_patch.data(), large_patch.size()) == ESP_OK);
+    CheckFull(fallback);
+    assert(service->state().partial_refresh_count == 0 && service->state().partial_changed_pixels == 0);
 }
 
 void TestDriverDiffAndWindow() {
@@ -287,6 +377,10 @@ void TestDriverDiffAndWindow() {
     zectrix_epd_rect_t dirty{1, 2, 3, 4};
     assert(zectrix_epd_find_dirty_1bpp(handle, &full, before.data(), before.size(), &dirty) == ESP_ERR_INVALID_STATE);
     SameRect(dirty, zectrix_epd_rect_t{});
+    zectrix_epd_diff_t difference{{1, 2, 3, 4}, 17};
+    assert(zectrix_epd_analyze_1bpp(handle, &full, before.data(), before.size(), &difference) == ESP_ERR_INVALID_STATE);
+    SameRect(difference.dirty, zectrix_epd_rect_t{});
+    assert(difference.changed_pixels == 0);
     assert(zectrix_epd_power_on(handle) == ESP_OK);
     assert(zectrix_epd_refresh_full_1bpp(handle, before.data(), before.size()) == ESP_OK);
     assert(zectrix_epd_power_off(handle) == ESP_OK);
@@ -299,11 +393,20 @@ void TestDriverDiffAndWindow() {
                 auto pixels = Crop(before, source);
                 assert(zectrix_epd_find_dirty_1bpp(handle, &source, pixels.data(), pixels.size(), &dirty) == ESP_OK);
                 SameRect(dirty, zectrix_epd_rect_t{});
+                assert(zectrix_epd_analyze_1bpp(handle, &source, pixels.data(), pixels.size(), &difference) == ESP_OK);
+                assert(difference.changed_pixels == 0);
                 const int dx = width - 1, dy = source.height - 1;
                 PutBit(pixels.data(), (width + 7) / 8, dx, dy,
                        !Bit(before.data(), 50, x + dx, y + dy));
                 assert(zectrix_epd_find_dirty_1bpp(handle, &source, pixels.data(), pixels.size(), &dirty) == ESP_OK);
                 SameRect(dirty, ReferenceDirty(before, source, pixels.data()));
+                assert(zectrix_epd_analyze_1bpp(handle, &source, pixels.data(), pixels.size(), &difference) == ESP_OK);
+                SameRect(difference.dirty, dirty);
+                assert(difference.changed_pixels == 1);
+                for (auto& byte : pixels) byte = static_cast<uint8_t>(~byte);
+                assert(zectrix_epd_analyze_1bpp(handle, &source, pixels.data(), pixels.size(), &difference) == ESP_OK);
+                SameRect(difference.dirty, ReferenceDirty(before, source, pixels.data()));
+                assert(difference.changed_pixels == static_cast<uint32_t>(width * source.height - 1));
             }
         }
     }
@@ -315,6 +418,10 @@ void TestDriverDiffAndWindow() {
     dirty = source;
     assert(zectrix_epd_find_dirty_1bpp(handle, &dirty, pixels.data(), pixels.size(), &dirty) == ESP_OK);
     SameRect(dirty, (zectrix_epd_rect_t{7, 11, 13, 3}));
+    difference.dirty = source;
+    assert(zectrix_epd_analyze_1bpp(handle, &difference.dirty, pixels.data(), pixels.size(), &difference) == ESP_OK);
+    SameRect(difference.dirty, dirty);
+    assert(difference.changed_pixels == 2);
     assert(zectrix_epd_refresh_partial_1bpp(handle, &source, pixels.data(), pixels.size()) == ESP_ERR_INVALID_STATE);
     assert(zectrix_epd_power_on(handle) == ESP_OK);
     ClearTraffic();
@@ -336,42 +443,60 @@ void TestDriverDiffAndWindow() {
     assert(CheckPartial(before, full, expected.data()) == 2);
     assert(zectrix_epd_copy_shadow(handle, 0, shadow.data(), shadow.size()) == ESP_OK && shadow == expected);
     ClearTraffic();
+    Frame inverted = expected;
+    for (auto& byte : inverted) byte = static_cast<uint8_t>(~byte);
+    assert(zectrix_epd_analyze_1bpp(handle, &full, inverted.data(), inverted.size(), &difference) == ESP_OK);
+    SameRect(difference.dirty, full);
+    assert(difference.changed_pixels == 120000);
     const zectrix_epd_rect_t invalid{1, 1, INT_MAX, INT_MAX};
     assert(zectrix_epd_refresh_partial_1bpp(handle, &invalid, pixels.data(), pixels.size()) == ESP_ERR_INVALID_ARG);
     assert(zectrix_epd_find_dirty_1bpp(handle, &full, expected.data(), SIZE_MAX, &dirty) == ESP_ERR_INVALID_SIZE);
     SameRect(dirty, zectrix_epd_rect_t{});
     assert(zectrix_epd_find_dirty_1bpp(handle, nullptr, expected.data(), expected.size(), &dirty) == ESP_ERR_INVALID_ARG);
     assert(zectrix_epd_find_dirty_1bpp(handle, &full, expected.data(), expected.size(), nullptr) == ESP_ERR_INVALID_ARG);
+    assert(zectrix_epd_analyze_1bpp(handle, &full, expected.data(), SIZE_MAX, &difference) == ESP_ERR_INVALID_SIZE);
+    SameRect(difference.dirty, zectrix_epd_rect_t{});
+    assert(difference.changed_pixels == 0);
+    assert(zectrix_epd_analyze_1bpp(handle, nullptr, expected.data(), expected.size(), &difference) == ESP_ERR_INVALID_ARG);
+    assert(zectrix_epd_analyze_1bpp(handle, &full, expected.data(), expected.size(), nullptr) == ESP_ERR_INVALID_ARG);
     assert(packets.empty() && gpio_writes == 0);
     assert(zectrix_epd_del(handle) == ESP_OK);
 }
 
 void TestFailuresRecoverWithFullFrame() {
-    for (int failure = 0; failure < 5; ++failure) {
-        Reset();
-        auto service = CreateService();
-        Frame frame;
-        frame.fill(0xff);
-        Present(*service, frame);
-        PutBit(frame.data(), 50, 3, 2, false);
-        ClearTraffic();
-        if (failure == 0) fail_command = 0xe9;
-        if (failure == 1) fail_data = 0x10;
-        if (failure == 2) timeout_refresh = true;
-        if (failure == 3) fail_power_off = true;
-        if (failure == 4) fail_lock = true;
-        const auto expected = failure == 2 ? ESP_ERR_TIMEOUT : ESP_FAIL;
-        assert(service->Present1Bpp(DisplayIntent::Auto, frame.data(), frame.size()) == expected);
-        if (failure == 2) assert(!HasCommand(0x02));
-        assert(!service->CanUsePartial());
-        const auto status = Inspect(*service);
-        assert(!status.framebuffer_valid && status.failed_refresh_count == 1 && status.last_error == expected);
-        timeout_refresh = false;
-        ClearTraffic();
-        // A failed power-off may leave a matching shadow. It still needs recovery.
-        Present(*service, frame);
-        CheckFull(frame);
-        assert(service->CanUsePartial() && Inspect(*service).framebuffer_valid);
+    for (bool full : {false, true}) {
+        for (int failure = 0; failure < 5; ++failure) {
+            Reset();
+            auto service = CreateService();
+            Frame frame;
+            frame.fill(0xff);
+            Present(*service, frame);
+            ToggleFirstPixels(frame, 12000);
+            Present(*service, frame);
+            assert(service->state().partial_changed_pixels == 12000);
+            if (full) ToggleFirstPixels(frame, 30000);
+            else PutBit(frame.data(), 50, 399, 299, false);
+            ClearTraffic();
+            if (failure == 0) fail_command = 0xe9;
+            if (failure == 1) fail_data = 0x10;
+            if (failure == 2) timeout_refresh = true;
+            if (failure == 3) fail_power_off = true;
+            if (failure == 4) fail_lock = true;
+            const auto expected = failure == 2 ? ESP_ERR_TIMEOUT : ESP_FAIL;
+            assert(service->Present1Bpp(DisplayIntent::Auto, frame.data(), frame.size()) == expected);
+            if (failure == 2) assert(!HasCommand(0x02));
+            assert(!service->CanUsePartial());
+            assert(service->state().partial_refresh_count == 0 && service->state().partial_changed_pixels == 0);
+            const auto status = Inspect(*service);
+            assert(!status.framebuffer_valid && status.failed_refresh_count == 1 && status.last_error == expected);
+            timeout_refresh = false;
+            ClearTraffic();
+            // A failed power-off may leave a matching shadow. It still needs recovery.
+            Present(*service, frame);
+            CheckFull(frame);
+            assert(service->CanUsePartial() && Inspect(*service).framebuffer_valid);
+            assert(service->state().partial_changed_pixels == 0);
+        }
     }
 }
 
@@ -400,6 +525,7 @@ void TestBatchAndGray() {
     assert(service->Present4Bpp(DisplayIntent::Quality, gray.data(), gray.size()) == ESP_OK);
     const auto inspection = Inspect(*service);
     assert(!service->CanUsePartial() && inspection.framebuffer_valid && inspection.bits_per_pixel == 4);
+    assert(inspection.state.partial_refresh_count == 0 && inspection.state.partial_changed_pixels == 0);
     assert(inspection.preview[0] == 0x73 && inspection.framebuffer_bytes == gray.size());
     ClearTraffic();
     Present(*service, frame);
@@ -539,6 +665,8 @@ esp_err_t spi_device_polling_transmit(spi_device_handle_t, spi_transaction_t* tr
 int main() {
     TestCreationAndInputErrors();
     TestAutomaticRefreshAndBudget();
+    TestHighContrastAndSparseChanges();
+    TestAccumulatedChanges();
     TestPatchCompatibility();
     TestDriverDiffAndWindow();
     TestFailuresRecoverWithFullFrame();
