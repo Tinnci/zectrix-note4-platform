@@ -28,6 +28,7 @@ using Frame = std::array<uint8_t, DisplayService::kFrameBytes1Bpp>;
 struct Packet { uint8_t command; std::vector<uint8_t> data; };
 std::vector<Packet> packets;
 std::array<int, 49> pins{};
+std::array<int, 49> modes{}, pullups{};
 std::map<void*, std::size_t> allocations;
 bool bus_active = false;
 unsigned devices = 0, mutexes = 0, gpio_writes = 0;
@@ -41,6 +42,8 @@ void Reset() {
     assert(!bus_active && devices == 0 && mutexes == 0 && allocations.empty());
     packets.clear();
     pins = {};
+    modes = {};
+    pullups = {};
     gpio_writes = nothrow_allocations = heap_allocations = 0;
     fail_allocation_at = fail_heap_at = 0;
     fail_command = fail_data = -1;
@@ -532,6 +535,41 @@ void TestBatchAndGray() {
     CheckFull(frame);
 }
 
+void TestShutdownReleasesSpi() {
+    for (unsigned failure = 0; failure < 5; ++failure) {
+        Reset();
+        auto service = CreateService();
+        ZectrixDemoUi ui(service.get());
+        if (failure == 1) assert(service->BeginBatch() == ESP_OK);
+        if (failure == 2) fail_data = 0x10;
+        if (failure == 3) timeout_refresh = true;
+        if (failure == 4) fail_power_off = true;
+        const auto cleared = ui.ClearDisplay();
+        assert((cleared == ESP_OK) == (failure < 2));
+        // Shutdown must release DMA, the SPI device and bus even if clearing
+        // failed or the application left an explicit power batch open.
+        service.reset();
+        assert(!bus_active && devices == 0 && mutexes == 0 && allocations.empty());
+        assert(pins[GPIO_NUM_6] == 0);
+        for (int pin : {GPIO_NUM_8, GPIO_NUM_9, GPIO_NUM_10, GPIO_NUM_11, GPIO_NUM_12, GPIO_NUM_13}) {
+            assert(modes[pin] == GPIO_MODE_DISABLE && pullups[pin] == GPIO_PULLUP_DISABLE);
+        }
+    }
+    Reset();
+    zectrix_epd_config_t config;
+    zectrix_epd_get_default_config(&config);
+    config.initialize_spi_bus = false;
+    bus_active = true;
+    modes[config.pin_mosi] = modes[config.pin_sclk] = GPIO_MODE_OUTPUT;
+    zectrix_epd_handle_t handle = nullptr;
+    assert(zectrix_epd_new(&config, &handle) == ESP_OK);
+    assert(zectrix_epd_del(handle) == ESP_OK);
+    assert(bus_active && devices == 0);
+    assert(modes[config.pin_mosi] == GPIO_MODE_OUTPUT && modes[config.pin_sclk] == GPIO_MODE_OUTPUT);
+    assert(spi_bus_free(config.spi_host) == ESP_OK);
+    Reset();
+}
+
 void TestUiTraffic() {
     Reset();
     auto service = CreateService();
@@ -607,7 +645,14 @@ int64_t esp_timer_get_time() { return now_us; }
 int64_t zectrix::time::TimeService::MonotonicMicroseconds() const { return now_us; }
 const char* ZectrixSelfTest::Name(ZectrixTestId) { return "test"; }
 const char* esp_err_to_name(esp_err_t err) { return err == ESP_OK ? "ESP_OK" : "ESP_FAIL"; }
-esp_err_t gpio_config(const gpio_config_t*) { return ESP_OK; }
+esp_err_t gpio_config(const gpio_config_t* config) {
+    for (unsigned pin = 0; pin < pins.size(); ++pin) {
+        if ((config->pin_bit_mask & (1ULL << pin)) == 0) continue;
+        modes[pin] = config->mode;
+        pullups[pin] = config->pull_up_en;
+    }
+    return ESP_OK;
+}
 esp_err_t gpio_set_level(gpio_num_t pin, int value) {
     ++gpio_writes;
     if (pin == GPIO_NUM_6 && value == 0 && fail_power_off) {
@@ -671,6 +716,7 @@ int main() {
     TestDriverDiffAndWindow();
     TestFailuresRecoverWithFullFrame();
     TestBatchAndGray();
+    TestShutdownReleasesSpi();
     TestUiTraffic();
     Reset();
 }

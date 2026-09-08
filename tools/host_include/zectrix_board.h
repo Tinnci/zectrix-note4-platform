@@ -33,6 +33,10 @@ struct ZectrixPowerSnapshot {
 class ZectrixBoard {
 public:
     esp_err_t Init();
+    esp_err_t ShutdownPeripherals() {
+        power_events[power_event_count++] = 6;
+        return peripheral_shutdown_result;
+    }
     bool WaitButton(ZectrixButtonEvent* event, TickType_t timeout_ticks) {
         last_timeout = timeout_ticks;
         if (on_wait != nullptr) {
@@ -68,7 +72,8 @@ public:
 
     bool HasRtc() const { return rtc_available; }
     bool HasNfc() const { return nfc_available; }
-    ZectrixNfc* nfc() const { return nullptr; }
+    ZectrixNfc* nfc() const { return nfc_device; }
+    inline static ZectrixNfc* nfc_device = nullptr;
     bool ReadRtc(tm* value) {
         if (!rtc_available || !rtc_io_ok || value == nullptr) return false;
         *value = rtc_value;
@@ -109,6 +114,7 @@ public:
     bool rtc_available = true;
     bool nfc_available = true;
     esp_err_t init_result = ESP_OK;
+    esp_err_t peripheral_shutdown_result = ESP_OK;
     bool rtc_io_ok = true;
     bool timer_flag = false;
     bool rtc_interrupt_active = false;

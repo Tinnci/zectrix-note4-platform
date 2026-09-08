@@ -10,6 +10,18 @@ AudioCodec::AudioCodec() {
 }
 
 AudioCodec::~AudioCodec() {
+    // The codec data interface borrows these channels; it does not delete them.
+    for (i2s_chan_handle_t channel : {rx_handle_, tx_handle_}) {
+        if (channel == nullptr) continue;
+        const esp_err_t stopped = i2s_channel_disable(channel);
+        if (stopped != ESP_OK && stopped != ESP_ERR_INVALID_STATE) {
+            ESP_LOGW(TAG, "I2S channel stop failed: %s", esp_err_to_name(stopped));
+        }
+        const esp_err_t released = i2s_del_channel(channel);
+        if (released != ESP_OK) {
+            ESP_LOGW(TAG, "I2S channel release failed: %s", esp_err_to_name(released));
+        }
+    }
 }
 
 void AudioCodec::OutputData(std::vector<int16_t>& data) {

@@ -146,8 +146,12 @@ numbers, FreeRTOS queues, and debounce thresholds remain inside board support.
 
 `PowerService` attaches to board support with a typed reference. It exposes
 logical battery, external-power, and wake-reason values. It owns the shutdown
-sequence and the deep-sleep call. Board GPIO and rail control remain inside
-board support.
+rail sequence and the deep-sleep call. The application owner enters shutdown
+through `Platform::Shutdown()` after its final display update. Platform first
+releases service consumers; PowerService then releases board peripherals
+before cutting rails. Board GPIO and rail control remain inside board support.
+See [`M2_PLATFORM_COMPOSITION.md`](M2_PLATFORM_COMPOSITION.md) for the cleanup
+order and Host coverage.
 
 `TimeService` attaches to board support with a typed reference. It owns the
 application monotonic-clock boundary, RTC calendar operations, and RTC

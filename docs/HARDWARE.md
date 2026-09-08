@@ -31,6 +31,13 @@ At boot, the demo asserts the battery latch before peripheral initialization.
 The display has a separate controlled rail and remains off until a refresh.
 The board initializes audio when the audio test first runs.
 
+Shutdown releases service and board peripherals before cutting the audio rail
+and battery latch. I2C, I2S and owned EPD signal pins are disconnected, and
+ESP32-S3 deep-sleep GPIO holds retain rail-off levels while USB supplies power.
+Host tests verify the driver calls and cleanup order. Current consumption and
+physical BLE/Wi-Fi coexistence still require board measurement with both
+battery and USB power configurations.
+
 Battery voltage is read through the board ADC path and displayed as both
 millivolts and an estimated percentage. The charging test combines charger
 status pins with the battery measurement to reject a false pass when no

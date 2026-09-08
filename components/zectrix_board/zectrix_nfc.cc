@@ -27,6 +27,8 @@ constexpr TickType_t kFieldEnterDebounce = pdMS_TO_TICKS(20);
 // while the phone is still using the RF session and interrupt its write.
 constexpr TickType_t kFieldExitConfirmInterval = pdMS_TO_TICKS(40);
 constexpr int kFieldExitConfirmSamples = 8;
+constexpr uint32_t kFieldChanged = 1U;
+constexpr uint32_t kStopFieldTask = 1U << 1;
 constexpr uint8_t kType2NdefTlv = 0x03;
 constexpr uint8_t kType2TerminatorTlv = 0xFE;
 constexpr uint8_t kType2LongLengthMarker = 0xFF;
@@ -267,8 +269,9 @@ bool ZectrixNfc::HasField() const {
 }
 
 void ZectrixNfc::SetFieldCallback(std::function<void(bool)> callback) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
     field_callback_ = std::move(callback);
+    field_callback_idle_.wait(lock, [this] { return field_callback_in_flight_ == 0; });
 }
 
 esp_err_t ZectrixNfc::ReadBlock(uint8_t block_addr, uint8_t out[kBlockSize]) {
@@ -623,7 +626,7 @@ void ZectrixNfc::FieldIsrHandler(void* arg) {
         return;
     }
     BaseType_t high_task_woken = pdFALSE;
-    vTaskNotifyGiveFromISR(self->field_task_, &high_task_woken);
+    xTaskNotifyFromISR(self->field_task_, kFieldChanged, eSetBits, &high_task_woken);
     if (high_task_woken == pdTRUE) {
         portYIELD_FROM_ISR();
     }
@@ -778,18 +781,21 @@ void ZectrixNfc::DispatchFieldState(bool field_present) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         callback = field_callback_;
+        if (callback) ++field_callback_in_flight_;
     }
     if (callback) {
         callback(field_present);
+        std::lock_guard<std::mutex> lock(mutex_);
+        --field_callback_in_flight_;
+        field_callback_idle_.notify_all();
     }
 }
 
 void ZectrixNfc::FieldTask() {
-    while (!field_task_stop_.load(std::memory_order_acquire)) {
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        if (field_task_stop_.load(std::memory_order_acquire)) {
-            break;
-        }
+    while (true) {
+        uint32_t events = 0;
+        xTaskNotifyWait(0, UINT32_MAX, &events, portMAX_DELAY);
+        if ((events & kStopFieldTask) != 0) break;
         vTaskDelay(kFieldEnterDebounce);
         bool field_present = IsPowered() && IsFieldLevelActive();
         const bool previously_present = field_present_.load(std::memory_order_acquire);
@@ -816,9 +822,10 @@ void ZectrixNfc::FieldTask() {
 
 void ZectrixNfc::StopFieldTask() {
     if (field_task_ == nullptr) return;
-    field_task_stop_.store(true, std::memory_order_release);
     gpio_isr_handler_remove(fd_gpio_);
-    xTaskNotifyGive(field_task_);
+    // The notification itself admits exit, so the task cannot self-delete
+    // between a separate stop flag publication and notification delivery.
+    xTaskNotify(field_task_, kStopFieldTask, eSetBits);
     if (field_task_done_ != nullptr) {
         // Object destruction cannot continue while FieldTask still owns this
         // object. Wait in bounded intervals so a delayed exit is visible in
@@ -831,5 +838,4 @@ void ZectrixNfc::StopFieldTask() {
         field_task_done_ = nullptr;
     }
     field_task_ = nullptr;
-    field_task_stop_.store(false, std::memory_order_release);
 }

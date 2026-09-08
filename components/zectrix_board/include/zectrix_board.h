@@ -14,6 +14,7 @@
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 
 class AudioCodec;
 class RtcPcf8563;
@@ -49,6 +50,9 @@ public:
     ~ZectrixBoard();
 
     esp_err_t Init();
+    // The lifecycle owner must first stop services using board devices.
+    // Safe after partial initialization and on repeated cleanup attempts.
+    esp_err_t ShutdownPeripherals();
     bool WaitButton(ZectrixButtonEvent* event, TickType_t timeout);
     void WakeButtonWait();
     void DrainButtons();
@@ -93,7 +97,8 @@ private:
     adc_cali_handle_t adc_cali_ = nullptr;
     QueueHandle_t button_queue_ = nullptr;
     std::atomic<bool> button_wait_wake_pending_{false};
-    TaskHandle_t button_task_ = nullptr;
+    SemaphoreHandle_t button_task_done_ = nullptr;
+    std::atomic<bool> button_task_stop_{false};
     std::unique_ptr<RtcPcf8563> rtc_;
     std::unique_ptr<ZectrixNfc> nfc_;
     std::unique_ptr<AudioCodec> audio_;

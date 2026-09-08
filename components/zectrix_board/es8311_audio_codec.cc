@@ -64,6 +64,11 @@ Es8311AudioCodec::Es8311AudioCodec(void* i2c_master_handle, i2c_port_t i2c_port,
 Es8311AudioCodec::~Es8311AudioCodec() {
     ScopedI2cBusLock bus_lock("Es8311AudioCodec::~Es8311AudioCodec");
     esp_codec_dev_delete(dev_);
+    if (pa_pin_ != GPIO_NUM_NC) {
+        gpio_hold_dis(pa_pin_);
+        gpio_set_level(pa_pin_, pa_inverted_ ? 1 : 0);
+        gpio_hold_en(pa_pin_);
+    }
 
     audio_codec_delete_codec_if(codec_if_);
     audio_codec_delete_ctrl_if(ctrl_if_);

@@ -28,6 +28,9 @@ public:
     // Application-owner safe points and shutdown admission control.
     void PollMaintenance();
     void StopMaintenance();
+    // Called by the application owner after its final display update. Releases
+    // service-owned peripherals before PowerService cuts rails and sleeps.
+    [[noreturn]] void Shutdown();
 
     // Initialize() must return ESP_OK before an application calls an accessor.
     // A contract violation stops in an assertion instead of dereferencing an
@@ -43,6 +46,7 @@ public:
     ZectrixSelfTest& Diagnostics() const;
 
 private:
+    void ReleaseServices();
     void ResetServices();
     struct Impl;
     Impl* impl_ = nullptr;

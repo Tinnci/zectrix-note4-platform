@@ -43,6 +43,37 @@ precondition before it returns a reference.
 If allocation fails before board initialization starts, the application can
 retry initialization on the same Platform object.
 
+## Product shutdown
+
+The application owner stops maintenance and connectivity, attempts its final
+display clear, then calls `Platform::Shutdown()`. A failed clear does not skip
+peripheral cleanup. Platform destroys connectivity before detaching NFC, and
+releases DisplayService before entering the final PowerService transition.
+Normal destruction and initialization failures use the same service cleanup.
+
+`PowerService::Shutdown()` first calls `ZectrixBoard::ShutdownPeripherals()`.
+The board joins button sampling, closes audio, stops NFC field processing,
+removes the RTC/NFC/codec I2C devices, deletes their bus and releases ADC and
+button queue storage. Cleanup also disconnects I2C and audio signal pins.
+The power owner then turns off the LED and audio rail, releases the battery
+latch and enters deep sleep. Digital GPIO holds preserve the disabled rails
+when USB keeps the ESP32-S3 powered. Cleanup errors are logged; they do not
+replace the final rail-off/deep-sleep fallback.
+
+NFC callback removal waits for any copied callback to return. The field task
+exits only after receiving its stop notification, and remains event-driven
+while idle. Audio self-test rounds have separate completion semaphores and
+join delayed playback before returning, including after a capture or playback
+timeout, so shutdown cannot delete a borrowed codec under the playback task.
+
+`tools/test-platform.sh` verifies service release before the power transition.
+`tools/test-power-service.sh` also compiles production board, audio, NFC and
+self-test code with SDK fakes. It covers partial initialization, active and
+closed audio, callback removal during execution, field-task stop interleaving,
+delayed playback, repeated cleanup and driver resource counts at rail-off.
+`tools/test-display-service.sh` verifies SPI/DMA release after failed clears
+and unfinished batches, including preservation of an externally owned bus.
+
 ## Application boundary
 
 Application code can use `Display()`, `Input()`, `Power()`, `Time()`, `Storage()`,
