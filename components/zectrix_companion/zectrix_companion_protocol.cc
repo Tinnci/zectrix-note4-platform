@@ -234,6 +234,12 @@ ProtocolStatus DecodeHelloAckStatusValue(const uint8_t* value,
         return ProtocolStatus::kInvalidArgument;
     }
     if (value_size != 4) return ProtocolStatus::kMalformedTlv;
+    if (value[0] > kHelloAckStatusRejected ||
+        (value[1] & ~kHelloAckPeerAuthorizedFlag) != 0 ||
+        (value[0] == kHelloAckStatusRejected && value[1] != 0) ||
+        (value[0] == kHelloAckStatusOk && GetUInt16(value + 2) != 0)) {
+        return ProtocolStatus::kMalformedTlv;
+    }
     *status = value[0];
     *flags = value[1];
     *error_reason = GetUInt16(value + 2);

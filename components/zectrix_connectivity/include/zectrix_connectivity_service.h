@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "zectrix_resource_client.h"
+#include "zectrix_sync_engine.h"
 
 namespace zectrix::nfc { class NfcService; }
 namespace zectrix::storage { class StorageService; }
@@ -49,6 +50,8 @@ struct ConnectivitySnapshot {
     // A successful NFC-assisted enrollment proof consumes the bootstrap token
     // and sets this flag for the current product session.
     bool peer_authorized = false;
+    bool sync_converged = false;
+    std::size_t pending_durable_states = 0;
     bool wifi_credentials_available = false;
     bool resource_busy = false;
     WifiBackendState wifi_state = WifiBackendState::kStopped;
@@ -84,6 +87,12 @@ public:
     ConnectivityResult RequestResource(
         const companion::ResourceRequestMessage& request);
     bool TakeResourceResponse(ResourceResponse* response);
+    companion::SyncStatus PutDurableState(uint16_t key, uint32_t revision,
+                                          const uint8_t* value, std::size_t size);
+    // Copies the last durably accepted value; callers apply revisioned state
+    // idempotently, without relying on a transient delivery callback.
+    companion::SyncStatus ReadDurableState(uint16_t key, uint32_t* revision,
+                                           uint8_t* value, std::size_t* size) const;
 
 private:
     struct Impl;

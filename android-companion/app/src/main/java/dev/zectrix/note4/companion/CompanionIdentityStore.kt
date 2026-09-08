@@ -23,6 +23,8 @@ import javax.crypto.spec.GCMParameterSpec
  * durable enrollment.
  */
 class CompanionIdentityStore(context: Context) {
+    var isDurable = false
+        private set
     private val preferences = context.applicationContext
         .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     private val keyStore: KeyStore? = try {
@@ -41,8 +43,9 @@ class CompanionIdentityStore(context: Context) {
                 stored.size > GCM_IV_SIZE -> decrypt(stored)
                 else -> null
             }
-            if (decoded != null && decoded.size == IDENTITY_SIZE) {
-                if (stored?.size == IDENTITY_SIZE && !persistIdentity(decoded)) {
+            if (decoded != null && decoded.size == IDENTITY_SIZE && decoded.any { it != 0.toByte() }) {
+                isDurable = stored?.size != IDENTITY_SIZE || persistIdentity(decoded)
+                if (!isDurable) {
                     clearIdentityEntry()
                     setEnrolled(false)
                 }
@@ -54,32 +57,34 @@ class CompanionIdentityStore(context: Context) {
         }
         val generated = ByteArray(IDENTITY_SIZE)
         SecureRandom().nextBytes(generated)
-        if (!persistIdentity(generated)) setEnrolled(false)
+        isDurable = persistIdentity(generated)
+        setEnrolled(false)
         return generated
     }
 
-    fun isEnrolled(): Boolean = preferences.getBoolean(KEY_ENROLLED, false)
+    fun isEnrolled(): Boolean = isDurable && preferences.getBoolean(KEY_ENROLLED, false)
 
-    fun setEnrolled(enrolled: Boolean) {
-        preferences.edit().putBoolean(KEY_ENROLLED, enrolled).apply()
+    fun setEnrolled(enrolled: Boolean): Boolean {
+        if (enrolled && !isDurable) return false
+        return preferences.edit().putBoolean(KEY_ENROLLED, enrolled).commit()
     }
 
     fun clear() {
+        isDurable = false
         clearIdentityEntry()
-        preferences.edit().remove(KEY_ENROLLED).apply()
+        preferences.edit().remove(KEY_ENROLLED).commit()
         deleteKeystoreKey()
     }
 
     private fun clearIdentityEntry() {
-        preferences.edit().remove(KEY_IDENTITY).apply()
+        preferences.edit().remove(KEY_IDENTITY).commit()
     }
 
     private fun persistIdentity(identity: ByteArray): Boolean {
         val stored = encrypt(identity) ?: return false
-        preferences.edit()
+        return preferences.edit()
             .putString(KEY_IDENTITY, Base64.encodeToString(stored, Base64.NO_WRAP))
-            .apply()
-        return true
+            .commit()
     }
 
     private fun decodeBase64(encoded: String): ByteArray? {

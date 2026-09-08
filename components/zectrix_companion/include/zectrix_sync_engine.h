@@ -10,7 +10,7 @@ constexpr std::size_t kDurableKeyCapacity = 8;
 constexpr std::size_t kDurableValueCapacity = 256;
 constexpr std::size_t kCommandDedupeCapacity = 16;
 constexpr std::size_t kCommandResultCapacity = 32;
-constexpr std::size_t kMaximumSyncRecordSize = 3072;
+constexpr std::size_t kMaximumSyncRecordSize = 5376;
 
 enum class StoreReadStatus : uint8_t {
     kOk = 0,
@@ -39,6 +39,19 @@ enum class SyncStatus : uint8_t {
     kCorruptStore,
     kApplyRequired,
     kDuplicate,
+    kResyncRequired,
+};
+
+struct SyncCursor {
+    uint16_t key = 0;
+    uint32_t outbound_acknowledged = 0;
+    uint32_t inbound_applied = 0;
+    uint32_t pending_revision = 0;
+};
+
+struct SyncCursors {
+    std::array<SyncCursor, kDurableKeyCapacity> entries{};
+    std::size_t count = 0;
 };
 
 struct DurableStateView {
@@ -69,6 +82,11 @@ public:
 
     SyncStatus InspectIncomingState(uint16_t key, uint32_t revision) const;
     SyncStatus CommitIncomingState(uint16_t key, uint32_t revision);
+    // Store the value and receive cursor in the same transaction before ACK.
+    SyncStatus AcceptIncomingState(const DurableStateView& state);
+    SyncStatus ReadIncomingState(uint16_t key, DurableStateView* state) const;
+    SyncCursors Cursors() const;
+    SyncStatus ReconcilePeerCursors(const SyncCursors& peer);
 
     SyncStatus RecordCommandResult(uint32_t request_id, uint16_t result,
                                    const uint8_t* payload,
@@ -106,11 +124,12 @@ private:
     void Reset();
     SyncStatus LoadState(const uint8_t* record, std::size_t size);
     SyncStatus Persist();
-    CursorEntry* FindOrCreateCursor(uint16_t key);
+    CursorEntry* FindCursorSlot(uint16_t key);
     const CursorEntry* FindCursor(uint16_t key) const;
 
     SyncStore* store_ = nullptr;
     std::array<DurableEntry, kDurableKeyCapacity> outbox_{};
+    std::array<DurableEntry, kDurableKeyCapacity> inbox_{};
     std::array<CursorEntry, kDurableKeyCapacity> cursors_{};
     std::array<CommandEntry, kCommandDedupeCapacity> commands_{};
     std::array<uint8_t, kMaximumSyncRecordSize> persistence_buffer_{};

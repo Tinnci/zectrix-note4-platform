@@ -12,6 +12,11 @@ namespace {
 constexpr uint32_t kMaximumDurationMs = 0x7fffffffU;
 constexpr uint32_t kDefaultDurationMs = 120000;
 
+void ClearToken(BootstrapToken& token) {
+    volatile uint8_t* bytes = token.data();
+    for (std::size_t i = 0; i < token.size(); ++i) bytes[i] = 0;
+}
+
 uint32_t SanitizeDuration(uint32_t value) {
     if (value == 0) return kDefaultDurationMs;
     return std::min(value, kMaximumDurationMs);
@@ -27,14 +32,16 @@ PairingBootstrap::PairingBootstrap(PairingBootstrapClock& clock,
     config_.pairing_window_ms = SanitizeDuration(config_.pairing_window_ms);
 }
 
-PairingBootstrap::~PairingBootstrap() { token_.fill(0); }
+PairingBootstrap::~PairingBootstrap() { ClearToken(token_); }
 
 BootstrapStatus PairingBootstrap::Prepare() {
     BootstrapToken generated{};
     if (!random_.Fill(&generated)) {
+        ClearToken(generated);
         return BootstrapStatus::kInvalidState;
     }
     token_ = generated;
+    ClearToken(generated);
     const uint32_t now = clock_.MonotonicMilliseconds();
     ++generation_;
     if (generation_ == 0) ++generation_;
@@ -55,10 +62,12 @@ BootstrapStatus PairingBootstrap::OpenPairingWindow() {
     if (state_ == BootstrapState::kPairingWindowOpen &&
         DeadlineReached(now, pairing_window_expires_at_ms_)) {
         state_ = BootstrapState::kExpired;
+        ClearToken(token_);
         return BootstrapStatus::kExpired;
     }
     if (IsExpired(now)) {
         state_ = BootstrapState::kExpired;
+        ClearToken(token_);
         return BootstrapStatus::kExpired;
     }
     if (state_ == BootstrapState::kPrepared) {
@@ -76,6 +85,7 @@ BootstrapStatus PairingBootstrap::BindSession(uint32_t ble_session_id) {
     const uint32_t now = clock_.MonotonicMilliseconds();
     if (IsExpired(now)) {
         state_ = BootstrapState::kExpired;
+        ClearToken(token_);
         return BootstrapStatus::kExpired;
     }
     if (session_id_ != 0 && session_id_ != ble_session_id) {
@@ -109,6 +119,7 @@ BootstrapStatus PairingBootstrap::ValidateEnrollmentProof(
     const uint32_t now = clock_.MonotonicMilliseconds();
     if (IsExpired(now)) {
         state_ = BootstrapState::kExpired;
+        ClearToken(token_);
         return BootstrapStatus::kExpired;
     }
     if (generation != generation_) {
@@ -124,12 +135,21 @@ BootstrapStatus PairingBootstrap::ValidateEnrollmentProof(
         return BootstrapStatus::kSessionMismatch;
     }
     session_id_ = ble_session_id;
-    token_.fill(0);
+    ClearToken(token_);
     state_ = BootstrapState::kConsumed;
     return BootstrapStatus::kOk;
 }
 
-BootstrapStatus PairingBootstrap::Material(BootstrapMaterial* output) const {
+BootstrapStatus PairingBootstrap::ValidateAndPersistEnrollmentProof(
+    uint32_t ble_session_id, uint32_t generation, const uint8_t* token,
+    std::size_t token_size, const std::function<bool()>& persist_identity) {
+    if (!persist_identity) return BootstrapStatus::kInvalidArgument;
+    const auto status = ValidateEnrollmentProof(ble_session_id, generation, token, token_size);
+    if (status != BootstrapStatus::kOk) return status;
+    return persist_identity() ? BootstrapStatus::kOk : BootstrapStatus::kStoreError;
+}
+
+BootstrapStatus PairingBootstrap::Material(BootstrapMaterial* output) {
     if (output == nullptr) return BootstrapStatus::kInvalidArgument;
     *output = {};
     if (state_ != BootstrapState::kPrepared &&
@@ -137,6 +157,8 @@ BootstrapStatus PairingBootstrap::Material(BootstrapMaterial* output) const {
         return BootstrapStatus::kInvalidState;
     }
     if (IsExpired(clock_.MonotonicMilliseconds())) {
+        state_ = BootstrapState::kExpired;
+        ClearToken(token_);
         return BootstrapStatus::kExpired;
     }
     output->generation = generation_;
@@ -146,7 +168,7 @@ BootstrapStatus PairingBootstrap::Material(BootstrapMaterial* output) const {
 }
 
 BootstrapStatus PairingBootstrap::Cancel() {
-    token_.fill(0);
+    ClearToken(token_);
     generation_ = 0;
     session_id_ = 0;
     prepared_at_ms_ = 0;

@@ -9,7 +9,7 @@ namespace zectrix::companion {
 namespace {
 
 constexpr uint32_t kStoreMagic = 0x4e59535aU;  // "ZSYN" on wire.
-constexpr uint16_t kStoreVersion = 1;
+constexpr uint16_t kStoreVersion = 2;
 constexpr uint16_t kStoreHeaderSize = 16;
 constexpr std::size_t kStoreCrcSize = 4;
 
@@ -17,6 +17,7 @@ enum class RecordType : uint8_t {
     kOutbox = 1,
     kCursor = 2,
     kCommand = 3,
+    kInbox = 4,
 };
 
 void PutUInt16(uint8_t* output, uint16_t value) {
@@ -119,6 +120,11 @@ SyncStatus SyncEngine::PutDurableState(uint16_t key, uint32_t revision,
         if (slot == nullptr) return SyncStatus::kOutboxFull;
     }
 
+    CursorEntry* reserved_cursor = FindCursorSlot(key);
+    if (reserved_cursor == nullptr) return SyncStatus::kOutboxFull;
+    const CursorEntry previous_cursor = *reserved_cursor;
+    reserved_cursor->key = key;
+    reserved_cursor->valid = true;
     const DurableEntry previous = *slot;
     slot->key = key;
     slot->revision = revision;
@@ -127,7 +133,10 @@ SyncStatus SyncEngine::PutDurableState(uint16_t key, uint32_t revision,
     if (value_size != 0) std::memcpy(slot->value.data(), value, value_size);
     slot->valid = true;
     const SyncStatus status = Persist();
-    if (status != SyncStatus::kOk) *slot = previous;
+    if (status != SyncStatus::kOk) {
+        *slot = previous;
+        *reserved_cursor = previous_cursor;
+    }
     return status;
 }
 
@@ -149,6 +158,7 @@ SyncStatus SyncEngine::NextDurableState(DurableStateView* state) const {
 SyncStatus SyncEngine::AcknowledgeDurableState(uint16_t key,
                                                uint32_t revision) {
     if (!IsInitialized()) return SyncStatus::kNotInitialized;
+    if (key == 0 || revision == 0) return SyncStatus::kInvalidArgument;
     DurableEntry* entry = nullptr;
     for (auto& candidate : outbox_) {
         if (candidate.valid && candidate.key == key) {
@@ -162,14 +172,17 @@ SyncStatus SyncEngine::AcknowledgeDurableState(uint16_t key,
                    ? SyncStatus::kDuplicate
                    : SyncStatus::kNotFound;
     }
-    if (revision < entry->revision) return SyncStatus::kStaleRevision;
     if (revision > entry->revision) return SyncStatus::kRevisionConflict;
 
-    CursorEntry* cursor = FindOrCreateCursor(key);
+    CursorEntry* cursor = FindCursorSlot(key);
     if (cursor == nullptr) return SyncStatus::kOutboxFull;
+    if (revision <= cursor->outbound_acknowledged) return SyncStatus::kDuplicate;
     const DurableEntry prior_entry = *entry;
     const CursorEntry prior_cursor = *cursor;
-    entry->valid = false;
+    // The session validates the exact ACK. A newer coalesced value stays pending.
+    if (revision == entry->revision) entry->valid = false;
+    cursor->key = key;
+    cursor->valid = true;
     cursor->outbound_acknowledged = revision;
     const SyncStatus status = Persist();
     if (status != SyncStatus::kOk) {
@@ -193,12 +206,150 @@ SyncStatus SyncEngine::InspectIncomingState(uint16_t key,
 SyncStatus SyncEngine::CommitIncomingState(uint16_t key, uint32_t revision) {
     const SyncStatus inspection = InspectIncomingState(key, revision);
     if (inspection != SyncStatus::kApplyRequired) return inspection;
-    CursorEntry* cursor = FindOrCreateCursor(key);
+    CursorEntry* cursor = FindCursorSlot(key);
     if (cursor == nullptr) return SyncStatus::kOutboxFull;
     const CursorEntry previous = *cursor;
+    DurableEntry* incoming = nullptr;
+    for (auto& entry : inbox_) {
+        if (entry.valid && entry.key == key) incoming = &entry;
+    }
+    const DurableEntry previous_value = incoming == nullptr ? DurableEntry{} : *incoming;
+    // This legacy API records externally persisted state, so an older inbox
+    // value must not be presented as the newly committed revision.
+    if (incoming != nullptr) incoming->valid = false;
+    cursor->key = key;
+    cursor->valid = true;
     cursor->inbound_applied = revision;
     const SyncStatus status = Persist();
-    if (status != SyncStatus::kOk) *cursor = previous;
+    if (status != SyncStatus::kOk) {
+        *cursor = previous;
+        if (incoming != nullptr) *incoming = previous_value;
+    }
+    return status;
+}
+
+SyncStatus SyncEngine::AcceptIncomingState(const DurableStateView& state) {
+    if (state.value_size > kDurableValueCapacity) return SyncStatus::kValueTooLarge;
+    if (state.value == nullptr && state.value_size != 0) return SyncStatus::kInvalidArgument;
+    const SyncStatus inspection = InspectIncomingState(state.key, state.revision);
+    DurableEntry* slot = nullptr;
+    for (auto& entry : inbox_) {
+        if (entry.valid && entry.key == state.key) { slot = &entry; break; }
+        if (!entry.valid && slot == nullptr) slot = &entry;
+    }
+    if (inspection == SyncStatus::kDuplicate) {
+        if (slot != nullptr && slot->valid && slot->revision == state.revision &&
+            (slot->value_size != state.value_size ||
+             (state.value_size != 0 && std::memcmp(slot->value.data(), state.value,
+                                                    state.value_size) != 0))) {
+            return SyncStatus::kRevisionConflict;
+        }
+        return inspection;
+    }
+    if (inspection != SyncStatus::kApplyRequired) return inspection;
+    CursorEntry* cursor = FindCursorSlot(state.key);
+    if (slot == nullptr || cursor == nullptr) return SyncStatus::kOutboxFull;
+    const auto previous_entry = *slot;
+    const auto previous_cursor = *cursor;
+    *slot = {};
+    slot->valid = true;
+    slot->key = state.key;
+    slot->revision = state.revision;
+    slot->value_size = static_cast<uint16_t>(state.value_size);
+    if (state.value_size != 0) std::memcpy(slot->value.data(), state.value, state.value_size);
+    cursor->valid = true;
+    cursor->key = state.key;
+    cursor->inbound_applied = state.revision;
+    const SyncStatus status = Persist();
+    if (status != SyncStatus::kOk) {
+        *slot = previous_entry;
+        *cursor = previous_cursor;
+    }
+    return status;
+}
+
+SyncStatus SyncEngine::ReadIncomingState(uint16_t key, DurableStateView* state) const {
+    if (!IsInitialized()) return SyncStatus::kNotInitialized;
+    if (key == 0 || state == nullptr) return SyncStatus::kInvalidArgument;
+    *state = {};
+    for (const auto& entry : inbox_) {
+        if (entry.valid && entry.key == key) {
+            *state = {entry.key, entry.revision, entry.value.data(), entry.value_size};
+            return SyncStatus::kOk;
+        }
+    }
+    return SyncStatus::kNotFound;
+}
+
+SyncCursors SyncEngine::Cursors() const {
+    SyncCursors result{};
+    for (const auto& cursor : cursors_) {
+        if (!cursor.valid) continue;
+        auto& entry = result.entries[result.count++];
+        entry = {cursor.key, cursor.outbound_acknowledged, cursor.inbound_applied, 0};
+        for (const auto& pending : outbox_) {
+            if (pending.valid && pending.key == cursor.key) entry.pending_revision = pending.revision;
+        }
+    }
+    return result;
+}
+
+SyncStatus SyncEngine::ReconcilePeerCursors(const SyncCursors& peer) {
+    if (!IsInitialized()) return SyncStatus::kNotInitialized;
+    if (peer.count > kDurableKeyCapacity) return SyncStatus::kInvalidArgument;
+    const SyncCursors local = Cursors();
+    auto find = [](const SyncCursors& cursors, uint16_t key) {
+        for (std::size_t i = 0; i < cursors.count; ++i) {
+            if (cursors.entries[i].key == key) return cursors.entries[i];
+        }
+        return SyncCursor{key, 0, 0, 0};
+    };
+    auto compatible = [](const SyncCursor& own, const SyncCursor& other) {
+        return other.inbound_applied >= own.outbound_acknowledged &&
+            other.inbound_applied <= std::max(own.outbound_acknowledged, own.pending_revision) &&
+            own.inbound_applied >= other.outbound_acknowledged &&
+            own.inbound_applied <= std::max(other.outbound_acknowledged, other.pending_revision);
+    };
+    std::size_t keys = local.count;
+    for (std::size_t i = 0; i < peer.count; ++i) {
+        const auto& other = peer.entries[i];
+        if (other.key == 0 || (other.pending_revision != 0 &&
+            other.pending_revision <= other.outbound_acknowledged)) return SyncStatus::kInvalidArgument;
+        for (std::size_t j = 0; j < i; ++j) {
+            if (peer.entries[j].key == other.key) return SyncStatus::kInvalidArgument;
+        }
+        if (FindCursor(other.key) == nullptr) ++keys;
+        if (!compatible(find(local, other.key), other)) return SyncStatus::kResyncRequired;
+    }
+    for (std::size_t i = 0; i < local.count; ++i) {
+        if (!compatible(local.entries[i], find(peer, local.entries[i].key))) {
+            return SyncStatus::kResyncRequired;
+        }
+    }
+    if (keys > kDurableKeyCapacity) return SyncStatus::kOutboxFull;
+    const auto previous_cursors = cursors_;
+    const auto previous_outbox = outbox_;
+    bool changed = false;
+    for (std::size_t i = 0; i < peer.count; ++i) {
+        const auto& other = peer.entries[i];
+        auto* cursor = FindCursorSlot(other.key);
+        changed |= !cursor->valid || cursor->outbound_acknowledged != other.inbound_applied;
+        cursor->valid = true;
+        cursor->key = other.key;
+        cursor->outbound_acknowledged = other.inbound_applied;
+        for (auto& pending : outbox_) {
+            if (pending.valid && pending.key == other.key && pending.revision <= other.inbound_applied) {
+                pending.valid = false;
+                changed = true;
+            }
+        }
+    }
+    if (!changed) return SyncStatus::kOk;
+    const auto status = Persist();
+    if (status != SyncStatus::kOk) {
+        cursors_ = previous_cursors;
+        outbox_ = previous_outbox;
+    }
     return status;
 }
 
@@ -279,6 +430,7 @@ std::size_t SyncEngine::PendingDurableCount() const {
 void SyncEngine::Reset() {
     store_ = nullptr;
     outbox_ = {};
+    inbox_ = {};
     cursors_ = {};
     commands_ = {};
     persistence_buffer_.fill(0);
@@ -293,7 +445,7 @@ SyncStatus SyncEngine::LoadState(const uint8_t* record, std::size_t size) {
         return SyncStatus::kCorruptStore;
     }
     if (GetUInt32(record) != kStoreMagic ||
-        GetUInt16(record + 4) != kStoreVersion ||
+        (GetUInt16(record + 4) != 1 && GetUInt16(record + 4) != kStoreVersion) ||
         GetUInt16(record + 6) != kStoreHeaderSize ||
         GetUInt16(record + 14) != 0) {
         return SyncStatus::kCorruptStore;
@@ -318,14 +470,16 @@ SyncStatus SyncEngine::LoadState(const uint8_t* record, std::size_t size) {
         if (content_size > body_end - offset) return SyncStatus::kCorruptStore;
         const uint8_t* content = record + offset;
 
-        if (type == RecordType::kOutbox) {
+        if (type == RecordType::kOutbox || type == RecordType::kInbox) {
+            if (type == RecordType::kInbox && GetUInt16(record + 4) == 1) return SyncStatus::kCorruptStore;
             if (content_size < 8) return SyncStatus::kCorruptStore;
             const std::size_t value_size = GetUInt16(content + 6);
             if (value_size > kDurableValueCapacity || 8 + value_size != content_size) {
                 return SyncStatus::kCorruptStore;
             }
             DurableEntry* slot = nullptr;
-            for (auto& entry : outbox_) {
+            auto& values = type == RecordType::kOutbox ? outbox_ : inbox_;
+            for (auto& entry : values) {
                 if (entry.valid && entry.key == GetUInt16(content)) {
                     return SyncStatus::kCorruptStore;
                 }
@@ -386,6 +540,20 @@ SyncStatus SyncEngine::LoadState(const uint8_t* record, std::size_t size) {
         }
         offset += content_size;
     }
+    // Version 1 did not reserve cursors for pending keys. Migrate only a
+    // consistent bounded key set, without acknowledging or discarding data.
+    for (const auto& entry : outbox_) {
+        if (!entry.valid) continue;
+        auto* cursor = FindCursorSlot(entry.key);
+        if (cursor == nullptr || entry.revision <= cursor->outbound_acknowledged) return SyncStatus::kCorruptStore;
+        cursor->valid = true;
+        cursor->key = entry.key;
+    }
+    for (const auto& entry : inbox_) {
+        if (!entry.valid) continue;
+        const auto* cursor = FindCursor(entry.key);
+        if (cursor == nullptr || cursor->inbound_applied != entry.revision) return SyncStatus::kCorruptStore;
+    }
     next_command_stamp_ = maximum_stamp + 1;
     if (next_command_stamp_ == 0) next_command_stamp_ = 1;
     return SyncStatus::kOk;
@@ -401,11 +569,12 @@ SyncStatus SyncEngine::Persist() {
     PutUInt32(output.data() + 8, generation_ + 1);
     std::size_t offset = kStoreHeaderSize;
 
-    for (const auto& entry : outbox_) {
+    for (const auto type : {RecordType::kOutbox, RecordType::kInbox}) {
+      for (const auto& entry : (type == RecordType::kOutbox ? outbox_ : inbox_)) {
         if (!entry.valid) continue;
         const std::size_t content_size = 8 + entry.value_size;
         if (!AddRecordHeader(output.data(), output.size(), &offset,
-                             RecordType::kOutbox, content_size)) {
+                             type, content_size)) {
             return SyncStatus::kStoreError;
         }
         PutUInt16(output.data() + offset, entry.key);
@@ -414,6 +583,7 @@ SyncStatus SyncEngine::Persist() {
         std::memcpy(output.data() + offset + 8, entry.value.data(),
                     entry.value_size);
         offset += content_size;
+      }
     }
     for (const auto& entry : cursors_) {
         if (!entry.valid) continue;
@@ -456,15 +626,11 @@ SyncStatus SyncEngine::Persist() {
     return SyncStatus::kOk;
 }
 
-SyncEngine::CursorEntry* SyncEngine::FindOrCreateCursor(uint16_t key) {
+SyncEngine::CursorEntry* SyncEngine::FindCursorSlot(uint16_t key) {
     CursorEntry* free_entry = nullptr;
     for (auto& entry : cursors_) {
         if (entry.valid && entry.key == key) return &entry;
         if (!entry.valid && free_entry == nullptr) free_entry = &entry;
-    }
-    if (free_entry != nullptr) {
-        free_entry->key = key;
-        free_entry->valid = true;
     }
     return free_entry;
 }

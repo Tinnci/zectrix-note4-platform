@@ -15,7 +15,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Implement `zectrix_wifi_http.cc` using `esp_http_client`.
   - Wire `ConnectivityPolicy` to trigger direct Wi-Fi fetch when phone proxy is unavailable.
   - Implement automatic radio shutdown (power save) after transfer completion.
-- [ ] **C1.3: Companion Sync Protocol Hardening & Durable Reconnect**
+- [x] **C1.3: Companion Sync Protocol Hardening & Durable Reconnect**
   - Verify sequence cursor exchange on BLE reconnect.
   - Ensure unacknowledged durable mutations survive disconnects.
   - Implement single-use NFC enrollment token verification flow.

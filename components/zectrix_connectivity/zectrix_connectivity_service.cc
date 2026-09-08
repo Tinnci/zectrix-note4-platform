@@ -22,6 +22,7 @@
 #include "zectrix_pairing_bootstrap.h"
 #include "zectrix_power_service.h"
 #include "zectrix_storage_service.h"
+#include "zectrix_sync_session.h"
 #include "zectrix_wifi_credentials.h"
 #include "zectrix_wifi_esp_driver.h"
 
@@ -42,6 +43,10 @@ constexpr uint16_t kEnrollmentErrorIdentityMismatch = 5;
 constexpr uint16_t kEnrollmentErrorNoStoredIdentity = 6;
 constexpr uint16_t kEnrollmentErrorUnknownRequiredField = 7;
 constexpr uint16_t kEnrollmentErrorDuplicateField = 8;
+constexpr uint16_t kEnrollmentErrorStore = 9;
+constexpr uint16_t kEnrollmentErrorSyncRequired = 10;
+constexpr uint16_t kEnrollmentErrorSyncCursors = 11;
+constexpr char kSyncStateKey[] = "comp_sync";
 
 ConnectivityResult Map(companion::LinkResult result) {
     switch (result) {
@@ -98,7 +103,8 @@ void LogEnrollmentRejection(const char* reason, uint32_t session_id) {
 
 }  // namespace
 
-struct ConnectivityService::Impl : PhoneResourceSender {
+struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
+                                   companion::SyncFrameSender {
     BleLink ble;
     nfc::NfcService* nfc_service = nullptr;
     storage::StorageService* storage_service = nullptr;
@@ -131,6 +137,30 @@ struct ConnectivityService::Impl : PhoneResourceSender {
     uint32_t next_outbound_sequence = 1;
     std::array<uint8_t, 64> resource_payload{};
     std::array<uint8_t, companion::kMaximumFrameSize> resource_frame{};
+    companion::SyncEngine sync_engine;
+    companion::SyncSession sync_session{sync_engine};
+
+    companion::StoreReadStatus Load(uint8_t* output, std::size_t capacity,
+                                    std::size_t* output_size) override {
+        if (storage_service == nullptr) return companion::StoreReadStatus::kError;
+        std::size_t size = 0;
+        const auto result = storage_service->GetBlob(kSyncStateKey, nullptr, &size);
+        if (result == ESP_ERR_NOT_FOUND) return companion::StoreReadStatus::kNotFound;
+        if (result != ESP_OK) return companion::StoreReadStatus::kError;
+        *output_size = size;
+        if (size > capacity) return companion::StoreReadStatus::kOk;
+        return storage_service->GetBlob(kSyncStateKey, output, output_size) == ESP_OK
+            ? companion::StoreReadStatus::kOk : companion::StoreReadStatus::kError;
+    }
+
+    bool Save(const uint8_t* input, std::size_t size) override {
+        return storage_service != nullptr &&
+            storage_service->SetBlob(kSyncStateKey, input, size) == ESP_OK;
+    }
+
+    companion::LinkResult SendSyncFrame(const uint8_t* frame, std::size_t size) override {
+        return ble.SendForSession(protocol_session_id.load(), frame, size);
+    }
 
     bool IsSessionPeerAuthorized(const BleSnapshot& link) const {
         return link.state == BleState::kTransportReady &&
@@ -158,30 +188,35 @@ struct ConnectivityService::Impl : PhoneResourceSender {
         if (!clear_bonds_requested.exchange(false, std::memory_order_acquire)) {
             return;
         }
-        const ConnectivityResult result = Map(ble.ClearBonds());
+        ConnectivityResult result = Map(ble.ClearBonds());
         if (result == ConnectivityResult::kOk) {
             peer_authorized.store(false, std::memory_order_release);
             peer_authorized_session_id.store(0, std::memory_order_release);
-            stored_companion_id_valid = false;
-            stored_companion_id.fill(0);
+            xSemaphoreTake(resource_mutex, portMAX_DELAY);
+            sync_session.Disconnect();
             if (storage_service != nullptr &&
                 storage_service->IsInitialized()) {
-                const esp_err_t erased =
-                    storage_service->Erase(kCompanionIdentityKey);
+                // Forget durable state before allowing a different identity.
+                esp_err_t erased = storage_service->Erase(kSyncStateKey);
+                if (erased == ESP_OK || erased == ESP_ERR_NOT_FOUND) {
+                    if (sync_engine.Initialize(*this) == companion::SyncStatus::kOk) {
+                        erased = storage_service->Erase(kCompanionIdentityKey);
+                    } else erased = ESP_FAIL;
+                }
                 if (erased != ESP_OK && erased != ESP_ERR_NOT_FOUND) {
-                    ESP_LOGW(kTag,
-                             "event=companion_identity_erase_failed reason=%s",
+                    result = ConnectivityResult::kTransportError;
+                    ESP_LOGW(kTag, "event=companion_reset_failed reason=%s",
                              esp_err_to_name(erased));
+                } else {
+                    stored_companion_id_valid = false;
+                    stored_companion_id.fill(0);
                 }
-            }
+            } else result = ConnectivityResult::kUnavailable;
             if (bootstrap != nullptr) bootstrap->Cancel();
-            if (resource_mutex != nullptr) {
-                xSemaphoreTake(resource_mutex, portMAX_DELAY);
-                if (resource_client != nullptr) {
-                    resource_client->PhoneDisconnected(MonotonicMilliseconds());
-                }
-                xSemaphoreGive(resource_mutex);
+            if (resource_client != nullptr) {
+                resource_client->PhoneDisconnected(MonotonicMilliseconds());
             }
+            xSemaphoreGive(resource_mutex);
         }
         clear_bonds_result.store(result, std::memory_order_release);
         xSemaphoreGive(clear_bonds_done);
@@ -279,13 +314,10 @@ struct ConnectivityService::Impl : PhoneResourceSender {
                                          const BleSnapshot& link,
                                          const companion::FrameView& frame) {
         HelloAckDecision decision{};
-        if (frame.payload_size == 0) {
-            decision.peer_authorized = IsSessionPeerAuthorized(link);
-            return decision;
-        }
-
         bool has_proof = false;
         bool has_identity = false;
+        bool has_cursors = false;
+        companion::SyncCursors peer_cursors{};
         uint32_t proof_generation = 0;
         uint8_t proof_token[16] = {};
         uint8_t proof_companion_id[16] = {};
@@ -340,6 +372,14 @@ struct ConnectivityService::Impl : PhoneResourceSender {
                     decision.error_reason = kEnrollmentErrorMalformedProof;
                     return decision;
                 }
+            } else if (field.type == companion::kHelloSyncCursorsType) {
+                if (has_cursors || companion::DecodeSyncCursors(
+                        field.value, field.value_size, &peer_cursors) != companion::ProtocolStatus::kOk) {
+                    decision.status = companion::kHelloAckStatusRejected;
+                    decision.error_reason = kEnrollmentErrorSyncCursors;
+                    return decision;
+                }
+                has_cursors = true;
             } else if (field.required) {
                 LogEnrollmentRejection("unknown_required_field", session_id);
                 decision.status = companion::kHelloAckStatusRejected;
@@ -348,13 +388,25 @@ struct ConnectivityService::Impl : PhoneResourceSender {
             }
         }
 
+        if (!has_cursors || (has_proof && has_identity)) {
+            decision.status = companion::kHelloAckStatusRejected;
+            decision.error_reason = !has_cursors ? kEnrollmentErrorSyncRequired : kEnrollmentErrorDuplicateField;
+            return decision;
+        }
         if (!has_proof && !has_identity) {
             ESP_LOGI(kTag, "event=hello_received session=%lu proof=absent",
                      static_cast<unsigned long>(session_id));
-            decision.peer_authorized = IsSessionPeerAuthorized(link);
+            decision.status = companion::kHelloAckStatusRejected;
+            decision.error_reason = kEnrollmentErrorNoStoredIdentity;
             return decision;
         }
 
+        if (has_proof && stored_companion_id_valid && !ConstantTimeEqual(
+                proof_companion_id, stored_companion_id.data(), stored_companion_id.size())) {
+            decision.status = companion::kHelloAckStatusRejected;
+            decision.error_reason = kEnrollmentErrorIdentityMismatch;
+            return decision;
+        }
         if (has_proof) {
             if (bootstrap == nullptr) {
                 LogEnrollmentRejection("missing_bootstrap", session_id);
@@ -370,26 +422,29 @@ struct ConnectivityService::Impl : PhoneResourceSender {
                 // check and token consumption.
                 const bool session_current = ble.WithCurrentTransportSession(
                     session_id, [&]() {
-                        status = bootstrap->ValidateEnrollmentProof(
+                        status = bootstrap->ValidateAndPersistEnrollmentProof(
                             session_id, proof_generation, proof_token,
-                            sizeof(proof_token));
+                            sizeof(proof_token), [&]() {
+                                return PersistCompanionIdentity(proof_companion_id, proof_generation);
+                            });
+                        if (status == companion::BootstrapStatus::kOk) SetSessionPeerAuthorized(session_id);
                     });
                 if (!session_current) {
                     LogEnrollmentRejection("session_changed", session_id);
                     peer_authorized.store(false, std::memory_order_release);
                     decision.status = companion::kHelloAckStatusRejected;
                     decision.error_reason = kEnrollmentErrorSessionBindFailed;
+                } else if (status == companion::BootstrapStatus::kStoreError) {
+                    peer_authorized.store(false, std::memory_order_release);
+                    decision.status = companion::kHelloAckStatusRejected;
+                    decision.error_reason = kEnrollmentErrorStore;
                 } else if (status != companion::BootstrapStatus::kOk) {
                     LogEnrollmentRejection("invalid_proof", session_id);
                     peer_authorized.store(false, std::memory_order_release);
                     decision.status = companion::kHelloAckStatusRejected;
                     decision.error_reason = kEnrollmentErrorInvalidProof;
                 } else {
-                    PersistCompanionIdentity(proof_companion_id,
-                                             proof_generation);
-                    SetSessionPeerAuthorized(session_id);
-                    ESP_LOGI(kTag,
-                             "event=companion_enrolled session=%lu generation=%lu",
+                    ESP_LOGI(kTag, "event=companion_enrolled session=%lu generation=%lu",
                              static_cast<unsigned long>(session_id),
                              static_cast<unsigned long>(proof_generation));
                 }
@@ -410,23 +465,37 @@ struct ConnectivityService::Impl : PhoneResourceSender {
                 decision.status = companion::kHelloAckStatusRejected;
                 decision.error_reason = kEnrollmentErrorIdentityMismatch;
             } else {
-                SetSessionPeerAuthorized(session_id);
-                ESP_LOGI(kTag, "event=companion_reconnected session=%lu",
-                         static_cast<unsigned long>(session_id));
+                if (!ble.WithCurrentTransportSession(session_id, [&]() {
+                        SetSessionPeerAuthorized(session_id);
+                    })) {
+                    decision.status = companion::kHelloAckStatusRejected;
+                    decision.error_reason = kEnrollmentErrorSessionBindFailed;
+                }
             }
         }
 
         if (decision.status == companion::kHelloAckStatusOk) {
             decision.peer_authorized = IsSessionPeerAuthorized(link);
+            xSemaphoreTake(resource_mutex, portMAX_DELAY);
+            const auto status = sync_session.Start(peer_cursors, MonotonicMilliseconds(), frame.header.sequence);
+            xSemaphoreGive(resource_mutex);
+            if (status != companion::SyncStatus::kOk) {
+                decision.status = companion::kHelloAckStatusRejected;
+                decision.peer_authorized = false;
+                decision.error_reason = status == companion::SyncStatus::kStoreError ||
+                    status == companion::SyncStatus::kNotInitialized ? kEnrollmentErrorStore : kEnrollmentErrorSyncCursors;
+                ESP_LOGW(kTag, "event=sync_reconcile_failed status=%u", static_cast<unsigned>(status));
+            }
         }
+        if (decision.status != companion::kHelloAckStatusOk) peer_authorized.store(false);
         return decision;
     }
 
-    void PersistCompanionIdentity(const uint8_t companion_id[16],
+    bool PersistCompanionIdentity(const uint8_t companion_id[16],
                                   uint32_t generation) {
         if (storage_service == nullptr || !storage_service->IsInitialized()) {
             ESP_LOGW(kTag, "event=companion_identity_persist_skipped");
-            return;
+            return false;
         }
         companion::CompanionIdentityRecord record{};
         record.magic = kCompanionIdentityMagic;
@@ -441,13 +510,14 @@ struct ConnectivityService::Impl : PhoneResourceSender {
         if (err != ESP_OK) {
             ESP_LOGW(kTag, "event=companion_identity_persist_failed reason=%s",
                      esp_err_to_name(err));
-            return;
+            return false;
         }
         std::memcpy(stored_companion_id.data(), companion_id,
                     stored_companion_id.size());
         stored_companion_id_valid = true;
         ESP_LOGI(kTag, "event=companion_identity_persisted generation=%lu",
                  static_cast<unsigned long>(generation));
+        return true;
     }
 
     void LoadCompanionIdentity() {
@@ -488,6 +558,7 @@ struct ConnectivityService::Impl : PhoneResourceSender {
         if (resource_mutex == nullptr) return;
         xSemaphoreTake(resource_mutex, portMAX_DELAY);
         next_outbound_sequence = 1;
+        sync_session.Disconnect();
         resource_phone_session = 0;
         if (resource_client != nullptr) {
             resource_client->PhoneDisconnected(MonotonicMilliseconds());
@@ -498,8 +569,10 @@ struct ConnectivityService::Impl : PhoneResourceSender {
     uint32_t NextResourceWakeMs() {
         if (resource_mutex == nullptr) return UINT32_MAX;
         xSemaphoreTake(resource_mutex, portMAX_DELAY);
-        const uint32_t next = resource_client == nullptr ? UINT32_MAX
+        const uint32_t resource_next = resource_client == nullptr ? UINT32_MAX
             : resource_client->NextWakeMs(MonotonicMilliseconds());
+        const uint32_t next = std::min(resource_next, sync_session.NextWakeMs(MonotonicMilliseconds(),
+            resource_client == nullptr || !resource_client->AwaitingPhone()));
         xSemaphoreGive(resource_mutex);
         return next;
     }
@@ -507,8 +580,21 @@ struct ConnectivityService::Impl : PhoneResourceSender {
     void PollResource(const BleSnapshot& link) {
         if (resource_mutex == nullptr || resource_client == nullptr) return;
         xSemaphoreTake(resource_mutex, portMAX_DELAY);
+        if (IsSessionPeerAuthorized(link) && protocol_negotiated_local.load()) {
+            sync_session.Poll(*this, next_outbound_sequence, MonotonicMilliseconds(),
+                              !resource_client->AwaitingPhone());
+            const auto status = sync_session.Status();
+            if (status != companion::SyncSessionStatus::kActive &&
+                status != companion::SyncSessionStatus::kDisconnected) {
+                ESP_LOGW(kTag, "event=sync_session_failed session=%lu status=%u",
+                         static_cast<unsigned long>(link.session_id), static_cast<unsigned>(status));
+                peer_authorized.store(false);
+                ble.DisconnectSession(link.session_id);
+            }
+        }
         resource_conditions.phone = IsSessionPeerAuthorized(link) &&
-            protocol_negotiated_local.load()
+            protocol_negotiated_local.load() &&
+            (sync_session.Converged() || resource_client->AwaitingPhone())
                 ? companion::PhoneAvailability::kConnected
                 : companion::PhoneAvailability::kUnavailable;
         resource_client->Poll(resource_conditions, MonotonicMilliseconds());
@@ -521,7 +607,7 @@ struct ConnectivityService::Impl : PhoneResourceSender {
         uint32_t request_id,
         const companion::ResourceRequestMessage& request) override {
         const BleSnapshot link = ble.Snapshot();
-        if (!IsSessionPeerAuthorized(link) || !protocol_negotiated_local.load()) {
+        if (!IsSessionPeerAuthorized(link) || !protocol_negotiated_local.load() || !sync_session.Converged()) {
             return companion::LinkResult::kUnavailable;
         }
         const uint32_t sequence = next_outbound_sequence++;
@@ -582,6 +668,18 @@ struct ConnectivityService::Impl : PhoneResourceSender {
         return consumed;
     }
 
+    bool ProcessSyncFrame(uint32_t session_id, const companion::FrameView& frame) {
+        xSemaphoreTake(resource_mutex, portMAX_DELAY);
+        bool consumed = false;
+        ble.WithCurrentTransportSession(session_id, [&]() {
+            if (peer_authorized.load() && peer_authorized_session_id.load() == session_id) {
+                consumed = sync_session.Receive(frame);
+            }
+        });
+        xSemaphoreGive(resource_mutex);
+        return consumed;
+    }
+
     static void SessionTask(void* argument) {
         auto* self = static_cast<Impl*>(argument);
         while (!self->stop_session_task.load()) {
@@ -633,7 +731,8 @@ struct ConnectivityService::Impl : PhoneResourceSender {
                         companion::kProtocolMinor, &frame);
                 const bool consumed =
                     decoded == companion::ProtocolStatus::kOk &&
-                    self->ProcessResourceResponse(received_session_id, frame);
+                    (self->ProcessSyncFrame(received_session_id, frame) ||
+                     self->ProcessResourceResponse(received_session_id, frame));
                 self->ble.ReleaseReceivedFrame();
                 if (!consumed) {
                     ESP_LOGW(kTag,
@@ -670,7 +769,8 @@ struct ConnectivityService::Impl : PhoneResourceSender {
                 frame.header.message_class == companion::MessageClass::kControl &&
                 frame.header.message_type ==
                     static_cast<uint16_t>(companion::ControlMessage::kHello) &&
-                (frame.header.flags & companion::kResponse) == 0;
+                frame.header.flags == 0 && frame.header.request_id != 0 &&
+                frame.header.sequence == 1;
             if (!hello) {
                 self->ble.ReleaseReceivedFrame();
                 ESP_LOGW(kTag,
@@ -695,9 +795,20 @@ struct ConnectivityService::Impl : PhoneResourceSender {
                 decision.error_reason, status_value.data(),
                 status_value.size(), &status_size);
 
-            std::array<uint8_t, companion::kFrameHeaderSize +
-                                   companion::kHelloAckStatusValueSize>
-                response{};
+            std::array<uint8_t, 8 + 4 + companion::kSyncCursorValueSize> payload{};
+            companion::TlvWriter writer(payload.data(), payload.size());
+            writer.Add(companion::kRequiredFieldBit | companion::kHelloAckStatusType,
+                       status_value.data(), status_size);
+            if (decision.status == companion::kHelloAckStatusOk && decision.peer_authorized) {
+                std::array<uint8_t, companion::kSyncCursorValueSize> cursors{};
+                std::size_t cursor_size = 0;
+                xSemaphoreTake(self->resource_mutex, portMAX_DELAY);
+                companion::EncodeSyncCursors(self->sync_engine.Cursors(), cursors.data(), cursors.size(), &cursor_size);
+                xSemaphoreGive(self->resource_mutex);
+                writer.Add(companion::kRequiredFieldBit | companion::kHelloSyncCursorsType,
+                           cursors.data(), cursor_size);
+            }
+            std::array<uint8_t, companion::kFrameHeaderSize + payload.size()> response{};
             std::size_t response_size = 0;
             companion::FrameHeader header{};
             header.message_class = companion::MessageClass::kControl;
@@ -706,7 +817,7 @@ struct ConnectivityService::Impl : PhoneResourceSender {
                 companion::ControlMessage::kHelloAck);
             header.request_id = request_id;
             header.sequence = sequence;
-            if (companion::EncodeFrame(header, status_value.data(), status_size,
+            if (companion::EncodeFrame(header, payload.data(), writer.Size(),
                                        response.data(), response.size(),
                                        &response_size) ==
                     companion::ProtocolStatus::kOk &&
@@ -714,7 +825,7 @@ struct ConnectivityService::Impl : PhoneResourceSender {
                 self->ble.SendForSession(received_session_id, response.data(),
                                          response_size) ==
                     companion::LinkResult::kOk) {
-                self->protocol_negotiated_local.store(true);
+                self->protocol_negotiated_local.store(decision.status == companion::kHelloAckStatusOk);
                 ESP_LOGI(kTag,
                          "event=protocol_negotiated_local session=%lu request=%lu authorized=%d",
                          static_cast<unsigned long>(link.session_id),
@@ -843,6 +954,10 @@ ConnectivityResult ConnectivityService::Initialize() {
     if (result != ConnectivityResult::kOk) return result;
 
     impl_->LoadCompanionIdentity();
+    const auto sync_status = impl_->sync_engine.Initialize(*impl_);
+    if (sync_status != companion::SyncStatus::kOk) {
+        ESP_LOGW(kTag, "event=sync_store_load status=%u", static_cast<unsigned>(sync_status));
+    }
 
     if (impl_->nfc_service != nullptr) {
         impl_->bootstrap.reset(new (std::nothrow)
@@ -973,6 +1088,9 @@ ConnectivitySnapshot ConnectivityService::Snapshot() const {
         snapshot.resource_busy = impl_->resource_client->Busy();
         snapshot.wifi_state = impl_->resource_client->WifiState();
         snapshot.resource_decision = impl_->resource_client->Decision();
+        snapshot.sync_converged = snapshot.peer_authorized && snapshot.protocol_negotiated_local &&
+            impl_->sync_session.Converged();
+        snapshot.pending_durable_states = impl_->sync_engine.PendingDurableCount();
         xSemaphoreGive(impl_->resource_mutex);
     }
     switch (ble.state) {
@@ -1081,6 +1199,39 @@ bool ConnectivityService::TakeResourceResponse(ResourceResponse* response) {
     xSemaphoreGive(impl_->resource_mutex);
     if (received) impl_->ble.WakeSessionWaiter();
     return received;
+}
+
+companion::SyncStatus ConnectivityService::PutDurableState(
+    uint16_t key, uint32_t revision, const uint8_t* value, std::size_t size) {
+    if (impl_ == nullptr || !impl_->initialized.load() || impl_->resource_mutex == nullptr) {
+        return companion::SyncStatus::kNotInitialized;
+    }
+    xSemaphoreTake(impl_->resource_mutex, portMAX_DELAY);
+    const auto status = impl_->sync_engine.PutDurableState(key, revision, value, size);
+    xSemaphoreGive(impl_->resource_mutex);
+    if (status == companion::SyncStatus::kOk) impl_->ble.WakeSessionWaiter();
+    return status;
+}
+
+companion::SyncStatus ConnectivityService::ReadDurableState(
+    uint16_t key, uint32_t* revision, uint8_t* value, std::size_t* size) const {
+    if (impl_ == nullptr || !impl_->initialized.load() || impl_->resource_mutex == nullptr) {
+        return companion::SyncStatus::kNotInitialized;
+    }
+    if (revision == nullptr || size == nullptr || value == nullptr) return companion::SyncStatus::kInvalidArgument;
+    xSemaphoreTake(impl_->resource_mutex, portMAX_DELAY);
+    companion::DurableStateView state{};
+    auto status = impl_->sync_engine.ReadIncomingState(key, &state);
+    if (status == companion::SyncStatus::kOk) {
+        if (*size < state.value_size) status = companion::SyncStatus::kValueTooLarge;
+        else {
+            *revision = state.revision;
+            std::memcpy(value, state.value, state.value_size);
+        }
+        *size = state.value_size;
+    }
+    xSemaphoreGive(impl_->resource_mutex);
+    return status;
 }
 
 }  // namespace zectrix::connectivity

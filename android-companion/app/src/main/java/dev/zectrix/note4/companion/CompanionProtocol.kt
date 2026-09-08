@@ -114,7 +114,7 @@ object CompanionProtocol {
     ): ByteArray {
         require(token.size == 16)
         require(companionId.size == 16)
-        require(generation in 0..0xffff_ffffL)
+        require(generation in 1..0xffff_ffffL)
         return ByteArray(HELLO_ENROLLMENT_PROOF_SIZE).also { value ->
             put32(value, 0, generation)
             token.copyInto(value, 4)
@@ -154,6 +154,10 @@ object CompanionProtocol {
 
     fun decodeHelloAckStatus(value: ByteArray): HelloAckStatus? {
         if (value.size != 4) return null
+        if (u8(value[0]) !in HELLO_ACK_STATUS_OK..HELLO_ACK_STATUS_REJECTED ||
+            u8(value[1]) and HELLO_ACK_PEER_AUTHORIZED_FLAG.inv() != 0 ||
+            (u8(value[0]) == HELLO_ACK_STATUS_REJECTED && u8(value[1]) != 0) ||
+            (u8(value[0]) == HELLO_ACK_STATUS_OK && get16(value, 2) != 0)) return null
         return HelloAckStatus(
             u8(value[0]),
             u8(value[1]) and HELLO_ACK_PEER_AUTHORIZED_FLAG != 0,
@@ -164,7 +168,7 @@ object CompanionProtocol {
     fun matchesHelloAck(frame: Frame, requestId: Long, sequence: Long): Boolean =
         frame.header.messageClass == MessageClass.CONTROL &&
             frame.header.messageType == CONTROL_HELLO_ACK &&
-            frame.header.flags and FLAG_RESPONSE != 0 &&
+            frame.header.flags == FLAG_RESPONSE && requestId != 0L &&
             frame.header.requestId == requestId &&
             frame.header.sequence == sequence
 

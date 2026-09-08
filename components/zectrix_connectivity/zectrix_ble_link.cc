@@ -979,6 +979,15 @@ void BleLink::ProcessAdvertiseRequest() {
     impl_->ProcessAdvertiseRequest();
 }
 
+void BleLink::DisconnectSession(uint32_t expected_session_id) {
+    if (impl_ == nullptr || impl_->lock == nullptr) return;
+    xSemaphoreTake(impl_->lock, portMAX_DELAY);
+    if (impl_->session_id == expected_session_id && impl_->connection_handle != kNoConnection) {
+        ble_gap_terminate(impl_->connection_handle, BLE_ERR_REM_USER_CONN_TERM);
+    }
+    xSemaphoreGive(impl_->lock);
+}
+
 bool BleLink::WithCurrentTransportSession(
     uint32_t expected_session_id, const std::function<void()>& action) {
     if (impl_ == nullptr || impl_->lock == nullptr || !action) return false;

@@ -199,7 +199,35 @@ void TestCancelAndRandomFailure() {
 
 }  // namespace
 
+void TestEnrollmentPersistenceFailure() {
+    FakeClock clock;
+    FakeRandom random;
+    PairingBootstrap bootstrap(clock, random);
+    assert(bootstrap.Prepare() == BootstrapStatus::kOk);
+    zectrix::companion::BootstrapMaterial material{};
+    assert(bootstrap.Material(&material) == BootstrapStatus::kOk);
+    assert(bootstrap.OpenPairingWindow() == BootstrapStatus::kOk);
+    unsigned writes = 0;
+    const auto persist = [&]() { ++writes; return false; };
+    assert(bootstrap.ValidateAndPersistEnrollmentProof(7, material.generation + 1,
+        material.token.data(), material.token.size(), persist) == BootstrapStatus::kGenerationMismatch);
+    assert(writes == 0);
+    assert(bootstrap.ValidateAndPersistEnrollmentProof(7, material.generation,
+        material.token.data(), material.token.size(), persist) == BootstrapStatus::kStoreError);
+    assert(writes == 1 && bootstrap.state() == BootstrapState::kConsumed);
+    assert(bootstrap.ValidateAndPersistEnrollmentProof(7, material.generation,
+        material.token.data(), material.token.size(), persist) == BootstrapStatus::kAlreadyConsumed);
+    assert(writes == 1);
+    assert(bootstrap.Prepare() == BootstrapStatus::kOk);
+    assert(bootstrap.Material(&material) == BootstrapStatus::kOk);
+    assert(bootstrap.OpenPairingWindow() == BootstrapStatus::kOk);
+    assert(bootstrap.ValidateAndPersistEnrollmentProof(8, material.generation,
+        material.token.data(), material.token.size(), [&]() { ++writes; return true; }) == BootstrapStatus::kOk);
+    assert(writes == 2);
+}
+
 int main() {
+    TestEnrollmentPersistenceFailure();
     TestPrepareAndMaterial();
     TestValidationFlowAndSingleUse();
     TestExpirationAndPairingWindow();
