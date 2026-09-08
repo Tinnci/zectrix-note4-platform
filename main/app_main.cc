@@ -1060,6 +1060,7 @@ private:
     }
 
     [[noreturn]] void PowerOff() {
+        platform_.StopMaintenance();
         const auto stopped = connectivity_->Stop();
         if (stopped != zectrix::connectivity::ConnectivityResult::kOk) {
             ESP_LOGW(kTag, "connectivity stop incomplete before shutdown");

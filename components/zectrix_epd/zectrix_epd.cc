@@ -642,6 +642,22 @@ extern "C" bool zectrix_epd_is_powered(zectrix_epd_handle_t handle) {
     return guard.locked() && handle->powered;
 }
 
+extern "C" esp_err_t zectrix_epd_copy_shadow(zectrix_epd_handle_t handle,
+                                              size_t offset,
+                                              uint8_t* destination,
+                                              size_t size) {
+    if (handle == nullptr || destination == nullptr || size == 0 ||
+        offset > ZECTRIX_EPD_1BPP_FRAME_BYTES ||
+        size > ZECTRIX_EPD_1BPP_FRAME_BYTES - offset) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    MutexGuard guard(handle->mutex);
+    if (!guard.locked()) return ESP_FAIL;
+    if (!handle->shadow_valid) return ESP_ERR_INVALID_STATE;
+    std::memcpy(destination, handle->shadow + offset, size);
+    return ESP_OK;
+}
+
 extern "C" esp_err_t zectrix_epd_refresh_full_1bpp(zectrix_epd_handle_t handle,
                                                     const uint8_t* framebuffer,
                                                     size_t framebuffer_size) {

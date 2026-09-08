@@ -5,6 +5,7 @@
 
 #include "esp_err.h"
 #include "zectrix_display_state.h"
+#include "zectrix_display_inspection.h"
 
 namespace zectrix::display {
 
@@ -48,6 +49,7 @@ public:
 
     const State& state() const { return state_model_.state(); }
     bool CanUsePartial() const { return state_model_.CanUsePartial(); }
+    esp_err_t ReadInspection(DisplayInspection* snapshot) const;
 
 private:
     explicit DisplayService(void* driver_handle) : driver_handle_(driver_handle) {}
@@ -58,10 +60,13 @@ private:
     esp_err_t BeginRefresh(bool* owns_power);
     esp_err_t EndRefresh(bool owns_power, esp_err_t refresh_result);
     void OnError();
+    esp_err_t RecordRefresh(RefreshKind kind, int64_t started_us,
+                            esp_err_t result, const uint8_t* frame = nullptr);
 
     void* driver_handle_;
     bool batch_active_ = false;
     StateModel state_model_;
+    DisplayInspection inspection_;
 };
 
 }  // namespace zectrix::display

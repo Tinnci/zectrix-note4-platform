@@ -276,8 +276,21 @@ void ZectrixBoard::ButtonTask() {
 
 bool ZectrixBoard::WaitButton(ZectrixButtonEvent* event,
                               TickType_t timeout) {
-    return event != nullptr && button_queue_ != nullptr &&
-           xQueueReceive(button_queue_, event, timeout) == pdTRUE;
+    if (event == nullptr || button_queue_ == nullptr ||
+        xQueueReceive(button_queue_, event, timeout) != pdTRUE) return false;
+    if (event->action == ZectrixButtonAction::kWake) {
+        button_wait_wake_pending_.store(false);
+    }
+    return true;
+}
+
+void ZectrixBoard::WakeButtonWait() {
+    if (button_queue_ == nullptr || button_wait_wake_pending_.exchange(true)) return;
+    const ZectrixButtonEvent wake{ZectrixButton::kOk, ZectrixButtonAction::kWake};
+    if (xQueueSend(button_queue_, &wake, 0) != pdTRUE) {
+        // A full queue already makes the owner's next wait runnable.
+        button_wait_wake_pending_.store(false);
+    }
 }
 
 void ZectrixBoard::DrainButtons() {
@@ -285,8 +298,7 @@ void ZectrixBoard::DrainButtons() {
         return;
     }
     ZectrixButtonEvent event;
-    while (xQueueReceive(button_queue_, &event, 0) == pdTRUE) {
-    }
+    while (WaitButton(&event, 0)) {}
 }
 
 AudioCodec* ZectrixBoard::PrepareAudio() {

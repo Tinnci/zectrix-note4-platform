@@ -27,7 +27,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
 - [x] **D1.1: USB CDC-ACM Session & Transport Layer**
   - Define `zectrix_cli_usb.h` and `zectrix_cli_session.h`.
   - Non-blocking line parser and ANSI-capable text session.
-- [ ] **D1.2: Platform Diagnostic Command Set Implementation**
+- [x] **D1.2: Platform Diagnostic Command Set Implementation**
   - Implement `sysinfo`, `heap`, `tasks`, and `uptime` inspection commands.
   - Implement `epd-inspect` (framebuffer and refresh status dump).
   - Implement `log-stream` tap without disturbing the main EPD refresh loop.

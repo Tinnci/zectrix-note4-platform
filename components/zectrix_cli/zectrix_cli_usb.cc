@@ -1,14 +1,17 @@
 #include "zectrix_cli_usb.h"
 
 #include <atomic>
+#include <algorithm>
 #include <cstring>
 #include <new>
+#include <optional>
 
 #include "driver/usb_serial_jtag.h"
 #include "driver/usb_serial_jtag_vfs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "zectrix_cli_log.h"
 
 namespace zectrix::cli {
 namespace {
@@ -31,15 +34,37 @@ public:
 
     bool Write(const char* data, std::size_t size) override {
         if (data == nullptr) return false;
-        std::size_t offset = 0;
-        while (offset < size && IsConnected()) {
-            const int written = usb_serial_jtag_write_bytes(
-                data + offset, size - offset, kWriteTicks);
-            if (written <= 0) return false;
-            offset += static_cast<std::size_t>(written);
+        Flush();
+        if (!IsConnected() || size > pending_.size() - count_) {
+            Reset();
+            return false;
         }
-        return offset == size;
+        for (std::size_t index = 0; index < size; ++index) {
+            pending_[(head_ + count_++) % pending_.size()] = data[index];
+        }
+        return true;
     }
+
+    void Flush() {
+        if (!IsConnected()) {
+            Reset();
+            return;
+        }
+        if (count_ == 0) return;
+        const std::size_t size = std::min(count_, pending_.size() - head_);
+        const int sent = usb_serial_jtag_write_bytes(pending_.data() + head_, size, 0);
+        if (sent <= 0) return;
+        const auto consumed = std::min(size, static_cast<std::size_t>(sent));
+        head_ = (head_ + consumed) % pending_.size();
+        count_ -= consumed;
+    }
+
+    void Reset() { head_ = count_ = 0; }
+
+private:
+    std::array<char, 2048> pending_{};
+    std::size_t head_ = 0;
+    std::size_t count_ = 0;
 };
 
 class BootstrapExecutor final : public CliExecutor {
@@ -81,18 +106,19 @@ struct CliUsbService::Impl {
             // Secondary console output shares the same interrupt-driven
             // driver while the CLI owns USB Serial/JTAG.
             usb_serial_jtag_vfs_use_driver();
+            StartMaintenanceLogCapture();
         }
         active.store(start_result.load() == ESP_OK);
         xSemaphoreGive(ready);
         if (start_result.load() == ESP_OK) {
-            UsbSerialJtagTransport transport;
-            CliSession session(transport,
-                               executor == nullptr ? bootstrap : *executor);
             while (!stop_requested.load()) {
-                session.Poll();
+                transport.Flush();
+                session->Poll();
+                transport.Flush();
                 ulTaskNotifyTake(pdTRUE, kPollTicks);
             }
-            session.Reset();
+            session->Reset();
+            StopMaintenanceLogCapture();
             usb_serial_jtag_wait_tx_done(kWriteTicks);
             usb_serial_jtag_vfs_use_nonblocking();
             usb_serial_jtag_driver_uninstall();
@@ -103,6 +129,9 @@ struct CliUsbService::Impl {
     }
 
     BootstrapExecutor bootstrap;
+    // Editing/history and pending TX storage must not consume the CLI stack.
+    UsbSerialJtagTransport transport;
+    std::optional<CliSession> session;
     CliExecutor* executor = nullptr;
     TaskHandle_t task = nullptr;
     SemaphoreHandle_t ready = nullptr;
@@ -132,6 +161,9 @@ esp_err_t CliUsbService::Start(CliExecutor* executor) {
         return ESP_ERR_NO_MEM;
     }
     impl_->executor = executor;
+    impl_->transport.Reset();
+    impl_->session.emplace(impl_->transport,
+                           executor == nullptr ? impl_->bootstrap : *executor);
     impl_->stop_requested.store(false);
     impl_->start_result.store(ESP_FAIL);
     const BaseType_t created = xTaskCreatePinnedToCore(
@@ -142,6 +174,7 @@ esp_err_t CliUsbService::Start(CliExecutor* executor) {
         vSemaphoreDelete(impl_->done);
         impl_->ready = nullptr;
         impl_->done = nullptr;
+        impl_->session.reset();
         return ESP_ERR_NO_MEM;
     }
     xSemaphoreTake(impl_->ready, portMAX_DELAY);
@@ -152,6 +185,7 @@ esp_err_t CliUsbService::Start(CliExecutor* executor) {
         impl_->ready = nullptr;
         impl_->done = nullptr;
         impl_->task = nullptr;
+        impl_->session.reset();
         return impl_->start_result.load();
     }
     return ESP_OK;
@@ -168,6 +202,7 @@ void CliUsbService::Stop() {
     impl_->ready = nullptr;
     impl_->done = nullptr;
     impl_->executor = nullptr;
+    impl_->session.reset();
     impl_->task = nullptr;
 }
 

@@ -23,6 +23,9 @@ enum class ExecuteStatus : uint8_t {
     kUnknownCommand,
     kInvalidArguments,
     kUnavailable,
+    kPending,
+    kBusy,
+    kTimeout,
 };
 
 class CliExecutor {
@@ -30,6 +33,9 @@ public:
     virtual ~CliExecutor() = default;
     virtual ExecuteStatus Execute(const Invocation& invocation,
                                   BoundedOutput* output) = 0;
+    // Pending commands produce at most one bounded chunk per poll.
+    virtual ExecuteStatus Poll(BoundedOutput*) { return ExecuteStatus::kOk; }
+    virtual void Cancel() {}
 };
 
 class CliSession final {
@@ -44,6 +50,7 @@ public:
     bool connected() const { return connected_; }
     std::size_t line_size() const { return line_size_; }
     std::size_t history_size() const { return history_size_; }
+    bool command_active() const { return command_active_; }
 
 private:
     enum class EscapeState : uint8_t { kNone, kEscape, kControlSequence };
@@ -52,6 +59,7 @@ private:
     void OnDisconnected();
     void ProcessByte(uint8_t value);
     void SubmitLine();
+    void FinishExecution(ExecuteStatus status, const BoundedOutput& output);
     void AddHistory();
     void NavigateHistory(bool older);
     void RedrawLine();
@@ -72,6 +80,7 @@ private:
     EscapeState escape_state_ = EscapeState::kNone;
     bool connected_ = false;
     bool previous_was_cr_ = false;
+    bool command_active_ = false;
 };
 
 }  // namespace zectrix::cli

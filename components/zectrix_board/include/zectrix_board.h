@@ -2,6 +2,7 @@
 #define ZECTRIX_BOARD_H_
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <ctime>
 #include <memory>
@@ -27,6 +28,7 @@ enum class ZectrixButton : uint8_t {
 enum class ZectrixButtonAction : uint8_t {
     kClick = 0,
     kLongPress,
+    kWake,
 };
 
 struct ZectrixButtonEvent {
@@ -48,6 +50,7 @@ public:
 
     esp_err_t Init();
     bool WaitButton(ZectrixButtonEvent* event, TickType_t timeout);
+    void WakeButtonWait();
     void DrainButtons();
 
     bool HasRtc() const;
@@ -89,6 +92,7 @@ private:
     adc_oneshot_unit_handle_t adc_handle_ = nullptr;
     adc_cali_handle_t adc_cali_ = nullptr;
     QueueHandle_t button_queue_ = nullptr;
+    std::atomic<bool> button_wait_wake_pending_{false};
     TaskHandle_t button_task_ = nullptr;
     std::unique_ptr<RtcPcf8563> rtc_;
     std::unique_ptr<ZectrixNfc> nfc_;

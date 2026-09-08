@@ -16,6 +16,10 @@ inline constexpr std::size_t kMaximumOutputSize = 256;
 enum class Access : uint8_t { kReadOnly, kConfirm, kLocalConfirm };
 enum class Execution : uint8_t { kImmediate, kOwnerRequest, kStream };
 enum class Origin : uint8_t { kUsbLocal, kAuthorizedCompanion };
+enum class Handler : uint8_t {
+    kNone, kHelp, kVersion, kSystemInfo, kHeap, kTasks, kUptime,
+    kDisplayInspect, kLogFollow, kLogStats,
+};
 
 enum class ParseStatus : uint8_t {
     kOk,
@@ -47,6 +51,7 @@ struct CommandDescriptor {
     bool executable;
     const CommandDescriptor* children;
     std::size_t child_count;
+    Handler handler = Handler::kNone;
 };
 
 enum class ResolveStatus : uint8_t {

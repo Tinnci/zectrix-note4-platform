@@ -9,6 +9,8 @@
 
 #include "zectrix_display_service.h"
 #include "zectrix_cli_usb.h"
+#include "zectrix_cli_diagnostics.h"
+#include "freertos/task.h"
 #include "zectrix_connectivity_service.h"
 #include "zectrix_nfc_service.h"
 #include "zectrix_input_service.h"
@@ -22,6 +24,8 @@ std::vector<std::string> events;
 std::string fail_at;
 int nothrow_allocation_count = 0;
 int fail_nothrow_allocation = 0;
+zectrix::cli::CliExecutor* cli_executor = nullptr;
+unsigned inspections = 0;
 esp_err_t Result(const char* name) {
     events.emplace_back(std::string("create:") + name);
     return fail_at == name ? ESP_FAIL : ESP_OK;
@@ -50,6 +54,11 @@ esp_err_t InputService::Attach(ZectrixBoard& board, InputService** output) {
     return result;
 }
 InputService::~InputService() { events.emplace_back("delete:input"); }
+void InputService::SetWaitHook(WaitHook hook, void* context) {
+    wait_hook_ = hook;
+    wait_context_ = context;
+}
+void InputService::WakeWait() { board_->WakeButtonWait(); }
 }
 namespace zectrix::power {
 esp_err_t PowerService::Attach(ZectrixBoard& board, PowerService** output) {
@@ -66,6 +75,7 @@ esp_err_t TimeService::Attach(ZectrixBoard& board, TimeService** output) {
     return result;
 }
 TimeService::~TimeService() { events.emplace_back("delete:time"); }
+int64_t TimeService::MonotonicMicroseconds() const { ++inspections; return 1234000; }
 }
 namespace zectrix::storage {
 struct StorageService::Impl {};
@@ -87,6 +97,21 @@ esp_err_t SystemService::Attach(ZectrixBoard& board, SystemService** output) {
     return result;
 }
 SystemService::~SystemService() { events.emplace_back("delete:system"); }
+esp_err_t SystemService::ReadSnapshot(SystemSnapshot* result) const {
+    ++inspections;
+    *result = {};
+    return ESP_OK;
+}
+esp_err_t SystemService::ReadHeap(HeapSnapshot* result) const {
+    ++inspections;
+    *result = {};
+    return ESP_OK;
+}
+esp_err_t SystemService::ReadTasks(TaskSnapshot* result) const {
+    ++inspections;
+    *result = {};
+    return ESP_OK;
+}
 }
 namespace zectrix::display {
 esp_err_t DisplayService::Create(DisplayService** output) {
@@ -95,6 +120,11 @@ esp_err_t DisplayService::Create(DisplayService** output) {
     return result;
 }
 DisplayService::~DisplayService() { events.emplace_back("delete:display"); }
+esp_err_t DisplayService::ReadInspection(DisplayInspection* result) const {
+    ++inspections;
+    *result = {};
+    return ESP_OK;
+}
 }
 namespace zectrix::nfc {
 esp_err_t NfcService::Attach(ZectrixNfc& nfc, NfcService** output) {
@@ -130,12 +160,18 @@ ConnectivityService::~ConnectivityService() {
 namespace zectrix::cli {
 CliUsbService::CliUsbService() = default;
 CliUsbService::~CliUsbService() { events.emplace_back("delete:cli"); }
-esp_err_t CliUsbService::Start(CliExecutor*) { return Result("cli"); }
+esp_err_t CliUsbService::Start(CliExecutor* executor) {
+    assert(executor != nullptr);
+    cli_executor = executor;
+    return Result("cli");
+}
 void CliUsbService::Stop() {}
 bool CliUsbService::running() const { return true; }
+LogBuffer& MaintenanceLogs() { static LogBuffer logs; return logs; }
 }
 
 int main() {
+    host_current_task = reinterpret_cast<void*>(1);
     {
         zectrix::Platform platform;
         assert(!platform.IsInitialized());
@@ -154,6 +190,22 @@ int main() {
             "create:storage", "create:storage-init", "create:system",
             "create:display", "create:connectivity",
             "create:connectivity-init", "create:cli"}));
+        zectrix::cli::Invocation invocation;
+        zectrix::cli::BoundedOutput output;
+        assert(zectrix::cli::ParseLine("uptime", 6, &invocation) == zectrix::cli::ParseStatus::kOk);
+        assert(cli_executor->Execute(invocation, &output) == zectrix::cli::ExecuteStatus::kPending);
+        assert(inspections == 0);
+        host_current_task = reinterpret_cast<void*>(2);
+        platform.PollMaintenance();
+        assert(inspections == 0);
+        host_current_task = reinterpret_cast<void*>(1);
+        platform.PollMaintenance();
+        assert(cli_executor->Poll(&output) == zectrix::cli::ExecuteStatus::kOk);
+        assert(inspections == 1);
+        assert(std::string(output.data()).find("1234 ms") != std::string::npos);
+        platform.StopMaintenance();
+        output.Clear();
+        assert(cli_executor->Execute(invocation, &output) == zectrix::cli::ExecuteStatus::kUnavailable);
     }
     assert((events == std::vector<std::string>{
         "init:board", "create:input", "create:power", "create:time",

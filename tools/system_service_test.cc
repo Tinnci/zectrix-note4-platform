@@ -8,6 +8,7 @@
 #include "esp_chip_info.h"
 #include "esp_heap_caps.h"
 #include "esp_system.h"
+#include "freertos/task.h"
 #include "zectrix_board.h"
 
 namespace {
@@ -15,6 +16,8 @@ esp_app_desc_t app = {};
 esp_reset_reason_t reset_reason = ESP_RST_POWERON;
 esp_err_t flash_result = ESP_OK;
 esp_err_t mac_result = ESP_OK;
+unsigned task_count = 2;
+bool task_count_changed = false;
 }
 
 const esp_app_desc_t* esp_app_get_description() { return &app; }
@@ -39,6 +42,18 @@ size_t heap_caps_get_total_size(uint32_t capabilities) {
 size_t heap_caps_get_free_size(uint32_t) { return 1000; }
 size_t heap_caps_get_minimum_free_size(uint32_t) { return 800; }
 size_t heap_caps_get_largest_free_block(uint32_t) { return 600; }
+
+UBaseType_t uxTaskGetNumberOfTasks() { return task_count; }
+UBaseType_t uxTaskGetSystemState(TaskStatus_t* tasks, UBaseType_t capacity, uint32_t*) {
+    if (capacity < task_count || task_count_changed) return 0;
+    for (unsigned index = 0; index < task_count; ++index) {
+        // A transient task name is deliberately unusable after the RTOS call.
+        tasks[index] = {index == 0 ? host_current_task : reinterpret_cast<void*>(2),
+                        reinterpret_cast<const char*>(1), index + 1,
+                        index == 0 ? eRunning : eBlocked, index + 3, 1024 + index};
+    }
+    return task_count;
+}
 
 int main() {
     std::strcpy(app.project_name, "zectrix-note4");
@@ -80,5 +95,25 @@ int main() {
     mac_result = ESP_FAIL;
     assert(service->ReadSnapshot(&snapshot) == ESP_FAIL);
     assert(service->ReadWifiMac(nullptr) == ESP_ERR_INVALID_ARG);
+    zectrix::system::HeapSnapshot heap;
+    assert(service->ReadHeap(&heap) == ESP_OK);
+    assert(heap.internal.free == 1000 && heap.internal.minimum_free == 800);
+    assert(heap.internal.largest_block == 600);
+    assert(heap.psram.total == 8U * 1024U * 1024U);
+    assert(service->ReadHeap(nullptr) == ESP_ERR_INVALID_ARG);
+
+    zectrix::system::TaskSnapshot tasks;
+    assert(service->ReadTasks(&tasks) == ESP_OK);
+    assert(tasks.count == 2 && tasks.total == 2 && !tasks.capacity_exceeded);
+    assert(tasks.tasks[0].id == 1 && tasks.tasks[0].application_owner);
+    assert(tasks.tasks[1].state == zectrix::system::TaskState::kBlocked);
+    assert(tasks.tasks[1].minimum_stack_bytes == 1025);
+    task_count = zectrix::system::kMaximumTasks + 1;
+    assert(service->ReadTasks(&tasks) == ESP_OK);
+    assert(tasks.count == 0 && tasks.capacity_exceeded && tasks.total == task_count);
+    task_count = 2;
+    task_count_changed = true;
+    assert(service->ReadTasks(&tasks) == ESP_OK && tasks.capacity_exceeded);
+    assert(service->ReadTasks(nullptr) == ESP_ERR_INVALID_ARG);
     delete service;
 }

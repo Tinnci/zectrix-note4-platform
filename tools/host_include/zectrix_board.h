@@ -8,7 +8,7 @@
 class ZectrixNfc;
 
 enum class ZectrixButton { kUp, kDown, kOk };
-enum class ZectrixButtonAction { kClick, kLongPress };
+enum class ZectrixButtonAction { kClick, kLongPress, kWake };
 
 struct ZectrixButtonEvent {
     ZectrixButton button = ZectrixButton::kOk;
@@ -35,13 +35,25 @@ public:
     esp_err_t Init();
     bool WaitButton(ZectrixButtonEvent* event, TickType_t timeout_ticks) {
         last_timeout = timeout_ticks;
-        if (!has_event || event == nullptr) return false;
+        if (on_wait != nullptr) {
+            const auto callback = on_wait;
+            on_wait = nullptr;
+            callback(*this);
+        }
+        if (event == nullptr) return false;
+        if (!has_event) {
+            if (!wake_pending) return false;
+            wake_pending = false;
+            *event = {ZectrixButton::kOk, ZectrixButtonAction::kWake};
+            return true;
+        }
         *event = next_event;
         has_event = false;
         return true;
     }
 
     void DrainButtons() { drained = true; }
+    void WakeButtonWait() { wake_pending = true; ++wake_calls; }
 
     ZectrixPowerSnapshot ReadPowerSnapshot() { return power_snapshot; }
     void SetPowerLed(bool on) {
@@ -90,6 +102,9 @@ public:
     ZectrixButtonEvent next_event;
     TickType_t last_timeout = 0;
     bool has_event = false;
+    bool wake_pending = false;
+    unsigned wake_calls = 0;
+    void (*on_wait)(ZectrixBoard&) = nullptr;
     bool drained = false;
     bool rtc_available = true;
     bool nfc_available = true;

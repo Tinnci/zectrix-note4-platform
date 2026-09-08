@@ -101,9 +101,10 @@ the affected gate and Issue open.
 Goal: provide a bounded USB maintenance interface without bypassing platform
 ownership, application lifecycle or local security policy.
 
-Status: In progress. This milestone can develop beside C1. The D1.2 bounded
-USB Serial/JTAG session and transport lifecycle are implemented; owner-context
-commands, streams and real USB qualification remain open. Mutating connectivity
+Status: In progress. This milestone can develop beside C1. D1.1 USB Serial/JTAG
+sessions and D1.2 owner-dispatched system/heap/task/uptime/display diagnostics
+and bounded log observation are implemented. Input observation and real USB
+qualification remain open. Mutating connectivity
 commands remain blocked by the applicable C1 authorization gate.
 
 - Use a static hierarchical command tree and bounded parser.
