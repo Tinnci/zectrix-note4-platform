@@ -64,10 +64,13 @@ dependency graph. See `docs/adr/0003-freertos-runtime-sdk-boundary.md`.
 
 The partition table is not frozen. The M5.1 layout retains the factory and NVS
 locations and adds two OTA application slots and native OTA metadata.
-`UpdateService` validates the inactive destination and owns trial-boot
-confirmation. A retained RTC watchdog resets an unconfirmed boot even if the
-application cannot make progress. Measurements, compatibility and recovery
-limits are recorded in [ADR-0005](adr/0005-ab-ota-boot-confirmation.md).
+`UpdateService` validates the inactive destination, receives firmware chunks
+and owns trial-boot confirmation. It validates chunk and image CRC-32 values,
+the image header, native image bounds and flash readback before selecting the
+next boot slot. A retained RTC watchdog resets an unconfirmed boot even if the
+application cannot make progress. Update delivery remains a separate consumer
+of the service. Measurements, compatibility and recovery limits are recorded
+in [ADR-0005](adr/0005-ab-ota-boot-confirmation.md).
 
 ## Connectivity boundary
 

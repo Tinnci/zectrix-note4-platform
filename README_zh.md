@@ -38,7 +38,7 @@
 | M4 | 已完成 | 源码稳定 SDK v1 和统一软硬件退出门 |
 | C1 | 进行中 | 伴侣协议、持久同步、安全 BLE/Android 路径和 NFC 辅助注册；完整硬件验收尚未结束 |
 | D1 | 进行中 | USB 会话、平台诊断、日志流和 Host 模拟器已实现；输入观察和硬件验收尚未结束 |
-| M5 | 进行中 | A/B 分区校验和启动确认看门狗已实现；镜像传输与硬件回滚验收尚未结束 |
+| M5 | 进行中 | A/B 分区校验、固件流式校验和启动确认看门狗已实现；升级交付流程与硬件验收尚未结束 |
 
 > [!IMPORTANT]
 > 本项目仅适用于黑白墨水屏版 ZECTRIX NOTE4，不适用于 NOTE4C。烧录本 Demo
@@ -72,8 +72,8 @@ idf.py -p /dev/ttyACM0 flash monitor
 组件。详细说明见 [docs/QUICK_START.md](docs/QUICK_START.md)。
 
 当前分区布局保留 factory 和 NVS 地址，增加两个 3 MiB OTA 槽位。试运行固件须在
-启动确认期限内完成初始化及 Launcher 首帧渲染。首次安装要求、回滚行为和独立配置
-编译命令见 [ADR-0005](docs/adr/0005-ab-ota-boot-confirmation.md)。
+启动确认期限内完成初始化及 Launcher 首帧渲染。首次安装要求、回滚行为、分块 CRC
+和镜像头校验接口及独立配置编译命令见 [ADR-0005](docs/adr/0005-ab-ota-boot-confirmation.md)。
 
 ## Host 维护 CLI
 

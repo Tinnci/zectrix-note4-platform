@@ -1,6 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <cstddef>
+
+#include "esp_err.h"
 
 enum esp_partition_type_t { ESP_PARTITION_TYPE_APP = 0, ESP_PARTITION_TYPE_DATA = 1, ESP_PARTITION_TYPE_ANY = 0xff };
 enum esp_partition_subtype_t {
@@ -22,3 +25,4 @@ esp_partition_iterator_t esp_partition_find(esp_partition_type_t, esp_partition_
 const esp_partition_t* esp_partition_get(esp_partition_iterator_t);
 esp_partition_iterator_t esp_partition_next(esp_partition_iterator_t);
 void esp_partition_iterator_release(esp_partition_iterator_t);
+esp_err_t esp_partition_read(const esp_partition_t*, std::size_t, void*, std::size_t);
