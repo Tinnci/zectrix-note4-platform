@@ -139,12 +139,19 @@ class HostIntegrationTest(unittest.TestCase):
                 (b"missing-command\r", b"unknown command"),
                 (b"x" * 65 + b"\r", b"token too long"),
                 (b"help " + b"x " * 12 + b"\r", b"too many arguments"),
+                (b"version\x00unexpected\r", b"invalid input"),
+                (b"version\x1b[\r", b"invalid escape"),
+                (b"version\x1b[" + b"1" * 40 + b"~\r", b"invalid escape"),
             ):
                 with self.subTest(command=command):
-                    self.assertIn(b"error: " + error, terminal.command(command))
-            overlong = terminal.command(b"x" * 300 + b"\r")
+                    reply = terminal.command(command)
+                    self.assertIn(b"error: " + error, reply)
+                    self.assertNotIn(VERSION, reply)
+            # Truncating this line would execute a valid command prefix.
+            overlong = terminal.command(b"version" + b" " * (256 - 7) + b"unexpected\r")
             self.assertIn(b"\a", overlong)
-            self.assertIn(b"error: token too long", overlong)
+            self.assertIn(b"error: line too long", overlong)
+            self.assertNotIn(VERSION, overlong)
             self.assertIn(b"^C", terminal.command(b"heap\x1b[\x03"))
             self.assertIn(VERSION, terminal.command(b"version\r"))
             terminal.send(b"\x04")

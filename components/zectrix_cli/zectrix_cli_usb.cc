@@ -23,7 +23,10 @@ constexpr std::size_t kRxBufferSize = 512;
 class UsbSerialJtagTransport final : public CliTransport {
 public:
     bool IsConnected() const override {
-        return usb_serial_jtag_is_connected();
+        // Retain every observed disconnect until the session owner handles it,
+        // even if USB reconnects before the next input poll or TX flush.
+        if (!usb_serial_jtag_is_connected()) disconnect_pending_ = true;
+        return !disconnect_pending_;
     }
 
     std::size_t Read(uint8_t* destination, std::size_t capacity) override {
@@ -63,9 +66,16 @@ public:
 
     void Reset() { head_ = count_ = 0; }
 
+    bool TakeDisconnect() {
+        const bool pending = disconnect_pending_;
+        disconnect_pending_ = false;
+        return pending;
+    }
+
     void DiscardInput() override {
-        // Drain only the queued snapshot, including a wrapped ring-buffer tail.
-        auto remaining = std::min(kRxBufferSize, usb_serial_jtag_get_read_bytes_available());
+        // ESP-IDF 5.5.2 exposes nonblocking reads but no queued-byte count.
+        // Short reads can span a wrapped ring; cap work even if input continues.
+        auto remaining = kRxBufferSize;
         std::array<uint8_t, 64> discarded{};
         while (remaining != 0) {
             const int received = usb_serial_jtag_read_bytes(
@@ -79,6 +89,7 @@ private:
     std::array<char, 2048> pending_{};
     std::size_t head_ = 0;
     std::size_t count_ = 0;
+    mutable bool disconnect_pending_ = false;
 };
 
 class BootstrapExecutor final : public CliExecutor {
@@ -127,6 +138,7 @@ struct CliUsbService::Impl {
         if (start_result.load() == ESP_OK) {
             while (!stop_requested.load()) {
                 transport.Flush();
+                if (transport.TakeDisconnect() && session->connected()) session->Reset();
                 session->Poll();
                 transport.Flush();
                 vTaskDelay(kPollTicks);
