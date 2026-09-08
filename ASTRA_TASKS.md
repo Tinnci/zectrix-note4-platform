@@ -57,8 +57,8 @@ Each iteration picks the top unfinished task, implements production code, verifi
 
 ## Quality & Continuous Regression Loop (持续质量审查与已有功能复查)
 
-- [ ] **Q1.1: Comprehensive Contract Regression & Host Test Suite Verification**
-  - Run full suite (`tools/test-host.sh`) ensuring all 21 test targets pass with zero failures.
+- [x] **Q1.1: Comprehensive Contract Regression & Host Test Suite Verification**
+  - Run full suite (`tools/test-host.sh`) ensuring all 26 test targets pass with zero failures.
   - Audit thread-safety across new Wi-Fi and CLI background tasks.
 - [ ] **Q1.2: Low-Power Lifecycle & Radio Coexistence Audit**
   - Verify Wi-Fi modem completely powers off after HTTP burst transfer.

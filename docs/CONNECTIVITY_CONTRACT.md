@@ -261,6 +261,23 @@ an HTTP API fake, including partial writes and reads. The ESP-IDF firmware build
 checks the real driver and HTTP API integration. Radio current, real TLS latency
 and physical BLE/Wi-Fi coexistence still require a Note4.
 
+The ESP driver has one calling owner; callbacks publish link flags through
+atomics. Event handler unregistration synchronizes with callbacks on the
+ESP-IDF event-loop mutex before interface or driver storage is released. An
+uncancellable DNS query owns a separate callback reference, so a reply after
+timeout or driver destruction cannot access the retired driver. A new burst
+uses a separate query context. A failed station stop retains the exclusive
+radio claim and callback storage until cleanup succeeds.
+
+Q1.1 extends `tools/test-wifi-backend.sh` to compile the production ESP driver
+with event, netif and DNS fakes. It covers concurrent event publication,
+unregistration during a callback, partial-start cleanup, exclusive radio use,
+stop retry, cancellation before and after DNS submission, cached/failed
+lookups and a previous burst's late reply. The HTTP seam in this test is a
+stub; production HTTP framing and transport remain covered by
+`tools/test-wifi-http.sh`. The backend target accepts `CXX` for sanitizer
+compiler wrappers.
+
 ## Security lifecycle
 
 Pairing requires a local Note4 action. The firmware requests bonding, LE Secure

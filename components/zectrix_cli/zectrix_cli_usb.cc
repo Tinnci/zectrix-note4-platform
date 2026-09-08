@@ -115,7 +115,7 @@ struct CliUsbService::Impl {
                 transport.Flush();
                 session->Poll();
                 transport.Flush();
-                ulTaskNotifyTake(pdTRUE, kPollTicks);
+                vTaskDelay(kPollTicks);
             }
             session->Reset();
             StopMaintenanceLogCapture();
@@ -133,7 +133,6 @@ struct CliUsbService::Impl {
     UsbSerialJtagTransport transport;
     std::optional<CliSession> session;
     CliExecutor* executor = nullptr;
-    TaskHandle_t task = nullptr;
     SemaphoreHandle_t ready = nullptr;
     SemaphoreHandle_t done = nullptr;
     std::atomic<bool> stop_requested{false};
@@ -150,7 +149,7 @@ CliUsbService::~CliUsbService() {
 
 esp_err_t CliUsbService::Start(CliExecutor* executor) {
     if (impl_ == nullptr) return ESP_ERR_NO_MEM;
-    if (impl_->task != nullptr) return ESP_ERR_INVALID_STATE;
+    if (impl_->done != nullptr) return ESP_ERR_INVALID_STATE;
     impl_->ready = xSemaphoreCreateBinary();
     impl_->done = xSemaphoreCreateBinary();
     if (impl_->ready == nullptr || impl_->done == nullptr) {
@@ -167,7 +166,7 @@ esp_err_t CliUsbService::Start(CliExecutor* executor) {
     impl_->stop_requested.store(false);
     impl_->start_result.store(ESP_FAIL);
     const BaseType_t created = xTaskCreatePinnedToCore(
-        &Impl::TaskEntry, "zectrix_cli", 4096, impl_, 3, &impl_->task,
+        &Impl::TaskEntry, "zectrix_cli", 4096, impl_, 3, nullptr,
         xPortGetCoreID());
     if (created != pdPASS) {
         vSemaphoreDelete(impl_->ready);
@@ -184,7 +183,6 @@ esp_err_t CliUsbService::Start(CliExecutor* executor) {
         vSemaphoreDelete(impl_->done);
         impl_->ready = nullptr;
         impl_->done = nullptr;
-        impl_->task = nullptr;
         impl_->session.reset();
         return impl_->start_result.load();
     }
@@ -194,8 +192,8 @@ esp_err_t CliUsbService::Start(CliExecutor* executor) {
 void CliUsbService::Stop() {
     if (impl_ == nullptr || impl_->done == nullptr) return;
     impl_->stop_requested.store(true);
-    const TaskHandle_t task = impl_->task;
-    if (task != nullptr) xTaskNotifyGive(task);
+    // The worker can self-delete as soon as it observes the flag. Its bounded
+    // poll delay needs no wake notification through a potentially stale TCB.
     xSemaphoreTake(impl_->done, portMAX_DELAY);
     vSemaphoreDelete(impl_->ready);
     vSemaphoreDelete(impl_->done);
@@ -203,7 +201,6 @@ void CliUsbService::Stop() {
     impl_->done = nullptr;
     impl_->executor = nullptr;
     impl_->session.reset();
-    impl_->task = nullptr;
 }
 
 bool CliUsbService::running() const {
