@@ -23,6 +23,7 @@ host_tests=(
     test-sync-engine.sh
     test-system-service.sh
     test-time-service.sh
+    test-wifi-backend.sh
 )
 
 "$repo_root/tools/check-architecture-boundaries.sh" --self-test

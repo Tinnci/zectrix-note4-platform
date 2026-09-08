@@ -4,6 +4,7 @@
 #include <new>
 
 #include "zectrix_board.h"
+#include "zectrix_cli_usb.h"
 #include "zectrix_connectivity_service.h"
 #include "zectrix_display_service.h"
 #include "zectrix_nfc_service.h"
@@ -27,6 +28,7 @@ struct Platform::Impl {
     display::DisplayService* display = nullptr;
     ZectrixSelfTest* diagnostics = nullptr;
     connectivity::ConnectivityService* connectivity = nullptr;
+    cli::CliUsbService* cli_usb = nullptr;
 };
 
 Platform::~Platform() { ResetServices(); }
@@ -71,6 +73,11 @@ esp_err_t Platform::Initialize() {
             connectivity::ConnectivityResult::kOk) {
         err = ESP_FAIL;
     }
+    if (err == ESP_OK) {
+        impl_->cli_usb = new (std::nothrow) cli::CliUsbService;
+        if (impl_->cli_usb == nullptr) err = ESP_ERR_NO_MEM;
+    }
+    if (err == ESP_OK) err = impl_->cli_usb->Start();
     if (err != ESP_OK) {
         ResetServices();
         return err;
@@ -100,6 +107,7 @@ ZECTRIX_PLATFORM_ACCESSOR(ZectrixSelfTest, Diagnostics, diagnostics)
 void Platform::ResetServices() {
     if (impl_ == nullptr) return;
     // Destruction is the reverse of the initialization order.
+    delete impl_->cli_usb;
     delete impl_->connectivity;
     delete impl_->nfc_service;
     delete impl_->diagnostics;

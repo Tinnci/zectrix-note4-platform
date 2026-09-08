@@ -1,10 +1,159 @@
+#include <algorithm>
 #include <cassert>
 #include <cstring>
+#include <deque>
 #include <string>
 
 #include "zectrix_cli_core.h"
+#include "zectrix_cli_session.h"
 
 using namespace zectrix::cli;
+
+namespace {
+
+class FakeTransport final : public CliTransport {
+public:
+    bool IsConnected() const override { return connected; }
+
+    std::size_t Read(uint8_t* destination, std::size_t capacity) override {
+        const std::size_t count = std::min(capacity, input.size());
+        for (std::size_t index = 0; index < count; ++index) {
+            destination[index] = input.front();
+            input.pop_front();
+        }
+        if (over_report_read) return capacity + 7;
+        return count;
+    }
+
+    bool Write(const char* data, std::size_t size) override {
+        if (fail_write) return false;
+        output.append(data, size);
+        return true;
+    }
+
+    void Send(const std::string& text) {
+        for (const unsigned char value : text) input.push_back(value);
+    }
+
+    bool connected = false;
+    bool fail_write = false;
+    bool over_report_read = false;
+    std::deque<uint8_t> input;
+    std::string output;
+};
+
+class RecordingExecutor final : public CliExecutor {
+public:
+    ExecuteStatus Execute(const Invocation& invocation,
+                          BoundedOutput* output) override {
+        assert(!executing);
+        executing = true;
+        ++calls;
+        last.clear();
+        for (std::size_t index = 0; index < invocation.count; ++index) {
+            if (!last.empty()) last += '|';
+            last += invocation[index];
+        }
+        if (std::strcmp(invocation[0], "known") != 0) {
+            executing = false;
+            return ExecuteStatus::kUnknownCommand;
+        }
+        output->Append("done");
+        executing = false;
+        return ExecuteStatus::kOk;
+    }
+
+    std::size_t calls = 0;
+    std::string last;
+    bool executing = false;
+};
+
+void Drain(CliSession& session, FakeTransport& transport) {
+    while (!transport.input.empty()) session.Poll();
+}
+
+void TestSession() {
+    FakeTransport transport;
+    RecordingExecutor executor;
+    CliSession session(transport, executor);
+
+    session.Poll();
+    assert(!session.connected());
+    transport.connected = true;
+    session.Poll();
+    assert(session.connected());
+    assert(transport.output.find("Zectrix maintenance CLI\r\nzectrix> ") !=
+           std::string::npos);
+
+    transport.Send("known one\r\n");
+    Drain(session, transport);
+    assert(executor.calls == 1);
+    assert(executor.last == "known|one");
+    assert(transport.output.find("done\r\nzectrix> ") != std::string::npos);
+    assert(session.history_size() == 1);
+
+    transport.Send("\"bad\r");
+    Drain(session, transport);
+    assert(executor.calls == 1);
+    assert(transport.output.find("error: unterminated quote\r\nzectrix> ") !=
+           std::string::npos);
+
+    transport.Send("discard me\x03known\r");
+    Drain(session, transport);
+    assert(executor.calls == 2);
+    assert(executor.last == "known");
+    assert(transport.output.find("^C\r\nzectrix> ") != std::string::npos);
+
+    // Recall the newest command and submit it. History remains RAM-only and
+    // duplicate adjacent commands do not consume another slot.
+    transport.Send("\x1b[A\r");
+    Drain(session, transport);
+    assert(executor.calls == 3);
+    assert(executor.last == "known");
+    assert(session.history_size() == 2);
+
+    // Cursor-left insertion is handled by the bounded editor.
+    transport.Send("knwn\x1b[D\x1b[Do\r");
+    Drain(session, transport);
+    assert(executor.calls == 4);
+    assert(executor.last == "known");
+
+    // Input beyond the fixed line capacity is rejected with a bell, without
+    // growing storage or losing the prompt after submission.
+    transport.Send(std::string(kMaximumLineSize + 4, 'x') + "\r");
+    Drain(session, transport);
+    assert(session.line_size() == 0);
+    assert(transport.output.find('\a') != std::string::npos);
+    assert(executor.calls == 4);
+    assert(transport.output.find("error: token too long") != std::string::npos);
+
+    for (int index = 0; index < 10; ++index) {
+        transport.Send("known " + std::to_string(index) + "\r");
+        Drain(session, transport);
+    }
+    assert(session.history_size() == kHistoryEntries);
+
+    // A broken transport cannot make the session read past its fixed buffer.
+    transport.over_report_read = true;
+    transport.Send("known\r");
+    session.Poll();
+    transport.over_report_read = false;
+
+    transport.connected = false;
+    session.Poll();
+    assert(!session.connected());
+    transport.connected = true;
+    session.Poll();
+    assert(session.connected());
+    assert(session.line_size() == 0);
+
+    transport.fail_write = true;
+    transport.Send("x");
+    session.Poll();
+    assert(!session.connected());
+}
+
+}  // namespace
 
 int main() {
     Invocation invocation{};
@@ -73,4 +222,6 @@ int main() {
     assert(cancellation.IsCancelled());
     cancellation.Reset();
     assert(!cancellation.IsCancelled());
+
+    TestSession();
 }

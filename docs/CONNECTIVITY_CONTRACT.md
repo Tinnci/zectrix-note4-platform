@@ -138,6 +138,22 @@ request frame, including CRC, is in `protocol/golden-vectors.json`.
 The direct Wi-Fi backend can implement the same resource capability. This
 keeps the application semantic result independent of the selected transport.
 
+The C1.7 host-qualified backend is a bounded, poll-driven burst state machine.
+It loads credentials through a Storage-owned source, then exposes explicit
+station start, association, IP, DNS, TLS, transfer and stop phases through an
+internal driver seam. No URL, credential, socket, `esp_wifi`, `esp_netif` or
+lwIP type crosses that seam into an application or SDK header. The first
+capability remains `public_test_document_v1` with a maximum 2048-byte result.
+
+Every operation result is published only after the backend has attempted to
+stop the station. Stop has an independent two-second bound; a failed stop is
+reported separately and makes that backend instance non-reusable. Credentials
+are held in a fixed-size temporary copy and cleared after station start. Host
+fakes cover success, unavailable/invalid credentials, authentication, IP, DNS,
+TLS, timeout, transfer, size, malformed response, cancellation, unsupported
+capability and stop failure. The ESP-IDF driver and real association/resource/
+power-down evidence remain the hardware-dependent C1.7 exit work.
+
 ## Security lifecycle
 
 Pairing requires a local Note4 action. The firmware requests bonding, LE Secure

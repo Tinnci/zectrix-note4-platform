@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "zectrix_display_service.h"
+#include "zectrix_cli_usb.h"
 #include "zectrix_connectivity_service.h"
 #include "zectrix_nfc_service.h"
 #include "zectrix_input_service.h"
@@ -126,6 +127,14 @@ ConnectivityService::~ConnectivityService() {
 }
 }
 
+namespace zectrix::cli {
+CliUsbService::CliUsbService() = default;
+CliUsbService::~CliUsbService() { events.emplace_back("delete:cli"); }
+esp_err_t CliUsbService::Start(CliExecutor*) { return Result("cli"); }
+void CliUsbService::Stop() {}
+bool CliUsbService::running() const { return true; }
+}
+
 int main() {
     {
         zectrix::Platform platform;
@@ -144,13 +153,14 @@ int main() {
             "init:board", "create:input", "create:power", "create:time",
             "create:storage", "create:storage-init", "create:system",
             "create:display", "create:connectivity",
-            "create:connectivity-init"}));
+            "create:connectivity-init", "create:cli"}));
     }
     assert((events == std::vector<std::string>{
         "init:board", "create:input", "create:power", "create:time",
         "create:storage", "create:storage-init", "create:system",
         "create:display", "create:connectivity", "create:connectivity-init",
-        "delete:connectivity", "delete:display", "delete:system", "delete:storage", "delete:time",
+        "create:cli", "delete:cli", "delete:connectivity", "delete:display",
+        "delete:system", "delete:storage", "delete:time",
         "delete:power", "delete:input"}));
 
     events.clear();
@@ -198,4 +208,17 @@ int main() {
         "init:board", "create:input", "create:power", "create:time",
         "create:storage", "create:storage-init", "delete:storage",
         "delete:time", "delete:power", "delete:input"}));
+
+    events.clear();
+    fail_at = "cli";
+    zectrix::Platform failed_cli;
+    assert(failed_cli.Initialize() == ESP_FAIL);
+    assert(!failed_cli.IsInitialized());
+    assert((events == std::vector<std::string>{
+        "init:board", "create:input", "create:power", "create:time",
+        "create:storage", "create:storage-init", "create:system",
+        "create:display", "create:connectivity", "create:connectivity-init",
+        "create:cli", "delete:cli", "delete:connectivity",
+        "delete:display", "delete:system", "delete:storage", "delete:time",
+        "delete:power", "delete:input"}));
 }

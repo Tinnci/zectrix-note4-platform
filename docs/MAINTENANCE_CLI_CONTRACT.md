@@ -1,6 +1,8 @@
 # Maintenance CLI contract
 
-Status: Draft for D1 implementation.
+Status: Draft for D1 implementation. The D1.2 USB transport and bounded
+session are implemented; owner-dispatched commands and streams remain later
+D1 slices.
 
 ## Purpose
 
@@ -36,6 +38,13 @@ dispatcher is internal. It is not a general event bus or a public SDK API.
 One resource has one owner. A command cannot bypass service state, policy or
 lifecycle rules. A status result is a bounded copy. It is not a pointer or a
 reference to owner state.
+
+The ESP32-S3 transport owns the interrupt-driven USB Serial/JTAG driver for its
+whole task lifetime. It shares that driver with secondary console output,
+polls without an unbounded read, and restores the non-blocking console path on
+clean shutdown. A physical disconnect resets the partial command and a
+reconnect starts a fresh prompt. Command history is a fixed eight-entry RAM
+ring and is never persisted.
 
 ## Command model
 
