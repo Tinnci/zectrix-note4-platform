@@ -1,168 +1,548 @@
 #include "zectrix_display_service.h"
+#include "zectrix_demo_ui.h"
 #include "zectrix_epd.h"
 
+#include <algorithm>
 #include <array>
 #include <cassert>
+#include <climits>
+#include <cstdio>
 #include <cstdlib>
-#include <new>
 #include <cstring>
+#include <map>
+#include <memory>
+#include <new>
+#include <vector>
 
-struct zectrix_epd_t {
-    bool powered = false;
-    int power_on_count = 0;
-    int power_off_count = 0;
-    int full_1bpp_count = 0;
-    int partial_count = 0;
-    int full_4bpp_count = 0;
-    std::array<uint8_t, 64> shadow{};
-};
+#include "esp_heap_caps.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
 
-static zectrix_epd_t driver;
-static bool fail_service_allocation = false;
-static bool fail_next_partial = false;
-static int delete_count = 0;
-static int64_t now_us = 0;
-int64_t esp_timer_get_time() { return now_us += 1000; }
+struct FakeSpiDevice {};
+struct FakeSemaphore { bool locked = false; };
+
+namespace {
+
+using namespace zectrix::display;
+using Frame = std::array<uint8_t, DisplayService::kFrameBytes1Bpp>;
+struct Packet { uint8_t command; std::vector<uint8_t> data; };
+std::vector<Packet> packets;
+std::array<int, 49> pins{};
+std::map<void*, std::size_t> allocations;
+bool bus_active = false;
+unsigned devices = 0, mutexes = 0, gpio_writes = 0;
+unsigned nothrow_allocations = 0, fail_allocation_at = 0;
+unsigned heap_allocations = 0, fail_heap_at = 0;
+int fail_command = -1, fail_data = -1;
+bool fail_power_off = false, timeout_refresh = false, fail_lock = false;
+int64_t now_us = 0;
+
+void Reset() {
+    assert(!bus_active && devices == 0 && mutexes == 0 && allocations.empty());
+    packets.clear();
+    pins = {};
+    gpio_writes = nothrow_allocations = heap_allocations = 0;
+    fail_allocation_at = fail_heap_at = 0;
+    fail_command = fail_data = -1;
+    fail_power_off = timeout_refresh = fail_lock = false;
+    now_us = 0;
+}
+
+void ClearTraffic() { packets.clear(); gpio_writes = 0; }
+
+const Packet& PacketFor(uint8_t command) {
+    const Packet* result = nullptr;
+    for (const auto& packet : packets) {
+        if (packet.command == command) {
+            assert(result == nullptr);
+            result = &packet;
+        }
+    }
+    assert(result != nullptr);
+    return *result;
+}
+
+bool HasCommand(uint8_t command) {
+    return std::any_of(packets.begin(), packets.end(),
+        [command](const auto& packet) { return packet.command == command; });
+}
+
+bool Bit(const uint8_t* bytes, int stride, int x, int y) {
+    return (bytes[y * stride + x / 8] & (0x80u >> (x % 8))) != 0;
+}
+
+void PutBit(uint8_t* bytes, int stride, int x, int y, bool white) {
+    auto& byte = bytes[y * stride + x / 8];
+    const auto mask = static_cast<uint8_t>(0x80u >> (x % 8));
+    byte = white ? byte | mask : byte & static_cast<uint8_t>(~mask);
+}
+
+std::vector<uint8_t> Crop(const Frame& frame, const zectrix_epd_rect_t& rect) {
+    const int stride = (rect.width + 7) / 8;
+    std::vector<uint8_t> pixels(stride * rect.height, 0xa5);
+    for (int y = 0; y < rect.height; ++y) {
+        for (int x = 0; x < rect.width; ++x) {
+            PutBit(pixels.data(), stride, x, y, Bit(frame.data(), 50, rect.x + x, rect.y + y));
+        }
+    }
+    return pixels;
+}
+
+zectrix_epd_rect_t ReferenceDirty(const Frame& before, const zectrix_epd_rect_t& source,
+                                 const uint8_t* pixels) {
+    int left = 400, top = 300, right = -1, bottom = -1;
+    // This pixel-by-pixel reference is independent of the driver's byte scan.
+    for (int y = 0; y < source.height; ++y) {
+        for (int x = 0; x < source.width; ++x) {
+            if (Bit(before.data(), 50, source.x + x, source.y + y) !=
+                Bit(pixels, (source.width + 7) / 8, x, y)) {
+                left = std::min(left, source.x + x);
+                right = std::max(right, source.x + x);
+                top = std::min(top, source.y + y);
+                bottom = std::max(bottom, source.y + y);
+            }
+        }
+    }
+    return right < left ? zectrix_epd_rect_t{} :
+        zectrix_epd_rect_t{left, top, right - left + 1, bottom - top + 1};
+}
+
+template <typename Left, typename Right>
+void SameRect(const Left& left, const Right& right) {
+    assert(left.x == right.x && left.y == right.y &&
+           left.width == right.width && left.height == right.height);
+}
+
+std::size_t CheckPartial(const Frame& before, const zectrix_epd_rect_t& source,
+                         const uint8_t* pixels) {
+    const auto dirty = ReferenceDirty(before, source, pixels);
+    assert(dirty.width > 0);
+    const int x0 = dirty.x & ~7;
+    const int x1 = ((dirty.x + dirty.width + 7) & ~7) - 1;
+    const int y1 = dirty.y + dirty.height - 1;
+    const std::vector<uint8_t> window{
+        static_cast<uint8_t>(x0 >> 8), static_cast<uint8_t>(x0),
+        static_cast<uint8_t>(x1 >> 8), static_cast<uint8_t>(x1),
+        static_cast<uint8_t>(dirty.y >> 8), static_cast<uint8_t>(dirty.y),
+        static_cast<uint8_t>(y1 >> 8), static_cast<uint8_t>(y1), 1};
+    assert(PacketFor(0x83).data == window);
+    const auto& data = PacketFor(0x10).data;
+    assert(data.size() == static_cast<std::size_t>((x1 - x0 + 1) * dirty.height / 4));
+    std::size_t index = 0;
+    for (int y = dirty.y; y <= y1; ++y) {
+        for (int x = x0; x <= x1; ++x, ++index) {
+            const bool old_pixel = Bit(before.data(), 50, x, y);
+            const bool new_pixel = x < source.x || x >= source.x + source.width
+                ? old_pixel : Bit(pixels, (source.width + 7) / 8, x - source.x, y - source.y);
+            const unsigned transition = (data[index / 4] >> (6 - (index % 4) * 2)) & 3;
+            assert(transition == (static_cast<unsigned>(old_pixel) * 2 + new_pixel));
+        }
+    }
+    assert(HasCommand(0x12));
+    return data.size();
+}
+
+void CheckFull(const Frame& frame) {
+    assert(!HasCommand(0x83) && HasCommand(0x12));
+    const auto& data = PacketFor(0x10).data;
+    assert(data.size() == 30000);
+    for (int pixel = 0; pixel < 400 * 300; ++pixel) {
+        const unsigned code = (data[pixel / 4] >> (6 - (pixel % 4) * 2)) & 3;
+        assert(code == Bit(frame.data(), 50, pixel % 400, pixel / 400));
+    }
+}
+
+std::unique_ptr<DisplayService> CreateService() {
+    DisplayService* service = nullptr;
+    assert(DisplayService::Create(&service) == ESP_OK);
+    return std::unique_ptr<DisplayService>(service);
+}
+
+DisplayInspection Inspect(const DisplayService& service) {
+    DisplayInspection result;
+    assert(service.ReadInspection(&result) == ESP_OK);
+    return result;
+}
+
+void Present(DisplayService& service, const Frame& frame, DisplayIntent intent = DisplayIntent::Auto) {
+    assert(service.Present1Bpp(intent, frame.data(), frame.size()) == ESP_OK);
+}
+
+void TestCreationAndInputErrors() {
+    for (unsigned failure : {1u, 2u}) {
+        Reset();
+        fail_allocation_at = failure;
+        DisplayService* service = nullptr;
+        assert(DisplayService::Create(&service) == ESP_ERR_NO_MEM && service == nullptr);
+    }
+    for (unsigned failure : {1u, 2u}) {
+        Reset();
+        fail_heap_at = failure;
+        DisplayService* service = nullptr;
+        assert(DisplayService::Create(&service) == ESP_ERR_NO_MEM && service == nullptr);
+    }
+    Reset();
+    assert(DisplayService::Create(nullptr) == ESP_ERR_INVALID_ARG);
+    auto service = CreateService();
+    Frame frame{};
+    assert(!Inspect(*service).framebuffer_valid);
+    assert(service->ReadInspection(nullptr) == ESP_ERR_INVALID_ARG);
+    ClearTraffic();
+    assert(service->Present1Bpp(DisplayIntent::Auto, nullptr, frame.size()) == ESP_ERR_INVALID_ARG);
+    assert(service->Present1Bpp(DisplayIntent::Auto, frame.data(), 1) == ESP_ERR_INVALID_ARG);
+    assert(service->Present1Bpp(static_cast<DisplayIntent>(255), frame.data(), frame.size()) == ESP_ERR_INVALID_ARG);
+    for (const Rect invalid : {Rect{-1, 0, 1, 1}, Rect{0, -1, 1, 1}, Rect{400, 0, 1, 1},
+                              Rect{0, 300, 1, 1}, Rect{1, 0, INT_MAX, 1}, Rect{0, 1, 1, INT_MAX},
+                              Rect{0, 0, 0, 1}, Rect{0, 0, 1, -1}}) {
+        assert(service->Present1Bpp(DisplayIntent::Auto, frame.data(), frame.size(),
+                                    invalid, frame.data(), 1) == ESP_ERR_INVALID_ARG);
+    }
+    assert(service->Present1Bpp(DisplayIntent::Auto, frame.data(), frame.size(),
+                                {0, 0, 9, 1}, frame.data(), 1) == ESP_ERR_INVALID_SIZE);
+    assert(service->Present1Bpp(DisplayIntent::Fast, frame.data(), frame.size(),
+                                {0, 0, 1, 1}, nullptr, 1) == ESP_ERR_INVALID_ARG);
+    assert(packets.empty() && gpio_writes == 0 && Inspect(*service).refresh_count == 0);
+}
+
+void TestAutomaticRefreshAndBudget() {
+    Reset();
+    auto service = CreateService();
+    Frame frame;
+    frame.fill(0xff);
+    ClearTraffic();
+    Present(*service, frame);
+    CheckFull(frame);
+    auto inspection = Inspect(*service);
+    assert(inspection.framebuffer_valid && inspection.bits_per_pixel == 1 && !inspection.powered);
+    assert(inspection.refresh_count == 1 && inspection.last_duration_us > 0);
+    ClearTraffic();
+    Present(*service, frame, DisplayIntent::Fast);
+    assert(packets.empty() && gpio_writes == 0 && Inspect(*service).refresh_count == 1);
+    const auto before = frame;
+    PutBit(frame.data(), 50, 19, 31, false);
+    PutBit(frame.data(), 50, 28, 38, false);
+    Present(*service, frame);
+    assert(CheckPartial(before, {0, 0, 400, 300}, frame.data()) == 32);
+    SameRect(service->state().dirty_region, (Rect{19, 31, 10, 8}));
+    assert(service->state().partial_refresh_count == 1);
+    assert(Inspect(*service).last_refresh == RefreshKind::kPartial1Bpp);
+    for (unsigned count = 1; count < 8; ++count) {
+        PutBit(frame.data(), 50, 19, 31, count % 2 != 0);
+        Present(*service, frame);
+    }
+    assert(service->state().partial_refresh_count == 8);
+    ClearTraffic();
+    const auto attempts = Inspect(*service).refresh_count;
+    Present(*service, frame);
+    assert(packets.empty() && gpio_writes == 0 && Inspect(*service).refresh_count == attempts);
+    PutBit(frame.data(), 50, 0, 0, false);
+    Present(*service, frame);
+    CheckFull(frame);
+    assert(service->state().partial_refresh_count == 0 && !service->state().has_dirty_region);
+    assert(Inspect(*service).preview[0] == 0x7f);
+    frame[0] = 0xff;
+    assert(Inspect(*service).preview[0] == 0x7f);
+    for (auto intent : {DisplayIntent::Quality, DisplayIntent::FullClean}) {
+        ClearTraffic();
+        Present(*service, frame, intent);
+        CheckFull(frame);
+    }
+    const auto old = frame;
+    frame.fill(0);
+    ClearTraffic();
+    Present(*service, frame);
+    assert(CheckPartial(old, {0, 0, 400, 300}, frame.data()) == 30000);
+}
+
+void TestPatchCompatibility() {
+    Reset();
+    auto service = CreateService();
+    Frame fallback;
+    fallback.fill(0xff);
+    const uint8_t black = 0;
+    // The legacy patch API still uses the supplied full image for recovery.
+    assert(service->Present1Bpp(DisplayIntent::Fast, fallback.data(), fallback.size(),
+                                {3, 2, 1, 1}, &black, 1) == ESP_OK);
+    CheckFull(fallback);
+    ClearTraffic();
+    assert(service->Present1Bpp(DisplayIntent::Fast, fallback.data(), fallback.size(),
+                                {3, 2, 1, 1}, &black, 1) == ESP_OK);
+    CheckPartial(fallback, {3, 2, 1, 1}, &black);
+    auto expected = fallback;
+    PutBit(expected.data(), 50, 3, 2, false);
+    ClearTraffic();
+    Present(*service, expected);
+    assert(packets.empty() && gpio_writes == 0);
+}
+
+void TestDriverDiffAndWindow() {
+    Reset();
+    zectrix_epd_config_t config;
+    zectrix_epd_get_default_config(&config);
+    zectrix_epd_handle_t handle = nullptr;
+    assert(zectrix_epd_new(&config, &handle) == ESP_OK);
+    Frame before;
+    for (std::size_t i = 0; i < before.size(); ++i) before[i] = static_cast<uint8_t>(i * 79 + 23);
+    const zectrix_epd_rect_t full{0, 0, 400, 300};
+    zectrix_epd_rect_t dirty{1, 2, 3, 4};
+    assert(zectrix_epd_find_dirty_1bpp(handle, &full, before.data(), before.size(), &dirty) == ESP_ERR_INVALID_STATE);
+    SameRect(dirty, zectrix_epd_rect_t{});
+    assert(zectrix_epd_power_on(handle) == ESP_OK);
+    assert(zectrix_epd_refresh_full_1bpp(handle, before.data(), before.size()) == ESP_OK);
+    assert(zectrix_epd_power_off(handle) == ESP_OK);
+    ClearTraffic();
+    const auto allocation_count = heap_allocations;
+    for (int x = 0; x < 400; ++x) {
+        for (int width = 1; width <= std::min(17, 400 - x); ++width) {
+            for (int y : {0, 157, 299}) {
+                const zectrix_epd_rect_t source{x, y, width, std::min(3, 300 - y)};
+                auto pixels = Crop(before, source);
+                assert(zectrix_epd_find_dirty_1bpp(handle, &source, pixels.data(), pixels.size(), &dirty) == ESP_OK);
+                SameRect(dirty, zectrix_epd_rect_t{});
+                const int dx = width - 1, dy = source.height - 1;
+                PutBit(pixels.data(), (width + 7) / 8, dx, dy,
+                       !Bit(before.data(), 50, x + dx, y + dy));
+                assert(zectrix_epd_find_dirty_1bpp(handle, &source, pixels.data(), pixels.size(), &dirty) == ESP_OK);
+                SameRect(dirty, ReferenceDirty(before, source, pixels.data()));
+            }
+        }
+    }
+    assert(packets.empty() && gpio_writes == 0 && heap_allocations == allocation_count);
+    const zectrix_epd_rect_t source{5, 10, 17, 4};
+    auto pixels = Crop(before, source);
+    PutBit(pixels.data(), 3, 2, 1, !Bit(before.data(), 50, 7, 11));
+    PutBit(pixels.data(), 3, 14, 3, !Bit(before.data(), 50, 19, 13));
+    dirty = source;
+    assert(zectrix_epd_find_dirty_1bpp(handle, &dirty, pixels.data(), pixels.size(), &dirty) == ESP_OK);
+    SameRect(dirty, (zectrix_epd_rect_t{7, 11, 13, 3}));
+    assert(zectrix_epd_refresh_partial_1bpp(handle, &source, pixels.data(), pixels.size()) == ESP_ERR_INVALID_STATE);
+    assert(zectrix_epd_power_on(handle) == ESP_OK);
+    ClearTraffic();
+    assert(zectrix_epd_refresh_partial_1bpp(handle, &source, pixels.data(), pixels.size()) == ESP_OK);
+    assert(CheckPartial(before, source, pixels.data()) == 18);
+    Frame expected = before, shadow;
+    for (int y = 0; y < source.height; ++y) {
+        for (int x = 0; x < source.width; ++x) {
+            PutBit(expected.data(), 50, source.x + x, source.y + y, Bit(pixels.data(), 3, x, y));
+        }
+    }
+    assert(zectrix_epd_copy_shadow(handle, 0, shadow.data(), shadow.size()) == ESP_OK && shadow == expected);
+    ClearTraffic();
+    assert(zectrix_epd_refresh_partial_1bpp(handle, &source, pixels.data(), pixels.size()) == ESP_OK);
+    assert(packets.empty() && gpio_writes == 0);
+    before = expected;
+    PutBit(expected.data(), 50, 399, 299, !Bit(before.data(), 50, 399, 299));
+    assert(zectrix_epd_refresh_partial_1bpp(handle, &full, expected.data(), expected.size()) == ESP_OK);
+    assert(CheckPartial(before, full, expected.data()) == 2);
+    assert(zectrix_epd_copy_shadow(handle, 0, shadow.data(), shadow.size()) == ESP_OK && shadow == expected);
+    ClearTraffic();
+    const zectrix_epd_rect_t invalid{1, 1, INT_MAX, INT_MAX};
+    assert(zectrix_epd_refresh_partial_1bpp(handle, &invalid, pixels.data(), pixels.size()) == ESP_ERR_INVALID_ARG);
+    assert(zectrix_epd_find_dirty_1bpp(handle, &full, expected.data(), SIZE_MAX, &dirty) == ESP_ERR_INVALID_SIZE);
+    SameRect(dirty, zectrix_epd_rect_t{});
+    assert(zectrix_epd_find_dirty_1bpp(handle, nullptr, expected.data(), expected.size(), &dirty) == ESP_ERR_INVALID_ARG);
+    assert(zectrix_epd_find_dirty_1bpp(handle, &full, expected.data(), expected.size(), nullptr) == ESP_ERR_INVALID_ARG);
+    assert(packets.empty() && gpio_writes == 0);
+    assert(zectrix_epd_del(handle) == ESP_OK);
+}
+
+void TestFailuresRecoverWithFullFrame() {
+    for (int failure = 0; failure < 5; ++failure) {
+        Reset();
+        auto service = CreateService();
+        Frame frame;
+        frame.fill(0xff);
+        Present(*service, frame);
+        PutBit(frame.data(), 50, 3, 2, false);
+        ClearTraffic();
+        if (failure == 0) fail_command = 0xe9;
+        if (failure == 1) fail_data = 0x10;
+        if (failure == 2) timeout_refresh = true;
+        if (failure == 3) fail_power_off = true;
+        if (failure == 4) fail_lock = true;
+        const auto expected = failure == 2 ? ESP_ERR_TIMEOUT : ESP_FAIL;
+        assert(service->Present1Bpp(DisplayIntent::Auto, frame.data(), frame.size()) == expected);
+        if (failure == 2) assert(!HasCommand(0x02));
+        assert(!service->CanUsePartial());
+        const auto status = Inspect(*service);
+        assert(!status.framebuffer_valid && status.failed_refresh_count == 1 && status.last_error == expected);
+        timeout_refresh = false;
+        ClearTraffic();
+        // A failed power-off may leave a matching shadow. It still needs recovery.
+        Present(*service, frame);
+        CheckFull(frame);
+        assert(service->CanUsePartial() && Inspect(*service).framebuffer_valid);
+    }
+}
+
+void TestBatchAndGray() {
+    Reset();
+    auto service = CreateService();
+    Frame frame;
+    frame.fill(0xff);
+    Present(*service, frame);
+    assert(service->BeginBatch() == ESP_OK);
+    assert(service->BeginBatch() == ESP_ERR_INVALID_STATE);
+    ClearTraffic();
+    Present(*service, frame);
+    assert(service->IsPowered() && packets.empty() && gpio_writes == 0);
+    frame[0] = 0;
+    Present(*service, frame);
+    assert(service->IsPowered() && Inspect(*service).batch_active);
+    assert(service->EndBatch() == ESP_OK && !service->IsPowered());
+    assert(service->EndBatch() == ESP_ERR_INVALID_STATE);
+    std::array<uint8_t, DisplayService::kFrameBytes4Bpp> gray{};
+    gray[0] = 0x73;
+    ClearTraffic();
+    assert(service->Present4Bpp(DisplayIntent::Fast, gray.data(), gray.size()) == ESP_ERR_NOT_SUPPORTED);
+    assert(service->Present4Bpp(DisplayIntent::Quality, gray.data(), 1) == ESP_ERR_INVALID_ARG);
+    assert(packets.empty() && gpio_writes == 0);
+    assert(service->Present4Bpp(DisplayIntent::Quality, gray.data(), gray.size()) == ESP_OK);
+    const auto inspection = Inspect(*service);
+    assert(!service->CanUsePartial() && inspection.framebuffer_valid && inspection.bits_per_pixel == 4);
+    assert(inspection.preview[0] == 0x73 && inspection.framebuffer_bytes == gray.size());
+    ClearTraffic();
+    Present(*service, frame);
+    CheckFull(frame);
+}
+
+void TestUiTraffic() {
+    Reset();
+    auto service = CreateService();
+    ZectrixDemoUi ui(service.get());
+    zectrix::time::DateTime clock;
+    clock.year = 2026;
+    clock.month = 9;
+    clock.day = 8;
+    clock.hour = 12;
+    clock.minute = 34;
+    clock.second = 56;
+    assert(ui.ShowClock(clock, true) == ESP_OK);
+    Frame before;
+    std::memcpy(before.data(), ui.canvas().data(), before.size());
+    ClearTraffic();
+    ++clock.second;
+    assert(ui.ShowClock(clock, false) == ESP_OK);
+    const auto clock_bytes = CheckPartial(before, {0, 0, 400, 300}, ui.canvas().data());
+    assert(clock_bytes < 23400);
+    const auto count = Inspect(*service).refresh_count;
+    ClearTraffic();
+    assert(ui.ShowClock(clock, false) == ESP_OK);
+    assert(packets.empty() && gpio_writes == 0 && Inspect(*service).refresh_count == count);
+    const char* items[] = {"CLOCK", "SETTINGS", "ABOUT"};
+    assert(ui.ShowMenu("MENU", items, 3, 0, "OK Select", true) == ESP_OK);
+    std::memcpy(before.data(), ui.canvas().data(), before.size());
+    ClearTraffic();
+    assert(ui.ShowMenu("MENU", items, 3, 1, "OK Select", false) == ESP_OK);
+    const auto menu_bytes = CheckPartial(before, {0, 0, 400, 300}, ui.canvas().data());
+    assert(menu_bytes < 23400);
+    std::memcpy(before.data(), ui.canvas().data(), before.size());
+    ClearTraffic();
+    assert(ui.ShowMenu("OTHER", items, 3, 1, "UP Back", false) == ESP_OK);
+    const auto dirty = ReferenceDirty(before, {0, 0, 400, 300}, ui.canvas().data());
+    assert(dirty.y < 36 && dirty.y + dirty.height > 270);
+    CheckPartial(before, {0, 0, 400, 300}, ui.canvas().data());
+    std::printf("MEASURE: native RAM payload clock=%zu menu=%zu bytes; previous fixed window=23400 bytes.\n",
+                clock_bytes, menu_bytes);
+}
+
+}  // namespace
 
 void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
-    if (fail_service_allocation) return nullptr;
-    return std::malloc(size);
+    if (++nothrow_allocations == fail_allocation_at) return nullptr;
+    try { return ::operator new(size); } catch (...) { return nullptr; }
 }
-
-void operator delete(void* pointer, const std::nothrow_t&) noexcept {
+void operator delete(void* pointer, const std::nothrow_t&) noexcept { ::operator delete(pointer); }
+void* heap_caps_malloc(std::size_t size, uint32_t) {
+    if (++heap_allocations == fail_heap_at) return nullptr;
+    void* pointer = std::malloc(size);
+    if (pointer != nullptr) allocations[pointer] = size;
+    return pointer;
+}
+void heap_caps_free(void* pointer) {
+    assert(allocations.erase(pointer) == 1);
     std::free(pointer);
 }
-
-void zectrix_epd_get_default_config(zectrix_epd_config_t*) {}
-esp_err_t zectrix_epd_new(const zectrix_epd_config_t*,
-                          zectrix_epd_handle_t* out_handle) {
-    driver = {};
-    *out_handle = &driver;
-    return ESP_OK;
+SemaphoreHandle_t xSemaphoreCreateMutex() { ++mutexes; return new FakeSemaphore; }
+BaseType_t xSemaphoreTake(SemaphoreHandle_t mutex, TickType_t) {
+    if (fail_lock) { fail_lock = false; return pdFALSE; }
+    assert(!mutex->locked);
+    mutex->locked = true;
+    return pdTRUE;
 }
-esp_err_t zectrix_epd_del(zectrix_epd_handle_t) {
-    ++delete_count;
-    return ESP_OK;
+BaseType_t xSemaphoreGive(SemaphoreHandle_t mutex) {
+    assert(mutex->locked);
+    mutex->locked = false;
+    return pdTRUE;
 }
-esp_err_t zectrix_epd_power_on(zectrix_epd_handle_t handle) {
-    handle->powered = true;
-    ++handle->power_on_count;
-    return ESP_OK;
-}
-esp_err_t zectrix_epd_power_off(zectrix_epd_handle_t handle) {
-    handle->powered = false;
-    ++handle->power_off_count;
-    return ESP_OK;
-}
-bool zectrix_epd_is_powered(zectrix_epd_handle_t handle) {
-    return handle->powered;
-}
-esp_err_t zectrix_epd_refresh_full_1bpp(zectrix_epd_handle_t handle,
-                                        const std::uint8_t* frame, std::size_t) {
-    std::memcpy(handle->shadow.data(), frame, handle->shadow.size());
-    ++handle->full_1bpp_count;
-    return ESP_OK;
-}
-esp_err_t zectrix_epd_refresh_partial_1bpp(zectrix_epd_handle_t handle,
-                                           const zectrix_epd_rect_t*,
-                                           const std::uint8_t* pixel, std::size_t) {
-    ++handle->partial_count;
-    if (fail_next_partial) {
-        fail_next_partial = false;
+void vSemaphoreDelete(SemaphoreHandle_t mutex) { assert(!mutex->locked); --mutexes; delete mutex; }
+void vTaskDelay(TickType_t ticks) { now_us += static_cast<int64_t>(ticks) * 1000; }
+int64_t esp_timer_get_time() { return now_us; }
+int64_t zectrix::time::TimeService::MonotonicMicroseconds() const { return now_us; }
+const char* ZectrixSelfTest::Name(ZectrixTestId) { return "test"; }
+const char* esp_err_to_name(esp_err_t err) { return err == ESP_OK ? "ESP_OK" : "ESP_FAIL"; }
+esp_err_t gpio_config(const gpio_config_t*) { return ESP_OK; }
+esp_err_t gpio_set_level(gpio_num_t pin, int value) {
+    ++gpio_writes;
+    if (pin == GPIO_NUM_6 && value == 0 && fail_power_off) {
+        fail_power_off = false;
         return ESP_FAIL;
     }
-    handle->shadow[0] = pixel[0];
+    pins[pin] = value;
     return ESP_OK;
 }
-
-esp_err_t zectrix_epd_copy_shadow(zectrix_epd_handle_t handle, std::size_t offset,
-                                  uint8_t* destination, std::size_t size) {
-    assert(offset + size <= handle->shadow.size());
-    std::memcpy(destination, handle->shadow.data() + offset, size);
+int gpio_get_level(gpio_num_t pin) {
+    assert(pin == GPIO_NUM_8);
+    return timeout_refresh && !packets.empty() && packets.back().command == 0x12 ? 0 : 1;
+}
+esp_err_t gpio_hold_dis(gpio_num_t) { return ESP_OK; }
+esp_err_t gpio_hold_en(gpio_num_t) { return ESP_OK; }
+esp_err_t spi_bus_initialize(spi_host_device_t, const spi_bus_config_t*, int) {
+    assert(!bus_active);
+    bus_active = true;
     return ESP_OK;
 }
-esp_err_t zectrix_epd_refresh_full_4bpp(zectrix_epd_handle_t handle,
-                                        const std::uint8_t*, std::size_t) {
-    ++handle->full_4bpp_count;
+esp_err_t spi_bus_free(spi_host_device_t) {
+    assert(bus_active && devices == 0);
+    bus_active = false;
+    return ESP_OK;
+}
+esp_err_t spi_bus_add_device(spi_host_device_t, const spi_device_interface_config_t*, spi_device_handle_t* device) {
+    assert(bus_active && devices == 0);
+    *device = new FakeSpiDevice;
+    ++devices;
+    return ESP_OK;
+}
+esp_err_t spi_bus_remove_device(spi_device_handle_t device) { --devices; delete device; return ESP_OK; }
+esp_err_t spi_device_polling_transmit(spi_device_handle_t, spi_transaction_t* transaction) {
+    assert(pins[GPIO_NUM_11] == 0 && pins[GPIO_NUM_6] == 1);
+    if (transaction->flags & SPI_TRANS_USE_RXDATA) {
+        transaction->rx_data[0] = 25;
+        return ESP_OK;
+    }
+    const auto* bytes = transaction->flags & SPI_TRANS_USE_TXDATA ? transaction->tx_data :
+        static_cast<const uint8_t*>(transaction->tx_buffer);
+    const auto size = transaction->length / 8;
+    assert(size > 0 && size <= 1024 && transaction->length % 8 == 0);
+    if (pins[GPIO_NUM_10] == 0) {
+        assert(size == 1);
+        if (bytes[0] == fail_command) { fail_command = -1; return ESP_FAIL; }
+        packets.push_back({bytes[0], {}});
+    } else {
+        assert(!packets.empty());
+        if (packets.back().command == fail_data) { fail_data = -1; return ESP_FAIL; }
+        packets.back().data.insert(packets.back().data.end(), bytes, bytes + size);
+    }
     return ESP_OK;
 }
 
 int main() {
-    using namespace zectrix::display;
-    std::array<std::uint8_t, DisplayService::kFrameBytes1Bpp> frame = {};
-    std::array<std::uint8_t, DisplayService::kFrameBytes4Bpp> gray_frame = {};
-    std::array<std::uint8_t, 1> pixel = {};
-    DisplayService* service = nullptr;
-    fail_service_allocation = true;
-    assert(DisplayService::Create(&service) == ESP_ERR_NO_MEM);
-    assert(service == nullptr && delete_count == 1);
-    fail_service_allocation = false;
-    assert(DisplayService::Create(&service) == ESP_OK);
-    DisplayInspection inspection;
-    assert(service->ReadInspection(&inspection) == ESP_OK);
-    assert(!inspection.framebuffer_valid && inspection.refresh_count == 0);
-    assert(service->ReadInspection(nullptr) == ESP_ERR_INVALID_ARG);
-    frame[0] = 0x5a;
-    assert(service->Present1Bpp(DisplayIntent::Fast,
-                                frame.data(), frame.size(),
-                                {0, 0, 8, 1}, pixel.data(), 1) == ESP_OK);
-    assert(driver.full_1bpp_count == 1 && driver.partial_count == 0);
-    assert(driver.power_on_count == 1 && driver.power_off_count == 1);
-    assert(service->ReadInspection(&inspection) == ESP_OK);
-    assert(inspection.framebuffer_valid && inspection.bits_per_pixel == 1);
-    assert(inspection.preview[0] == 0x5a && inspection.last_duration_us == 1000);
-    frame[0] = 0x11;
-    assert(inspection.preview[0] == 0x5a);
-    pixel[0] = 0xa5;
-    for (int i = 0; i < 8; ++i) {
-        assert(service->Present1Bpp(DisplayIntent::Auto,
-                                    frame.data(), frame.size(),
-                                    {0, 0, 8, 1}, pixel.data(), 1) == ESP_OK);
-    }
-    assert(service->state().partial_refresh_count == 8);
-    assert(service->ReadInspection(&inspection) == ESP_OK);
-    assert(inspection.preview[0] == 0xa5);
-    assert(inspection.last_refresh == RefreshKind::kPartial1Bpp);
-    assert(service->Present1Bpp(DisplayIntent::Fast,
-                                frame.data(), frame.size(),
-                                {0, 0, 8, 1}, pixel.data(), 1) == ESP_OK);
-    assert(driver.full_1bpp_count == 2);
-    assert(service->state().partial_refresh_count == 0);
-    assert(service->BeginBatch() == ESP_OK);
-    assert(service->Present1Bpp(DisplayIntent::Quality,
-                                frame.data(), frame.size()) == ESP_OK);
-    assert(service->Present1Bpp(DisplayIntent::Fast,
-                                frame.data(), frame.size(),
-                                {0, 0, 8, 1}, pixel.data(), 1) == ESP_OK);
-    assert(service->EndBatch() == ESP_OK);
-    assert(!service->IsPowered());
-    assert(driver.power_on_count == driver.power_off_count);
-    assert(service->Present4Bpp(DisplayIntent::Fast, frame.data(),
-                                frame.size()) == ESP_ERR_NOT_SUPPORTED);
-    gray_frame[0] = 0x73;
-    assert(service->Present4Bpp(DisplayIntent::Quality, gray_frame.data(),
-                                gray_frame.size()) == ESP_OK);
-    assert(!service->CanUsePartial());
-    assert(service->ReadInspection(&inspection) == ESP_OK);
-    assert(inspection.framebuffer_valid && inspection.bits_per_pixel == 4);
-    assert(inspection.preview[0] == 0x73 && inspection.framebuffer_bytes == 60000);
-    assert(service->Present1Bpp(DisplayIntent::Auto,
-                                frame.data(), frame.size(),
-                                {0, 0, 8, 1}, pixel.data(), 1) == ESP_OK);
-    fail_next_partial = true;
-    assert(service->Present1Bpp(DisplayIntent::Auto,
-                                frame.data(), frame.size(),
-                                {0, 0, 8, 1}, pixel.data(), 1) == ESP_FAIL);
-    assert(!service->CanUsePartial());
-    assert(service->ReadInspection(&inspection) == ESP_OK);
-    assert(!inspection.framebuffer_valid && inspection.last_error == ESP_FAIL);
-    assert(inspection.failed_refresh_count == 1);
-    const int full_before_recovery = driver.full_1bpp_count;
-    assert(service->Present1Bpp(DisplayIntent::Auto,
-                                frame.data(), frame.size(),
-                                {0, 0, 8, 1}, pixel.data(), 1) == ESP_OK);
-    assert(driver.full_1bpp_count == full_before_recovery + 1);
-    assert(service->CanUsePartial());
-    delete service;
-    assert(delete_count == 2);
+    TestCreationAndInputErrors();
+    TestAutomaticRefreshAndBudget();
+    TestPatchCompatibility();
+    TestDriverDiffAndWindow();
+    TestFailuresRecoverWithFullFrame();
+    TestBatchAndGray();
+    TestUiTraffic();
+    Reset();
 }

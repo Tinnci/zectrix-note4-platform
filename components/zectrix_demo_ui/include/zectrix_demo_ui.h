@@ -55,7 +55,7 @@ public:
 
     ZectrixCanvas& canvas() { return canvas_; }
     esp_err_t RefreshFull();
-    esp_err_t RefreshPartial(const zectrix::display::Rect& rect);
+    esp_err_t RefreshAuto();
 
 private:
     void DrawFrame(const char* title, const char* footer);
@@ -68,7 +68,6 @@ private:
     zectrix::display::DisplayService* display_ = nullptr;
     zectrix::time::TimeService* time_ = nullptr;
     ZectrixCanvas canvas_;
-    std::array<uint8_t, 50 * 300> partial_buffer_ = {};
     int64_t last_update_us_ = 0;
 };
 

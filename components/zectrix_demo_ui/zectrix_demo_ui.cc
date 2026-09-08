@@ -4,13 +4,9 @@
 #include <cstdio>
 #include <cstring>
 
-#include "esp_log.h"
-
 namespace {
 
-constexpr char kTag[] = "demo_ui";
 constexpr int kHeaderHeight = 36;
-constexpr int kFooterHeight = 30;
 constexpr int kTestStripHeight = 42;
 constexpr int kTestContentLeft = 16;
 constexpr int kTestContentRight = 384;
@@ -96,7 +92,7 @@ esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
         }
     }
     return full_refresh ? RefreshFull()
-                        : RefreshPartial({0, 36, 400, 234});
+                        : RefreshAuto();
 }
 
 esp_err_t ZectrixDemoUi::ShowClock(const zectrix::time::DateTime& value,
@@ -111,7 +107,7 @@ esp_err_t ZectrixDemoUi::ShowClock(const zectrix::time::DateTime& value,
     canvas_.TextCentered(154, line, 3);
     canvas_.TextCentered(224, "RTC", 1);
     return full_refresh ? RefreshFull()
-                        : RefreshPartial({0, 36, 400, 234});
+                        : RefreshAuto();
 }
 
 esp_err_t ZectrixDemoUi::ShowSettings(bool auto_showcase, const char* status,
@@ -127,7 +123,7 @@ esp_err_t ZectrixDemoUi::ShowSettings(bool auto_showcase, const char* status,
     canvas_.Text(24, 178, "STATUS:");
     canvas_.Text(112, 178, status == nullptr ? "" : status);
     return full_refresh ? RefreshFull()
-                        : RefreshPartial({0, 36, 400, 234});
+                        : RefreshAuto();
 }
 
 esp_err_t ZectrixDemoUi::ShowConnectivity(const char* state,
@@ -149,7 +145,7 @@ esp_err_t ZectrixDemoUi::ShowConnectivity(const char* state,
     canvas_.Text(24, 220, status == nullptr ? "" : status);
     canvas_.Text(24, 246, "PROTOCOL: NOT STARTED");
     return full_refresh ? RefreshFull()
-                        : RefreshPartial({0, 36, 400, 234});
+                        : RefreshAuto();
 }
 
 esp_err_t ZectrixDemoUi::ShowSceneInfo(const char* title, const char* mode,
@@ -229,7 +225,7 @@ esp_err_t ZectrixDemoUi::ShowTestMenu(
     canvas_.Text(20, 212, "RUN ALL TESTS IS AVAILABLE");
     canvas_.Text(20, 232, "FROM THE HARDWARE TEST MENU.");
     return full_refresh ? RefreshFull()
-                        : RefreshPartial({0, 36, 400, 234});
+                        : RefreshAuto();
 }
 
 esp_err_t ZectrixDemoUi::ShowTestUpdate(
@@ -262,7 +258,7 @@ esp_err_t ZectrixDemoUi::ShowTestUpdate(
                        update.details[i].data(),
                        kTestContentRight - kTestContentLeft);
     }
-    return RefreshPartial({0, 36, 400, 234});
+    return RefreshAuto();
 }
 
 esp_err_t ZectrixDemoUi::ShowTestSummary(
@@ -351,27 +347,11 @@ esp_err_t ZectrixDemoUi::RefreshFull() {
                                  canvas_.data(), canvas_.size());
 }
 
-esp_err_t ZectrixDemoUi::RefreshPartial(const zectrix::display::Rect& rect) {
-    if (display_ == nullptr || rect.x < 0 || rect.y < 0 || rect.width <= 0 ||
-        rect.height <= 0 || (rect.x & 7) != 0 || (rect.width & 7) != 0 ||
-        rect.x + rect.width > 400 || rect.y + rect.height > 300) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    const size_t row_bytes = static_cast<size_t>(rect.width / 8);
-    const size_t required = row_bytes * rect.height;
-    if (required > partial_buffer_.size()) {
-        return ESP_ERR_INVALID_SIZE;
-    }
-    for (int row = 0; row < rect.height; ++row) {
-        const uint8_t* source = canvas_.data() +
-            static_cast<size_t>(rect.y + row) * ZectrixCanvas::kStride + rect.x / 8;
-        std::memcpy(partial_buffer_.data() + static_cast<size_t>(row) * row_bytes,
-                    source, row_bytes);
-    }
+esp_err_t ZectrixDemoUi::RefreshAuto() {
+    if (display_ == nullptr) return ESP_ERR_INVALID_STATE;
     return display_->Present1Bpp(
         zectrix::display::DisplayIntent::Auto,
-        canvas_.data(), canvas_.size(), rect,
-        partial_buffer_.data(), required);
+        canvas_.data(), canvas_.size());
 }
 
 esp_err_t ZectrixDemoUi::ClearDisplay() {

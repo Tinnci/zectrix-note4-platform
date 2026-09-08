@@ -66,6 +66,18 @@ esp_err_t zectrix_epd_copy_shadow(zectrix_epd_handle_t handle, size_t offset,
                                   uint8_t* destination, size_t size);
 
 /**
+ * Find the smallest pixel rectangle that differs from the valid 1bpp shadow.
+ *
+ * rect locates a tightly packed MSB-first patch, or the entire 400x300 frame.
+ * Unused bits at the end of each source row are ignored. An unchanged image
+ * returns a zero rectangle. This operation does not power or modify the panel.
+ */
+esp_err_t zectrix_epd_find_dirty_1bpp(zectrix_epd_handle_t handle,
+                                      const zectrix_epd_rect_t* rect,
+                                      const uint8_t* pixels, size_t pixels_size,
+                                      zectrix_epd_rect_t* dirty);
+
+/**
  * Full-screen black/white refresh.
  *
  * Format: 400x300, row-major, MSB first, 1=white and 0=black.
@@ -81,6 +93,9 @@ esp_err_t zectrix_epd_refresh_full_1bpp(zectrix_epd_handle_t handle,
  * pixels contains a tightly packed rect.width x rect.height bitmap using the
  * same MSB-first, 1=white convention as full refresh. Each source row starts
  * at the next byte. A successful full 1bpp refresh must precede partial use.
+ * The driver sends only the changed bounding box, with X rounded out to byte
+ * boundaries. Unchanged pixels in that window retain their old value. An
+ * unchanged patch returns successfully without a controller transaction.
  */
 esp_err_t zectrix_epd_refresh_partial_1bpp(zectrix_epd_handle_t handle,
                                            const zectrix_epd_rect_t* rect,

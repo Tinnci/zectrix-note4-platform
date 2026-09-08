@@ -48,7 +48,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
 
 ## Milestone R1: Advanced E-Ink Waveform & Quality Engine (墨水屏进阶渲染)
 
-- [ ] **R1.1: Partial Refresh Dirty Region Optimizer**
+- [x] **R1.1: Partial Refresh Dirty Region Optimizer**
   - Screen diffing and minimal bounding box calculation.
 - [ ] **R1.2: Ghosting Mitigation & Adaptive Full Refresh Cycle**
   - Frame count threshold and high-contrast refresh triggers.

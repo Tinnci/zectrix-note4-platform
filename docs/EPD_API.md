@@ -47,8 +47,40 @@ ESP_ERROR_CHECK(zectrix_epd_refresh_partial_1bpp(
 
 A successful full 1bpp refresh must establish the base image before a
 partial update. The patch is tightly packed by row. Keep coordinates inside
-the 400 x 300 panel and supply `ceil(width / 8) * height` bytes. Do a
-full refresh after eight partial refreshes to control ghosting.
+the 400 x 300 panel and supply `ceil(width / 8) * height` bytes. Patch origins
+and widths need not be byte-aligned; unused low bits in each row are ignored.
+
+The driver compares the patch with its existing 1bpp shadow and sends the
+smallest changed bounding box. It expands only the X bounds to multiples of
+eight pixels for the SSD2683 window. Neighboring pixels retain their previous
+values. An unchanged patch returns `ESP_OK` without a controller transaction;
+the raw refresh API still requires the panel to be powered and ready.
+The shadow changes only after a successful refresh.
+
+Do a full refresh after eight actual partial refreshes to control ghosting.
+`DisplayService` owns this policy for platform applications.
+
+## Dirty-region query
+
+```c
+zectrix_epd_rect_t source = {.x = 0, .y = 0, .width = 400, .height = 300};
+zectrix_epd_rect_t dirty;
+ESP_ERROR_CHECK(zectrix_epd_find_dirty_1bpp(
+    epd, &source, frame, sizeof(frame), &dirty));
+```
+
+`zectrix_epd_find_dirty_1bpp()` accepts the same rectangle and packed pixels
+as partial refresh, including a complete 15,000-byte frame. It returns exact
+pixel bounds before controller alignment, or `{0, 0, 0, 0}` for an unchanged
+image. The query reuses the existing shadow under the driver mutex. It does
+not allocate memory, modify the shadow, or access GPIO/SPI, and works while
+the panel is powered off.
+
+A valid 1bpp shadow is required. An invalid shadow returns
+`ESP_ERR_INVALID_STATE`; all errors clear the output rectangle when supplied.
+When submitting the refresh, keep the original source rectangle and packed
+buffer together. The returned dirty rectangle does not change the source
+stride or origin. The refresh operation recomputes the bounds under its lock.
 
 ## Full 4bpp refresh
 

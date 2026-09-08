@@ -65,18 +65,35 @@ esp_err_t DisplayService::Present1Bpp(
     switch (intent) {
         case DisplayIntent::Auto:
         case DisplayIntent::Fast:
-            if (CanUsePartial() && !state_model_.ShouldRequestFullClean() &&
-                !partial_region.IsEmpty() && partial_pixels != nullptr &&
-                partial_size != 0) {
-                return RefreshPartial1Bpp(partial_region, partial_pixels,
-                                          partial_size);
-            }
-            return RefreshFull1Bpp(full_framebuffer, full_framebuffer_size);
+            break;
         case DisplayIntent::Quality:
         case DisplayIntent::FullClean:
             return RefreshFull1Bpp(full_framebuffer, full_framebuffer_size);
+        default:
+            return ESP_ERR_INVALID_ARG;
     }
-    return ESP_ERR_INVALID_ARG;
+    const bool has_patch = partial_pixels != nullptr || partial_size != 0 ||
+        partial_region.x != 0 || partial_region.y != 0 ||
+        partial_region.width != 0 || partial_region.height != 0;
+    const Rect source = has_patch ? partial_region : Rect{0, 0, kPanelWidth, kPanelHeight};
+    const auto* pixels = has_patch ? partial_pixels : full_framebuffer;
+    const auto size = has_patch ? partial_size : full_framebuffer_size;
+    const zectrix_epd_rect_t raw_source{source.x, source.y, source.width, source.height};
+    zectrix_epd_rect_t dirty{};
+    const int64_t started = esp_timer_get_time();
+    const esp_err_t err = zectrix_epd_find_dirty_1bpp(
+        static_cast<zectrix_epd_handle_t>(driver_handle_), &raw_source, pixels, size, &dirty);
+    if (err == ESP_ERR_INVALID_ARG || err == ESP_ERR_INVALID_SIZE) return err;
+    if (err == ESP_ERR_INVALID_STATE) return RefreshFull1Bpp(full_framebuffer, full_framebuffer_size);
+    if (err != ESP_OK) {
+        OnError();
+        return RecordRefresh(RefreshKind::kPartial1Bpp, started, err);
+    }
+    if (!CanUsePartial()) return RefreshFull1Bpp(full_framebuffer, full_framebuffer_size);
+    // Do not power the panel or consume its refresh budget for identical pixels.
+    if (dirty.width == 0) return ESP_OK;
+    if (state_model_.ShouldRequestFullClean()) return RefreshFull1Bpp(full_framebuffer, full_framebuffer_size);
+    return RefreshPartial1Bpp(source, pixels, size, {dirty.x, dirty.y, dirty.width, dirty.height});
 }
 
 esp_err_t DisplayService::Present4Bpp(DisplayIntent intent,
@@ -99,7 +116,7 @@ esp_err_t DisplayService::RefreshFull1Bpp(const uint8_t* framebuffer, std::size_
 }
 
 esp_err_t DisplayService::RefreshPartial1Bpp(const Rect& region, const uint8_t* pixels,
-                                             std::size_t size) {
+                                             std::size_t size, const Rect& dirty) {
     if (!CanUsePartial()) return ESP_ERR_INVALID_STATE;
     const int64_t started = esp_timer_get_time();
     bool owns_power = false;
@@ -108,7 +125,7 @@ esp_err_t DisplayService::RefreshPartial1Bpp(const Rect& region, const uint8_t* 
     const zectrix_epd_rect_t raw_region{region.x, region.y, region.width, region.height};
     err = zectrix_epd_refresh_partial_1bpp(
         static_cast<zectrix_epd_handle_t>(driver_handle_), &raw_region, pixels, size);
-    if (err == ESP_OK) state_model_.OnPartial1BppSuccess(region); else OnError();
+    if (err == ESP_OK) state_model_.OnPartial1BppSuccess(dirty); else OnError();
     return RecordRefresh(RefreshKind::kPartial1Bpp, started,
                           EndRefresh(owns_power, err));
 }
