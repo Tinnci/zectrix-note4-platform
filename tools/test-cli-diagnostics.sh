@@ -5,7 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
-c++ -std=c++17 -Wall -Wextra -Werror -pthread \
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
   -I"$repo_root/components/zectrix_cli/include" \
   -I"$repo_root/components/zectrix_system/include" \
   -I"$repo_root/components/zectrix_display/include" \
@@ -19,7 +19,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -pthread \
 
 "$tmp_dir/cli_diagnostics_test"
 
-c++ -std=c++17 -Wall -Wextra -Werror -pthread \
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
   -I"$repo_root/tools/host_include" \
   -I"$repo_root/components/zectrix_cli/include" \
   "$repo_root/components/zectrix_cli/zectrix_cli_log.cc" \
@@ -28,4 +28,16 @@ c++ -std=c++17 -Wall -Wextra -Werror -pthread \
   -o "$tmp_dir/cli_log_esp_test"
 
 "$tmp_dir/cli_log_esp_test"
-echo 'PASS: CLI diagnostics, owner dispatch, cancellation and log tests.'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
+  -I"$repo_root/components/zectrix_cli/include" \
+  -I"$repo_root/tools/cli_usb_host_include" \
+  -I"$repo_root/tools/epd_host_include" \
+  "$repo_root/components/zectrix_cli/zectrix_cli_core.cc" \
+  "$repo_root/components/zectrix_cli/zectrix_cli_session.cc" \
+  "$repo_root/components/zectrix_cli/zectrix_cli_usb.cc" \
+  "$repo_root/tools/cli_usb_test.cc" \
+  -o "$tmp_dir/cli_usb_test"
+
+"$tmp_dir/cli_usb_test"
+echo 'PASS: CLI diagnostics, owner dispatch, cancellation, log and USB task lifecycle tests.'

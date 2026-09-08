@@ -47,6 +47,13 @@ clean shutdown. A physical disconnect resets the partial command and a
 reconnect starts a fresh prompt. Command history is a fixed eight-entry RAM
 ring and is never persisted.
 
+One lifecycle owner serializes USB `Start()` and `Stop()` and keeps the executor
+alive until `Stop()` returns. The worker checks a stop flag on its 20 ms poll,
+cancels its session, restores the console path, releases USB and signals the
+completion semaphore. The stop caller waits for that signal before releasing
+session storage. It does not retain a worker task handle: after the flag is
+set, the worker can self-delete before a separate task notification arrives.
+
 ## Command model
 
 Commands use one immutable hierarchical descriptor tree. A descriptor defines
@@ -249,6 +256,13 @@ predicate-to-block window, coalesced wakeups, queue full, timeout with a late
 result, slot generation, queued/executing cancellation, shutdown during
 execution, owner identity, partial/gray framebuffer previews, reconnect,
 transport failure, log filtering/overflow and ESP log-sink restoration.
+
+Q1.1 extends `tools/test-cli-diagnostics.sh` with the production USB service
+over threaded RTOS/USB fakes. It reproduces worker exit before a stop
+notification, verifies cancellation with blocked output, and checks cleanup
+and restart after semaphore, task-creation and USB-install failures. Concurrent
+log producers also run while the lifecycle owner repeatedly installs and
+restores the ESP sink. The target accepts `CXX` for sanitizer compiler wrappers.
 
 `tools/test-cli-host.sh` builds the simulator and uses Python's standard-library
 pseudo-terminal and subprocess interfaces through `uv`. It verifies command

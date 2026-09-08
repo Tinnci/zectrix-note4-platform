@@ -151,6 +151,30 @@ recovery after SPI, BUSY, power and mutex failures. A 12,000-pixel repeated
 inversion now performs a full refresh on update five. The existing six-step
 footprint assets change 2,312 pixels in total, below both pixel thresholds.
 
+## Q1 — Contract regression and concurrency audits
+
+Q1.1 adds real USB and ESP Wi-Fi driver execution to the existing Host targets.
+The suite contains 26 targets covering application/SDK boundaries, platform
+services, connectivity and sync, CLI, display and OTA behavior. The USB stop
+regression reproduced a notification sent to an already exited worker. Stop
+now waits on the existing completion semaphore while the worker observes its
+bounded poll interval.
+
+| Audited boundary | Ownership and synchronization |
+| --- | --- |
+| Wi-Fi events and interface lifetime | One driver caller, atomic callback state, unregister synchronized with active callbacks |
+| DNS completion after cancellation | Separate reference-counted query; no retained driver pointer or reuse by another burst |
+| CLI inspection and cancellation | Mutex-protected slot, owner-only execution, abandoned results held until execution finishes |
+| USB task and executor lifetime | Serialized lifecycle, completion semaphore, session cancellation before storage release |
+| Log producers and sink replacement | Process-lifetime storage, nonblocking producer locking, atomic sink publication |
+
+CLI and Wi-Fi regressions pass AddressSanitizer, UndefinedBehaviorSanitizer and
+ThreadSanitizer. All 26 Host targets and the ESP32-S3 firmware build pass.
+Their SDK fakes model callback and scheduling interleavings;
+physical USB behavior, radio current and hardware coexistence need device
+measurement. Q1.2 power/coexistence and Q1.3 protocol cross-inspection remain
+separate tasks.
+
 ## Deferred research
 
 The following work is not a prerequisite for M1–M4:
