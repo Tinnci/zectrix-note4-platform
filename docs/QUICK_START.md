@@ -21,9 +21,15 @@ tools/build-firmware.sh --clean
 
 The build helper fixes the target to `esp32s3`, enables ccache and checks the
 configured target after the build. The supplied defaults select 16 MB flash,
-octal PSRAM and a 3 MB factory app partition. If you invoke `idf.py` directly,
+octal PSRAM, a 3 MiB factory app partition, two 3 MiB OTA application slots and
+bootloader rollback. If you invoke `idf.py` directly,
 run `idf.py set-target esp32s3` first. Delete a generated `sdkconfig` before
 you change targets or apply revised defaults to a configured copy.
+
+For an existing checkout, see [ADR-0005](adr/0005-ab-ota-boot-confirmation.md)
+for a fresh-configuration build that preserves local settings. The first OTA
+layout installation needs the new bootloader and partition table as well as
+the application. An application-only update cannot migrate the old layout.
 
 ## 3. Flash and monitor
 

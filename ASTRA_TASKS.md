@@ -38,7 +38,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
 
 ## Milestone M5: Update Architecture & Partition Management (OTA 体系)
 
-- [ ] **M5.1: A/B OTA Partition Verification & Rollback Policy**
+- [x] **M5.1: A/B OTA Partition Verification & Rollback Policy**
   - Verify active running partition vs update partition layout.
   - Implement rollback watchdog on unconfirmed boot.
 - [ ] **M5.2: Streamed Firmware Chunk Verification**

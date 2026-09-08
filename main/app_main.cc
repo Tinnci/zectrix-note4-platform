@@ -22,6 +22,7 @@
 #include "zectrix_storage_service.h"
 #include "zectrix_system_service.h"
 #include "zectrix_time_service.h"
+#include "zectrix_update_service.h"
 
 extern "C" {
 extern const uint8_t kLighthouse1bppStart[]
@@ -735,6 +736,14 @@ private:
                     runtime_heap_logged_ = true;
                 }
                 if (!sdk::IsOk(runtime.Step())) return;
+                // Platform initialization, splash and the first launcher frame
+                // must succeed before a trial image becomes permanently valid.
+                const auto confirmed = platform_.Update().ConfirmBoot();
+                if (confirmed != zectrix::update::Result::kOk) {
+                    ESP_LOGE(kTag, "boot confirmation failed: %s",
+                             zectrix::update::ResultName(confirmed));
+                    return;
+                }
                 int64_t next_power_sample_us = 0;
                 while (legacy_action_ == LegacyAction::kNone) {
                     sdk::InputEvent event;

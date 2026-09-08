@@ -13,6 +13,7 @@ idf_component_register(
         zectrix_storage
         zectrix_system
         zectrix_time
+        zectrix_update
 )
 
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_17)

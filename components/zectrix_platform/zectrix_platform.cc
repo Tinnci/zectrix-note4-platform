@@ -4,6 +4,7 @@
 #include <cassert>
 #include <new>
 
+#include "esp_log.h"
 #include "zectrix_board.h"
 #include "zectrix_cli_usb.h"
 #include "zectrix_connectivity_service.h"
@@ -15,10 +16,13 @@
 #include "zectrix_storage_service.h"
 #include "zectrix_system_service.h"
 #include "zectrix_time_service.h"
+#include "zectrix_update_esp.h"
 
 namespace zectrix {
 
 struct Platform::Impl {
+    update::EspUpdateBackend update_backend;
+    update::UpdateService update{update_backend};
     ZectrixBoard board;
     nfc::NfcService* nfc_service = nullptr;
     input::InputService* input = nullptr;
@@ -42,6 +46,21 @@ esp_err_t Platform::Initialize() {
     if (impl_ == nullptr) return ESP_ERR_NO_MEM;
     initialization_attempted_ = true;
 
+    const auto boot_result = impl_->update.BeginBoot();
+    if (boot_result != update::Result::kOk) {
+        ESP_LOGE("update", "boot protection failed: %s", update::ResultName(boot_result));
+        ResetServices();
+        return ESP_FAIL;
+    }
+    const auto boot = impl_->update.ReadBootStatus();
+    ESP_LOGI("update", "running=0x%08lx selected=0x%08lx update=0x%08lx state=%u layout=%s",
+             static_cast<unsigned long>(boot.running.address),
+             static_cast<unsigned long>(boot.boot.address),
+             static_cast<unsigned long>(boot.next_update.address),
+             static_cast<unsigned>(boot.image_state), update::ResultName(boot.layout_result));
+    if (boot.confirmation_pending && !boot.rollback_available) {
+        ESP_LOGW("update", "trial boot has no verified fallback image");
+    }
     esp_err_t err = impl_->board.Init();
     if (err == ESP_OK && impl_->board.HasNfc() &&
         impl_->board.nfc() != nullptr) {
@@ -110,6 +129,11 @@ ZECTRIX_PLATFORM_ACCESSOR(connectivity::ConnectivityService, Connectivity,
 ZECTRIX_PLATFORM_ACCESSOR(ZectrixSelfTest, Diagnostics, diagnostics)
 
 #undef ZECTRIX_PLATFORM_ACCESSOR
+
+update::UpdateService& Platform::Update() const {
+    assert(initialized_ && impl_ != nullptr);
+    return impl_->update;
+}
 
 void Platform::PollMaintenance() {
     if (impl_ != nullptr && impl_->maintenance != nullptr) impl_->maintenance->Poll();

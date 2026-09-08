@@ -18,12 +18,14 @@ c++ -std=c++17 -Wall -Wextra -Werror -pthread \
   -I"$root_dir/components/zectrix_self_test/include" \
   -I"$root_dir/components/zectrix_system/include" \
   -I"$root_dir/components/zectrix_time/include" \
+  -I"$root_dir/components/zectrix_update/include" \
   "$root_dir/components/zectrix_platform/zectrix_platform.cc" \
   "$root_dir/components/zectrix_platform/zectrix_platform_diagnostics.cc" \
   "$root_dir/components/zectrix_cli/zectrix_cli_core.cc" \
   "$root_dir/components/zectrix_cli/zectrix_cli_control.cc" \
   "$root_dir/components/zectrix_cli/zectrix_cli_diagnostics.cc" \
   "$root_dir/components/zectrix_cli/zectrix_cli_log.cc" \
+  "$root_dir/components/zectrix_update/zectrix_update_service.cc" \
   "$root_dir/tools/platform_test.cc" -o "$test_binary"
 "$test_binary"
 echo 'PASS: platform composition tests.'

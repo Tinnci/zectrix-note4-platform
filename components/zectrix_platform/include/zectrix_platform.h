@@ -11,6 +11,7 @@ namespace zectrix::power { class PowerService; }
 namespace zectrix::storage { class StorageService; }
 namespace zectrix::system { class SystemService; }
 namespace zectrix::time { class TimeService; }
+namespace zectrix::update { class UpdateService; }
 
 namespace zectrix {
 
@@ -38,6 +39,7 @@ public:
     storage::StorageService& Storage() const;
     system::SystemService& System() const;
     connectivity::ConnectivityService& Connectivity() const;
+    update::UpdateService& Update() const;
     ZectrixSelfTest& Diagnostics() const;
 
 private:
