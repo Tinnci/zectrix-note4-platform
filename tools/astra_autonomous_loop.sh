@@ -31,6 +31,13 @@ export CODEX_HOME="$INSTANCE_HOME"
 export SYNC_GH_IDENTITY=0
 cd "$PROJECT_DIR" || exit 1
 
+# Activate ESP-IDF dev environment so idf.py and esptool.py are available to Codex
+if [ -f "${PROJECT_DIR}/tools/activate-dev-env.sh" ]; then
+    # shellcheck disable=SC1091
+    source "${PROJECT_DIR}/tools/activate-dev-env.sh" >/dev/null 2>&1 || true
+fi
+export ZECTRIX_PORT="${ZECTRIX_PORT:-/dev/cu.usbmodem14301}"
+
 echo "==================================================" | tee -a "$LOOP_LOG"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting Astra Autonomous Iteration Loop (PID: $$)..." | tee -a "$LOOP_LOG"
 
@@ -52,7 +59,7 @@ while [ $ITERATION_COUNT -lt $ITERATION_MAX ]; do
 2. 阅读 ASTRA_TASKS.md 及相关契约文档，编写并完善该任务对应的生产功能代码与驱动实现。
 3. 遵循'功能优先、避免繁琐 gate 卡点'的原则，写出简洁健壮的实现。
 4. 代码行间注释使用英文（English comments）。
-5. 编写完毕后在本地运行基础编译/Host 测试（如 bash tools/test-host.sh 或相应测试脚本），确认功能正常。
+5. 编写完毕后在本地运行基础编译/Host 测试（如 bash tools/test-host.sh 或相应测试脚本），确认功能正常。若涉及硬件固件或底层驱动变动，可选择性执行 bash tools/device-smoke-test.sh 在连接的 ESP32-S3 实机上验证引导自检，切勿被硬件阻塞。
 6. 完成后执行 git add 并使用规范的 git commit 提交该功能的改动（例如: feat(connectivity): ... 或 feat(cli): ...）。
 7. 更新 ASTRA_TASKS.md 将该条目勾选为 [x]，并简要输出本次迭代实现的总结。"
 
