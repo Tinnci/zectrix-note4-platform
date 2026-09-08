@@ -10,7 +10,7 @@ CODEX_BIN="/Applications/ChatGPT.app/Contents/Resources/codex"
 BACKLOG_FILE="${PROJECT_DIR}/ASTRA_TASKS.md"
 LOOP_LOG="${PROJECT_DIR}/astra_loop.log"
 LOCK_DIR="/tmp/astra_autonomous_loop.lock"
-ITERATION_MAX=20
+ITERATION_MAX=100
 ITERATION_COUNT=0
 
 # Single instance lock guard
@@ -28,6 +28,7 @@ echo $$ > "$LOCK_DIR/pid"
 trap 'rm -rf "$LOCK_DIR"' EXIT INT TERM
 
 export CODEX_HOME="$INSTANCE_HOME"
+export SYNC_GH_IDENTITY=0
 cd "$PROJECT_DIR" || exit 1
 
 echo "==================================================" | tee -a "$LOOP_LOG"
