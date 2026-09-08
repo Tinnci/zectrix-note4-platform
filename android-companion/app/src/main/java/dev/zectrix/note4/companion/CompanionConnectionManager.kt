@@ -69,4 +69,7 @@ object CompanionConnectionManager {
     fun stop() {
         client?.close()
     }
+
+    fun putDurableState(entry: DurableEntry): Boolean = client?.putDurableState(entry) == true
+    fun readDurableState(key: Int): DurableEntry? = client?.readDurableState(key)
 }

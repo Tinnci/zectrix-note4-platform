@@ -296,6 +296,7 @@ class MainActivity : ComponentActivity() {
         val active = value.state in setOf(
             GattState.CONNECTING, GattState.DISCOVERING, GattState.SUBSCRIBING,
             GattState.PAIRING, GattState.VERIFYING_LINK, GattState.NEGOTIATING_PROTOCOL,
+            GattState.SYNCHRONIZING,
         )
         Surface(
             modifier = Modifier.size(104.dp),
@@ -327,6 +328,7 @@ class MainActivity : ComponentActivity() {
                 GattState.PAIRING -> "Secure pairing required"
                 GattState.VERIFYING_LINK -> "Verifying secure link…"
                 GattState.NEGOTIATING_PROTOCOL -> "Starting the Note4 session…"
+                GattState.SYNCHRONIZING -> "Restoring saved updates…"
                 GattState.READY -> "Connected securely"
                 GattState.FAULT -> "Connection needs attention"
                 GattState.DISCONNECTED -> "Note4 is disconnected"
@@ -350,6 +352,7 @@ class MainActivity : ComponentActivity() {
         val busy = snapshot.state in setOf(
             GattState.CONNECTING, GattState.DISCOVERING, GattState.SUBSCRIBING,
             GattState.PAIRING, GattState.VERIFYING_LINK, GattState.NEGOTIATING_PROTOCOL,
+            GattState.SYNCHRONIZING,
         )
         if (associationCount == 0) {
             Button(onClick = ::beginAssociation, modifier = Modifier.fillMaxWidth().height(56.dp)) {

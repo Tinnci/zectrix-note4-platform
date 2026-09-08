@@ -7,6 +7,7 @@ idf_component_register(
         "zectrix_pairing_bootstrap.cc"
         "zectrix_resource_gateway.cc"
         "zectrix_sync_engine.cc"
+        "zectrix_sync_session.cc"
     INCLUDE_DIRS "include"
 )
 

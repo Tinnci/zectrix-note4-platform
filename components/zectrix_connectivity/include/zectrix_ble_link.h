@@ -75,6 +75,7 @@ public:
     bool TakeReceivedFrame(ReceivedFrame* frame);
     void ReleaseReceivedFrame();
     companion::LinkResult ClearBonds();
+    void DisconnectSession(uint32_t expected_session_id);
     // Drains any deferred advertising intent posted by GAP callbacks. Call
     // from the session owner task, not from a NimBLE host callback.
     void ProcessAdvertiseRequest();

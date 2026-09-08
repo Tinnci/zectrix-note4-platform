@@ -7,6 +7,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -pedantic \
   -I"$root_dir/components/zectrix_companion/include" \
   "$root_dir/components/zectrix_companion/zectrix_companion_protocol.cc" \
   "$root_dir/components/zectrix_companion/zectrix_sync_engine.cc" \
+  "$root_dir/components/zectrix_companion/zectrix_sync_session.cc" \
   "$root_dir/tools/sync_engine_test.cc" -o "$test_binary"
 "$test_binary"
 echo 'PASS: durable sync engine tests.'

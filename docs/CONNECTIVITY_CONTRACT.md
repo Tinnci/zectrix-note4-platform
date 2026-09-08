@@ -85,16 +85,18 @@ accepts only the exact next offset. The normative examples are in
 - A repeated idempotent command returns the stored result.
 - A non-idempotent command with an unknown outcome is not retried silently.
 
-### Sync persistence format 1
+### Durable sync persistence
 
 The first engine tracks at most eight durable keys. Each pending value is at
 most 256 bytes. It retains 16 command results with at most 32 response bytes
 for duplicate suppression. These are sync-state limits, not the larger wire
 frame limits.
 
-The persistent record starts with `ZSYN`, format version 1, a 16-byte header,
-generation and body length. The body contains bounded outbox, bidirectional
-cursor and command-result records. An IEEE CRC-32 closes the record. Loading
+The firmware record starts with `ZSYN`, format version 2, a 16-byte header,
+generation and body length. The body contains bounded outbox, inbox, bidirectional
+cursor and command-result records. Each inbox value and its receive cursor are
+saved together. An IEEE CRC-32 closes the record. Format 1 records remain readable;
+pending keys acquire reserved cursor slots when loaded. Loading
 rejects an unknown format, duplicate key or request ID, zero identifier,
 invalid record length, oversized value, nonzero reserved field or CRC failure.
 
@@ -102,6 +104,63 @@ An enqueue, ACK, receive-cursor commit or command result is successful only
 after `SyncStore::Save` succeeds. An unsuccessful save restores the prior
 in-memory state. A corrupt record produces a diagnostic recovery result and an
 empty controlled resynchronization state. It is never partially applied.
+
+The version 2 buffer is bounded at 5376 bytes, including up to eight received
+values as well as eight pending values. The same eight-key set bounds both
+directions. `ConnectivityService::PutDurableState` persists submissions through
+Storage's `comp_sync` blob. `ReadDurableState` returns a copy of the latest received
+revision and value for idempotent application by the product owner.
+
+Android stores the corresponding queue, received values and cursors in one
+bounded record per Note4, under the app's private, non-backed-up files directory.
+Version 1 queue files remain readable. Writes sync a temporary file, atomically
+replace the committed file and sync its directory; they never delete the previous
+record before replacement. Invalid files are reported without partially loading
+or overwriting them.
+
+### Cursor exchange and durable replay
+
+Hello and accepted, authorized HelloAck require TLV type `4` (sync cursors).
+Its value starts with version `1`, an 8-bit count and two zero reserved bytes.
+Each of at most eight records contains `key:uint16`,
+`outbound_acknowledged:uint32`, `inbound_applied:uint32` and
+`pending_revision:uint32`, all little-endian. Zero pending revision means no
+pending value; otherwise it must exceed the acknowledged revision. Keys are
+nonzero and unique. The field negotiates this bounded sync capability; a peer
+without it cannot be declared synchronized.
+
+Reconciliation validates both directions before changing any cursor. A peer's
+receive cursor can retire a lost ACK, including an older revision whose newer
+value is still pending. It cannot exceed the latest known revision or regress
+below a previously acknowledged revision. Such a mismatch reports resynchronization
+required; acknowledged payloads have already been retired, so the engine cannot
+silently reconstruct them. Recovery requires the product owner to restore its
+state, or an explicit local reset of the peer relationship. Forgetting a peer
+clears its durable state before removing its protocol identity.
+
+Durable-state message type `1` carries required TLVs `1` (two-byte key), `2`
+(four-byte revision), and `3` (0–256 value bytes). Requests have flags `0x05`,
+nonzero sequence and a request ID equal to that sequence. Control type `3` is
+the durable ACK/NACK: response flag `0x02`, matching request ID and sequence,
+and required TLVs `1`, `2`, `4` (one-byte result: accepted `0`, store error `1`,
+invalid/conflicting state `2`, capacity exhausted `3`). Unknown optional fields
+are skipped within the 274-byte durable payload bound; duplicate known fields
+and unknown required fields are rejected.
+
+Each direction permits one confirmed frame in flight. An ACK must match the
+in-flight sequence, key and revision. Retries reuse the original frame even when
+a newer value replaces its outbox entry. There are at most three sends, three
+seconds apart, and a 15-second progress timeout. Failure ends the session without
+discarding its outbox. Reconnect starts fresh session sequences and exchanges
+persisted per-key cursors; BLE byte receipt alone never advances a cursor.
+
+The receiver saves the value and cursor before replying, and duplicate revisions
+do not repeat the save. A conflicting payload at the same retained revision is
+rejected. Android reaches `READY`, and firmware permits phone resource requests,
+only after both advertised replay windows converge. The existing session owner
+handles persistence, replay and resource scheduling; no additional firmware task
+is introduced. Host and Android tests exercise both directions, lost ACKs,
+restart, coalescing, bounded retries, corruption, capacity and failed saves.
 
 ## Resource gateway
 
@@ -224,10 +283,11 @@ The implementation must not collapse these states:
 | Link secure | encrypted, authenticated and bonded connection | The current BLE link has stack-level security. |
 | Transport ready | secure link and notification subscription | Both GATT directions are available. |
 | Protocol negotiated | authenticated Hello write and matching HelloAck | Both peers accept protocol 1.0 framing. |
-| Peer authorized | stored protocol identity and authorization decision | Product commands and resources can run. |
+| Peer authorized | stored protocol identity and authorization decision | The peer may exchange durable state. |
+| Synchronized | validated receive cursors and both replay windows converged | New phone operations can run. |
 
 Protocol 1.0 reserves control message type `1` for Hello and type `2` for
-HelloAck. Hello may carry either TLV payload:
+HelloAck. Hello carries exactly one of these identity TLVs, plus sync cursors:
 
 - `kHelloEnrollmentProofType = 1`: generation `uint32 LE`, 16-byte
   enrollment token and 16-byte companion identity. The firmware consumes the
@@ -240,6 +300,19 @@ payload carries `kHelloAckStatusType = 3`: status byte (`0` accepted, `1`
 rejected), flags byte (`0x01` peer authorized) and error reason `uint16 LE`.
 The exchange proves the current link and protocol path. A successful status
 does not authorize a peer unless the peer-authorized flag is also set.
+
+The proof is consumed only under the current encrypted, authenticated, bonded
+and subscribed transport session. Identity persistence must succeed before that
+session becomes authorized. A failed save leaves the token consumed and returns
+store error `9`; a new NFC tap supplies fresh material. Proof plus reconnect
+identity in the same Hello is rejected before either has side effects. A different
+stored identity requires the existing local forget-peer action. Missing sync
+capability is error `10`; inconsistent cursors are error `11`.
+
+Android commits its Keystore-protected identity before submitting a proof, and
+discards the proof after its first send. If enrollment succeeded but HelloAck was
+lost, reconnect presents that persisted identity instead of replaying the token.
+Rejected, malformed, unauthorized or cursor-less HelloAck cannot enter `READY`.
 
 The Android application serializes all GATT writes and completes MTU setup
 before Hello. It reaches its connected state only after a matching accepted

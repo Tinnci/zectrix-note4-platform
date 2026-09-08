@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 
 namespace zectrix::companion {
 
@@ -27,6 +28,7 @@ enum class BootstrapStatus : uint8_t {
     kSessionMismatch,
     kExpired,
     kAlreadyConsumed,
+    kStoreError,
 };
 
 class PairingBootstrapClock {
@@ -98,10 +100,16 @@ public:
                                             const uint8_t* token,
                                             std::size_t token_size);
 
+    // Called under the current secure transport session lock. A failed save
+    // never restores a consumed token or grants peer authorization.
+    BootstrapStatus ValidateAndPersistEnrollmentProof(
+        uint32_t ble_session_id, uint32_t generation, const uint8_t* token,
+        std::size_t token_size, const std::function<bool()>& persist_identity);
+
     // Copies the current material for NDEF preparation. Only available while
     // kPrepared or kPairingWindowOpen. The token is zeroized on consumption,
     // cancellation or destruction.
-    BootstrapStatus Material(BootstrapMaterial* output) const;
+    BootstrapStatus Material(BootstrapMaterial* output);
 
     // Discards the current material and returns to kIdle.
     BootstrapStatus Cancel();
