@@ -1,7 +1,25 @@
 #include "zectrix_input_service.h"
 #include "zectrix_board.h"
+#include "freertos/task.h"
 #include <cassert>
 #include <type_traits>
+
+namespace {
+struct WaitProbe {
+    ZectrixBoard* board;
+    unsigned calls = 0;
+    bool deliver_event = true;
+};
+void ServiceWait(void* context) {
+    auto& probe = *static_cast<WaitProbe*>(context);
+    ++probe.calls;
+    host_ticks += 5;
+    if (probe.calls == 2 && probe.deliver_event) {
+        probe.board->next_event = {ZectrixButton::kUp, ZectrixButtonAction::kClick};
+        probe.board->has_event = true;
+    }
+}
+}
 
 int main() {
     using namespace zectrix::input;
@@ -33,5 +51,29 @@ int main() {
     assert(event.button == Button::Down && event.action == Action::LongPress);
     service->Drain();
     assert(board.drained);
+    WaitProbe probe{&board};
+    service->SetWaitHook(ServiceWait, &probe);
+    service->WakeWait();
+    service->WakeWait();
+    assert(service->Wait(&event, 50));
+    assert(event.button == Button::Up);
+    assert(board.last_timeout == 40);
+    assert(!board.wake_pending);
+
+    // A notification in the predicate-to-block window is retained by the
+    // queue, and cannot become a synthetic application input or idle event.
+    probe.calls = 0;
+    board.on_wait = [](ZectrixBoard& waiting) { waiting.WakeButtonWait(); };
+    assert(service->Wait(&event, portMAX_DELAY));
+    assert(event.button == Button::Up && board.last_timeout == portMAX_DELAY);
+
+    // Wakes preserve the original deadline, including tick-counter wrap.
+    probe.calls = 0;
+    probe.deliver_event = false;
+    host_ticks = UINT32_MAX - 3;
+    service->WakeWait();
+    assert(!service->Wait(&event, 50));
+    assert(board.last_timeout == 40);
+    service->SetWaitHook(nullptr, nullptr);
     delete service;
 }

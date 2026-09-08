@@ -24,6 +24,9 @@ public:
 
     esp_err_t Initialize();
     bool IsInitialized() const { return initialized_; }
+    // Application-owner safe points and shutdown admission control.
+    void PollMaintenance();
+    void StopMaintenance();
 
     // Initialize() must return ESP_OK before an application calls an accessor.
     // A contract violation stops in an assertion instead of dereferencing an

@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <new>
 #include <cstring>
+#include <mutex>
 
 #include "esp_app_desc.h"
 #include "esp_chip_info.h"
@@ -10,6 +11,8 @@
 #include "esp_heap_caps.h"
 #include "esp_mac.h"
 #include "esp_system.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "zectrix_board.h"
 
 namespace zectrix::system {
@@ -103,6 +106,58 @@ esp_err_t SystemService::ReadSnapshot(SystemSnapshot* snapshot) const {
 esp_err_t SystemService::ReadWifiMac(std::array<uint8_t, 6>* mac) const {
     if (mac == nullptr) return ESP_ERR_INVALID_ARG;
     return esp_read_mac(mac->data(), ESP_MAC_WIFI_STA);
+}
+
+esp_err_t SystemService::ReadHeap(HeapSnapshot* snapshot) const {
+    if (snapshot == nullptr) return ESP_ERR_INVALID_ARG;
+    const auto read = [](uint32_t caps) {
+        return HeapRegion{
+            static_cast<uint32_t>(heap_caps_get_total_size(caps)),
+            static_cast<uint32_t>(heap_caps_get_free_size(caps)),
+            static_cast<uint32_t>(heap_caps_get_minimum_free_size(caps)),
+            static_cast<uint32_t>(heap_caps_get_largest_free_block(caps))};
+    };
+    snapshot->internal = read(MALLOC_CAP_INTERNAL);
+    snapshot->psram = read(MALLOC_CAP_SPIRAM);
+    return ESP_OK;
+}
+
+esp_err_t SystemService::ReadTasks(TaskSnapshot* snapshot) const {
+    if (snapshot == nullptr) return ESP_ERR_INVALID_ARG;
+    *snapshot = {};
+#if configUSE_TRACE_FACILITY
+    // Keep RTOS scratch storage off the application stack. Copy only scalar
+    // fields: task-name and stack pointers may expire as another core deletes
+    // a task after uxTaskGetSystemState returns.
+    static std::mutex mutex;
+    static std::array<TaskStatus_t, kMaximumTasks> raw;
+    std::lock_guard<std::mutex> lock(mutex);
+    snapshot->total = uxTaskGetNumberOfTasks();
+    const auto count = uxTaskGetSystemState(raw.data(), raw.size(), nullptr);
+    snapshot->capacity_exceeded = count == 0 && snapshot->total != 0;
+    snapshot->count = count;
+    if (count != 0) snapshot->total = count;
+    for (std::size_t index = 0; index < count; ++index) {
+        const auto& source = raw[index];
+        auto& target = snapshot->tasks[index];
+        target.id = source.xTaskNumber;
+        target.priority = source.uxCurrentPriority;
+        // ESP-IDF expresses this watermark in bytes, unlike upstream ports.
+        target.minimum_stack_bytes = source.usStackHighWaterMark;
+        target.application_owner = source.xHandle == xTaskGetCurrentTaskHandle();
+        switch (source.eCurrentState) {
+            case eRunning: target.state = TaskState::kRunning; break;
+            case eReady: target.state = TaskState::kReady; break;
+            case eBlocked: target.state = TaskState::kBlocked; break;
+            case eSuspended: target.state = TaskState::kSuspended; break;
+            case eDeleted: target.state = TaskState::kDeleted; break;
+            default: target.state = TaskState::kUnknown; break;
+        }
+    }
+    return ESP_OK;
+#else
+    return ESP_ERR_NOT_SUPPORTED;
+#endif
 }
 
 }  // namespace zectrix::system

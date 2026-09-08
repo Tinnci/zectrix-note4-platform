@@ -17,6 +17,8 @@ esp_err_t zectrix_epd_del(zectrix_epd_handle_t handle);
 esp_err_t zectrix_epd_power_on(zectrix_epd_handle_t handle);
 esp_err_t zectrix_epd_power_off(zectrix_epd_handle_t handle);
 bool zectrix_epd_is_powered(zectrix_epd_handle_t handle);
+esp_err_t zectrix_epd_copy_shadow(zectrix_epd_handle_t handle, std::size_t offset,
+                                  uint8_t* destination, std::size_t size);
 esp_err_t zectrix_epd_refresh_full_1bpp(zectrix_epd_handle_t handle,
                                         const std::uint8_t* framebuffer,
                                         std::size_t size);

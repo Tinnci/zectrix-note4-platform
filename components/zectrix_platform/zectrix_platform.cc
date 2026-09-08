@@ -1,4 +1,5 @@
 #include "zectrix_platform.h"
+#include "zectrix_platform_diagnostics.h"
 
 #include <cassert>
 #include <new>
@@ -29,6 +30,7 @@ struct Platform::Impl {
     ZectrixSelfTest* diagnostics = nullptr;
     connectivity::ConnectivityService* connectivity = nullptr;
     cli::CliUsbService* cli_usb = nullptr;
+    PlatformDiagnostics* maintenance = nullptr;
 };
 
 Platform::~Platform() { ResetServices(); }
@@ -74,10 +76,15 @@ esp_err_t Platform::Initialize() {
         err = ESP_FAIL;
     }
     if (err == ESP_OK) {
+        impl_->maintenance = new (std::nothrow) PlatformDiagnostics(
+            *impl_->system, *impl_->display, *impl_->input, *impl_->time);
+        if (impl_->maintenance == nullptr) err = ESP_ERR_NO_MEM;
+    }
+    if (err == ESP_OK) {
         impl_->cli_usb = new (std::nothrow) cli::CliUsbService;
         if (impl_->cli_usb == nullptr) err = ESP_ERR_NO_MEM;
     }
-    if (err == ESP_OK) err = impl_->cli_usb->Start();
+    if (err == ESP_OK) err = impl_->cli_usb->Start(&impl_->maintenance->executor());
     if (err != ESP_OK) {
         ResetServices();
         return err;
@@ -104,10 +111,22 @@ ZECTRIX_PLATFORM_ACCESSOR(ZectrixSelfTest, Diagnostics, diagnostics)
 
 #undef ZECTRIX_PLATFORM_ACCESSOR
 
+void Platform::PollMaintenance() {
+    if (impl_ != nullptr && impl_->maintenance != nullptr) impl_->maintenance->Poll();
+}
+
+void Platform::StopMaintenance() {
+    if (impl_ == nullptr) return;
+    if (impl_->maintenance != nullptr) impl_->maintenance->Shutdown();
+    if (impl_->cli_usb != nullptr) impl_->cli_usb->Stop();
+}
+
 void Platform::ResetServices() {
     if (impl_ == nullptr) return;
     // Destruction is the reverse of the initialization order.
+    StopMaintenance();
     delete impl_->cli_usb;
+    delete impl_->maintenance;
     delete impl_->connectivity;
     delete impl_->nfc_service;
     delete impl_->diagnostics;

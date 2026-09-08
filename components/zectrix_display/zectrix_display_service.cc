@@ -1,7 +1,9 @@
 #include "zectrix_display_service.h"
 
 #include <new>
+#include <cstring>
 
+#include "esp_timer.h"
 #include "zectrix_epd.h"
 
 namespace zectrix::display {
@@ -85,36 +87,43 @@ esp_err_t DisplayService::Present4Bpp(DisplayIntent intent,
 }
 
 esp_err_t DisplayService::RefreshFull1Bpp(const uint8_t* framebuffer, std::size_t size) {
+    const int64_t started = esp_timer_get_time();
     bool owns_power = false;
     esp_err_t err = BeginRefresh(&owns_power);
-    if (err != ESP_OK) return err;
+    if (err != ESP_OK) return RecordRefresh(RefreshKind::kFull1Bpp, started, err);
     err = zectrix_epd_refresh_full_1bpp(
         static_cast<zectrix_epd_handle_t>(driver_handle_), framebuffer, size);
     if (err == ESP_OK) state_model_.OnFull1BppSuccess(); else OnError();
-    return EndRefresh(owns_power, err);
+    return RecordRefresh(RefreshKind::kFull1Bpp, started,
+                          EndRefresh(owns_power, err), framebuffer);
 }
 
 esp_err_t DisplayService::RefreshPartial1Bpp(const Rect& region, const uint8_t* pixels,
                                              std::size_t size) {
     if (!CanUsePartial()) return ESP_ERR_INVALID_STATE;
+    const int64_t started = esp_timer_get_time();
     bool owns_power = false;
     esp_err_t err = BeginRefresh(&owns_power);
-    if (err != ESP_OK) return err;
+    if (err != ESP_OK) return RecordRefresh(RefreshKind::kPartial1Bpp, started, err);
     const zectrix_epd_rect_t raw_region{region.x, region.y, region.width, region.height};
     err = zectrix_epd_refresh_partial_1bpp(
         static_cast<zectrix_epd_handle_t>(driver_handle_), &raw_region, pixels, size);
     if (err == ESP_OK) state_model_.OnPartial1BppSuccess(region); else OnError();
-    return EndRefresh(owns_power, err);
+    return RecordRefresh(RefreshKind::kPartial1Bpp, started,
+                          EndRefresh(owns_power, err));
 }
 
 esp_err_t DisplayService::RefreshFull4Bpp(const uint8_t* framebuffer, std::size_t size) {
+    if (framebuffer == nullptr || size != kFrameBytes4Bpp) return ESP_ERR_INVALID_ARG;
+    const int64_t started = esp_timer_get_time();
     bool owns_power = false;
     esp_err_t err = BeginRefresh(&owns_power);
-    if (err != ESP_OK) return err;
+    if (err != ESP_OK) return RecordRefresh(RefreshKind::kFull4Bpp, started, err);
     err = zectrix_epd_refresh_full_4bpp(
         static_cast<zectrix_epd_handle_t>(driver_handle_), framebuffer, size);
     if (err == ESP_OK) state_model_.OnFull4BppSuccess(); else OnError();
-    return EndRefresh(owns_power, err);
+    return RecordRefresh(RefreshKind::kFull4Bpp, started,
+                          EndRefresh(owns_power, err), framebuffer);
 }
 
 esp_err_t DisplayService::BeginRefresh(bool* owns_power) {
@@ -140,6 +149,43 @@ esp_err_t DisplayService::EndRefresh(bool owns_power,
     return refresh_result == ESP_OK ? power_result : refresh_result;
 }
 
-void DisplayService::OnError() { state_model_.OnRefreshError(); }
+void DisplayService::OnError() {
+    state_model_.OnRefreshError();
+    inspection_.framebuffer_valid = false;
+}
+
+esp_err_t DisplayService::RecordRefresh(RefreshKind kind, int64_t started_us,
+                                       esp_err_t result, const uint8_t* frame) {
+    inspection_.last_refresh = kind;
+    inspection_.last_error = result;
+    inspection_.last_duration_us = esp_timer_get_time() - started_us;
+    ++inspection_.refresh_count;
+    if (result != ESP_OK) {
+        ++inspection_.failed_refresh_count;
+        inspection_.framebuffer_valid = false;
+        return result;
+    }
+    inspection_.bits_per_pixel = kind == RefreshKind::kFull4Bpp ? 4 : 1;
+    inspection_.framebuffer_bytes = inspection_.bits_per_pixel == 4
+                                       ? kFrameBytes4Bpp : kFrameBytes1Bpp;
+    if (frame != nullptr) {
+        std::memcpy(inspection_.preview.data(), frame, inspection_.preview.size());
+        inspection_.framebuffer_valid = true;
+    } else {
+        inspection_.framebuffer_valid = zectrix_epd_copy_shadow(
+            static_cast<zectrix_epd_handle_t>(driver_handle_), 0,
+            inspection_.preview.data(), inspection_.preview.size()) == ESP_OK;
+    }
+    return result;
+}
+
+esp_err_t DisplayService::ReadInspection(DisplayInspection* snapshot) const {
+    if (snapshot == nullptr) return ESP_ERR_INVALID_ARG;
+    *snapshot = inspection_;
+    snapshot->state = state_model_.state();
+    snapshot->powered = IsPowered();
+    snapshot->batch_active = batch_active_;
+    return ESP_OK;
+}
 
 }  // namespace zectrix::display

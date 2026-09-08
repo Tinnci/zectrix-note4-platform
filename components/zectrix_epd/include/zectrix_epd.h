@@ -61,6 +61,10 @@ esp_err_t zectrix_epd_power_off(zectrix_epd_handle_t handle);
 /** True after power_on and before power_off. */
 bool zectrix_epd_is_powered(zectrix_epd_handle_t handle);
 
+/** Copy a bounded range of the existing 1bpp shadow without powering the panel. */
+esp_err_t zectrix_epd_copy_shadow(zectrix_epd_handle_t handle, size_t offset,
+                                  uint8_t* destination, size_t size);
+
 /**
  * Full-screen black/white refresh.
  *

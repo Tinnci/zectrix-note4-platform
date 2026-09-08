@@ -6,6 +6,7 @@ host_tests=(
     test-app-contract.sh
     test-application-runtime.sh
     test-cli-core.sh
+    test-cli-diagnostics.sh
     test-companion-identity.sh
     test-companion-protocol.sh
     test-connectivity-policy.sh

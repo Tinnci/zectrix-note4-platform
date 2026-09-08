@@ -1,8 +1,8 @@
 # Maintenance CLI contract
 
-Status: Draft for D1 implementation. The D1.2 USB transport and bounded
-session are implemented; owner-dispatched commands and streams remain later
-D1 slices.
+Status: D1.1 USB transport/session and D1.2 read-only platform diagnostics and
+log observation are implemented. Input tracing and mutating commands remain
+future slices; real USB qualification remains open.
 
 ## Purpose
 
@@ -125,6 +125,8 @@ help [command]
 version
 system info
 system heap
+system tasks
+system uptime
 power status
 time get
 connectivity status
@@ -138,10 +140,57 @@ log stats
 input watch
 ```
 
-The first vertical slice is `system info`. Read-only status commands follow.
-Streaming commands follow the log multiplexer and input trace. Mutating
-commands are last. `app open` is not in D1 because runtime switching must use
-the existing deferred lifecycle path.
+Implemented commands are `help [command]`, `version`, `system info`,
+`system heap`, `system tasks`, `system uptime`, `display status`,
+`log follow [error|warn|info|debug]` and `log stats`. The flat aliases are
+`sysinfo`, `heap`, `tasks`, `uptime`, `epd-inspect` and `log-stream`.
+Other commands in the list above are future work. `app open` is not in D1
+because runtime switching must use the existing deferred lifecycle path.
+
+## D1.2 implementation
+
+`PlatformDiagnostics` binds its dispatcher to the task that initialized
+Platform. `InputService::Wait()` is a diagnostic safe point between synchronous
+service calls; `Platform::PollMaintenance()` provides an explicit safe point
+for owners that do not wait for input. One coalesced control notification wakes
+the existing button wait. It is consumed internally, preserves the original
+wait deadline and never becomes an application button or an idle/render event.
+Requests arriving during a synchronous display refresh wait for its completion.
+
+The dispatcher has one request slot, matching the single active command limit.
+ID and generation checks reject old tickets. A request expires after 30 seconds.
+Cancellation or timeout during inspection discards its result and keeps the
+slot occupied until the owner finishes. Only read-only inspections execute in
+D1.2; the mutation outcome and confirmation rules above apply to future work.
+Shutdown closes admission before stopping USB, then destroys the dispatcher
+before the platform services. Power-off explicitly stops maintenance first.
+
+Results are copied before formatting. Output is paged into chunks of at most
+256 bytes, with one chunk per session poll. `tasks` captures at most 32 RTOS
+tasks and reports a capacity overflow instead of returning an incomplete list.
+It reports task IDs, state, priority, minimum remaining stack bytes and the
+application owner. It never dereferences RTOS task-name or stack pointers after
+sampling: another core can delete a transient task at that point. The firmware
+enables the FreeRTOS trace facility needed for this inspection.
+
+`epd-inspect` reports panel power, batch state, refresh attempts/failures, last
+error and duration, partial-refresh state and dirty region. Its hex dump is the
+first 64 bytes of the last successful 1bpp or 4bpp frame. Partial updates copy
+the existing driver shadow; full updates copy the submitted frame before its
+caller releases it. Errors invalidate the preview. This command neither
+retains caller buffers nor allocates an additional full framebuffer, and it
+does not claim to read the physical panel pixels.
+
+While USB maintenance runs, the ESP log callback formats into a local bounded
+buffer and sends records to a 32-record ring without terminal I/O. The ring
+keeps recent records, counts overwritten records and lock-contention drops,
+and marks truncated text. The session alone outputs observed logs, so an idle
+prompt is not interleaved with producer output. Level filtering observes logs
+already enabled by ESP-IDF; it does not change the global log level. Ctrl+C,
+disconnect, transport failure and shutdown cancel observation. USB TX is
+nonblocking with a bounded 2 KiB pending buffer; exhaustion resets the session.
+The log storage outlives the USB service, and shutdown restores the previous
+sink. Early-boot and panic output retain their direct paths.
 
 ## Non-goals
 
@@ -158,14 +207,14 @@ It does not transport CLI text.
 
 ## Required tests
 
-Host tests cover parsing, limits, help, access policy and cancellation. The
-dispatcher tests cover submit-before-wait, the predicate-to-block window,
-coalesced wakeups, queue full, FIFO order, timeout with a late result, slot
-generation, queued cancellation, executing mutation outcome, shutdown during
-submit and owner-task identity.
+Host tests cover parsing, limits, help, command arguments, copied diagnostic
+values and cancellation. D1.2 tests cover submit-before-wait, the
+predicate-to-block window, coalesced wakeups, queue full, timeout with a late
+result, slot generation, queued/executing cancellation, shutdown during
+execution, owner identity, partial/gray framebuffer previews, reconnect,
+transport failure, log filtering/overflow and ESP log-sink restoration.
 
-Integration tests prove that runtime requests wait for a safe point, display
-status is copied, input tracing does not consume events, local confirmation is
-bound to one request/origin/deadline, and logs report overflow. Hardware tests
-prove USB reconnect, prompt recovery, `Ctrl+C`, sleep/wake and shutdown without
-panic, watchdog or unexpected reset.
+Future input tracing, mutations and local confirmation need the corresponding
+event isolation, request/origin/deadline binding and unknown-outcome tests.
+Hardware qualification must prove USB reconnect, prompt recovery, `Ctrl+C`,
+sleep/wake and shutdown without panic, watchdog or unexpected reset.

@@ -25,6 +25,9 @@ const char* ExecuteError(ExecuteStatus status) {
         case ExecuteStatus::kUnknownCommand: return "unknown command";
         case ExecuteStatus::kInvalidArguments: return "invalid arguments";
         case ExecuteStatus::kUnavailable: return "temporarily unavailable";
+        case ExecuteStatus::kBusy: return "command busy";
+        case ExecuteStatus::kTimeout: return "owner request timed out";
+        case ExecuteStatus::kPending: break;
         case ExecuteStatus::kOk: break;
     }
     return "command failed";
@@ -42,6 +45,7 @@ void CliSession::Poll() {
         return;
     }
     if (!connected_) OnConnected();
+    if (!connected_) return;
 
     std::array<uint8_t, 32> input{};
     const std::size_t received =
@@ -49,9 +53,16 @@ void CliSession::Poll() {
     for (std::size_t index = 0; index < received && connected_; ++index) {
         ProcessByte(input[index]);
     }
+    if (connected_ && command_active_) {
+        BoundedOutput output;
+        const ExecuteStatus status = executor_.Poll(&output);
+        FinishExecution(status, output);
+    }
 }
 
 void CliSession::Reset() {
+    executor_.Cancel();
+    command_active_ = false;
     connected_ = false;
     previous_was_cr_ = false;
     escape_state_ = EscapeState::kNone;
@@ -72,6 +83,19 @@ void CliSession::OnConnected() {
 void CliSession::OnDisconnected() { Reset(); }
 
 void CliSession::ProcessByte(uint8_t value) {
+    // Cancellation takes precedence even in a partial ANSI escape sequence.
+    if (value == 0x03) {
+        executor_.Cancel();
+        command_active_ = false;
+        escape_state_ = EscapeState::kNone;
+        previous_was_cr_ = false;
+        ClearLine();
+        history_offset_ = 0;
+        Write("^C\r\n");
+        Write(kPrompt);
+        return;
+    }
+    if (command_active_) return;
     if (escape_state_ == EscapeState::kEscape) {
         escape_state_ =
             value == '[' ? EscapeState::kControlSequence : EscapeState::kNone;
@@ -93,13 +117,6 @@ void CliSession::ProcessByte(uint8_t value) {
     }
     if (value == 0x1b) {
         escape_state_ = EscapeState::kEscape;
-        return;
-    }
-    if (value == 0x03) {
-        ClearLine();
-        history_offset_ = 0;
-        Write("^C\r\n");
-        Write(kPrompt);
         return;
     }
     if (value == '\r' || value == '\n') {
@@ -126,32 +143,28 @@ void CliSession::ProcessByte(uint8_t value) {
         Write("\a");
         return;
     }
+    const bool append = cursor_ == line_size_;
     std::memmove(line_.data() + cursor_ + 1, line_.data() + cursor_,
                  line_size_ - cursor_ + 1);
     line_[cursor_++] = static_cast<char>(value);
     ++line_size_;
     history_offset_ = 0;
-    RedrawLine();
+    if (append) Write(line_.data() + cursor_ - 1, 1);
+    else RedrawLine();
 }
 
 void CliSession::SubmitLine() {
-    Write("\r\n");
+    if (!Write("\r\n")) return;
     Invocation invocation{};
     const ParseStatus parse = ParseLine(line_.data(), line_size_, &invocation);
     if (parse == ParseStatus::kOk) {
         AddHistory();
         BoundedOutput output;
         const ExecuteStatus execute = executor_.Execute(invocation, &output);
-        if (execute == ExecuteStatus::kOk) {
-            if (output.size() != 0) {
-                Write(output.data(), output.size());
-                Write("\r\n");
-            }
-        } else {
-            Write("error: ");
-            Write(ExecuteError(execute));
-            Write("\r\n");
-        }
+        ClearLine();
+        history_offset_ = 0;
+        FinishExecution(execute, output);
+        return;
     } else if (parse != ParseStatus::kEmpty) {
         Write("error: ");
         Write(ParseError(parse));
@@ -160,6 +173,21 @@ void CliSession::SubmitLine() {
     ClearLine();
     history_offset_ = 0;
     Write(kPrompt);
+}
+
+void CliSession::FinishExecution(ExecuteStatus status,
+                                 const BoundedOutput& output) {
+    command_active_ = status == ExecuteStatus::kPending;
+    if (output.size() != 0) {
+        if (!Write(output.data(), output.size()) || !Write("\r\n")) return;
+    }
+    if (status != ExecuteStatus::kOk && status != ExecuteStatus::kPending) {
+        executor_.Cancel();
+        Write("error: ");
+        Write(ExecuteError(status));
+        Write("\r\n");
+    }
+    if (!command_active_) Write(kPrompt);
 }
 
 void CliSession::AddHistory() {

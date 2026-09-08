@@ -3,10 +3,11 @@ set -euo pipefail
 root_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 test_binary=$(mktemp)
 trap 'rm -f "$test_binary"' EXIT
-c++ -std=c++17 -Wall -Wextra -Werror \
+c++ -std=c++17 -Wall -Wextra -Werror -pthread \
   -I"$root_dir/tools/host_include" \
   -I"$root_dir/components/zectrix_app/include" \
   -I"$root_dir/components/zectrix_platform/include" \
+  -I"$root_dir/components/zectrix_cli/include" \
   -I"$root_dir/components/zectrix_companion/include" \
   -I"$root_dir/components/zectrix_connectivity/include" \
   -I"$root_dir/components/zectrix_nfc_service/include" \
@@ -18,6 +19,11 @@ c++ -std=c++17 -Wall -Wextra -Werror \
   -I"$root_dir/components/zectrix_system/include" \
   -I"$root_dir/components/zectrix_time/include" \
   "$root_dir/components/zectrix_platform/zectrix_platform.cc" \
+  "$root_dir/components/zectrix_platform/zectrix_platform_diagnostics.cc" \
+  "$root_dir/components/zectrix_cli/zectrix_cli_core.cc" \
+  "$root_dir/components/zectrix_cli/zectrix_cli_control.cc" \
+  "$root_dir/components/zectrix_cli/zectrix_cli_diagnostics.cc" \
+  "$root_dir/components/zectrix_cli/zectrix_cli_log.cc" \
   "$root_dir/tools/platform_test.cc" -o "$test_binary"
 "$test_binary"
 echo 'PASS: platform composition tests.'
