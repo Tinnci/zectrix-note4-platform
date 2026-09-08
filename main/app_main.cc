@@ -104,6 +104,12 @@ public:
         storage_ = &platform_.Storage();
         system_ = &platform_.System();
         connectivity_ = &platform_.Connectivity();
+        connectivity_->UpdatePower(power_->ReadSnapshot());
+        int32_t rtc_utc_offset = 0;
+        if (storage_->GetInt32("rtc_utc_offset", &rtc_utc_offset) == ESP_OK &&
+            time_->SynchronizeSystemClockFromRtc(rtc_utc_offset) != ESP_OK) {
+            ESP_LOGW(kTag, "RTC could not initialize the HTTPS validation clock");
+        }
         tests_ = &platform_.Diagnostics();
         LogHeap("M2-equivalent platform");
         ui_.SetDisplay(display_);
@@ -399,6 +405,7 @@ private:
             } else if (decision ==
                        zectrix::app::ConnectivityDecision::FetchResource) {
                 zectrix::companion::ResourceRequestMessage request{};
+                owner_->connectivity_->UpdatePower(owner_->power_->ReadSnapshot());
                 const auto result =
                     owner_->connectivity_->RequestResource(request);
                 if (result ==
@@ -408,7 +415,7 @@ private:
                            zectrix::connectivity::ConnectivityResult::kBusy) {
                     status_ = "RESOURCE REQUEST ALREADY ACTIVE";
                 } else {
-                    status_ = "AUTHORIZED PHONE REQUIRED";
+                    status_ = "RESOURCE SERVICE UNAVAILABLE";
                 }
                 context.RequestRender({0, 36, 400, 234},
                                       sdk::RenderIntent::Fast);
@@ -494,20 +501,26 @@ private:
                 case Status::kSuccess:
                     std::snprintf(
                         resource_status_, sizeof(resource_status_),
-                        "FETCHED %u BYTES FROM PHONE",
-                        static_cast<unsigned>(response.body_size));
+                        "FETCHED %u BYTES VIA %s",
+                        static_cast<unsigned>(response.body_size),
+                        response.path == zectrix::companion::ConnectivityPath::kDirectWifi
+                            ? "WI-FI" : "PHONE");
                     break;
                 case Status::kPhoneUnavailable:
                     std::snprintf(resource_status_, sizeof(resource_status_),
-                                  "PHONE RESOURCE UNAVAILABLE");
+                                  "%s", response.retry_queued
+                                      ? "NETWORK UNAVAILABLE; RETRY QUEUED"
+                                      : "NETWORK RESOURCE UNAVAILABLE");
                     break;
                 case Status::kPhoneOffline:
                     std::snprintf(resource_status_, sizeof(resource_status_),
-                                  "PHONE OFFLINE; RETRY QUEUED");
+                                  "%s", response.retry_queued
+                                      ? "PHONE OFFLINE; RETRY QUEUED" : "PHONE OFFLINE");
                     break;
                 case Status::kTimeout:
                     std::snprintf(resource_status_, sizeof(resource_status_),
-                                  "PHONE TIMED OUT; RETRY QUEUED");
+                                  "%s", response.retry_queued
+                                      ? "REQUEST TIMED OUT; RETRY QUEUED" : "REQUEST TIMED OUT");
                     break;
                 case Status::kServerError:
                     std::snprintf(resource_status_, sizeof(resource_status_),
@@ -519,16 +532,23 @@ private:
                     break;
                 case Status::kNotAuthorized:
                     std::snprintf(resource_status_, sizeof(resource_status_),
-                                  "PHONE AUTHORIZATION REQUIRED");
+                                  "%s", response.path ==
+                                      zectrix::companion::ConnectivityPath::kDirectWifi
+                                      ? "WI-FI AUTHENTICATION FAILED"
+                                      : "PHONE AUTHORIZATION REQUIRED");
                     break;
                 case Status::kUnsupportedCapability:
                     std::snprintf(resource_status_, sizeof(resource_status_),
-                                  "PHONE DOES NOT SUPPORT RESOURCE");
+                                  "RESOURCE NOT SUPPORTED");
                     break;
                 default:
                     std::snprintf(resource_status_, sizeof(resource_status_),
                                   "INVALID RESOURCE RESPONSE");
                     break;
+            }
+            if (response.wifi_stop == zectrix::connectivity::WifiStopResult::kFailure) {
+                std::snprintf(resource_status_, sizeof(resource_status_),
+                              "WI-FI STOP FAILED; RESTART REQUIRED");
             }
             status_ = resource_status_;
         }
@@ -715,6 +735,7 @@ private:
                     runtime_heap_logged_ = true;
                 }
                 if (!sdk::IsOk(runtime.Step())) return;
+                int64_t next_power_sample_us = 0;
                 while (legacy_action_ == LegacyAction::kNone) {
                     sdk::InputEvent event;
                     const TickType_t timeout =
@@ -723,6 +744,11 @@ private:
                             ? kConnectivityPollTimeout
                             : kHomeIdleTimeout;
                     const bool received = input_->Wait(&event, timeout);
+                    const int64_t now_us = time_->MonotonicMicroseconds();
+                    if (now_us >= next_power_sample_us) {
+                        connectivity_->UpdatePower(power_->ReadSnapshot());
+                        next_power_sample_us = now_us + 5000000;
+                    }
                     const sdk::Status result = received ? runtime.Step(&event)
                                                         : runtime.Idle();
                     if (!sdk::IsOk(result)) {
@@ -1034,6 +1060,10 @@ private:
     }
 
     [[noreturn]] void PowerOff() {
+        const auto stopped = connectivity_->Stop();
+        if (stopped != zectrix::connectivity::ConnectivityResult::kOk) {
+            ESP_LOGW(kTag, "connectivity stop incomplete before shutdown");
+        }
         ESP_LOGI(kTag, "clearing display before shutdown");
         const esp_err_t clear = ui_.ClearDisplay();
         if (clear != ESP_OK) {

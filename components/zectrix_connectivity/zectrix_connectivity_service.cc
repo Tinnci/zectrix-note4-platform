@@ -20,7 +20,10 @@
 #include "zectrix_companion_protocol.h"
 #include "zectrix_nfc_service.h"
 #include "zectrix_pairing_bootstrap.h"
+#include "zectrix_power_service.h"
 #include "zectrix_storage_service.h"
+#include "zectrix_wifi_credentials.h"
+#include "zectrix_wifi_esp_driver.h"
 
 namespace zectrix::connectivity {
 namespace {
@@ -95,7 +98,7 @@ void LogEnrollmentRejection(const char* reason, uint32_t session_id) {
 
 }  // namespace
 
-struct ConnectivityService::Impl {
+struct ConnectivityService::Impl : PhoneResourceSender {
     BleLink ble;
     nfc::NfcService* nfc_service = nullptr;
     storage::StorageService* storage_service = nullptr;
@@ -103,6 +106,7 @@ struct ConnectivityService::Impl {
     EspBootstrapRandom bootstrap_random;
     std::unique_ptr<companion::PairingBootstrap> bootstrap;
     std::atomic<bool> initialized{false};
+    bool initialization_started = false;
     std::atomic<bool> stop_session_task{false};
     std::atomic<bool> protocol_negotiated_local{false};
     std::atomic<bool> peer_authorized{false};
@@ -117,14 +121,13 @@ struct ConnectivityService::Impl {
         ConnectivityResult::kTransportError};
     std::array<uint8_t, 16> stored_companion_id{};
     bool stored_companion_id_valid = false;
-    enum class ResourceOperationState : uint8_t { kIdle, kQueued, kSent };
-    ResourceOperationState resource_state = ResourceOperationState::kIdle;
-    companion::ResourceRequestMessage resource_request{};
-    uint32_t resource_request_id = 0;
+    std::unique_ptr<StoredWifiCredentials> wifi_credentials;
+    EspWifiBackendDriver wifi_driver;
+    std::unique_ptr<WifiBackend> wifi_backend;
+    std::unique_ptr<ResourceClient> resource_client;
+    companion::ConnectivityConditions resource_conditions{};
     uint32_t resource_sequence = 0;
-    uint32_t resource_retry_at_ms = 0;
-    ResourceResponse resource_response{};
-    bool resource_response_ready = false;
+    uint32_t resource_phone_session = 0;
     uint32_t next_outbound_sequence = 1;
     std::array<uint8_t, 64> resource_payload{};
     std::array<uint8_t, companion::kMaximumFrameSize> resource_frame{};
@@ -174,9 +177,9 @@ struct ConnectivityService::Impl {
             if (bootstrap != nullptr) bootstrap->Cancel();
             if (resource_mutex != nullptr) {
                 xSemaphoreTake(resource_mutex, portMAX_DELAY);
-                resource_state = ResourceOperationState::kIdle;
-                resource_response_ready = false;
-                resource_response = {};
+                if (resource_client != nullptr) {
+                    resource_client->PhoneDisconnected(MonotonicMilliseconds());
+                }
                 xSemaphoreGive(resource_mutex);
             }
         }
@@ -485,9 +488,9 @@ struct ConnectivityService::Impl {
         if (resource_mutex == nullptr) return;
         xSemaphoreTake(resource_mutex, portMAX_DELAY);
         next_outbound_sequence = 1;
-        if (resource_state == ResourceOperationState::kSent) {
-            resource_state = ResourceOperationState::kQueued;
-            resource_retry_at_ms = 0;
+        resource_phone_session = 0;
+        if (resource_client != nullptr) {
+            resource_client->PhoneDisconnected(MonotonicMilliseconds());
         }
         xSemaphoreGive(resource_mutex);
     }
@@ -495,35 +498,34 @@ struct ConnectivityService::Impl {
     uint32_t NextResourceWakeMs() {
         if (resource_mutex == nullptr) return UINT32_MAX;
         xSemaphoreTake(resource_mutex, portMAX_DELAY);
-        const ResourceOperationState state = resource_state;
-        const uint32_t retry_at = resource_retry_at_ms;
+        const uint32_t next = resource_client == nullptr ? UINT32_MAX
+            : resource_client->NextWakeMs(MonotonicMilliseconds());
         xSemaphoreGive(resource_mutex);
-        if (state != ResourceOperationState::kQueued || retry_at == 0) {
-            return state == ResourceOperationState::kQueued ? 0 : UINT32_MAX;
-        }
-        const uint32_t now = MonotonicMilliseconds();
-        return DeadlineReached(now, retry_at) ? 0 : retry_at - now;
+        return next;
     }
 
-    void SendPendingResource(const BleSnapshot& link) {
-        if (!IsSessionPeerAuthorized(link) || resource_mutex == nullptr) return;
-        companion::ResourceRequestMessage request{};
-        uint32_t request_id = 0;
-        uint32_t sequence = 0;
+    void PollResource(const BleSnapshot& link) {
+        if (resource_mutex == nullptr || resource_client == nullptr) return;
         xSemaphoreTake(resource_mutex, portMAX_DELAY);
-        const uint32_t now = MonotonicMilliseconds();
-        if (resource_state != ResourceOperationState::kQueued ||
-            (resource_retry_at_ms != 0 &&
-             !DeadlineReached(now, resource_retry_at_ms))) {
-            xSemaphoreGive(resource_mutex);
-            return;
-        }
-        request = resource_request;
-        request_id = resource_request_id;
-        sequence = next_outbound_sequence++;
-        if (next_outbound_sequence == 0) next_outbound_sequence = 1;
+        resource_conditions.phone = IsSessionPeerAuthorized(link) &&
+            protocol_negotiated_local.load()
+                ? companion::PhoneAvailability::kConnected
+                : companion::PhoneAvailability::kUnavailable;
+        resource_client->Poll(resource_conditions, MonotonicMilliseconds());
         xSemaphoreGive(resource_mutex);
+    }
 
+    // Called by ResourceClient on the session owner while resource_mutex is
+    // held. Session validation is repeated by BleLink before the send.
+    companion::LinkResult SendResource(
+        uint32_t request_id,
+        const companion::ResourceRequestMessage& request) override {
+        const BleSnapshot link = ble.Snapshot();
+        if (!IsSessionPeerAuthorized(link) || !protocol_negotiated_local.load()) {
+            return companion::LinkResult::kUnavailable;
+        }
+        const uint32_t sequence = next_outbound_sequence++;
+        if (next_outbound_sequence == 0) next_outbound_sequence = 1;
         std::size_t payload_size = 0;
         std::size_t frame_size = 0;
         companion::FrameHeader header{};
@@ -539,95 +541,45 @@ struct ConnectivityService::Impl {
                 header, resource_payload.data(), payload_size,
                 resource_frame.data(), resource_frame.size(), &frame_size) !=
                 companion::ProtocolStatus::kOk) {
-            ESP_LOGW(kTag, "event=resource_request_encode_failed");
-            return;
+            return companion::LinkResult::kInvalidArgument;
         }
-        if (ble.SendForSession(link.session_id, resource_frame.data(),
-                               frame_size) != companion::LinkResult::kOk) {
-            ESP_LOGW(kTag, "event=resource_request_send_deferred request=%lu",
-                     static_cast<unsigned long>(request_id));
-            return;
-        }
-        xSemaphoreTake(resource_mutex, portMAX_DELAY);
-        if (resource_state == ResourceOperationState::kQueued &&
-            resource_request_id == request_id) {
-            resource_state = ResourceOperationState::kSent;
+        const auto result = ble.SendForSession(link.session_id,
+                                               resource_frame.data(), frame_size);
+        if (result == companion::LinkResult::kOk) {
             resource_sequence = sequence;
-            resource_retry_at_ms = 0;
+            resource_phone_session = link.session_id;
         }
-        xSemaphoreGive(resource_mutex);
-        ESP_LOGI(kTag, "event=resource_request_sent request=%lu sequence=%lu",
-                 static_cast<unsigned long>(request_id),
-                 static_cast<unsigned long>(sequence));
+        return result;
     }
 
-    bool ProcessResourceResponse(const companion::FrameView& frame) {
+    bool ProcessResourceResponse(uint32_t session_id,
+                                  const companion::FrameView& frame) {
         if (frame.header.message_class != companion::MessageClass::kCommand ||
             frame.header.message_type != companion::kResourceRequestMessageType ||
             (frame.header.flags & companion::kResponse) == 0 ||
-            resource_mutex == nullptr) {
-            return false;
-        }
-        xSemaphoreTake(resource_mutex, portMAX_DELAY);
-        const bool matches =
-            resource_state == ResourceOperationState::kSent &&
-            resource_request_id == frame.header.request_id &&
-            resource_sequence == frame.header.sequence;
-        xSemaphoreGive(resource_mutex);
-        if (!matches) return false;
-
+            resource_mutex == nullptr || resource_client == nullptr) return false;
         companion::ResourceResponseMessage decoded{};
-        const companion::ProtocolStatus status =
-            companion::DecodeResourceResponsePayload(
-                frame.payload, frame.payload_size, &decoded);
+        if (companion::DecodeResourceResponsePayload(
+                frame.payload, frame.payload_size, &decoded) !=
+                companion::ProtocolStatus::kOk) {
+            decoded = {};
+        }
         xSemaphoreTake(resource_mutex, portMAX_DELAY);
-        if (resource_state != ResourceOperationState::kSent ||
-            resource_request_id != frame.header.request_id ||
-            resource_sequence != frame.header.sequence) {
-            xSemaphoreGive(resource_mutex);
-            return true;
+        bool consumed = false;
+        if (resource_sequence == frame.header.sequence &&
+            resource_phone_session == session_id) {
+            // Lock ordering is resource -> BLE everywhere. A disconnect cannot
+            // revoke authorization between this check and accepting the reply.
+            ble.WithCurrentTransportSession(session_id, [&]() {
+                if (peer_authorized.load() &&
+                    peer_authorized_session_id.load() == session_id) {
+                    consumed = resource_client->AcceptPhoneResponse(
+                        frame.header.request_id, decoded, MonotonicMilliseconds());
+                }
+            });
         }
-        resource_response = {};
-        resource_response.request_id = resource_request_id;
-        if (status != companion::ProtocolStatus::kOk) {
-            resource_response.status =
-                companion::ResourceStatus::kInvalidResponse;
-        } else if (decoded.body_size >
-                   resource_request.maximum_response_bytes) {
-            resource_response.status =
-                companion::ResourceStatus::kResponseTooLarge;
-        } else {
-            resource_response.status = decoded.status;
-            resource_response.content_type = decoded.content_type;
-            resource_response.body_size = decoded.body_size;
-            resource_response.retry_after_ms = decoded.retry_after_ms;
-            if (decoded.body_size != 0) {
-                std::memcpy(resource_response.body.data(), decoded.body,
-                            decoded.body_size);
-            }
-        }
-        resource_response_ready = true;
-        if (resource_request.durable && companion::IsTransientResourceStatus(
-                                            resource_response.status)) {
-            constexpr uint32_t kDefaultRetryMs = 10000;
-            constexpr uint32_t kMaximumRetryMs = 300000;
-            uint32_t retry = resource_response.retry_after_ms == 0
-                ? kDefaultRetryMs
-                : resource_response.retry_after_ms;
-            retry = std::max(companion::kResourceMinimumTimeoutMs,
-                             std::min(retry, kMaximumRetryMs));
-            resource_retry_at_ms = MonotonicMilliseconds() + retry;
-            resource_state = ResourceOperationState::kQueued;
-        } else {
-            resource_state = ResourceOperationState::kIdle;
-            resource_retry_at_ms = 0;
-        }
-        const companion::ResourceStatus result = resource_response.status;
         xSemaphoreGive(resource_mutex);
-        ESP_LOGI(kTag, "event=resource_response request=%lu status=%u",
-                 static_cast<unsigned long>(frame.header.request_id),
-                 static_cast<unsigned>(result));
-        return true;
+        return consumed;
     }
 
     static void SessionTask(void* argument) {
@@ -645,6 +597,7 @@ struct ConnectivityService::Impl {
                 self->ResourceSessionChanged();
             }
             self->ResetSessionPeerAuthorizedIfNeeded(link.session_id);
+            self->PollResource(link);
             const uint32_t session_wake_ms = std::min(
                 self->NextSessionWakeMs(), self->NextResourceWakeMs());
 
@@ -654,7 +607,6 @@ struct ConnectivityService::Impl {
                 continue;
             }
             if (self->protocol_negotiated_local.load()) {
-                self->SendPendingResource(link);
                 ReceivedFrame received{};
                 if (!self->ble.TakeReceivedFrame(&received)) {
                     self->ble.WaitForSessionEvent(std::min(
@@ -681,7 +633,7 @@ struct ConnectivityService::Impl {
                         companion::kProtocolMinor, &frame);
                 const bool consumed =
                     decoded == companion::ProtocolStatus::kOk &&
-                    self->ProcessResourceResponse(frame);
+                    self->ProcessResourceResponse(received_session_id, frame);
                 self->ble.ReleaseReceivedFrame();
                 if (!consumed) {
                     ESP_LOGW(kTag,
@@ -773,6 +725,20 @@ struct ConnectivityService::Impl {
                          static_cast<unsigned long>(link.session_id));
             }
         }
+        if (self->resource_client != nullptr) {
+            xSemaphoreTake(self->resource_mutex, portMAX_DELAY);
+            self->resource_conditions.power_state = companion::ProductPowerState::kShutdown;
+            self->resource_client->Cancel(MonotonicMilliseconds());
+            xSemaphoreGive(self->resource_mutex);
+            while (true) {
+                xSemaphoreTake(self->resource_mutex, portMAX_DELAY);
+                self->resource_client->Poll(self->resource_conditions, MonotonicMilliseconds());
+                const bool busy = self->resource_client->WifiBusy();
+                xSemaphoreGive(self->resource_mutex);
+                if (!busy) break;
+                vTaskDelay(pdMS_TO_TICKS(20));
+            }
+        }
         xSemaphoreGive(self->session_task_done);
         vTaskDelete(nullptr);
     }
@@ -793,17 +759,8 @@ ConnectivityResult ConnectivityService::Create(ConnectivityService** output) {
 }
 
 ConnectivityService::~ConnectivityService() {
+    Stop();
     if (impl_ != nullptr) {
-        impl_->stop_session_task.store(true);
-        impl_->ble.WakeSessionWaiter();
-        if (impl_->nfc_service != nullptr) {
-            impl_->nfc_service->SetEventCallback(nullptr);
-        }
-        if (impl_->session_task_done != nullptr) {
-            xSemaphoreTake(impl_->session_task_done, portMAX_DELAY);
-            vSemaphoreDelete(impl_->session_task_done);
-            impl_->session_task_done = nullptr;
-        }
         if (impl_->clear_bonds_done != nullptr) {
             vSemaphoreDelete(impl_->clear_bonds_done);
             impl_->clear_bonds_done = nullptr;
@@ -820,20 +777,67 @@ ConnectivityService::~ConnectivityService() {
     delete impl_;
 }
 
+ConnectivityResult ConnectivityService::Stop() {
+    if (impl_ == nullptr) return ConnectivityResult::kOk;
+    // Serialize with a bond-removal caller before stopping its session owner.
+    if (impl_->clear_bonds_mutex != nullptr) {
+        xSemaphoreTake(impl_->clear_bonds_mutex, portMAX_DELAY);
+    }
+    if (impl_->resource_mutex != nullptr) {
+        xSemaphoreTake(impl_->resource_mutex, portMAX_DELAY);
+    }
+    impl_->initialized.store(false);
+    impl_->stop_session_task.store(true);
+    if (impl_->resource_mutex != nullptr) xSemaphoreGive(impl_->resource_mutex);
+    if (impl_->clear_bonds_mutex != nullptr) xSemaphoreGive(impl_->clear_bonds_mutex);
+    if (impl_->nfc_service != nullptr) impl_->nfc_service->SetEventCallback(nullptr);
+    impl_->ble.WakeSessionWaiter();
+    if (impl_->session_task_done != nullptr) {
+        xSemaphoreTake(impl_->session_task_done, portMAX_DELAY);
+        vSemaphoreDelete(impl_->session_task_done);
+        impl_->session_task_done = nullptr;
+    }
+    impl_->ble.Stop();
+    return impl_->wifi_backend != nullptr &&
+        impl_->wifi_backend->State() == WifiBackendState::kStopFailed
+            ? ConnectivityResult::kTransportError : ConnectivityResult::kOk;
+}
+
 void ConnectivityService::SetNfcService(nfc::NfcService* nfc_service) {
-    if (impl_ == nullptr || impl_->initialized.load()) return;
+    if (impl_ == nullptr || impl_->initialization_started) return;
     impl_->nfc_service = nfc_service;
 }
 
 void ConnectivityService::SetStorageService(
     storage::StorageService* storage_service) {
-    if (impl_ == nullptr || impl_->initialized.load()) return;
+    if (impl_ == nullptr || impl_->initialization_started) return;
     impl_->storage_service = storage_service;
 }
 
 ConnectivityResult ConnectivityService::Initialize() {
     if (impl_ == nullptr) return ConnectivityResult::kInvalidState;
     if (impl_->initialized.load()) return ConnectivityResult::kOk;
+    if (impl_->initialization_started) return ConnectivityResult::kInvalidState;
+    impl_->initialization_started = true;
+
+    impl_->wifi_credentials.reset(new (std::nothrow)
+        StoredWifiCredentials(impl_->storage_service));
+    if (impl_->wifi_credentials == nullptr) return ConnectivityResult::kUnavailable;
+    impl_->wifi_backend.reset(new (std::nothrow)
+        WifiBackend(impl_->wifi_credentials.get(), &impl_->wifi_driver));
+    if (impl_->wifi_backend == nullptr) return ConnectivityResult::kUnavailable;
+    impl_->resource_client.reset(new (std::nothrow)
+        ResourceClient(*impl_->wifi_backend, *impl_));
+    if (impl_->resource_client == nullptr) return ConnectivityResult::kUnavailable;
+    impl_->resource_conditions.battery_percent = 0;
+    impl_->resource_conditions.wifi_credentials_available = impl_->wifi_credentials->Available();
+    uint32_t stored_policy = 0;
+    if (impl_->storage_service != nullptr &&
+        impl_->storage_service->GetUInt32("conn_policy", &stored_policy) == ESP_OK &&
+        stored_policy <= static_cast<uint32_t>(companion::UserConnectivityPolicy::kOffline)) {
+        impl_->resource_conditions.user_policy =
+            static_cast<companion::UserConnectivityPolicy>(stored_policy);
+    }
 
     const ConnectivityResult result = Map(impl_->ble.Initialize());
     if (result != ConnectivityResult::kOk) return result;
@@ -891,7 +895,7 @@ ConnectivityResult ConnectivityService::Initialize() {
         }
         return ConnectivityResult::kUnavailable;
     }
-    if (xTaskCreate(&Impl::SessionTask, "zectrix_session", 4096, impl_, 4,
+    if (xTaskCreate(&Impl::SessionTask, "zectrix_session", 8192, impl_, 4,
                     nullptr) != pdPASS) {
         vSemaphoreDelete(impl_->session_task_done);
         impl_->session_task_done = nullptr;
@@ -928,6 +932,10 @@ ConnectivityResult ConnectivityService::ClearPeerBonds() {
         return ConnectivityResult::kUnavailable;
     }
     xSemaphoreTake(impl_->clear_bonds_mutex, portMAX_DELAY);
+    if (!impl_->initialized.load()) {
+        xSemaphoreGive(impl_->clear_bonds_mutex);
+        return ConnectivityResult::kInvalidState;
+    }
     impl_->clear_bonds_requested.store(true, std::memory_order_release);
     impl_->ble.WakeSessionWaiter();
     xSemaphoreTake(impl_->clear_bonds_done, portMAX_DELAY);
@@ -959,6 +967,14 @@ ConnectivitySnapshot ConnectivityService::Snapshot() const {
         ble.state == BleState::kTransportReady &&
         impl_->peer_authorized.load() &&
         impl_->peer_authorized_session_id.load() == ble.session_id;
+    if (impl_->resource_mutex != nullptr && impl_->resource_client != nullptr) {
+        xSemaphoreTake(impl_->resource_mutex, portMAX_DELAY);
+        snapshot.wifi_credentials_available = impl_->resource_conditions.wifi_credentials_available;
+        snapshot.resource_busy = impl_->resource_client->Busy();
+        snapshot.wifi_state = impl_->resource_client->WifiState();
+        snapshot.resource_decision = impl_->resource_client->Decision();
+        xSemaphoreGive(impl_->resource_mutex);
+    }
     switch (ble.state) {
         case BleState::kIdle: snapshot.state = ConnectivityState::kIdle; break;
         case BleState::kAdvertising:
@@ -983,10 +999,58 @@ bool ConnectivityService::TakePairingPasskey(uint32_t* passkey) {
     return impl_ != nullptr && impl_->ble.TakePairingPasskey(passkey);
 }
 
+void ConnectivityService::UpdatePower(
+    const power::PowerSnapshot& power, companion::ProductPowerState state) {
+    if (impl_ == nullptr || impl_->resource_mutex == nullptr) return;
+    xSemaphoreTake(impl_->resource_mutex, portMAX_DELAY);
+    impl_->resource_conditions.external_power = power.external_power_present;
+    impl_->resource_conditions.battery_percent = power.battery_valid && !power.battery_absent
+        ? power.battery_percent : 0;
+    impl_->resource_conditions.power_state = state;
+    xSemaphoreGive(impl_->resource_mutex);
+    impl_->ble.WakeSessionWaiter();
+}
+
+ConnectivityResult ConnectivityService::SetUserPolicy(companion::UserConnectivityPolicy policy) {
+    if (impl_ == nullptr || !impl_->initialized.load() ||
+        policy > companion::UserConnectivityPolicy::kOffline) return ConnectivityResult::kInvalidState;
+    xSemaphoreTake(impl_->resource_mutex, portMAX_DELAY);
+    if (!impl_->initialized.load()) {
+        xSemaphoreGive(impl_->resource_mutex);
+        return ConnectivityResult::kInvalidState;
+    }
+    const esp_err_t saved = impl_->storage_service == nullptr ? ESP_ERR_INVALID_STATE
+        : impl_->storage_service->SetUInt32("conn_policy", static_cast<uint32_t>(policy));
+    if (saved == ESP_OK) impl_->resource_conditions.user_policy = policy;
+    xSemaphoreGive(impl_->resource_mutex);
+    impl_->ble.WakeSessionWaiter();
+    return saved == ESP_OK ? ConnectivityResult::kOk : ConnectivityResult::kUnavailable;
+}
+
+ConnectivityResult ConnectivityService::ConfigureWifi(const WifiCredentials& credentials) {
+    if (impl_ == nullptr || !impl_->initialized.load() ||
+        impl_->wifi_credentials == nullptr) return ConnectivityResult::kInvalidState;
+    if (!ValidateWifiCredentials(credentials)) return ConnectivityResult::kInvalidState;
+    xSemaphoreTake(impl_->resource_mutex, portMAX_DELAY);
+    if (!impl_->initialized.load()) {
+        xSemaphoreGive(impl_->resource_mutex);
+        return ConnectivityResult::kInvalidState;
+    }
+    if (impl_->resource_client->WifiBusy()) {
+        xSemaphoreGive(impl_->resource_mutex);
+        return ConnectivityResult::kBusy;
+    }
+    const esp_err_t saved = impl_->wifi_credentials->Save(credentials);
+    if (saved == ESP_OK) impl_->resource_conditions.wifi_credentials_available = true;
+    xSemaphoreGive(impl_->resource_mutex);
+    impl_->ble.WakeSessionWaiter();
+    return saved == ESP_OK ? ConnectivityResult::kOk : ConnectivityResult::kUnavailable;
+}
+
 ConnectivityResult ConnectivityService::RequestResource(
     const companion::ResourceRequestMessage& request) {
     if (impl_ == nullptr || !impl_->initialized.load() ||
-        impl_->resource_mutex == nullptr) {
+        impl_->resource_mutex == nullptr || impl_->resource_client == nullptr) {
         return ConnectivityResult::kInvalidState;
     }
     if (request.maximum_response_bytes == 0 ||
@@ -995,45 +1059,28 @@ ConnectivityResult ConnectivityService::RequestResource(
         request.timeout_ms > companion::kResourceMaximumTimeoutMs) {
         return ConnectivityResult::kInvalidState;
     }
-    const ConnectivitySnapshot snapshot = Snapshot();
-    if (!snapshot.protocol_negotiated_local || !snapshot.peer_authorized) {
-        return ConnectivityResult::kUnavailable;
-    }
-
     xSemaphoreTake(impl_->resource_mutex, portMAX_DELAY);
-    if (impl_->resource_state != Impl::ResourceOperationState::kIdle ||
-        impl_->resource_response_ready) {
+    if (!impl_->initialized.load()) {
         xSemaphoreGive(impl_->resource_mutex);
-        return ConnectivityResult::kBusy;
+        return ConnectivityResult::kInvalidState;
     }
     uint32_t request_id = esp_random();
     if (request_id == 0) request_id = 1;
-    impl_->resource_request = request;
-    impl_->resource_request_id = request_id;
-    impl_->resource_sequence = 0;
-    impl_->resource_retry_at_ms = 0;
-    impl_->resource_response = {};
-    impl_->resource_state = Impl::ResourceOperationState::kQueued;
+    const bool accepted = impl_->resource_client->Begin(
+        request_id, request, Impl::MonotonicMilliseconds());
     xSemaphoreGive(impl_->resource_mutex);
     impl_->ble.WakeSessionWaiter();
-    return ConnectivityResult::kOk;
+    return accepted ? ConnectivityResult::kOk : ConnectivityResult::kBusy;
 }
 
 bool ConnectivityService::TakeResourceResponse(ResourceResponse* response) {
     if (impl_ == nullptr || response == nullptr ||
-        impl_->resource_mutex == nullptr) {
-        return false;
-    }
+        impl_->resource_mutex == nullptr || impl_->resource_client == nullptr) return false;
     xSemaphoreTake(impl_->resource_mutex, portMAX_DELAY);
-    if (!impl_->resource_response_ready) {
-        xSemaphoreGive(impl_->resource_mutex);
-        return false;
-    }
-    *response = impl_->resource_response;
-    impl_->resource_response = {};
-    impl_->resource_response_ready = false;
+    const bool received = impl_->resource_client->TakeResponse(response);
     xSemaphoreGive(impl_->resource_mutex);
-    return true;
+    if (received) impl_->ble.WakeSessionWaiter();
+    return received;
 }
 
 }  // namespace zectrix::connectivity

@@ -1,5 +1,7 @@
 #include "zectrix_wifi_credentials.h"
 
+#include <cstring>
+
 #include "zectrix_storage_service.h"
 
 namespace zectrix::connectivity {
@@ -28,7 +30,13 @@ WifiCredentialResult StoredWifiCredentials::Load(WifiCredentials* credentials) {
 esp_err_t StoredWifiCredentials::Save(const WifiCredentials& credentials) {
     if (storage_ == nullptr) return ESP_ERR_INVALID_STATE;
     if (!ValidateWifiCredentials(credentials)) return ESP_ERR_INVALID_ARG;
-    return storage_->SetBlob(kStationKey, &credentials, sizeof(credentials));
+    WifiCredentials stored{};
+    std::memcpy(stored.ssid.data(), credentials.ssid.data(), std::strlen(credentials.ssid.data()));
+    std::memcpy(stored.passphrase.data(), credentials.passphrase.data(),
+                std::strlen(credentials.passphrase.data()));
+    const esp_err_t result = storage_->SetBlob(kStationKey, &stored, sizeof(stored));
+    ClearWifiCredentials(&stored);
+    return result;
 }
 
 esp_err_t StoredWifiCredentials::Erase() {

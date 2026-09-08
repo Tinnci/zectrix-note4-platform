@@ -151,8 +151,56 @@ reported separately and makes that backend instance non-reusable. Credentials
 are held in a fixed-size temporary copy and cleared after station start. Host
 fakes cover success, unavailable/invalid credentials, authentication, IP, DNS,
 TLS, timeout, transfer, size, malformed response, cancellation, unsupported
-capability and stop failure. The ESP-IDF driver and real association/resource/
-power-down evidence remain the hardware-dependent C1.7 exit work.
+capability and stop failure. The ESP-IDF driver is implemented. Real association,
+resource transfer and power-down measurements remain hardware exit work.
+
+### Direct HTTPS execution (C1.2)
+
+`ConnectivityService` runs `ResourceClient` on its existing session owner. A
+connected, authorized phone remains preferred. Phone absence, send failure,
+disconnect, offline status or timeout can select direct Wi-Fi through
+`ConnectivityPolicy`. Terminal resource errors do not trigger another fetch.
+Phone-only, Wi-Fi-only, offline, shutdown and minimum battery rules apply to
+selection and to policy changes during a transfer.
+
+Each selected transport attempt has the requested timeout. A durable request
+keeps its ID and payload for in-memory retries and BLE reconnects, with a
+one-second to five-minute backoff. Retry notices are advisory: an unread notice
+does not pause background retries, and a newly available path can resume work.
+A terminal response stays available until consumed. Reboot persistence and
+cursor replay belong to the subsequent sync work.
+
+The ESP driver uses asynchronous DNS and verified TLS, then `esp_http_client`
+over that TLS stream for `GET https://zectrix.com/robots.txt`. It validates the
+CA chain, hostname and certificate dates. The bounded reader accepts a
+non-empty UTF-8 `text/plain` body with fixed-length, chunked or connection-close
+framing. It rejects redirects, compressed content, conflicting lengths,
+truncation and excess data. Each poll reads at most 512 wire bytes; headers and
+chunk metadata share a 4096-byte bound, with a 512-byte line limit.
+
+Stored station credentials are provisioned through
+`ConnectivityService::ConfigureWifi`; they can also unblock an already deferred
+request. `SetUserPolicy` persists the selected mode. Applications publish copied
+power samples through `UpdatePower`. The RF diagnostic uses the same driver's
+exclusive radio claim, so a scan and a resource burst cannot own Wi-Fi at once.
+Success, failure, timeout and cancellation all use the station stop path before
+publishing a direct result. The result carries transfer and stop status
+separately. Product shutdown stops connectivity before the power transition.
+
+TLS requires a configured UTC system clock. `TimeService` can initialize it from
+a valid RTC reading and an explicit UTC offset; RTC calendar fields retain their
+local-time meaning. At boot the application uses the Storage setting
+`rtc_utc_offset` (signed seconds east of UTC) when present. Provisioning must set
+the correct RTC and offset, or synchronize the UTC clock through the time owner,
+before a direct fetch. Certificate validation is never bypassed to accommodate
+an unset clock. Firmware defaults enable the certificate bundle and date checks.
+
+`tools/test-resource-client.sh` exercises selection, escalation, retry,
+cancellation and stop outcomes with fake transports. `tools/test-wifi-http.sh`
+exercises the production response reader and custom transport callbacks with
+an HTTP API fake, including partial writes and reads. The ESP-IDF firmware build
+checks the real driver and HTTP API integration. Radio current, real TLS latency
+and physical BLE/Wi-Fi coexistence still require a Note4.
 
 ## Security lifecycle
 

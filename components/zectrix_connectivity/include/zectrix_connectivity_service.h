@@ -4,10 +4,11 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "zectrix_resource_gateway.h"
+#include "zectrix_resource_client.h"
 
 namespace zectrix::nfc { class NfcService; }
 namespace zectrix::storage { class StorageService; }
+namespace zectrix::power { struct PowerSnapshot; }
 
 namespace zectrix::connectivity {
 
@@ -48,17 +49,10 @@ struct ConnectivitySnapshot {
     // A successful NFC-assisted enrollment proof consumes the bootstrap token
     // and sets this flag for the current product session.
     bool peer_authorized = false;
-};
-
-struct ResourceResponse {
-    uint32_t request_id = 0;
-    companion::ResourceStatus status =
-        companion::ResourceStatus::kInvalidResponse;
-    companion::ResourceContentType content_type =
-        companion::ResourceContentType::kNone;
-    std::array<uint8_t, companion::kResourceMaximumBodySize> body{};
-    std::size_t body_size = 0;
-    uint32_t retry_after_ms = 0;
+    bool wifi_credentials_available = false;
+    bool resource_busy = false;
+    WifiBackendState wifi_state = WifiBackendState::kStopped;
+    companion::ConnectivityDecision resource_decision{};
 };
 
 class ConnectivityService {
@@ -74,11 +68,19 @@ public:
     void SetStorageService(storage::StorageService* storage_service);
 
     ConnectivityResult Initialize();
+    ConnectivityResult Stop();
     ConnectivityResult StartLocalPairing();
     ConnectivityResult ClearPeerBonds();
     ConnectivityState State() const;
     ConnectivitySnapshot Snapshot() const;
     bool TakePairingPasskey(uint32_t* passkey);
+    // Publish a copied power sample from the application owner before a
+    // request. Radio policy treats an invalid battery sample conservatively.
+    void UpdatePower(const power::PowerSnapshot& power,
+        companion::ProductPowerState state = companion::ProductPowerState::kActive);
+    ConnectivityResult SetUserPolicy(companion::UserConnectivityPolicy policy);
+    // Internal provisioning API. The caller owns local user authorization.
+    ConnectivityResult ConfigureWifi(const WifiCredentials& credentials);
     ConnectivityResult RequestResource(
         const companion::ResourceRequestMessage& request);
     bool TakeResourceResponse(ResourceResponse* response);

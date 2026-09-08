@@ -11,10 +11,7 @@
 #include "acoustic_selftest.h"
 #include "audio_codec.h"
 #include "driver/gpio.h"
-#include "esp_event.h"
 #include "esp_log.h"
-#include "esp_netif.h"
-#include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "zectrix_board.h"
@@ -25,6 +22,7 @@
 #include "zectrix_storage_service.h"
 #include "zectrix_system_service.h"
 #include "zectrix_time_service.h"
+#include "zectrix_wifi_esp_driver.h"
 
 namespace {
 
@@ -79,38 +77,6 @@ bool IsCancelOrShutdown(zectrix::input::InputService* input,
         return true;
     }
     return false;
-}
-
-esp_err_t EnsureWifiReady(zectrix::storage::StorageService* storage) {
-    if (storage == nullptr) return ESP_ERR_INVALID_STATE;
-    esp_err_t err = storage->Initialize();
-    if (err != ESP_OK) {
-        return err;
-    }
-    err = esp_netif_init();
-    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
-        return err;
-    }
-    err = esp_event_loop_create_default();
-    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
-        return err;
-    }
-
-    static bool wifi_initialized = false;
-    if (!wifi_initialized) {
-        wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
-        err = esp_wifi_init(&config);
-        if (err != ESP_OK) {
-            return err;
-        }
-        wifi_initialized = true;
-    }
-    esp_wifi_set_storage(WIFI_STORAGE_RAM);
-    err = esp_wifi_set_mode(WIFI_MODE_STA);
-    if (err == ESP_OK) {
-        err = esp_wifi_start();
-    }
-    return err == ESP_ERR_WIFI_CONN ? ESP_OK : err;
 }
 
 std::vector<uint8_t> BuildUriNdef(const std::string& uri) {
@@ -182,12 +148,10 @@ ZectrixTestResult ZectrixSelfTest::RunRf(const UpdateCallback& callback) {
     auto update = MakeUpdate(ZectrixTestId::kRf, ZectrixTestState::kRunning,
                              "Scanning 2.4 GHz access points...");
     Publish(callback, update);
-    const esp_err_t init = EnsureWifiReady(storage_);
-    if (init != ESP_OK) {
+    zectrix::connectivity::EspWifiBackendDriver radio;
+    if (radio.StartScan() != zectrix::connectivity::WifiDriverResult::kPending) {
         update.state = ZectrixTestState::kFail;
-        SetText(update.hint, sizeof(update.hint), "Wi-Fi init failed");
-        SetText(update.details[0].data(), update.details[0].size(), "%s",
-                esp_err_to_name(init));
+        SetText(update.hint, sizeof(update.hint), "Wi-Fi is busy or unavailable");
         Publish(callback, update);
         return ZectrixTestResult::kFail;
     }
@@ -197,35 +161,23 @@ ZectrixTestResult ZectrixSelfTest::RunRf(const UpdateCallback& callback) {
     int consecutive_hits = 0;
     const int64_t deadline = time_->MonotonicMicroseconds() + kInteractiveTimeoutUs;
     while (time_->MonotonicMicroseconds() < deadline) {
-        wifi_scan_config_t scan = {};
-        scan.show_hidden = true;
-        scan.scan_type = WIFI_SCAN_TYPE_ACTIVE;
-        const esp_err_t scan_result = esp_wifi_scan_start(&scan, true);
-        uint16_t count = 0;
-        if (scan_result == ESP_OK) {
-            esp_wifi_scan_get_ap_num(&count);
+        zectrix::connectivity::WifiScanSnapshot scan{};
+        const auto scan_result = radio.PollScan(target, &scan);
+        if (scan_result == zectrix::connectivity::WifiDriverResult::kPending) {
+            ZectrixTestResult control;
+            if (IsCancelOrShutdown(input_, pdMS_TO_TICKS(50), &control)) return control;
+            continue;
         }
-        std::vector<wifi_ap_record_t> records(count);
-        if (count > 0) {
-            esp_wifi_scan_get_ap_records(&count, records.data());
+        if (scan_result != zectrix::connectivity::WifiDriverResult::kReady) {
+            update.state = ZectrixTestState::kFail;
+            SetText(update.hint, sizeof(update.hint), "Wi-Fi scan failed");
+            Publish(callback, update);
+            return ZectrixTestResult::kFail;
         }
-
-        int best_rssi = -127;
-        std::string best_name;
-        bool target_found = false;
-        for (const auto& record : records) {
-            const char* ssid = reinterpret_cast<const char*>(record.ssid);
-            if (record.rssi > best_rssi) {
-                best_rssi = record.rssi;
-                best_name = ssid;
-            }
-            if (qualification && std::strcmp(ssid, target) == 0) {
-                target_found = true;
-                best_rssi = record.rssi;
-                best_name = ssid;
-                break;
-            }
-        }
+        const uint16_t count = scan.access_point_count;
+        const int best_rssi = scan.best_rssi;
+        const bool target_found = scan.target_found;
+        const std::string best_name(scan.best_ssid.data());
 
         const bool hit = qualification
                              ? target_found &&
@@ -245,7 +197,12 @@ ZectrixTestResult ZectrixSelfTest::RunRf(const UpdateCallback& callback) {
 
         if ((!qualification && hit) ||
             consecutive_hits >= kRfRequiredHits) {
-            esp_wifi_stop();
+            if (radio.StopStation() != zectrix::connectivity::WifiDriverResult::kReady) {
+                update.state = ZectrixTestState::kFail;
+                SetText(update.hint, sizeof(update.hint), "Wi-Fi stop failed");
+                Publish(callback, update);
+                return ZectrixTestResult::kFail;
+            }
             update.state = ZectrixTestState::kPass;
             SetText(update.hint, sizeof(update.hint), "Wi-Fi radio is operational");
             Publish(callback, update);
@@ -253,11 +210,9 @@ ZectrixTestResult ZectrixSelfTest::RunRf(const UpdateCallback& callback) {
         }
         ZectrixTestResult control;
         if (IsCancelOrShutdown(input_, pdMS_TO_TICKS(250), &control)) {
-            esp_wifi_stop();
             return control;
         }
     }
-    esp_wifi_stop();
     update.state = ZectrixTestState::kFail;
     SetText(update.hint, sizeof(update.hint), "RF test timed out");
     Publish(callback, update);

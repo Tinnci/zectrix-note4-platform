@@ -2,9 +2,12 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <cstring>
 #include <ctime>
 #include <new>
+#include <sys/select.h>
+#include <sys/socket.h>
 
 #include "esp_crt_bundle.h"
 #include "esp_event.h"
@@ -12,6 +15,7 @@
 #include "esp_tls.h"
 #include "esp_wifi.h"
 #include "esp_wifi_default.h"
+#include "sdkconfig.h"
 #include "lwip/dns.h"
 #include "lwip/ip_addr.h"
 #include "lwip/tcpip.h"
@@ -21,13 +25,6 @@ namespace zectrix::connectivity {
 namespace {
 
 constexpr char kResourceHost[] = "zectrix.com";
-constexpr char kResourceGet[] =
-    "GET /robots.txt HTTP/1.1\r\n"
-    "Host: zectrix.com\r\n"
-    "Accept: text/plain\r\n"
-    "Accept-Encoding: identity\r\n"
-    "Connection: close\r\n"
-    "User-Agent: Zectrix-Note4/1\r\n\r\n";
 
 std::atomic<bool> radio_claimed{false};
 
@@ -38,6 +35,24 @@ bool Supported(companion::ResourceCapability capability) {
 bool TlsPending(int result) {
     return result == ESP_TLS_ERR_SSL_WANT_READ ||
            result == ESP_TLS_ERR_SSL_WANT_WRITE;
+}
+
+WifiDriverResult PollTcpConnection(esp_tls_t* tls) {
+    int socket = -1;
+    if (esp_tls_get_conn_sockfd(tls, &socket) != ESP_OK || socket < 0) {
+        return WifiDriverResult::kTlsFailure;
+    }
+    fd_set readable;
+    FD_ZERO(&readable);
+    FD_SET(socket, &readable);
+    fd_set writable = readable;
+    timeval timeout{};
+    const int ready = select(socket + 1, &readable, &writable, nullptr, &timeout);
+    if (ready == 0 || (ready < 0 && errno == EINTR)) return WifiDriverResult::kPending;
+    int error = 0;
+    socklen_t size = sizeof(error);
+    return ready > 0 && getsockopt(socket, SOL_SOCKET, SO_ERROR, &error, &size) == 0 &&
+        error == 0 ? WifiDriverResult::kReady : WifiDriverResult::kTlsFailure;
 }
 
 // lwIP cannot cancel a submitted DNS query. A reference owned by its callback
@@ -94,13 +109,13 @@ WifiDriverResult DisconnectionFailure(uint8_t reason) {
 
 }  // namespace
 
-struct EspWifiBackendDriver::Impl {
+struct EspWifiBackendDriver::Impl : WifiHttpStream {
     esp_netif_t* netif = nullptr;
     esp_event_handler_instance_t wifi_handler = nullptr;
     esp_event_handler_instance_t ip_handler = nullptr;
     esp_tls_t* tls = nullptr;
     DnsQuery* dns = nullptr;
-    WifiHttpResponse http;
+    WifiHttpClient http;
     std::atomic<WifiDriverResult> link_error{WifiDriverResult::kPending};
     std::atomic<bool> station_ready{false};
     std::atomic<bool> associated{false};
@@ -114,8 +129,17 @@ struct EspWifiBackendDriver::Impl {
     bool scan_mode = false;
     bool scan_requested = false;
     bool http_started = false;
-    std::size_t request_sent = 0;
     std::array<char, kMaximumWifiSsidBytes + 1> scan_target{};
+
+    int Read(uint8_t* data, std::size_t capacity) override {
+        const int result = esp_tls_conn_read(tls, data, capacity);
+        return TlsPending(result) ? kWouldBlock : result < 0 ? kFailure : result;
+    }
+
+    int Write(const uint8_t* data, std::size_t size) override {
+        const int result = esp_tls_conn_write(tls, data, size);
+        return TlsPending(result) ? kWouldBlock : result < 0 ? kFailure : result;
+    }
 
     static void OnEvent(void* context, esp_event_base_t base,
                         int32_t id, void* data) {
@@ -230,6 +254,7 @@ struct EspWifiBackendDriver::Impl {
     WifiDriverResult Stop() {
         if (!claimed) return WifiDriverResult::kReady;
         stopping.store(true, std::memory_order_release);
+        http.Close();
         if (tls != nullptr) {
             esp_tls_conn_destroy(tls);
             tls = nullptr;
@@ -264,8 +289,6 @@ struct EspWifiBackendDriver::Impl {
         connect_requested = false;
         scan_requested = false;
         http_started = false;
-        request_sent = 0;
-        http = {};
         claimed = false;
         radio_claimed.store(false, std::memory_order_release);
         return WifiDriverResult::kReady;
@@ -345,6 +368,11 @@ WifiDriverResult EspWifiBackendDriver::OpenTls(
     if (impl_->dns->result.load(std::memory_order_acquire) != WifiDriverResult::kReady) {
         return WifiDriverResult::kDnsFailure;
     }
+#if !defined(CONFIG_MBEDTLS_HAVE_TIME_DATE)
+    // Existing sdkconfig files can override defaults and disable date checks.
+    // A configured wall clock alone must not permit an expired certificate.
+    return WifiDriverResult::kTlsFailure;
+#endif
     // Certificate dates must be checked against a configured wall clock.
     if (std::time(nullptr) < 1704067200) return WifiDriverResult::kTlsFailure;
     if (impl_->tls == nullptr) impl_->tls = esp_tls_init();
@@ -354,6 +382,17 @@ WifiDriverResult EspWifiBackendDriver::OpenTls(
     config.timeout_ms = 20;
     config.common_name = kResourceHost;
     config.crt_bundle_attach = esp_crt_bundle_attach;
+    esp_tls_conn_state_t state;
+    if (esp_tls_get_conn_state(impl_->tls, &state) != ESP_OK) {
+        return WifiDriverResult::kTlsFailure;
+    }
+    if (state == ESP_TLS_CONNECTING) {
+        // IDF 5.5 retains fd_sets cleared by a timed-out select. Poll with
+        // fresh sets, then skip that select; the socket stays non-blocking.
+        const auto connected = PollTcpConnection(impl_->tls);
+        if (connected != WifiDriverResult::kReady) return connected;
+        config.non_block = false;
+    }
     const int result = esp_tls_conn_new_async(
         impl_->dns->address.data(), std::strlen(impl_->dns->address.data()),
         443, &config, impl_->tls);
@@ -370,27 +409,10 @@ WifiDriverResult EspWifiBackendDriver::Fetch(
     const auto link = PollIp();
     if (link != WifiDriverResult::kReady) return link;
     if (!impl_->http_started) {
-        if (!impl_->http.Begin(body, capacity)) return WifiDriverResult::kInvalidResponse;
+        if (!impl_->http.Begin(*impl_, body, capacity)) return WifiDriverResult::kUnavailable;
         impl_->http_started = true;
     }
-    if (impl_->request_sent < sizeof(kResourceGet) - 1) {
-        const int written = esp_tls_conn_write(
-            impl_->tls, kResourceGet + impl_->request_sent,
-            sizeof(kResourceGet) - 1 - impl_->request_sent);
-        if (TlsPending(written)) return WifiDriverResult::kPending;
-        if (written <= 0) return WifiDriverResult::kTransferFailure;
-        impl_->request_sent += static_cast<std::size_t>(written);
-        return WifiDriverResult::kPending;
-    }
-    std::array<uint8_t, 512> input{};
-    const int received = esp_tls_conn_read(impl_->tls, input.data(), input.size());
-    if (TlsPending(received)) return WifiDriverResult::kPending;
-    if (received < 0) return WifiDriverResult::kTransferFailure;
-    const WifiDriverResult result = received == 0
-        ? impl_->http.EndOfStream()
-        : impl_->http.Feed(input.data(), static_cast<std::size_t>(received));
-    if (result == WifiDriverResult::kReady) *body_size = impl_->http.BodySize();
-    return result;
+    return impl_->http.Poll(body_size);
 }
 
 WifiDriverResult EspWifiBackendDriver::StopStation() {

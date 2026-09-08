@@ -11,7 +11,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Define `zectrix_wifi_backend.h` and implement `zectrix_wifi_esp_driver.cc`.
   - Wire ESP-IDF Wi-Fi/netif events with thread-safe callbacks.
   - Harmonize RF self-test and connectivity Wi-Fi sharing.
-- [ ] **C1.2: Direct HTTPS Resource Client & Escalation Path**
+- [x] **C1.2: Direct HTTPS Resource Client & Escalation Path**
   - Implement `zectrix_wifi_http.cc` using `esp_http_client`.
   - Wire `ConnectivityPolicy` to trigger direct Wi-Fi fetch when phone proxy is unavailable.
   - Implement automatic radio shutdown (power save) after transfer completion.

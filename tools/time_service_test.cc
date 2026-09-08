@@ -2,9 +2,25 @@
 #include "zectrix_board.h"
 
 #include <cassert>
+#include <sys/time.h>
 
 static std::int64_t monotonic_time = 1234567;
 std::int64_t esp_timer_get_time() { return monotonic_time; }
+
+static timeval system_clock{};
+static int clock_writes = 0;
+static int clock_result = 0;
+
+// Intercept the platform call so this test never changes the host clock.
+extern "C" int settimeofday(const timeval* value, const struct timezone*)
+#if defined(__linux__)
+    noexcept
+#endif
+{
+    ++clock_writes;
+    system_clock = *value;
+    return clock_result;
+}
 
 int main() {
     using namespace zectrix::time;
@@ -52,6 +68,26 @@ int main() {
     assert(read.year == unchanged.year && read.month == unchanged.month);
     board.rtc_value = last_valid_write;
 
+    assert(service->WriteRtc({2024, 2, 29, 4, 12, 0, 0}) == ESP_OK);
+    assert(service->SynchronizeSystemClockFromRtc(8 * 3600) == ESP_OK);
+    assert(system_clock.tv_sec == 1709179200 && system_clock.tv_usec == 0);
+    assert(service->WriteRtc({2000, 3, 1, 3, 0, 0, 0}) == ESP_OK);
+    assert(service->SynchronizeSystemClockFromRtc(-9 * 3600) == ESP_OK);
+    assert(system_clock.tv_sec == 951901200);
+    assert(service->WriteRtc({2024, 1, 1, 1, 0, 0, 0}) == ESP_OK);
+    assert(service->SynchronizeSystemClockFromRtc(0) == ESP_OK);
+    assert(system_clock.tv_sec == 1704067200);
+    assert(clock_writes == 3);
+    assert(service->SynchronizeSystemClockFromRtc(14 * 3600 + 1) == ESP_ERR_INVALID_ARG);
+    assert(service->SynchronizeSystemClockFromRtc(-14 * 3600 - 1) == ESP_ERR_INVALID_ARG);
+    board.rtc_value.tm_mon = 12;
+    assert(service->SynchronizeSystemClockFromRtc(0) == ESP_ERR_INVALID_RESPONSE);
+    board.rtc_value = last_valid_write;
+    assert(clock_writes == 3);
+    clock_result = -1;
+    assert(service->SynchronizeSystemClockFromRtc(0) == ESP_FAIL);
+    clock_result = 0;
+
     assert(service->StartRtcCountdown(1) == ESP_OK);
     assert(board.countdown_seconds == 1);
     board.rtc_interrupt_active = true;
@@ -69,6 +105,7 @@ int main() {
     board.rtc_available = false;
     assert(!service->RtcAvailable());
     assert(service->ReadRtc(&read) == ESP_ERR_NOT_FOUND);
+    assert(service->SynchronizeSystemClockFromRtc(0) == ESP_ERR_NOT_FOUND);
     assert(service->StartRtcCountdown(1) == ESP_ERR_NOT_FOUND);
     assert(service->ReadRtcTimerStatus(&status) == ESP_ERR_NOT_FOUND);
     delete service;

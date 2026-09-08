@@ -2,6 +2,7 @@
 
 #include <ctime>
 #include <new>
+#include <sys/time.h>
 
 #include "esp_timer.h"
 #include "zectrix_board.h"
@@ -80,6 +81,29 @@ esp_err_t TimeService::WriteRtc(const DateTime& value) {
     if (!RtcAvailable()) return ESP_ERR_NOT_FOUND;
     const tm raw = ToTm(value);
     return board_->WriteRtc(raw) ? ESP_OK : ESP_FAIL;
+}
+
+esp_err_t TimeService::SynchronizeSystemClockFromRtc(int32_t utc_offset_seconds) {
+    if (utc_offset_seconds < -14 * 3600 || utc_offset_seconds > 14 * 3600) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    DateTime value{};
+    const esp_err_t read = ReadRtc(&value);
+    if (read != ESP_OK) return read;
+    // Convert without changing the process timezone or normalizing bad dates.
+    int64_t days = 0;
+    for (int year = 1970; year < value.year; ++year) days += IsLeapYear(year) ? 366 : 365;
+    constexpr int kDaysPerMonth[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    for (int month = 1; month < value.month; ++month) {
+        days += kDaysPerMonth[month - 1] + (month == 2 && IsLeapYear(value.year) ? 1 : 0);
+    }
+    days += value.day - 1;
+    const int64_t seconds = days * 86400 + value.hour * 3600 +
+        value.minute * 60 + value.second - utc_offset_seconds;
+    timeval clock{};
+    clock.tv_sec = static_cast<time_t>(seconds);
+    if (static_cast<int64_t>(clock.tv_sec) != seconds) return ESP_ERR_INVALID_ARG;
+    return settimeofday(&clock, nullptr) == 0 ? ESP_OK : ESP_FAIL;
 }
 
 esp_err_t TimeService::StartRtcCountdown(uint8_t seconds) {
