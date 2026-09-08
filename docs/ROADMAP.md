@@ -75,7 +75,8 @@ without exposing radio or RTOS mechanisms to applications.
 Status: In progress. This milestone is independent of M5 and R1. The protocol,
 durable synchronization, policy, secure BLE/Android path, NFC-assisted
 enrollment and controlled phone HTTPS resource vertical slice are implemented;
-the direct Wi-Fi path and hardware exit gates stay open.
+the transport-neutral direct Wi-Fi burst state machine is host-qualified. Its
+ESP-IDF driver, integration and hardware exit gates stay open.
 
 - Use ESP-NimBLE for a Note4 peripheral and an Android central.
 - Carry a versioned companion protocol over two transport characteristics.
@@ -100,8 +101,10 @@ the affected gate and Issue open.
 Goal: provide a bounded USB maintenance interface without bypassing platform
 ownership, application lifecycle or local security policy.
 
-Status: In progress. This milestone can develop beside C1. Mutating
-connectivity commands remain blocked by the applicable C1 authorization gate.
+Status: In progress. This milestone can develop beside C1. The D1.2 bounded
+USB Serial/JTAG session and transport lifecycle are implemented; owner-context
+commands, streams and real USB qualification remain open. Mutating connectivity
+commands remain blocked by the applicable C1 authorization gate.
 
 - Use a static hierarchical command tree and bounded parser.
 - Keep terminal work in the CLI task and execute platform operations through a

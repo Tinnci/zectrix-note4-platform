@@ -1,0 +1,49 @@
+#pragma once
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+
+#include "zectrix_wifi_backend.h"
+
+namespace zectrix::connectivity {
+
+// A bounded HTTP/1.x response reader for the fixed, unauthenticated GET
+// capability. Redirects, compression and ambiguous framing are rejected.
+class WifiHttpResponse final {
+public:
+    static constexpr std::size_t kMaximumHeaderBytes = 4096;
+    static constexpr std::size_t kMaximumHeaderLineBytes = 512;
+
+    bool Begin(uint8_t* body, std::size_t capacity);
+    WifiDriverResult Feed(const uint8_t* data, std::size_t size);
+    WifiDriverResult EndOfStream();
+    std::size_t BodySize() const { return body_size_; }
+
+private:
+    enum class State : uint8_t {
+        kStatus, kHeaders, kFixedBody, kCloseBody, kChunkSize,
+        kChunkBody, kChunkCr, kChunkLf, kTrailers, kDone, kFailed,
+    };
+    void ProcessLine();
+    void ProcessHeader(bool trailer);
+    void Complete();
+    void Fail(WifiDriverResult result = WifiDriverResult::kInvalidResponse);
+    WifiDriverResult Result() const;
+
+    State state_ = State::kFailed;
+    WifiDriverResult failure_ = WifiDriverResult::kInvalidResponse;
+    std::array<char, kMaximumHeaderLineBytes + 1> line_{};
+    std::size_t line_size_ = 0;
+    std::size_t header_bytes_ = 0;
+    uint8_t* body_ = nullptr;
+    std::size_t body_capacity_ = 0;
+    std::size_t body_size_ = 0;
+    std::size_t remaining_ = 0;
+    bool line_cr_ = false;
+    bool content_type_seen_ = false;
+    bool length_seen_ = false;
+    bool chunked_ = false;
+};
+
+}  // namespace zectrix::connectivity

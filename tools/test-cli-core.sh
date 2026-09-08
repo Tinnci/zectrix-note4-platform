@@ -8,6 +8,7 @@ trap 'rm -rf "$tmp_dir"' EXIT
 g++ -std=c++17 -Wall -Wextra -Werror \
   -I"$repo_root/components/zectrix_cli/include" \
   "$repo_root/components/zectrix_cli/zectrix_cli_core.cc" \
+  "$repo_root/components/zectrix_cli/zectrix_cli_session.cc" \
   "$repo_root/tools/cli_core_test.cc" \
   -o "$tmp_dir/cli_core_test"
 
