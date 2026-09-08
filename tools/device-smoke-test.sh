@@ -37,8 +37,15 @@ try:
         HardReset(ser, uses_usb=True)()
         deadline = time.monotonic() + 6.0
         captured = bytearray()
+        following = False
         while time.monotonic() < deadline:
             captured.extend(ser.read(ser.in_waiting or 1))
+            if not following and b"zectrix> " in captured:
+                # The CLI owns log output after platform initialization.
+                ser.write(b"log follow debug\r")
+                following = True
+        if following:
+            ser.write(b"\x03")
 except (OSError, serial.SerialException) as error:
     print(f"FAIL: Serial boot capture failed: {error}", file=sys.stderr)
     sys.exit(1)
