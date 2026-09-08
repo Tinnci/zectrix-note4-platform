@@ -19,7 +19,7 @@ printf '=== Zectrix Device Smoke Test ===\nHardware Port: %s\n' "$port"
 printf 'Building firmware...\n'
 bash "$repo_dir/tools/build-firmware.sh"
 printf 'Flashing firmware to %s...\n' "$port"
-idf.py -p "$port" flash
+idf.py --ccache -p "$port" flash
 printf 'Capturing serial boot logs for 6 seconds...\n'
 python3 - "$port" <<'PYEOF'
 import re
