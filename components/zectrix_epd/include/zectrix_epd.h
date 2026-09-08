@@ -29,6 +29,11 @@ typedef struct {
 } zectrix_epd_rect_t;
 
 typedef struct {
+    zectrix_epd_rect_t dirty;
+    uint32_t changed_pixels;
+} zectrix_epd_diff_t;
+
+typedef struct {
     spi_host_device_t spi_host;
     gpio_num_t pin_cs;
     gpio_num_t pin_dc;
@@ -76,6 +81,19 @@ esp_err_t zectrix_epd_find_dirty_1bpp(zectrix_epd_handle_t handle,
                                       const zectrix_epd_rect_t* rect,
                                       const uint8_t* pixels, size_t pixels_size,
                                       zectrix_epd_rect_t* dirty);
+
+/**
+ * Find changed bounds and count actual black/white pixel transitions.
+ *
+ * Uses the same packed input and valid shadow as find_dirty_1bpp. Padding
+ * bits and unchanged pixels inside the bounds do not contribute to the count.
+ * This query allocates no memory and does not power or modify the panel.
+ * The result is cleared on error, including an invalid 1bpp shadow.
+ */
+esp_err_t zectrix_epd_analyze_1bpp(zectrix_epd_handle_t handle,
+                                  const zectrix_epd_rect_t* rect,
+                                  const uint8_t* pixels, size_t pixels_size,
+                                  zectrix_epd_diff_t* result);
 
 /**
  * Full-screen black/white refresh.

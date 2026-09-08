@@ -40,7 +40,8 @@ public:
 
     // Auto/Fast compare the full frame unless an explicit packed patch is
     // supplied. Unchanged pixels cause no refresh. The full frame remains the
-    // fallback when partial use is unavailable or its budget is exhausted.
+    // fallback when partial use is unavailable or its frame/pixel budget is
+    // exhausted. Large black/white changes also select a full refresh.
     esp_err_t Present1Bpp(DisplayIntent intent,
                           const uint8_t* full_framebuffer,
                           std::size_t full_framebuffer_size,
@@ -58,7 +59,8 @@ private:
     explicit DisplayService(void* driver_handle) : driver_handle_(driver_handle) {}
     esp_err_t RefreshFull1Bpp(const uint8_t* framebuffer, std::size_t size);
     esp_err_t RefreshPartial1Bpp(const Rect& region, const uint8_t* pixels,
-                                 std::size_t size, const Rect& dirty);
+                                 std::size_t size, const Rect& dirty,
+                                 uint32_t changed_pixels);
     esp_err_t RefreshFull4Bpp(const uint8_t* framebuffer, std::size_t size);
     esp_err_t BeginRefresh(bool* owns_power);
     esp_err_t EndRefresh(bool owns_power, esp_err_t refresh_result);
