@@ -17,6 +17,7 @@ host_tests=(
     test-pairing-bootstrap.sh
     test-platform.sh
     test-power-service.sh
+    test-resource-client.sh
     test-resource-gateway.sh
     test-sdk-v1.sh
     test-storage-service.sh
@@ -24,6 +25,7 @@ host_tests=(
     test-system-service.sh
     test-time-service.sh
     test-wifi-backend.sh
+    test-wifi-http.sh
 )
 
 "$repo_root/tools/check-architecture-boundaries.sh" --self-test

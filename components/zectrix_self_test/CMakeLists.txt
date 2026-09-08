@@ -8,9 +8,7 @@ idf_component_register(
         zectrix_storage
         zectrix_system
         zectrix_time
-        esp_event
-        esp_netif
-        esp_wifi
+        zectrix_connectivity
 )
 
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_17)

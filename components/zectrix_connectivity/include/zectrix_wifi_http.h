@@ -8,6 +8,34 @@
 
 namespace zectrix::connectivity {
 
+// A borrowed, already verified TLS stream. It never blocks for network I/O.
+class WifiHttpStream {
+public:
+    static constexpr int kWouldBlock = -2;
+    static constexpr int kFailure = -1;
+    virtual ~WifiHttpStream() = default;
+    virtual int Read(uint8_t* data, std::size_t capacity) = 0;
+    virtual int Write(const uint8_t* data, std::size_t size) = 0;
+};
+
+// Uses esp_http_client for the fixed capability over a borrowed TLS stream.
+// Each Poll consumes at most 512 wire bytes, including HTTP framing.
+class WifiHttpClient final {
+public:
+    WifiHttpClient();
+    ~WifiHttpClient();
+    WifiHttpClient(const WifiHttpClient&) = delete;
+    WifiHttpClient& operator=(const WifiHttpClient&) = delete;
+
+    bool Begin(WifiHttpStream& stream, uint8_t* body, std::size_t capacity);
+    WifiDriverResult Poll(std::size_t* body_size);
+    void Close();
+
+private:
+    struct Impl;
+    Impl* impl_ = nullptr;
+};
+
 // A bounded HTTP/1.x response reader for the fixed, unauthenticated GET
 // capability. Redirects, compression and ambiguous framing are rejected.
 class WifiHttpResponse final {
