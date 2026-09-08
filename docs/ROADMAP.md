@@ -127,6 +127,21 @@ Exit: host, architecture, SDK and clean-build checks pass. A real Note4 passes
 USB reconnect, command, cancellation, log/input stream, sleep and shutdown
 tests without bypassing resource ownership.
 
+## R1 — E-paper refresh optimization
+
+Status: In progress. R1.1 implements full-frame and packed-patch comparison,
+minimal dirty bounds and unchanged-frame suppression using the existing
+driver shadow. The eight-partial limit and full recovery behavior remain.
+R1.2 adaptive ghosting policy and physical panel qualification remain open.
+
+The production driver, display service and demo UI pass the Host suite,
+AddressSanitizer/UndefinedBehaviorSanitizer and the ESP32-S3 build. The Host
+SPI capture for a clock tick sends 1,452 bytes of native RAM data; a menu
+selection change sends 6,808 bytes. Both previously used a 23,400-byte fixed
+window. The UI also removes a 15,000-byte patch buffer. These payload counts
+do not measure panel latency or energy. Small-window appearance, ghosting
+and physical refresh timing still need hardware measurement.
+
 ## Deferred research
 
 The following work is not a prerequisite for M1–M4:

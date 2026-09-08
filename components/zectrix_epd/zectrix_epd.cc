@@ -56,6 +56,19 @@ void WritePackedBit(uint8_t* data, size_t stride, int x, int y, uint8_t bit) {
     }
 }
 
+esp_err_t ValidatePatch(const zectrix_epd_rect_t* rect, const uint8_t* pixels,
+                         size_t size) {
+    if (rect == nullptr || pixels == nullptr || rect->x < 0 || rect->y < 0 ||
+        rect->x >= kWidth || rect->y >= kHeight ||
+        rect->width <= 0 || rect->height <= 0 ||
+        rect->width > kWidth - rect->x || rect->height > kHeight - rect->y) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    const size_t stride = static_cast<size_t>((rect->width + 7) / 8);
+    return size == stride * static_cast<size_t>(rect->height)
+        ? ESP_OK : ESP_ERR_INVALID_SIZE;
+}
+
 }  // namespace
 
 struct zectrix_epd_t {
@@ -73,6 +86,39 @@ struct zectrix_epd_t {
     bool controller_ready = false;
     bool internal_power_on = false;
     bool shadow_valid = false;
+
+    zectrix_epd_rect_t FindDirty(const zectrix_epd_rect_t& rect,
+                                const uint8_t* pixels) const {
+        const size_t stride = static_cast<size_t>((rect.width + 7) / 8);
+        const unsigned shift = rect.x & 7;
+        int left = rect.width, right = -1, top = rect.height, bottom = -1;
+        for (int y = 0; y < rect.height; ++y) {
+            const auto* old_row = shadow + static_cast<size_t>(rect.y + y) * kBwStride;
+            const auto* new_row = pixels + static_cast<size_t>(y) * stride;
+            for (size_t column = 0; column < stride; ++column) {
+                const int x = static_cast<int>(column) * 8;
+                const int old_column = (rect.x + x) / 8;
+                uint8_t old_bits = static_cast<uint8_t>(old_row[old_column] << shift);
+                if (shift != 0 && old_column + 1 < kBwStride) {
+                    old_bits |= static_cast<uint8_t>(old_row[old_column + 1] >> (8 - shift));
+                }
+                const int valid_bits = std::min(8, rect.width - x);
+                const auto mask = static_cast<uint8_t>(0xffu << (8 - valid_bits));
+                const uint8_t difference = (old_bits ^ new_row[column]) & mask;
+                if (difference == 0) continue;
+                // Skip equal bytes, then resolve the two horizontal pixel edges.
+                int first = 0, last = valid_bits - 1;
+                while ((difference & (0x80u >> first)) == 0) ++first;
+                while ((difference & (0x80u >> last)) == 0) --last;
+                left = std::min(left, x + first);
+                right = std::max(right, x + last);
+                top = std::min(top, y);
+                bottom = y;
+            }
+        }
+        if (right < left) return {};
+        return {rect.x + left, rect.y + top, right - left + 1, bottom - top + 1};
+    }
 
     void SetCs(int level) { gpio_set_level(config.pin_cs, level); }
     void SetDc(int level) { gpio_set_level(config.pin_dc, level); }
@@ -658,6 +704,22 @@ extern "C" esp_err_t zectrix_epd_copy_shadow(zectrix_epd_handle_t handle,
     return ESP_OK;
 }
 
+extern "C" esp_err_t zectrix_epd_find_dirty_1bpp(
+    zectrix_epd_handle_t handle, const zectrix_epd_rect_t* rect,
+    const uint8_t* pixels, size_t pixels_size, zectrix_epd_rect_t* dirty) {
+    if (dirty == nullptr) return ESP_ERR_INVALID_ARG;
+    const zectrix_epd_rect_t source = rect != nullptr ? *rect : zectrix_epd_rect_t{};
+    *dirty = {};
+    if (handle == nullptr) return ESP_ERR_INVALID_ARG;
+    const esp_err_t err = ValidatePatch(&source, pixels, pixels_size);
+    if (err != ESP_OK) return err;
+    MutexGuard guard(handle->mutex);
+    if (!guard.locked()) return ESP_FAIL;
+    if (!handle->shadow_valid) return ESP_ERR_INVALID_STATE;
+    *dirty = handle->FindDirty(source, pixels);
+    return ESP_OK;
+}
+
 extern "C" esp_err_t zectrix_epd_refresh_full_1bpp(zectrix_epd_handle_t handle,
                                                     const uint8_t* framebuffer,
                                                     size_t framebuffer_size) {
@@ -684,20 +746,17 @@ extern "C" esp_err_t zectrix_epd_refresh_full_1bpp(zectrix_epd_handle_t handle,
 extern "C" esp_err_t zectrix_epd_refresh_partial_1bpp(
     zectrix_epd_handle_t handle, const zectrix_epd_rect_t* rect,
     const uint8_t* pixels, size_t pixels_size) {
-    if (handle == nullptr || rect == nullptr || pixels == nullptr || rect->x < 0 ||
-        rect->y < 0 || rect->width <= 0 || rect->height <= 0 ||
-        rect->x + rect->width > kWidth || rect->y + rect->height > kHeight) {
-        return ESP_ERR_INVALID_ARG;
-    }
+    if (handle == nullptr) return ESP_ERR_INVALID_ARG;
+    const esp_err_t validation = ValidatePatch(rect, pixels, pixels_size);
+    if (validation != ESP_OK) return validation;
     const size_t source_stride = static_cast<size_t>((rect->width + 7) / 8);
-    if (pixels_size != source_stride * static_cast<size_t>(rect->height)) {
-        return ESP_ERR_INVALID_SIZE;
-    }
     MutexGuard guard(handle->mutex);
     if (!guard.locked()) return ESP_FAIL;
     if (!handle->powered || !handle->controller_ready || !handle->shadow_valid) {
         return ESP_ERR_INVALID_STATE;
     }
+    const auto dirty = handle->FindDirty(*rect, pixels);
+    if (dirty.width == 0) return ESP_OK;
 
     esp_err_t err = handle->PrepareOtpRefresh();
     if (err != ESP_OK) {
@@ -705,12 +764,12 @@ extern "C" esp_err_t zectrix_epd_refresh_partial_1bpp(
         return err;
     }
 
-    const int x0 = rect->x & ~7;
+    const int x0 = dirty.x & ~7;
     const int aligned_x_end =
-        std::min(kWidth, (rect->x + rect->width + 7) & ~7);
+        std::min(kWidth, (dirty.x + dirty.width + 7) & ~7);
     const int x1 = aligned_x_end - 1;
-    const int y0 = rect->y;
-    const int y1 = rect->y + rect->height - 1;
+    const int y0 = dirty.y;
+    const int y1 = dirty.y + dirty.height - 1;
     const int output_stride = ((x1 - x0 + 1) / 8) * 2;
     std::array<uint8_t, kNativeStride> line = {};
 
@@ -742,10 +801,10 @@ extern "C" esp_err_t zectrix_epd_refresh_partial_1bpp(
     }
     if (err == ESP_OK) err = handle->TriggerOtpRefresh();
     if (err == ESP_OK) {
-        for (int y = 0; y < rect->height; ++y) {
-            for (int x = 0; x < rect->width; ++x) {
-                WritePackedBit(handle->shadow, kBwStride, rect->x + x, rect->y + y,
-                               ReadPackedBit(pixels, source_stride, x, y));
+        for (int y = dirty.y; y < dirty.y + dirty.height; ++y) {
+            for (int x = dirty.x; x < dirty.x + dirty.width; ++x) {
+                WritePackedBit(handle->shadow, kBwStride, x, y,
+                               ReadPackedBit(pixels, source_stride, x - rect->x, y - rect->y));
             }
         }
     } else {

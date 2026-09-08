@@ -63,10 +63,11 @@ support. They are not application API.
 - Boot starts with an unknown baseline.
 - Successful full 1bpp refresh makes the baseline valid and resets the partial count.
 - Successful partial 1bpp refresh keeps a valid baseline and increments the partial count.
+- An unchanged `Auto` or `Fast` submission with a valid baseline does not refresh or change counters.
 - Successful 4bpp refresh makes the baseline unknown.
 - A refresh error or timeout makes the baseline unknown.
-- Eight partial refreshes request a full clean refresh.
-- Dirty regions are unioned until a full refresh or error clears them.
+- After eight partial refreshes, the next changed submission requests a full clean refresh.
+- Actual changed pixel bounds are unioned until a full refresh or error clears them.
 
 The pure state model and host tests implement M2.1a. `DisplayService` provides
 the M2.1b wrapper. The UI and gallery migration implements M2.1c. The M2.1
@@ -74,12 +75,25 @@ acceptance is open until the intent API passes hardware regression.
 
 `DisplayService::Create` owns the only raw driver handle. The demo UI and
 gallery share that service and its state. Callers submit `DisplayIntent` and
-frame data. They do not call a raw refresh operation. `Auto` and `Fast` use a
-partial 1bpp refresh only when the baseline and partial budget permit it. The
-service otherwise uses the supplied full 1bpp frame. `Quality` and `FullClean`
-use the qualified full 1bpp path. A 4bpp frame accepts `Quality` only. The
-service owns panel power for each refresh. Any driver or panel-power error
-invalidates the baseline.
+frame data. They do not call a raw refresh operation. `Auto` and `Fast` compare
+the supplied full 1bpp frame with the driver's existing shadow. They use a
+partial refresh of the smallest changed bounding box when the baseline and
+partial budget permit it. The driver expands the horizontal window to byte
+boundaries while preserving neighboring pixels.
+
+The existing explicit packed-patch form remains supported. In that form only
+the patch is compared and applied; the supplied full frame remains the
+fallback when a full refresh is required. Malformed patch arguments are
+rejected before panel operations. The demo UI submits its complete canvas,
+including the header and footer, without a separate patch buffer.
+
+An unchanged `Auto` or `Fast` submission returns without panel power changes,
+refresh operations, inspection-counter changes or partial-budget use. This
+also applies after eight partial refreshes. An unknown service state or an
+invalid driver shadow requires recovery with the supplied full frame, even
+when the pixels appear unchanged. `Quality` and `FullClean` always use the
+full 1bpp path. A 4bpp frame accepts `Quality` only. The service owns panel power
+for each refresh. Driver or panel-power failures invalidate the baseline.
 
 The current DisplayService contract is single-task. The application must call
 all display and batch methods from one task. Do not call `BeginBatch()`, a

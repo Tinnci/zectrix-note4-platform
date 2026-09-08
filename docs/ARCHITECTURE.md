@@ -39,6 +39,13 @@ budgets, refresh profiles and ghosting cleanup.
 Applications submit display intent such as `AUTO`, `FAST`, `QUALITY` or
 `FULL_CLEAN`. Applications do not select a waveform.
 
+For automatic 1bpp updates, the driver compares the submitted pixels against
+its existing 15,000-byte shadow and computes exact changed bounds. The service
+skips unchanged submissions and applies its partial-refresh budget and full
+recovery policy. The driver owns byte alignment and old/new pixel encoding.
+The demo UI submits the full canvas, which removes its separate 15,000-byte
+patch buffer and includes header/footer changes in the comparison.
+
 ## Application and kernel boundary
 
 The first application model is a static registry. Do not add a dynamic ELF or
