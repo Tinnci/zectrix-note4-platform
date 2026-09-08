@@ -42,9 +42,11 @@ std::atomic<unsigned> semaphores{0}, stale_notifications{0};
 bool fail_task = false, delay_notification = false;
 std::atomic<bool> installed{false}, vfs_driver{false}, capturing{false};
 std::atomic<bool> blocked_output{false};
+std::atomic<bool> usb_connected{true};
 esp_err_t install_result = ESP_OK;
-std::mutex input_mutex;
-std::string input;
+std::mutex input_mutex, output_mutex;
+std::string input, output;
+std::size_t read_limit = 512, write_limit = 512;
 
 void Reset() {
     for (auto& task : tasks) task->worker.join();
@@ -54,9 +56,51 @@ void Reset() {
     semaphore_calls = fail_semaphore_at = 0;
     fail_task = delay_notification = false;
     blocked_output = false;
+    usb_connected = true;
     install_result = ESP_OK;
     input.clear();
+    output.clear();
+    read_limit = write_limit = 512;
 }
+
+template <typename Predicate>
+void WaitFor(Predicate ready) {
+    const auto deadline = std::chrono::steady_clock::now() + 2s;
+    while (!ready() && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(1ms);
+    }
+    assert(ready());
+}
+
+void Send(const std::string& bytes) {
+    std::lock_guard<std::mutex> lock(input_mutex);
+    input += bytes;
+}
+
+bool InputEmpty() {
+    std::lock_guard<std::mutex> lock(input_mutex);
+    return input.empty();
+}
+
+void WaitForOutput(const std::string& text) {
+    WaitFor([&] {
+        std::lock_guard<std::mutex> lock(output_mutex);
+        return output.find(text) != std::string::npos;
+    });
+}
+
+class RecordingExecutor final : public CliExecutor {
+public:
+    ExecuteStatus Execute(const Invocation& invocation, BoundedOutput* result) override {
+        // Tests submit one fresh command after all retired input is drained.
+        assert(invocation.count == 1 && std::strcmp(invocation[0], "fresh") == 0);
+        ++calls;
+        result->Append("fresh reply");
+        return ExecuteStatus::kOk;
+    }
+    void Cancel() override { ++cancelled; }
+    std::atomic<unsigned> calls{0}, cancelled{0};
+};
 
 class PendingExecutor final : public CliExecutor {
 public:
@@ -112,6 +156,67 @@ void TestStartupFailures() {
         service.Stop();
         Reset();
     }
+}
+
+void TestDisconnectDropsBufferedInput() {
+    Reset();
+    read_limit = 7;
+    write_limit = 5;
+    CliUsbService service;
+    RecordingExecutor executor;
+    assert(service.Start(&executor) == ESP_OK);
+    WaitForOutput("zectrix> ");
+    Send("partial");
+    WaitForOutput("partial");
+    {
+        std::lock_guard<std::mutex> lock(input_mutex);
+        usb_connected = false;
+        input = std::string(480, 'x') + "stale\r";
+    }
+    WaitFor([&] { return executor.cancelled != 0 && InputEmpty(); });
+    assert(executor.calls == 0);
+    // Input queued after the first disconnect poll must also be retired.
+    Send("stale\r");
+    WaitFor(InputEmpty);
+    {
+        std::lock_guard<std::mutex> lock(output_mutex);
+        output.clear();
+    }
+    usb_connected = true;
+    WaitForOutput("Zectrix maintenance CLI\r\nzectrix> ");
+    Send("fresh\r");
+    WaitForOutput("fresh reply\r\nzectrix> ");
+    assert(executor.calls == 1);
+    service.Stop();
+    Reset();
+}
+
+void TestTxOverflowCannotExecuteBufferedTail() {
+    Reset();
+    read_limit = 7;
+    write_limit = 5;
+    CliUsbService service;
+    RecordingExecutor executor;
+    assert(service.Start(&executor) == ESP_OK);
+    WaitForOutput("zectrix> ");
+    Send(std::string(180, 'a'));
+    WaitForOutput(std::string(180, 'a'));
+    blocked_output = true;
+    {
+        std::lock_guard<std::mutex> lock(output_mutex);
+        output.clear();
+    }
+    // Mid-line inserts redraw enough text to fill the bounded pending TX queue.
+    Send("\x1b[H" + std::string(20, 'b') + "stale\r");
+    WaitFor([&] { return executor.cancelled != 0 && InputEmpty(); });
+    assert(executor.calls == 0);
+    blocked_output = false;
+    WaitForOutput("Zectrix maintenance CLI\r\nzectrix> ");
+    Send("fresh\r");
+    WaitForOutput("fresh reply\r\nzectrix> ");
+    assert(executor.calls == 1);
+    service.Stop();
+    Reset();
 }
 }  // namespace
 
@@ -186,18 +291,27 @@ esp_err_t usb_serial_jtag_driver_uninstall() {
     assert(!capturing && !vfs_driver && installed.exchange(false));
     return ESP_OK;
 }
-bool usb_serial_jtag_is_connected() { return true; }
+bool usb_serial_jtag_is_connected() { return usb_connected; }
 int usb_serial_jtag_read_bytes(void* destination, uint32_t capacity, TickType_t ticks) {
     assert(installed && ticks == 0);
     std::lock_guard<std::mutex> lock(input_mutex);
-    const auto count = std::min<std::size_t>(capacity, input.size());
+    const auto count = std::min({static_cast<std::size_t>(capacity), input.size(), read_limit});
     std::memcpy(destination, input.data(), count);
     input.erase(0, count);
     return static_cast<int>(count);
 }
-int usb_serial_jtag_write_bytes(const void*, std::size_t size, TickType_t ticks) {
+std::size_t usb_serial_jtag_get_read_bytes_available() {
+    assert(installed);
+    std::lock_guard<std::mutex> lock(input_mutex);
+    return input.size();
+}
+int usb_serial_jtag_write_bytes(const void* data, std::size_t size, TickType_t ticks) {
     assert(installed && ticks == 0);
-    return blocked_output ? 0 : static_cast<int>(size);
+    if (blocked_output || !usb_connected) return 0;
+    const auto count = std::min(size, write_limit);
+    std::lock_guard<std::mutex> lock(output_mutex);
+    output.append(static_cast<const char*>(data), count);
+    return static_cast<int>(count);
 }
 esp_err_t usb_serial_jtag_wait_tx_done(TickType_t ticks) {
     assert(installed && ticks <= 100);
@@ -211,5 +325,7 @@ void zectrix::cli::StopMaintenanceLogCapture() { assert(capturing.exchange(false
 int main() {
     TestStopDuringTaskExit();
     TestStartupFailures();
+    TestDisconnectDropsBufferedInput();
+    TestTxOverflowCannotExecuteBufferedTail();
     Reset();
 }

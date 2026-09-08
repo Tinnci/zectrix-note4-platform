@@ -143,10 +143,14 @@ bool StdioTransport::Write(const char* data, std::size_t size) {
     return true;
 }
 
-void StdioTransport::Reconnect() {
+void StdioTransport::DiscardInput() {
     input_.Clear();
-    output_.Clear();
     injected_ = -1;
+}
+
+void StdioTransport::Reconnect() {
+    DiscardInput();
+    output_.Clear();
     reconnect_ = false;
 }
 

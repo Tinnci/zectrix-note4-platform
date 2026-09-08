@@ -51,6 +51,7 @@ public:
     bool IsConnected() const override { return connected_; }
     std::size_t Read(uint8_t* destination, std::size_t capacity) override;
     bool Write(const char* data, std::size_t size) override;
+    void DiscardInput() override;
 
     bool eof() const { return eof_; }
     bool input_closing() const { return eof_ || hangup_ || regular_input_; }

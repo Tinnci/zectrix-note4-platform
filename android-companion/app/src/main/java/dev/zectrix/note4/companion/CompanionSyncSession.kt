@@ -69,6 +69,7 @@ object SyncWire {
 
     fun decode(frame: CompanionProtocol.Frame, reply: Boolean): Pair<DurableEntry, Int> {
         val header = frame.header
+        require(frame.payload.size <= MAX_FRAME_SIZE - CompanionProtocol.HEADER_SIZE)
         require(header.sequence in 1..0xffff_ffffL && header.requestId == header.sequence)
         require(header.flags == if (reply) CompanionProtocol.FLAG_RESPONSE else
             CompanionProtocol.FLAG_ACK_REQUESTED or CompanionProtocol.FLAG_RETRIABLE)
@@ -124,6 +125,7 @@ class CompanionSyncSession(private val queue: DurableQueue) {
     private var lastSequence = 0L
     private var lastPayload = ByteArray(0)
     private var idle = false
+    private var progressPending = false
 
     fun start(cursors: List<SyncCursor>, now: Long): DurableResult {
         disconnect()
@@ -147,6 +149,7 @@ class CompanionSyncSession(private val queue: DurableQueue) {
         nextSequence = 2
         attempts = 0
         idle = false
+        progressPending = false
         afterReply = SyncSessionStatus.ACTIVE
     }
 
@@ -164,14 +167,22 @@ class CompanionSyncSession(private val queue: DurableQueue) {
                     status = if (result == 1) SyncSessionStatus.STORE_ERROR else SyncSessionStatus.PROTOCOL_ERROR
                 } else if (!queue.acknowledge(entry.key, entry.revision)) {
                     status = SyncSessionStatus.STORE_ERROR
-                } else outbound = null
+                } else {
+                    outbound = null
+                    progressPending = true
+                }
                 return true
             }
-            require(frame.payload.size <= SyncWire.MAX_FRAME_SIZE - CompanionProtocol.HEADER_SIZE)
             require(frame.header.sequence >= lastSequence)
             if (frame.header.sequence == lastSequence) require(frame.payload.contentEquals(lastPayload))
-            if (reply != null) require(frame.header.sequence == lastSequence)
+            if (reply != null) {
+                require(frame.header.sequence == lastSequence)
+                // A retry cannot replace a queued NACK with a second save attempt.
+                return true
+            }
+            val previousRevision = queue.incoming(entry.key)?.revision ?: 0
             val accepted = queue.accept(entry)
+            if (accepted == DurableResult.OK && entry.revision > previousRevision) progressPending = true
             val code = when (accepted) {
                 DurableResult.OK -> 0
                 DurableResult.STORE_ERROR -> 1
@@ -191,14 +202,15 @@ class CompanionSyncSession(private val queue: DurableQueue) {
     fun poll(now: Long, send: (ByteArray) -> Boolean) {
         if (status != SyncSessionStatus.ACTIVE) return
         if (converged()) { idle = true; return }
-        if (idle) progressDeadline = now + 15_000
+        // Only committed state or completion of an outgoing frame is progress.
+        if (idle || progressPending) progressDeadline = now + 15_000
         idle = false
+        progressPending = false
         if (now >= progressDeadline) { status = SyncSessionStatus.TIMEOUT; return }
         reply?.let {
             if (send(it)) {
                 reply = null
                 status = afterReply
-                progressDeadline = now + 15_000
             }
             return
         }

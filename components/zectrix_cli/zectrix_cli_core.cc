@@ -30,6 +30,13 @@ ParseStatus ParseLine(const char* line, std::size_t size,
     }
     *invocation = {};
     if (size > kMaximumLineSize) return ParseStatus::kLineTooLong;
+    // The explicit length is authoritative; embedded NUL must not hide a tail.
+    for (std::size_t index = 0; index < size; ++index) {
+        const auto value = static_cast<unsigned char>(line[index]);
+        if ((value < 0x20 && !IsSpace(line[index])) || value > 0x7e) {
+            return ParseStatus::kInvalidArgument;
+        }
+    }
 
     std::size_t input = 0;
     while (input < size) {

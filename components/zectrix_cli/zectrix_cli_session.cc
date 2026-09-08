@@ -8,6 +8,7 @@ namespace zectrix::cli {
 namespace {
 
 constexpr char kPrompt[] = "zectrix> ";
+constexpr std::size_t kMaximumEscapeSize = 16;
 
 const char* ParseError(ParseStatus status) {
     switch (status) {
@@ -62,6 +63,7 @@ void CliSession::Poll() {
 
 void CliSession::Reset() {
     executor_.Cancel();
+    transport_.DiscardInput();
     command_active_ = false;
     connected_ = false;
     previous_was_cr_ = false;
@@ -96,39 +98,34 @@ void CliSession::ProcessByte(uint8_t value) {
         return;
     }
     if (command_active_) return;
-    if (escape_state_ == EscapeState::kEscape) {
-        escape_state_ =
-            value == '[' ? EscapeState::kControlSequence : EscapeState::kNone;
-        return;
-    }
-    if (escape_state_ == EscapeState::kControlSequence) {
-        escape_state_ = EscapeState::kNone;
-        if (value == 'A') NavigateHistory(true);
-        if (value == 'B') NavigateHistory(false);
-        if (value == 'C' && cursor_ < line_size_) {
-            ++cursor_;
-            Write("\x1b[C");
-        }
-        if (value == 'D' && cursor_ > 0) {
-            --cursor_;
-            Write("\x1b[D");
-        }
-        return;
-    }
-    if (value == 0x1b) {
-        escape_state_ = EscapeState::kEscape;
-        return;
-    }
     if (value == '\r' || value == '\n') {
         if (value == '\n' && previous_was_cr_) {
             previous_was_cr_ = false;
             return;
         }
         previous_was_cr_ = value == '\r';
+        if (escape_state_ != EscapeState::kNone) {
+            RejectLine(ParseStatus::kInvalidEscape);
+        }
         SubmitLine();
         return;
     }
     previous_was_cr_ = false;
+    if (line_error_ != ParseStatus::kOk) return;
+    if (escape_state_ != EscapeState::kNone) {
+        ProcessEscape(value);
+        return;
+    }
+    if (value == 0x1b) {
+        escape_state_ = EscapeState::kEscape;
+        escape_size_ = escape_parameter_ = 0;
+        escape_parameter_valid_ = true;
+        return;
+    }
+    if (value == 0x01 || value == 0x05) {
+        MoveCursor(value == 0x01 ? 0 : line_size_);
+        return;
+    }
     if (value == 0x08 || value == 0x7f) {
         if (cursor_ == 0) return;
         std::memmove(line_.data() + cursor_ - 1, line_.data() + cursor_,
@@ -138,9 +135,13 @@ void CliSession::ProcessByte(uint8_t value) {
         RedrawLine();
         return;
     }
-    if (value < 0x20 || value > 0x7e) return;
+    if (value == '\t') value = ' ';
+    if (value < 0x20 || value > 0x7e) {
+        RejectLine(ParseStatus::kInvalidArgument);
+        return;
+    }
     if (line_size_ == kMaximumLineSize) {
-        Write("\a");
+        RejectLine(ParseStatus::kLineTooLong);
         return;
     }
     const bool append = cursor_ == line_size_;
@@ -153,10 +154,77 @@ void CliSession::ProcessByte(uint8_t value) {
     else RedrawLine();
 }
 
+void CliSession::ProcessEscape(uint8_t value) {
+    if (escape_state_ == EscapeState::kEscape) {
+        if (value == '[') escape_state_ = EscapeState::kControlSequence;
+        else if (value == 'O') escape_state_ = EscapeState::kSs3;
+        else RejectLine(ParseStatus::kInvalidEscape);
+        return;
+    }
+    if (++escape_size_ > kMaximumEscapeSize || value < 0x20 || value > 0x7e) {
+        RejectLine(ParseStatus::kInvalidEscape);
+        return;
+    }
+    if (value >= 0x20 && value <= 0x3f) {
+        if (escape_state_ == EscapeState::kControlSequence &&
+            escape_parameter_valid_ && value >= '0' && value <= '9') {
+            escape_parameter_ = std::min(kMaximumLineSize,
+                escape_parameter_ * 10 + static_cast<std::size_t>(value - '0'));
+        } else {
+            escape_parameter_valid_ = false;
+        }
+        return;
+    }
+    // Consume the complete CSI/SS3 sequence, including unsupported parameters.
+    escape_state_ = EscapeState::kNone;
+    if (!escape_parameter_valid_) return;
+    const auto count = std::max<std::size_t>(1, escape_parameter_);
+    switch (value) {
+        case 'A': if (count == 1) NavigateHistory(true); break;
+        case 'B': if (count == 1) NavigateHistory(false); break;
+        case 'C': MoveCursor(cursor_ + std::min(count, line_size_ - cursor_)); break;
+        case 'D': MoveCursor(cursor_ - std::min(count, cursor_)); break;
+        case 'H': if (count == 1) MoveCursor(0); break;
+        case 'F': if (count == 1) MoveCursor(line_size_); break;
+        case '~':
+            if (escape_parameter_ == 1 || escape_parameter_ == 7) MoveCursor(0);
+            else if (escape_parameter_ == 4 || escape_parameter_ == 8) MoveCursor(line_size_);
+            else if (escape_parameter_ == 3 && cursor_ < line_size_) {
+                std::memmove(line_.data() + cursor_, line_.data() + cursor_ + 1,
+                             line_size_ - cursor_);
+                --line_size_;
+                RedrawLine();
+            }
+            break;
+        default: break;
+    }
+}
+
+void CliSession::RejectLine(ParseStatus error) {
+    escape_state_ = EscapeState::kNone;
+    if (line_error_ != ParseStatus::kOk) return;
+    line_error_ = error;
+    // One bell per rejected line keeps pasted input from exhausting USB TX.
+    Write("\a");
+}
+
+void CliSession::MoveCursor(std::size_t position) {
+    if (position == cursor_) return;
+    const auto distance = position > cursor_ ? position - cursor_ : cursor_ - position;
+    char movement[16]{};
+    const int size = std::snprintf(movement, sizeof(movement), "\x1b[%zu%c",
+                                   distance, position > cursor_ ? 'C' : 'D');
+    cursor_ = position;
+    if (size > 0 && static_cast<std::size_t>(size) < sizeof(movement)) {
+        Write(movement, static_cast<std::size_t>(size));
+    }
+}
+
 void CliSession::SubmitLine() {
     if (!Write("\r\n")) return;
     Invocation invocation{};
-    const ParseStatus parse = ParseLine(line_.data(), line_size_, &invocation);
+    const ParseStatus parse = line_error_ == ParseStatus::kOk
+        ? ParseLine(line_.data(), line_size_, &invocation) : line_error_;
     if (parse == ParseStatus::kOk) {
         AddHistory();
         BoundedOutput output;
@@ -239,6 +307,8 @@ void CliSession::ClearLine() {
     line_ = {};
     line_size_ = 0;
     cursor_ = 0;
+    line_error_ = ParseStatus::kOk;
+    escape_state_ = EscapeState::kNone;
 }
 
 bool CliSession::Write(const char* text) {

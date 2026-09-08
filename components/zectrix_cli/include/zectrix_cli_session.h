@@ -16,6 +16,8 @@ public:
     virtual bool IsConnected() const = 0;
     virtual std::size_t Read(uint8_t* destination, std::size_t capacity) = 0;
     virtual bool Write(const char* data, std::size_t size) = 0;
+    // Discard buffered bytes from a retired session without waiting for input.
+    virtual void DiscardInput() = 0;
 };
 
 enum class ExecuteStatus : uint8_t {
@@ -53,11 +55,14 @@ public:
     bool command_active() const { return command_active_; }
 
 private:
-    enum class EscapeState : uint8_t { kNone, kEscape, kControlSequence };
+    enum class EscapeState : uint8_t { kNone, kEscape, kControlSequence, kSs3 };
 
     void OnConnected();
     void OnDisconnected();
     void ProcessByte(uint8_t value);
+    void ProcessEscape(uint8_t value);
+    void RejectLine(ParseStatus error);
+    void MoveCursor(std::size_t position);
     void SubmitLine();
     void FinishExecution(ExecuteStatus status, const BoundedOutput& output);
     void AddHistory();
@@ -78,6 +83,10 @@ private:
     std::size_t history_next_ = 0;
     std::size_t history_offset_ = 0;
     EscapeState escape_state_ = EscapeState::kNone;
+    std::size_t escape_size_ = 0;
+    std::size_t escape_parameter_ = 0;
+    bool escape_parameter_valid_ = true;
+    ParseStatus line_error_ = ParseStatus::kOk;
     bool connected_ = false;
     bool previous_was_cr_ = false;
     bool command_active_ = false;

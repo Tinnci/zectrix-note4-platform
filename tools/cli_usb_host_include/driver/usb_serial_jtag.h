@@ -12,5 +12,6 @@ esp_err_t usb_serial_jtag_driver_install(const usb_serial_jtag_driver_config_t*)
 esp_err_t usb_serial_jtag_driver_uninstall();
 bool usb_serial_jtag_is_connected();
 int usb_serial_jtag_read_bytes(void*, uint32_t, TickType_t);
+std::size_t usb_serial_jtag_get_read_bytes_available();
 int usb_serial_jtag_write_bytes(const void*, std::size_t, TickType_t);
 esp_err_t usb_serial_jtag_wait_tx_done(TickType_t);

@@ -18,6 +18,7 @@ namespace {
 
 constexpr TickType_t kPollTicks = pdMS_TO_TICKS(20);
 constexpr TickType_t kWriteTicks = pdMS_TO_TICKS(100);
+constexpr std::size_t kRxBufferSize = 512;
 
 class UsbSerialJtagTransport final : public CliTransport {
 public:
@@ -26,7 +27,7 @@ public:
     }
 
     std::size_t Read(uint8_t* destination, std::size_t capacity) override {
-        if (destination == nullptr || capacity == 0) return 0;
+        if (destination == nullptr || capacity == 0 || !IsConnected()) return 0;
         const int received = usb_serial_jtag_read_bytes(
             destination, static_cast<uint32_t>(capacity), 0);
         return received > 0 ? static_cast<std::size_t>(received) : 0;
@@ -48,6 +49,7 @@ public:
     void Flush() {
         if (!IsConnected()) {
             Reset();
+            DiscardInput();
             return;
         }
         if (count_ == 0) return;
@@ -60,6 +62,18 @@ public:
     }
 
     void Reset() { head_ = count_ = 0; }
+
+    void DiscardInput() override {
+        // Drain only the queued snapshot, including a wrapped ring-buffer tail.
+        auto remaining = std::min(kRxBufferSize, usb_serial_jtag_get_read_bytes_available());
+        std::array<uint8_t, 64> discarded{};
+        while (remaining != 0) {
+            const int received = usb_serial_jtag_read_bytes(
+                discarded.data(), std::min(remaining, discarded.size()), 0);
+            if (received <= 0) break;
+            remaining -= std::min(remaining, static_cast<std::size_t>(received));
+        }
+    }
 
 private:
     std::array<char, 2048> pending_{};
@@ -100,7 +114,7 @@ struct CliUsbService::Impl {
         usb_serial_jtag_driver_config_t config =
             USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
         config.tx_buffer_size = 512;
-        config.rx_buffer_size = 512;
+        config.rx_buffer_size = kRxBufferSize;
         start_result.store(usb_serial_jtag_driver_install(&config));
         if (start_result.load() == ESP_OK) {
             // Secondary console output shares the same interrupt-driven
