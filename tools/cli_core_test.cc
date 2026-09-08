@@ -16,7 +16,7 @@ public:
     bool IsConnected() const override { return connected; }
 
     std::size_t Read(uint8_t* destination, std::size_t capacity) override {
-        const std::size_t count = std::min(capacity, input.size());
+        const std::size_t count = std::min({capacity, input.size(), read_size});
         for (std::size_t index = 0; index < count; ++index) {
             destination[index] = input.front();
             input.pop_front();
@@ -31,6 +31,8 @@ public:
         return true;
     }
 
+    void DiscardInput() override { input.clear(); }
+
     void Send(const std::string& text) {
         for (const unsigned char value : text) input.push_back(value);
     }
@@ -38,6 +40,7 @@ public:
     bool connected = false;
     bool fail_write = false;
     bool over_report_read = false;
+    std::size_t read_size = 32;
     std::deque<uint8_t> input;
     std::string output;
 };
@@ -118,14 +121,13 @@ void TestSession() {
     assert(executor.calls == 4);
     assert(executor.last == "known");
 
-    // Input beyond the fixed line capacity is rejected with a bell, without
-    // growing storage or losing the prompt after submission.
+    // An overlong line is rejected as a whole and never enters history.
     transport.Send(std::string(kMaximumLineSize + 4, 'x') + "\r");
     Drain(session, transport);
     assert(session.line_size() == 0);
     assert(transport.output.find('\a') != std::string::npos);
     assert(executor.calls == 4);
-    assert(transport.output.find("error: token too long") != std::string::npos);
+    assert(transport.output.find("error: line too long") != std::string::npos);
 
     for (int index = 0; index < 10; ++index) {
         transport.Send("known " + std::to_string(index) + "\r");
@@ -153,6 +155,54 @@ void TestSession() {
     assert(!session.connected());
 }
 
+void TestTerminalInputBoundaries() {
+    for (const std::size_t chunk : {1U, 7U, 32U}) {
+        FakeTransport transport;
+        transport.connected = true;
+        transport.read_size = chunk;
+        RecordingExecutor executor;
+        CliSession session(transport, executor);
+        session.Poll();
+
+        // USB packet boundaries must not affect editing or CRLF folding.
+        for (const std::string command : {
+                 "knXown\x1b[H\x1b[2C\x1b[3~\r\n",
+                 "knownX\x1b[1~\x1b[999C\x08\x1b[4~\r\n",
+                 "nown\x1bOHk\x1bOF\r\n",
+                 "kn\x1b[1;5Cown\x1b[?25h\r\n",
+                 "\x1b[200~known\x1b[201~\r\n"}) {
+            const auto calls = executor.calls;
+            transport.Send(command);
+            Drain(session, transport);
+            assert(executor.calls == calls + 1 && executor.last == "known");
+        }
+        transport.Send("known\t\"two words\"\r\n");
+        Drain(session, transport);
+        assert(executor.last == "known|two words");
+
+        const auto calls = executor.calls;
+        const auto history = session.history_size();
+        // Truncation used to turn this rejected line into a valid command.
+        const std::string prefix = "known" + std::string(kMaximumLineSize - 5, ' ');
+        for (const auto& command : {
+                 prefix + "unexpected\r\n",
+                 std::string("known\0unexpected\r\n", 18),
+                 std::string("known\x1b[") + std::string(80, '1') + "~\r\n",
+                 std::string("known\x1b[\r\n"),
+                 std::string("known\x1b]0;title\x07\r\n")}) {
+            transport.Send(command);
+            Drain(session, transport);
+            assert(executor.calls == calls);
+            assert(session.history_size() == history && session.line_size() == 0);
+        }
+        assert(transport.output.find("error: invalid input") != std::string::npos);
+        assert(transport.output.find("error: invalid escape") != std::string::npos);
+        transport.Send(prefix + "overflow\x03known\r\n");
+        Drain(session, transport);
+        assert(executor.calls == calls + 1 && executor.last == "known");
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -173,6 +223,9 @@ int main() {
     assert(ParseLine("\"open", 5, &invocation) ==
            ParseStatus::kUnterminatedQuote);
     assert(ParseLine("bad\\", 4, &invocation) == ParseStatus::kInvalidEscape);
+    const char binary[] = "version\0unexpected";
+    assert(ParseLine(binary, sizeof(binary) - 1, &invocation) ==
+           ParseStatus::kInvalidArgument);
     const std::string long_line(kMaximumLineSize + 1, 'x');
     assert(ParseLine(long_line.data(), long_line.size(), &invocation) ==
            ParseStatus::kLineTooLong);
@@ -224,4 +277,5 @@ int main() {
     assert(!cancellation.IsCancelled());
 
     TestSession();
+    TestTerminalInputBoundaries();
 }

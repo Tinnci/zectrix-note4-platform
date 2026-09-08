@@ -324,6 +324,7 @@ public:
         return true;
     }
     void Send(const char* text) { while (*text != '\0') input.push_back(*text++); }
+    void DiscardInput() override { input.clear(); }
     bool connected = true;
     bool fail_write = false;
     std::deque<uint8_t> input;

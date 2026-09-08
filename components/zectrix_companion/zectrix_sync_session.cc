@@ -127,6 +127,7 @@ SyncStatus SyncSession::Start(const SyncCursors& peer, uint32_t now_ms, uint32_t
 void SyncSession::Disconnect() {
     status_ = SyncSessionStatus::kDisconnected;
     idle_ = false;
+    progress_pending_ = false;
     peer_ = {};
     outbound_size_ = reply_size_ = last_payload_size_ = 0;
     outbound_sequence_ = last_incoming_sequence_ = 0;
@@ -143,7 +144,8 @@ bool SyncSession::Receive(const FrameView& frame) {
     DurableStateView state{};
     SyncReply result{};
     if (h.flags != (reply ? kResponse : kAckRequested | kRetriable) ||
-        h.sequence == 0 || h.request_id != h.sequence || !DecodeState(frame, reply, &state, &result)) {
+        h.sequence == 0 || h.request_id != h.sequence ||
+        frame.payload_size > last_payload_.size() || !DecodeState(frame, reply, &state, &result)) {
         status_ = SyncSessionStatus::kProtocolError;
         return true;
     }
@@ -160,10 +162,11 @@ bool SyncSession::Receive(const FrameView& frame) {
             status_ = SyncSessionStatus::kStoreError;
         } else {
             outbound_size_ = 0;
+            progress_pending_ = true;
         }
         return true;
     }
-    if (h.sequence < last_incoming_sequence_ || frame.payload_size > last_payload_.size() ||
+    if (h.sequence < last_incoming_sequence_ ||
         (h.sequence == last_incoming_sequence_ && (frame.payload_size != last_payload_size_ ||
           std::memcmp(frame.payload, last_payload_.data(), frame.payload_size) != 0))) {
         status_ = SyncSessionStatus::kProtocolError;
@@ -173,7 +176,10 @@ bool SyncSession::Receive(const FrameView& frame) {
         status_ = SyncSessionStatus::kProtocolError;
         return true;
     }
+    // Keep the original reply while TX is busy, including a failed save's NACK.
+    if (reply_size_ != 0) return true;
     const auto accepted = engine_.AcceptIncomingState(state);
+    if (accepted == SyncStatus::kOk) progress_pending_ = true;
     result = accepted == SyncStatus::kOk || accepted == SyncStatus::kDuplicate ? SyncReply::kAccepted :
         accepted == SyncStatus::kStoreError ? SyncReply::kStoreError :
         accepted == SyncStatus::kOutboxFull ? SyncReply::kCapacity : SyncReply::kInvalid;
@@ -204,14 +210,15 @@ void SyncSession::Poll(SyncFrameSender& sender, uint32_t& next_sequence,
         idle_ = true;
         return;
     }
-    if (idle_) progress_deadline_ = now_ms + kProgressTimeoutMs;
+    // Duplicate traffic is not progress and cannot keep a stalled replay alive.
+    if (idle_ || progress_pending_) progress_deadline_ = now_ms + kProgressTimeoutMs;
     idle_ = false;
+    progress_pending_ = false;
     if (Remaining(now_ms, progress_deadline_) == 0) { status_ = SyncSessionStatus::kTimeout; return; }
     if (reply_size_ != 0) {
         if (sender.SendSyncFrame(reply_.data(), reply_size_) == LinkResult::kOk) {
             reply_size_ = 0;
             status_ = after_reply_;
-            progress_deadline_ = now_ms + kProgressTimeoutMs;
         }
         return;
     }

@@ -46,6 +46,7 @@ private:
     SyncCursors peer_{};
     SyncSessionStatus status_ = SyncSessionStatus::kDisconnected;
     bool idle_ = false;
+    bool progress_pending_ = false;
     std::array<uint8_t, kSyncFrameSize> outbound_{};
     std::size_t outbound_size_ = 0;
     uint32_t outbound_sequence_ = 0;

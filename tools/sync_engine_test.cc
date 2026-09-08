@@ -68,6 +68,124 @@ void Transfer(SyncSession& from, SyncSession& to, uint32_t& sequence, uint32_t n
     if (!sender.frame.empty()) Receive(to, sender.frame);
 }
 
+constexpr std::size_t kAttPacketCapacity = 20;
+
+void DeliverFragments(SyncSession& session, const std::vector<uint8_t>& bytes,
+                      std::size_t delivered) {
+    FragmentReassembler reassembler;
+    const auto count = FragmentCount(bytes.size(), kAttPacketCapacity);
+    for (std::size_t index = 0; index < std::min(count, delivered); ++index) {
+        uint8_t packet[kAttPacketCapacity];
+        std::size_t size = 0;
+        assert(EncodeFragment(bytes.data(), bytes.size(), 1, index, kAttPacketCapacity,
+                              packet, sizeof(packet), &size) == ProtocolStatus::kOk);
+        const auto result = reassembler.Accept(packet, size);
+        if (index + 1 == count) {
+            assert(result == ProtocolStatus::kFrameComplete);
+            FrameView frame{};
+            assert(DecodeFrame(reassembler.Data(), reassembler.Size(), 1, 0, &frame) == ProtocolStatus::kOk);
+            assert(session.Receive(frame));
+        } else {
+            assert(result == ProtocolStatus::kFragmentAccepted);
+        }
+    }
+    // A sudden disconnect drops this partial reassembly without an engine call.
+}
+
+SyncCursor CursorFor(const SyncEngine& engine, uint16_t key) {
+    const auto cursors = engine.Cursors();
+    for (std::size_t i = 0; i < cursors.count; ++i) {
+        if (cursors.entries[i].key == key) return cursors.entries[i];
+    }
+    assert(false);
+    return {};
+}
+
+void TestDisconnectAtEveryFragmentAndCommitBoundary() {
+    std::array<uint8_t, kDurableValueCapacity> avalue{}, bvalue{}, replacement{};
+    avalue.fill(0x31);
+    bvalue.fill(0x42);
+    replacement.fill(0x73);
+    const auto state_fragments = FragmentCount(kSyncFrameSize, kAttPacketCapacity);
+    const auto ack_fragments = FragmentCount(kFrameHeaderSize + 19, kAttPacketCapacity);
+    const auto complete = state_fragments + ack_fragments;
+    for (const bool reverse : {false, true}) {
+        // Include failed receive and ACK commits after every possible wire cut.
+        for (std::size_t cut = 0; cut <= complete + 2; ++cut) {
+            MemoryStore a_store, b_store;
+            const uint16_t key = reverse ? 2 : 1;
+            const uint32_t revision = reverse ? 5 : 3;
+            const bool fail_receive = cut == complete + 1;
+            const bool fail_ack = cut == complete + 2;
+            const bool received = cut >= state_fragments && !fail_receive;
+            {
+                SyncEngine a, b;
+                assert(a.Initialize(a_store) == SyncStatus::kOk);
+                assert(b.Initialize(b_store) == SyncStatus::kOk);
+                assert(a.PutDurableState(1, 3, avalue.data(), avalue.size()) == SyncStatus::kOk);
+                assert(b.PutDurableState(2, 5, bvalue.data(), bvalue.size()) == SyncStatus::kOk);
+                const auto ac = a.Cursors(), bc = b.Cursors();
+                SyncSession as(a), bs(b);
+                assert(as.Start(bc, 0) == SyncStatus::kOk);
+                assert(bs.Start(ac, 0) == SyncStatus::kOk);
+                auto& source = reverse ? b : a;
+                auto& destination = reverse ? a : b;
+                auto& source_session = reverse ? bs : as;
+                auto& destination_session = reverse ? as : bs;
+                auto& source_store = reverse ? b_store : a_store;
+                auto& destination_store = reverse ? a_store : b_store;
+                const auto queued = source_store.bytes;
+                uint32_t source_sequence = 1, destination_sequence = 1;
+                Sender data, ack;
+                source_session.Poll(data, source_sequence, 0);
+                assert(source_store.bytes == queued && source.PendingDurableCount() == 1);
+                destination_store.fail_next_save = fail_receive;
+                DeliverFragments(destination_session, data.frame, cut);
+                assert(destination.InspectIncomingState(key, revision) ==
+                       (received ? SyncStatus::kDuplicate : SyncStatus::kApplyRequired));
+                if (cut >= state_fragments) {
+                    destination_session.Poll(ack, destination_sequence, 0);
+                    source_store.fail_next_save = fail_ack;
+                    DeliverFragments(source_session, ack.frame, cut - state_fragments);
+                }
+                assert(source.PendingDurableCount() ==
+                       (cut == complete ? 0U : 1U));
+                // A replacement must survive whether the older ACK arrived or not.
+                assert(source.PutDurableState(key, revision + 1, replacement.data(),
+                                              replacement.size()) == SyncStatus::kOk);
+                // Destroy volatile owners directly, without a graceful disconnect.
+            }
+            SyncEngine a, b;
+            assert(a.Initialize(a_store) == SyncStatus::kOk);
+            assert(b.Initialize(b_store) == SyncStatus::kOk);
+            const auto ac = a.Cursors(), bc = b.Cursors();
+            SyncSession as(a), bs(b);
+            assert(as.Start(bc, 1000) == SyncStatus::kOk);
+            assert(bs.Start(ac, 1000) == SyncStatus::kOk);
+            const auto cursor = CursorFor(reverse ? b : a, key);
+            assert(cursor.outbound_acknowledged == (received ? revision : 0));
+            assert(cursor.pending_revision == revision + 1);
+            uint32_t aseq = 1, bseq = 1;
+            for (uint32_t step = 0; step < 8; ++step) {
+                Transfer(as, bs, aseq, 1000 + step);
+                Transfer(bs, as, bseq, 1000 + step);
+            }
+            assert(as.Converged() && bs.Converged());
+            SyncEngine a_reloaded, b_reloaded;
+            assert(a_reloaded.Initialize(a_store) == SyncStatus::kOk);
+            assert(b_reloaded.Initialize(b_store) == SyncStatus::kOk);
+            assert(a_reloaded.PendingDurableCount() == 0 && b_reloaded.PendingDurableCount() == 0);
+            DurableStateView state{};
+            assert(a_reloaded.ReadIncomingState(2, &state) == SyncStatus::kOk);
+            assert(state.revision == (reverse ? 6U : 5U) && state.value_size == bvalue.size());
+            assert(std::memcmp(state.value, (reverse ? replacement : bvalue).data(), state.value_size) == 0);
+            assert(b_reloaded.ReadIncomingState(1, &state) == SyncStatus::kOk);
+            assert(state.revision == (reverse ? 3U : 4U) && state.value_size == avalue.size());
+            assert(std::memcmp(state.value, (reverse ? avalue : replacement).data(), state.value_size) == 0);
+        }
+    }
+}
+
 void TestBidirectionalReconnectWithLostAck() {
     MemoryStore device_store, phone_store;
     const uint8_t value[] = {9, 8, 7};
@@ -215,6 +333,94 @@ void TestBoundedRetriesAndReceiveSaveFailure() {
     assert(bs.Status() == SyncSessionStatus::kStoreError);
     Receive(as, reply.frame);
     assert(as.Status() == SyncSessionStatus::kStoreError && a.PendingDurableCount() == 1);
+}
+
+void TestPendingNackCannotBecomeAnAck() {
+    MemoryStore a_store, b_store;
+    SyncEngine a, b;
+    assert(a.Initialize(a_store) == SyncStatus::kOk);
+    assert(b.Initialize(b_store) == SyncStatus::kOk);
+    const uint8_t value = 7;
+    assert(a.PutDurableState(1, 1, &value, 1) == SyncStatus::kOk);
+    SyncSession as(a), bs(b);
+    const auto ac = a.Cursors();
+    assert(as.Start(b.Cursors(), 0) == SyncStatus::kOk);
+    assert(bs.Start(ac, 0) == SyncStatus::kOk);
+    Sender data, reply;
+    uint32_t aseq = 1, bseq = 1;
+    as.Poll(data, aseq, 0);
+    b_store.fail_next_save = true;
+    Receive(bs, data.frame);
+    const auto saves = b_store.saves;
+    reply.busy = true;
+    bs.Poll(reply, bseq, 0);
+    Receive(bs, data.frame);
+    assert(b_store.saves == saves);
+    assert(b.InspectIncomingState(1, 1) == SyncStatus::kApplyRequired);
+    reply.busy = false;
+    bs.Poll(reply, bseq, 3000);
+    Receive(as, reply.frame);
+    assert(bs.Status() == SyncSessionStatus::kStoreError);
+    assert(as.Status() == SyncSessionStatus::kStoreError);
+    assert(a.PendingDurableCount() == 1);
+}
+
+void TestDuplicateRepliesDoNotExtendProgressTimeout() {
+    MemoryStore a_store, b_store;
+    SyncEngine a, b;
+    assert(a.Initialize(a_store) == SyncStatus::kOk);
+    assert(b.Initialize(b_store) == SyncStatus::kOk);
+    const uint8_t value = 1;
+    assert(a.PutDurableState(1, 1, &value, 1) == SyncStatus::kOk);
+    assert(a.PutDurableState(2, 1, &value, 1) == SyncStatus::kOk);
+    SyncSession as(a), bs(b);
+    const auto ac = a.Cursors();
+    assert(as.Start(b.Cursors(), 0) == SyncStatus::kOk);
+    assert(bs.Start(ac, 0) == SyncStatus::kOk);
+    Sender data, reply;
+    uint32_t aseq = 1, bseq = 1;
+    as.Poll(data, aseq, 0);
+    Receive(bs, data.frame);
+    bs.Poll(reply, bseq, 1000);
+    const auto saves = b_store.saves;
+    for (uint32_t now = 4000; now <= 16000; now += 3000) {
+        Receive(bs, data.frame);
+        bs.Poll(reply, bseq, now);
+    }
+    assert(b_store.saves == saves);
+    assert(bs.Status() == SyncSessionStatus::kTimeout);
+    assert(!bs.Converged() && a.PendingDurableCount() == 2);
+}
+
+void TestAckPayloadBoundIncludesOptionalFields() {
+    for (const std::size_t extra : {251U, 252U}) {
+        MemoryStore a_store, b_store;
+        SyncEngine a, b;
+        assert(a.Initialize(a_store) == SyncStatus::kOk);
+        assert(b.Initialize(b_store) == SyncStatus::kOk);
+        assert(a.PutDurableState(1, 1, nullptr, 0) == SyncStatus::kOk);
+        const auto ac = a.Cursors();
+        SyncSession as(a), bs(b);
+        assert(as.Start(b.Cursors(), 0) == SyncStatus::kOk);
+        assert(bs.Start(ac, 0) == SyncStatus::kOk);
+        uint32_t aseq = 1, bseq = 1;
+        Transfer(as, bs, aseq);
+        Sender ack;
+        bs.Poll(ack, bseq, 0);
+        FrameView frame{};
+        assert(DecodeFrame(ack.frame.data(), ack.frame.size(), 1, 0, &frame) == ProtocolStatus::kOk);
+        std::vector<uint8_t> payload(frame.payload, frame.payload + frame.payload_size);
+        payload.insert(payload.end(), {5, 0, static_cast<uint8_t>(extra), 0});
+        payload.resize(payload.size() + extra);
+        std::vector<uint8_t> encoded(kFrameHeaderSize + payload.size());
+        std::size_t size = 0;
+        assert(EncodeFrame(frame.header, payload.data(), payload.size(), encoded.data(),
+                           encoded.size(), &size) == ProtocolStatus::kOk);
+        Receive(as, encoded);
+        const bool valid = payload.size() <= kSyncFrameSize - kFrameHeaderSize;
+        assert(as.Status() == (valid ? SyncSessionStatus::kActive : SyncSessionStatus::kProtocolError));
+        assert(a.PendingDurableCount() == (valid ? 0U : 1U));
+    }
 }
 
 void TestCursorWireAndFullStore() {
@@ -410,9 +616,13 @@ int main() {
     TestCapacityEvictionAndRollback();
     TestCorruptRecoveryAndStoreErrors();
     TestBidirectionalReconnectWithLostAck();
+    TestDisconnectAtEveryFragmentAndCommitBoundary();
     TestInFlightReplacementAndExactAck();
     TestPersistenceRollbackAndPeerRegression();
     TestBoundedRetriesAndReceiveSaveFailure();
+    TestPendingNackCannotBecomeAnAck();
+    TestDuplicateRepliesDoNotExtendProgressTimeout();
+    TestAckPayloadBoundIncludesOptionalFields();
     TestCursorWireAndFullStore();
     TestResourceWindowAndSequenceConflict();
     return 0;
