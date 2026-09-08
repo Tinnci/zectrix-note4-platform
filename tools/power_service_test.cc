@@ -4,6 +4,7 @@
 
 #include <cassert>
 #include <csetjmp>
+#include <initializer_list>
 
 namespace {
 esp_sleep_wakeup_cause_t wake_cause = ESP_SLEEP_WAKEUP_UNDEFINED;
@@ -51,11 +52,16 @@ int main() {
         assert(service->GetWakeReason() == wake_case.expected);
     }
 
-    if (setjmp(shutdown_jump) == 0) service->Shutdown();
-    assert(board.power_event_count == 3);
-    assert(board.power_events[0] == 2);
-    assert(board.power_events[1] == 4);
-    assert(board.power_events[2] == 5);
-    assert(delay_count == 2 && delays[0] == 100 && delays[1] == 100);
+    for (const auto cleanup_result : {ESP_OK, ESP_FAIL}) {
+        board.power_event_count = delay_count = 0;
+        board.peripheral_shutdown_result = cleanup_result;
+        if (setjmp(shutdown_jump) == 0) service->Shutdown();
+        assert(board.power_event_count == 4);
+        assert(board.power_events[0] == 6);
+        assert(board.power_events[1] == 2);
+        assert(board.power_events[2] == 4);
+        assert(board.power_events[3] == 5);
+        assert(delay_count == 2 && delays[0] == 100 && delays[1] == 100);
+    }
     delete service;
 }

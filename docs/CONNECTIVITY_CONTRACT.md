@@ -278,6 +278,23 @@ stub; production HTTP framing and transport remain covered by
 `tools/test-wifi-http.sh`. The backend target accepts `CXX` for sanitizer
 compiler wrappers.
 
+Q1.2 exercises complete backend bursts through the production ESP driver with
+a scripted HTTP seam. Success, transfer errors, invalid responses, timeout and
+cancellation close HTTP and TLS before stopping/deinitializing Wi-Fi, removing
+event handlers and destroying the station interface. The terminal outcome is
+unavailable while cleanup is pending and reports any cleanup failure separately.
+A subsequent RF scan can acquire Wi-Fi only after successful release.
+Stop, deinit and handler-unregistration
+failures retain the interface and exclusive claim for cleanup retry; they do
+not make a faulted backend reusable.
+
+Station cleanup leaves the shared event loop and network core available. It
+does not stop the BLE owner or directly disable the shared PHY; ESP-IDF owns
+Wi-Fi/BLE coexistence. Product shutdown stops connectivity before releasing
+NFC, display and board resources through `Platform::Shutdown()`. Host resource
+counts establish software ownership and cleanup, not physical modem current
+or BLE link quality under RF contention.
+
 ## Security lifecycle
 
 Pairing requires a local Note4 action. The firmware requests bonding, LE Secure

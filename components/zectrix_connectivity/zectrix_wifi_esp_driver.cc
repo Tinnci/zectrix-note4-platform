@@ -272,13 +272,17 @@ struct EspWifiBackendDriver::Impl : WifiHttpStream {
             wifi_initialized = false;
         }
         if (wifi_handler != nullptr) {
-            esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID,
-                                                   wifi_handler);
+            if (esp_event_handler_instance_unregister(
+                    WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_handler) != ESP_OK) {
+                return WifiDriverResult::kUnavailable;
+            }
             wifi_handler = nullptr;
         }
         if (ip_handler != nullptr) {
-            esp_event_handler_instance_unregister(IP_EVENT, ESP_EVENT_ANY_ID,
-                                                   ip_handler);
+            if (esp_event_handler_instance_unregister(
+                    IP_EVENT, ESP_EVENT_ANY_ID, ip_handler) != ESP_OK) {
+                return WifiDriverResult::kUnavailable;
+            }
             ip_handler = nullptr;
         }
         if (netif != nullptr) {

@@ -172,8 +172,21 @@ CLI and Wi-Fi regressions pass AddressSanitizer, UndefinedBehaviorSanitizer and
 ThreadSanitizer. All 26 Host targets and the ESP32-S3 firmware build pass.
 Their SDK fakes model callback and scheduling interleavings;
 physical USB behavior, radio current and hardware coexistence need device
-measurement. Q1.2 power/coexistence and Q1.3 protocol cross-inspection remain
-separate tasks.
+measurement.
+
+Q1.2 adds explicit platform shutdown cleanup and executes the board drivers
+in the existing Power Host target. It closes I2S channel leaks, joins audio
+playback before codec release, synchronizes NFC callback removal and stops the
+field task through its notification. EPD, I2C and audio signals are disconnected
+after driver release, and deep-sleep holds retain rail-off levels on USB power.
+The Wi-Fi driver tests now run complete bursts and verify ordered cleanup before
+results, exclusive scan ownership and safe retention after stop/deinit/callback
+cleanup failures. All 26 Host targets pass; board and Wi-Fi tests also pass
+AddressSanitizer, UndefinedBehaviorSanitizer and ThreadSanitizer, and display
+tests pass AddressSanitizer/UndefinedBehaviorSanitizer. These tests do not
+measure physical leakage, radio current or RF coexistence. The ESP32-S3
+firmware build also passes. Q1.3 protocol cross-inspection remains a separate
+task.
 
 ## Deferred research
 

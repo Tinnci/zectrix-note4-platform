@@ -6,11 +6,13 @@
 #include <esp_err.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <freertos/semphr.h>
 
 #include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <condition_variable>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -44,6 +46,7 @@ public:
     void PowerOff();
     bool IsPowered() const;
     bool HasField() const;
+    // Waits for a previous callback to finish. Do not call from the callback.
     void SetFieldCallback(std::function<void(bool)> callback);
 
     esp_err_t ReadBlock(uint8_t block_addr, uint8_t out[kBlockSize]);
@@ -86,11 +89,12 @@ private:
     int fd_active_level_ = 1;
     TaskHandle_t field_task_ = nullptr;
     SemaphoreHandle_t field_task_done_ = nullptr;
-    std::atomic<bool> field_task_stop_{false};
     std::atomic<bool> initialized_{false};
     std::atomic<bool> powered_{false};
     std::atomic<bool> field_present_{false};
     std::mutex mutex_;
+    std::condition_variable field_callback_idle_;
+    unsigned field_callback_in_flight_ = 0;
     std::unique_ptr<ScopedI2cBusLock> i2c_session_lock_;
     std::function<void(bool)> field_callback_;
 };

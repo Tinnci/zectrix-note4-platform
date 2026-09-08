@@ -41,7 +41,8 @@ public:
     PowerSnapshot ReadSnapshot() const;
     WakeReason GetWakeReason() const;
 
-    // Turns off board rails and enters deep sleep. This function does not return.
+    // Platform stops peripheral consumers before calling this final transition.
+    // Releases board devices, turns off rails and enters deep sleep.
     [[noreturn]] void Shutdown();
 
 private:

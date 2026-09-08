@@ -5,6 +5,7 @@
 #include <esp_log.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <freertos/semphr.h>
 
 #include <algorithm>
 #include <array>
@@ -52,11 +53,10 @@ struct AcousticSelftestRoundResult {
     bool has_payload = false;
 };
 
-// Owned by the playback task, which frees it when it exits. Heap allocated so
-// that a playback task the caller gave up waiting for cannot outlive its data.
+// Owned by the playback task. The caller joins it before releasing the codec.
 struct PlaybackContext {
     AudioCodec* codec = nullptr;
-    TaskHandle_t owner_task = nullptr;
+    SemaphoreHandle_t done = nullptr;
     std::vector<int16_t> pcm;
 };
 
@@ -260,9 +260,9 @@ void PlaybackTask(void* arg) {
     if (ctx->codec != nullptr) {
         ctx->codec->OutputData(ctx->pcm);
     }
-    const TaskHandle_t owner = ctx->owner_task;
+    const SemaphoreHandle_t done = ctx->done;
     ctx.reset();
-    xTaskNotifyGive(owner);
+    xSemaphoreGive(done);
     vTaskDelete(NULL);
 }
 
@@ -287,10 +287,15 @@ AcousticSelftestRoundResult RunRound(AudioCodec* codec,
 
     auto playback_ctx = std::make_unique<PlaybackContext>();
     playback_ctx->codec = codec;
-    playback_ctx->owner_task = xTaskGetCurrentTaskHandle();
     playback_ctx->pcm = GeneratePacketPcm(expected_payload, result.fc);
-    ulTaskNotifyTake(pdTRUE, 0);
+    const SemaphoreHandle_t playback_done = xSemaphoreCreateBinary();
+    if (playback_done == nullptr) {
+        result.reason = AcousticSelftestFailureReason::kInternalError;
+        return result;
+    }
+    playback_ctx->done = playback_done;
     if (xTaskCreate(PlaybackTask, "ft_audio_tx", 4096, playback_ctx.get(), 4, nullptr) != pdPASS) {
+        vSemaphoreDelete(playback_done);
         result.reason = AcousticSelftestFailureReason::kInternalError;
         return result;
     }
@@ -300,10 +305,15 @@ AcousticSelftestRoundResult RunRound(AudioCodec* codec,
     std::vector<int16_t> post_tx_capture;
     const bool capture_ok = CaptureSamples(codec, post_tx_samples, post_tx_capture);
 
-    // The playback task points at tx_pcm and playback_ctx, both of which live on
-    // this stack frame, so it must be joined before returning on any path.
+    // A timeout is a diagnostic failure, but cannot release a borrowed codec
+    // or let a later round consume this worker's completion.
     const bool playback_joined =
-        ulTaskNotifyTake(pdTRUE, kPlaybackJoinTimeoutTicks) != 0;
+        xSemaphoreTake(playback_done, kPlaybackJoinTimeoutTicks) == pdTRUE;
+    if (!playback_joined) {
+        ESP_LOGW(TAG, "playback exceeded its deadline; waiting for codec release");
+        xSemaphoreTake(playback_done, portMAX_DELAY);
+    }
+    vSemaphoreDelete(playback_done);
 
     if (!capture_ok) {
         result.reason = AcousticSelftestFailureReason::kCaptureTimeout;

@@ -61,32 +61,68 @@ extern "C" void BoardI2cForcePowerOn() {
 ZectrixBoard::ZectrixBoard() = default;
 
 ZectrixBoard::~ZectrixBoard() {
-    if (button_task_ != nullptr) {
-        vTaskDelete(button_task_);
-        button_task_ = nullptr;
+    ShutdownPeripherals();
+}
+
+esp_err_t ZectrixBoard::ShutdownPeripherals() {
+    if (button_task_done_ != nullptr) {
+        button_task_stop_.store(true, std::memory_order_release);
+        xSemaphoreTake(button_task_done_, portMAX_DELAY);
+        vSemaphoreDelete(button_task_done_);
+        button_task_done_ = nullptr;
     }
     audio_.reset();
+    audio_started_ = false;
     nfc_.reset();
     rtc_.reset();
+    esp_err_t result = ESP_OK;
+    const auto record = [&result](esp_err_t error) {
+        if (result == ESP_OK) result = error;
+    };
     if (i2c_bus_ != nullptr) {
-        i2c_del_master_bus(i2c_bus_);
-        i2c_bus_ = nullptr;
+        const esp_err_t error = i2c_del_master_bus(i2c_bus_);
+        record(error);
+        if (error == ESP_OK) {
+            i2c_bus_ = nullptr;
+            // Do not feed unpowered devices through I2C or audio signal pins.
+            gpio_config_t idle = {};
+            idle.pin_bit_mask = (1ULL << ZECTRIX_I2C_SDA) |
+                                (1ULL << ZECTRIX_I2C_SCL) |
+                                (1ULL << ZECTRIX_AUDIO_MCLK) |
+                                (1ULL << ZECTRIX_AUDIO_BCLK) |
+                                (1ULL << ZECTRIX_AUDIO_WS) |
+                                (1ULL << ZECTRIX_AUDIO_DOUT) |
+                                (1ULL << ZECTRIX_AUDIO_DIN);
+            idle.mode = GPIO_MODE_DISABLE;
+            idle.pull_up_en = GPIO_PULLUP_DISABLE;
+            idle.pull_down_en = GPIO_PULLDOWN_DISABLE;
+            idle.intr_type = GPIO_INTR_DISABLE;
+            record(gpio_config(&idle));
+        }
     }
     if (adc_cali_ != nullptr) {
-        adc_cali_delete_scheme_curve_fitting(adc_cali_);
-        adc_cali_ = nullptr;
+        const esp_err_t error = adc_cali_delete_scheme_curve_fitting(adc_cali_);
+        record(error);
+        if (error == ESP_OK) adc_cali_ = nullptr;
     }
     if (adc_handle_ != nullptr) {
-        adc_oneshot_del_unit(adc_handle_);
-        adc_handle_ = nullptr;
+        const esp_err_t error = adc_oneshot_del_unit(adc_handle_);
+        record(error);
+        if (error == ESP_OK) adc_handle_ = nullptr;
     }
     if (button_queue_ != nullptr) {
         vQueueDelete(button_queue_);
         button_queue_ = nullptr;
     }
+    button_wait_wake_pending_.store(false);
+    if (result != ESP_OK) {
+        ESP_LOGW(kTag, "peripheral shutdown incomplete: %s", esp_err_to_name(result));
+    }
+    return result;
 }
 
 esp_err_t ZectrixBoard::InitPowerAndGpio() {
+    gpio_deep_sleep_hold_dis();
     gpio_hold_dis(ZECTRIX_VBAT_LATCH);
     gpio_set_level(ZECTRIX_VBAT_LATCH, 1);
 
@@ -171,9 +207,13 @@ esp_err_t ZectrixBoard::Init() {
     if (button_queue_ == nullptr) {
         return ESP_ERR_NO_MEM;
     }
+    button_task_done_ = xSemaphoreCreateBinary();
+    if (button_task_done_ == nullptr) return ESP_ERR_NO_MEM;
+    button_task_stop_.store(false);
     if (xTaskCreate(ButtonTaskEntry, "zectrix_buttons", 3072, this, 5,
-                    &button_task_) != pdPASS) {
-        button_task_ = nullptr;
+                    nullptr) != pdPASS) {
+        vSemaphoreDelete(button_task_done_);
+        button_task_done_ = nullptr;
         return ESP_ERR_NO_MEM;
     }
 
@@ -223,7 +263,7 @@ void ZectrixBoard::ButtonTask() {
         states[i].armed = level != 0;
     }
 
-    while (true) {
+    while (!button_task_stop_.load(std::memory_order_acquire)) {
         const TickType_t now = xTaskGetTickCount();
         for (size_t i = 0; i < kButtons.size(); ++i) {
             ButtonState& state = states[i];
@@ -272,6 +312,8 @@ void ZectrixBoard::ButtonTask() {
         }
         vTaskDelay(kButtonPoll);
     }
+    xSemaphoreGive(button_task_done_);
+    vTaskDelete(nullptr);
 }
 
 bool ZectrixBoard::WaitButton(ZectrixButtonEvent* event,
@@ -302,6 +344,7 @@ void ZectrixBoard::DrainButtons() {
 }
 
 AudioCodec* ZectrixBoard::PrepareAudio() {
+    if (i2c_bus_ == nullptr) return nullptr;
     if (audio_ == nullptr) {
         // esp_codec_dev expects the 8 bit shifted address and right shifts it
         // itself, so the library constant (0x30) must be used rather than the
@@ -406,4 +449,6 @@ void ZectrixBoard::CutBatteryPower() {
     gpio_hold_dis(ZECTRIX_VBAT_LATCH);
     gpio_set_level(ZECTRIX_VBAT_LATCH, 0);
     gpio_hold_en(ZECTRIX_VBAT_LATCH);
+    // USB can keep the MCU powered after the battery latch is released.
+    gpio_deep_sleep_hold_en();
 }

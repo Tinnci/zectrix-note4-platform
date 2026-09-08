@@ -1079,8 +1079,8 @@ private:
         if (clear != ESP_OK) {
             ESP_LOGW(kTag, "display clear failed: %s", esp_err_to_name(clear));
         }
-        ESP_LOGI(kTag, "entering power service shutdown");
-        power_->Shutdown();
+        ESP_LOGI(kTag, "releasing platform peripherals before shutdown");
+        platform_.Shutdown();
     }
 
     zectrix::Platform platform_;

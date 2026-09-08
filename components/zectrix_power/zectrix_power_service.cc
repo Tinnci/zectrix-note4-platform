@@ -48,6 +48,7 @@ WakeReason PowerService::GetWakeReason() const {
 
 [[noreturn]] void PowerService::Shutdown() {
     if (board_ != nullptr) {
+        board_->ShutdownPeripherals();
         board_->SetPowerLed(false);
         board_->SetAudioPower(false);
         vTaskDelay(pdMS_TO_TICKS(100));

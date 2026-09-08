@@ -60,9 +60,11 @@ Each iteration picks the top unfinished task, implements production code, verifi
 - [x] **Q1.1: Comprehensive Contract Regression & Host Test Suite Verification**
   - Run full suite (`tools/test-host.sh`) ensuring all 26 test targets pass with zero failures.
   - Audit thread-safety across new Wi-Fi and CLI background tasks.
-- [ ] **Q1.2: Low-Power Lifecycle & Radio Coexistence Audit**
+- [x] **Q1.2: Low-Power Lifecycle & Radio Coexistence Audit**
   - Verify Wi-Fi modem completely powers off after HTTP burst transfer.
   - Review `PowerOff()` clean shutdown sequence ensuring zero leaked SPI/I2C peripheral state.
+  - Implemented ordered peripheral cleanup, NFC/audio task joins and rail-off GPIO holds.
+  - Verified all 26 Host targets, sanitizer checks and the ESP32-S3 build; physical current and RF coexistence measurements remain hardware qualification work.
 - [ ] **Q1.3: Flipper Zero / Pebble Protocol Cross-Inspection**
   - Inspect CLI command parser against Flipper Zero CDC-ACM terminal robustness standards.
   - Verify durable sync engine cursor semantics under simulated sudden disconnects.

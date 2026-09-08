@@ -21,7 +21,10 @@
 #include "zectrix_update_esp.h"
 #include "update_test_fixture.h"
 
+class ZectrixNfc {};
+
 namespace {
+struct SleepEntered {};
 std::vector<std::string> events;
 std::string fail_at;
 int nothrow_allocation_count = 0;
@@ -102,6 +105,10 @@ esp_err_t PowerService::Attach(ZectrixBoard& board, PowerService** output) {
     return result;
 }
 PowerService::~PowerService() { events.emplace_back("delete:power"); }
+[[noreturn]] void PowerService::Shutdown() {
+    events.emplace_back("shutdown:power");
+    throw SleepEntered{};
+}
 }
 namespace zectrix::time {
 esp_err_t TimeService::Attach(ZectrixBoard& board, TimeService** output) {
@@ -251,6 +258,25 @@ int main() {
         "create:cli", "delete:cli", "delete:connectivity", "delete:display",
         "delete:system", "delete:storage", "delete:time",
         "delete:power", "delete:input"}));
+
+    events.clear();
+    {
+        ZectrixNfc nfc;
+        ZectrixBoard::nfc_device = &nfc;
+        zectrix::Platform platform;
+        assert(platform.Initialize() == ESP_OK);
+        events.clear();
+        try {
+            platform.Shutdown();
+        } catch (const SleepEntered&) {}
+        assert(!platform.IsInitialized());
+        assert((events == std::vector<std::string>{
+            "delete:cli", "delete:connectivity", "delete:nfc", "delete:display",
+            "delete:system", "delete:storage", "delete:time", "shutdown:power"}));
+        assert(platform.Initialize() == ESP_ERR_INVALID_STATE);
+        ZectrixBoard::nfc_device = nullptr;
+    }
+    assert(events[events.size() - 2] == "delete:power" && events.back() == "delete:input");
 
     events.clear();
     fail_at = "boot";

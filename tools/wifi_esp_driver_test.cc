@@ -18,6 +18,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -38,6 +39,11 @@ std::atomic<bool> unregister_entered{false};
 esp_netif_t* station_netif = nullptr;
 bool wifi_initialized = false, wifi_started = false, default_handlers = false;
 bool fail_init = false, fail_stop = false, fail_enqueue = false;
+bool fail_deinit = false;
+esp_event_base_t fail_unregister_base = nullptr;
+std::vector<std::string> cleanup;
+WifiDriverResult http_result = WifiDriverResult::kPending;
+bool http_active = false;
 unsigned register_calls = 0, fail_register_at = 0, connect_calls = 0;
 err_t dns_result = ERR_INPROGRESS;
 
@@ -53,12 +59,16 @@ void WaitFor(Predicate ready) {
 void Reset() {
     assert(handlers.empty() && tcp_calls.empty() && dns_calls.empty());
     assert(netifs == 0 && tls_objects == 0 && station_netif == nullptr);
-    assert(!wifi_initialized && !wifi_started && !default_handlers);
+    assert(!wifi_initialized && !wifi_started && !default_handlers && !http_active);
     unregister_entered = false;
     fail_init = fail_stop = fail_enqueue = false;
     register_calls = fail_register_at = connect_calls = 0;
     lookups = 0;
     dns_result = ERR_INPROGRESS;
+    fail_deinit = false;
+    fail_unregister_base = nullptr;
+    http_result = WifiDriverResult::kPending;
+    cleanup.clear();
 }
 
 void Emit(esp_event_base_t base, int32_t event, void* data = nullptr) {
@@ -239,6 +249,106 @@ void TestDnsFailuresAndCachedAnswer() {
     }
     Reset();
 }
+
+class StoredCredentials final : public WifiCredentialSource {
+public:
+    WifiCredentialResult Load(WifiCredentials* output) override {
+        *output = Credentials();
+        return WifiCredentialResult::kAvailable;
+    }
+};
+
+void StartBurst(WifiBackend& backend) {
+    assert(backend.Begin({}, 0));
+    backend.Poll(0);
+    backend.Poll(1);
+    Emit(WIFI_EVENT, WIFI_EVENT_STA_START);
+    Emit(WIFI_EVENT, WIFI_EVENT_STA_CONNECTED);
+    ip_event_got_ip_t event{station_netif, {{1}}};
+    Emit(IP_EVENT, IP_EVENT_STA_GOT_IP, &event);
+    backend.Poll(2);
+    backend.Poll(3);
+    backend.Poll(4);
+    StartDns();
+    CompleteDns();
+    backend.Poll(5);
+    backend.Poll(6);
+    backend.Poll(7);
+    assert(backend.State() == WifiBackendState::kTransferring);
+    assert(http_active && wifi_started && tls_objects == 1);
+}
+
+void TestBurstPowersDownBeforeResult() {
+    const WifiOperationResult expected[] = {
+        WifiOperationResult::kSuccess, WifiOperationResult::kTransferFailure,
+        WifiOperationResult::kInvalidResponse, WifiOperationResult::kTimeout,
+        WifiOperationResult::kCancelled,
+    };
+    for (unsigned mode = 0; mode < 5; ++mode) {
+        Reset();
+        StoredCredentials credentials;
+        EspWifiBackendDriver driver, diagnostic;
+        WifiBackend backend(&credentials, &driver);
+        StartBurst(backend);
+        assert(diagnostic.StartScan() == WifiDriverResult::kUnavailable);
+        WifiBackendOutcome outcome;
+        assert(!backend.TakeOutcome(&outcome));
+        if (mode == 3) backend.Poll(15000);
+        else {
+            if (mode == 4) backend.Cancel();
+            else {
+                http_result = mode == 0 ? WifiDriverResult::kReady
+                    : mode == 1 ? WifiDriverResult::kTransferFailure
+                                : WifiDriverResult::kInvalidResponse;
+                backend.Poll(8);
+            }
+            assert(backend.State() == WifiBackendState::kStopping);
+            assert(wifi_started && !backend.TakeOutcome(&outcome));
+            backend.Poll(9);
+        }
+        assert(backend.State() == WifiBackendState::kStopped);
+        assert(!http_active && tls_objects == 0 && netifs == 0 && handlers.empty());
+        assert(!wifi_started && !wifi_initialized && !default_handlers);
+        assert((cleanup == std::vector<std::string>{"http", "tls", "wifi-stop",
+            "wifi-deinit", "wifi-handler", "ip-handler", "default-handlers", "netif"}));
+        assert(backend.TakeOutcome(&outcome));
+        assert(outcome.operation == expected[mode] && outcome.stop == WifiStopResult::kSuccess);
+        assert(outcome.body_size == (mode == 0 ? 5u : 0u));
+        assert(diagnostic.StartScan() == WifiDriverResult::kPending);
+        assert(diagnostic.StopStation() == WifiDriverResult::kReady);
+    }
+    Reset();
+}
+
+void TestFailedCleanupRetainsOwnership() {
+    for (unsigned phase = 0; phase < 4; ++phase) {
+        Reset();
+        StoredCredentials credentials;
+        EspWifiBackendDriver driver, diagnostic;
+        WifiBackend backend(&credentials, &driver);
+        StartBurst(backend);
+        http_result = WifiDriverResult::kReady;
+        backend.Poll(8);
+        fail_stop = phase == 0;
+        fail_deinit = phase == 1;
+        fail_unregister_base = phase == 2 ? WIFI_EVENT : phase == 3 ? IP_EVENT : nullptr;
+        backend.Poll(9);
+        WifiBackendOutcome outcome;
+        assert(backend.State() == WifiBackendState::kStopFailed);
+        assert(backend.TakeOutcome(&outcome));
+        assert(outcome.operation == WifiOperationResult::kSuccess && outcome.stop == WifiStopResult::kFailure);
+        assert(!backend.Begin({}, 10));
+        assert(!http_active && tls_objects == 0 && netifs == 1);
+        assert(diagnostic.StartScan() == WifiDriverResult::kUnavailable);
+        fail_stop = fail_deinit = false;
+        fail_unregister_base = nullptr;
+        assert(driver.StopStation() == WifiDriverResult::kReady);
+        assert(netifs == 0 && handlers.empty() && !wifi_initialized);
+        assert(diagnostic.StartScan() == WifiDriverResult::kPending);
+        assert(diagnostic.StopStation() == WifiDriverResult::kReady);
+    }
+    Reset();
+}
 }  // namespace
 
 esp_err_t esp_event_loop_create_default() { return ESP_OK; }
@@ -252,14 +362,16 @@ esp_err_t esp_event_handler_instance_register(esp_event_base_t base, int32_t,
     handlers.push_back(std::move(handler));
     return ESP_OK;
 }
-esp_err_t esp_event_handler_instance_unregister(esp_event_base_t, int32_t,
+esp_err_t esp_event_handler_instance_unregister(esp_event_base_t base, int32_t,
                                                 esp_event_handler_instance_t handler) {
     unregister_entered = true;
     std::lock_guard<std::mutex> lock(event_mutex);
+    if (base == fail_unregister_base) return ESP_FAIL;
     const auto found = std::find_if(handlers.begin(), handlers.end(),
                                    [=](const auto& item) { return item.get() == handler; });
     assert(found != handlers.end());
     handlers.erase(found);
+    cleanup.emplace_back(base == WIFI_EVENT ? "wifi-handler" : "ip-handler");
     return ESP_OK;
 }
 esp_err_t esp_netif_init() { return ESP_OK; }
@@ -273,12 +385,14 @@ void esp_netif_destroy(esp_netif_t* netif) {
     assert(netif == station_netif);
     station_netif = nullptr;
     --netifs;
+    cleanup.emplace_back("netif");
     delete netif;
 }
 esp_err_t esp_netif_attach_wifi_station(esp_netif_t*) { return ESP_OK; }
 esp_err_t esp_wifi_set_default_wifi_sta_handlers() { default_handlers = true; return ESP_OK; }
 esp_err_t esp_wifi_clear_default_wifi_driver_and_handlers(esp_netif_t*) {
     default_handlers = false;
+    cleanup.emplace_back("default-handlers");
     return ESP_OK;
 }
 esp_err_t esp_wifi_init(const wifi_init_config_t*) {
@@ -286,12 +400,24 @@ esp_err_t esp_wifi_init(const wifi_init_config_t*) {
     wifi_initialized = !fail_init;
     return fail_init ? ESP_FAIL : ESP_OK;
 }
-esp_err_t esp_wifi_deinit() { assert(wifi_initialized && !wifi_started); wifi_initialized = false; return ESP_OK; }
+esp_err_t esp_wifi_deinit() {
+    assert(wifi_initialized && !wifi_started);
+    if (fail_deinit) return ESP_FAIL;
+    wifi_initialized = false;
+    cleanup.emplace_back("wifi-deinit");
+    return ESP_OK;
+}
 esp_err_t esp_wifi_set_storage(int) { return ESP_OK; }
 esp_err_t esp_wifi_set_mode(int) { return ESP_OK; }
 esp_err_t esp_wifi_set_config(int, const wifi_config_t*) { return ESP_OK; }
 esp_err_t esp_wifi_start() { assert(wifi_initialized); wifi_started = true; return ESP_OK; }
-esp_err_t esp_wifi_stop() { if (fail_stop) return ESP_FAIL; wifi_started = false; return ESP_OK; }
+esp_err_t esp_wifi_stop() {
+    assert(!http_active && tls_objects == 0);
+    if (fail_stop) return ESP_FAIL;
+    wifi_started = false;
+    cleanup.emplace_back("wifi-stop");
+    return ESP_OK;
+}
 esp_err_t esp_wifi_connect() { assert(wifi_started); ++connect_calls; return ESP_OK; }
 esp_err_t esp_wifi_scan_start(const wifi_scan_config_t* config, bool block) {
     assert(wifi_started && !block && std::strcmp(reinterpret_cast<const char*>(config->ssid), "test-ap") == 0);
@@ -330,7 +456,12 @@ const char* ipaddr_ntoa_r(const ip_addr_t* address, char* output, int capacity) 
 }
 esp_err_t esp_crt_bundle_attach(void*) { return ESP_OK; }
 esp_tls_t* esp_tls_init() { ++tls_objects; return new esp_tls_t; }
-void esp_tls_conn_destroy(esp_tls_t* tls) { --tls_objects; delete tls; }
+void esp_tls_conn_destroy(esp_tls_t* tls) {
+    assert(!http_active);
+    cleanup.emplace_back("tls");
+    --tls_objects;
+    delete tls;
+}
 int esp_tls_conn_read(esp_tls_t*, void*, std::size_t) { return ESP_TLS_ERR_SSL_WANT_READ; }
 int esp_tls_conn_write(esp_tls_t*, const void*, std::size_t) { return ESP_TLS_ERR_SSL_WANT_WRITE; }
 esp_err_t esp_tls_get_conn_sockfd(esp_tls_t*, int*) { return ESP_FAIL; }
@@ -342,16 +473,39 @@ int esp_tls_conn_new_async(const char* host, int length, int port, const esp_tls
 }
 
 // HTTP framing and the borrowed TLS stream have a separate production test.
+struct WifiHttpClient::Impl { uint8_t* body; };
 WifiHttpClient::WifiHttpClient() = default;
-WifiHttpClient::~WifiHttpClient() = default;
-bool WifiHttpClient::Begin(WifiHttpStream&, uint8_t*, std::size_t) { return false; }
-WifiDriverResult WifiHttpClient::Poll(std::size_t*) { return WifiDriverResult::kUnavailable; }
-void WifiHttpClient::Close() {}
+WifiHttpClient::~WifiHttpClient() { Close(); }
+bool WifiHttpClient::Begin(WifiHttpStream&, uint8_t* body, std::size_t capacity) {
+    assert(wifi_started && tls_objects == 1 && !http_active && capacity >= 5);
+    impl_ = new Impl{body};
+    http_active = true;
+    return true;
+}
+WifiDriverResult WifiHttpClient::Poll(std::size_t* size) {
+    assert(impl_ != nullptr && http_active);
+    *size = 0;
+    if (http_result == WifiDriverResult::kReady) {
+        std::memcpy(impl_->body, "hello", 5);
+        *size = 5;
+    }
+    return http_result;
+}
+void WifiHttpClient::Close() {
+    if (impl_ == nullptr) return;
+    assert(tls_objects == 1);
+    http_active = false;
+    cleanup.emplace_back("http");
+    delete impl_;
+    impl_ = nullptr;
+}
 
 int main() {
     TestExclusiveClaimAndStartupFailure();
     TestConcurrentEventsAndTeardown();
     TestDnsCancellationAndReuse();
     TestDnsFailuresAndCachedAnswer();
+    TestBurstPowersDownBeforeResult();
+    TestFailedCleanupRetainsOwnership();
     Reset();
 }

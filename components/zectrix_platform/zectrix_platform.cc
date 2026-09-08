@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <new>
+#include <utility>
 
 #include "esp_log.h"
 #include "zectrix_board.h"
@@ -145,19 +146,31 @@ void Platform::StopMaintenance() {
     if (impl_->cli_usb != nullptr) impl_->cli_usb->Stop();
 }
 
+[[noreturn]] void Platform::Shutdown() {
+    assert(initialized_ && impl_ != nullptr && impl_->power != nullptr);
+    ReleaseServices();
+    initialized_ = false;
+    impl_->power->Shutdown();
+}
+
+void Platform::ReleaseServices() {
+    if (impl_ == nullptr) return;
+    // Stop producers before releasing the services and board devices they use.
+    StopMaintenance();
+    delete std::exchange(impl_->cli_usb, nullptr);
+    delete std::exchange(impl_->maintenance, nullptr);
+    delete std::exchange(impl_->connectivity, nullptr);
+    delete std::exchange(impl_->nfc_service, nullptr);
+    delete std::exchange(impl_->diagnostics, nullptr);
+    delete std::exchange(impl_->display, nullptr);
+    delete std::exchange(impl_->system, nullptr);
+    delete std::exchange(impl_->storage, nullptr);
+    delete std::exchange(impl_->time, nullptr);
+}
+
 void Platform::ResetServices() {
     if (impl_ == nullptr) return;
-    // Destruction is the reverse of the initialization order.
-    StopMaintenance();
-    delete impl_->cli_usb;
-    delete impl_->maintenance;
-    delete impl_->connectivity;
-    delete impl_->nfc_service;
-    delete impl_->diagnostics;
-    delete impl_->display;
-    delete impl_->system;
-    delete impl_->storage;
-    delete impl_->time;
+    ReleaseServices();
     delete impl_->power;
     delete impl_->input;
     delete impl_;

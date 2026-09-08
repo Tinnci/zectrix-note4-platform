@@ -122,8 +122,8 @@ void NfcService::OnFieldChanged(bool present) {
         {
             std::lock_guard<std::mutex> lock(event_callback_mutex_);
             --event_callback_in_flight_;
+            event_callback_idle_cv_.notify_all();
         }
-        event_callback_idle_cv_.notify_all();
     }
 }
 

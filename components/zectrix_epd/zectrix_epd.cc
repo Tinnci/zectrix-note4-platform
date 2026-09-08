@@ -657,6 +657,10 @@ extern "C" esp_err_t zectrix_epd_del(zectrix_epd_handle_t handle) {
         return ESP_ERR_INVALID_ARG;
     }
     esp_err_t result = handle->PowerOffLocked();
+    uint64_t idle_pins = (1ULL << handle->config.pin_cs) |
+                         (1ULL << handle->config.pin_dc) |
+                         (1ULL << handle->config.pin_reset) |
+                         (1ULL << handle->config.pin_busy);
     if (handle->spi != nullptr) {
         const esp_err_t err = spi_bus_remove_device(handle->spi);
         if (result == ESP_OK) result = err;
@@ -665,7 +669,21 @@ extern "C" esp_err_t zectrix_epd_del(zectrix_epd_handle_t handle) {
     if (handle->owns_bus && handle->bus_initialized) {
         const esp_err_t err = spi_bus_free(handle->config.spi_host);
         if (result == ESP_OK) result = err;
+        if (err == ESP_OK) {
+            idle_pins |= (1ULL << handle->config.pin_mosi) |
+                         (1ULL << handle->config.pin_sclk);
+        }
     }
+    // Released pins must not feed an unpowered panel through its signal lines.
+    // Keep a borrowed SPI bus configured for its remaining devices.
+    gpio_config_t idle = {};
+    idle.pin_bit_mask = idle_pins;
+    idle.mode = GPIO_MODE_DISABLE;
+    idle.pull_up_en = GPIO_PULLUP_DISABLE;
+    idle.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    idle.intr_type = GPIO_INTR_DISABLE;
+    const esp_err_t gpio_error = gpio_config(&idle);
+    if (result == ESP_OK) result = gpio_error;
     vSemaphoreDelete(handle->mutex);
     heap_caps_free(handle->shadow);
     heap_caps_free(handle->dma_buffer);

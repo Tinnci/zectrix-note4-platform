@@ -124,3 +124,9 @@ instead.
 The default configuration initializes the SPI bus. Set
 `initialize_spi_bus = false` only when the application owns the selected SPI
 host. The application must also configure compatible pins and DMA settings.
+
+`zectrix_epd_del()` requires all callers to have finished their transactions.
+It powers off the panel, removes its SPI device, frees an owned bus and releases
+DMA/shadow storage. Panel control pins and owned SPI signal pins have their
+input/output buffers and pull resistors disabled, preventing signal-line drive
+into the unpowered panel. A borrowed bus retains its MOSI/SCLK configuration.
