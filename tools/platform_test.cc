@@ -55,6 +55,7 @@ esp_err_t ZectrixBoard::Init() {
 }
 
 namespace zectrix::update {
+EspUpdateBackend::~EspUpdateBackend() { AbortImage(); }
 Result EspUpdateBackend::ReadBootInfo(BootInfo* info) {
     ++boot_probe_count;
     if (fail_at == "boot") return Result::kIoError;
@@ -73,6 +74,12 @@ Result EspUpdateBackend::ConfirmRunningImage(const Partition&) {
     boot_confirmed = true;
     return Result::kOk;
 }
+Result EspUpdateBackend::BeginImage(const Partition&, uint32_t, const uint8_t*, std::size_t) {
+    return Result::kInvalidState;
+}
+Result EspUpdateBackend::WriteImage(const uint8_t*, std::size_t) { return Result::kInvalidState; }
+Result EspUpdateBackend::CommitImage(uint32_t) { return Result::kInvalidState; }
+void EspUpdateBackend::AbortImage() {}
 }
 
 namespace zectrix::input {

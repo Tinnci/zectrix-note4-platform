@@ -26,6 +26,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -pthread \
   "$root_dir/components/zectrix_cli/zectrix_cli_diagnostics.cc" \
   "$root_dir/components/zectrix_cli/zectrix_cli_log.cc" \
   "$root_dir/components/zectrix_update/zectrix_update_service.cc" \
+  "$root_dir/components/zectrix_update/zectrix_update_stream.cc" \
   "$root_dir/tools/platform_test.cc" -o "$test_binary"
 "$test_binary"
 echo 'PASS: platform composition tests.'

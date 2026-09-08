@@ -24,11 +24,15 @@ const char* ResultName(Result result) {
         case Result::kInvalidArgument: return "invalid argument";
         case Result::kInvalidLayout: return "invalid A/B partition layout";
         case Result::kBootMismatch: return "running/selected boot partition mismatch";
-        case Result::kInvalidState: return "invalid boot state";
+        case Result::kInvalidState: return "invalid update state";
         case Result::kConfirmationRequired: return "boot confirmation required";
         case Result::kImageTooLarge: return "image exceeds inactive slot";
         case Result::kTimeout: return "boot confirmation timed out";
-        case Result::kIoError: return "OTA metadata I/O failure";
+        case Result::kIoError: return "OTA I/O failure";
+        case Result::kChecksumMismatch: return "firmware CRC-32 mismatch";
+        case Result::kInvalidImage: return "invalid firmware image";
+        case Result::kIncompleteImage: return "incomplete firmware image";
+        case Result::kUnexpectedOffset: return "unexpected firmware chunk offset";
     }
     return "unknown update result";
 }

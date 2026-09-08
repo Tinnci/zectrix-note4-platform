@@ -42,7 +42,7 @@ Development follows dependency-aware stage gates defined in
 | M4 | Complete | Source-stable SDK v1 and unified software/hardware exit gate |
 | C1 | In progress | Companion protocol, durable sync, secure BLE/Android path and NFC-assisted enrollment; full hardware qualification remains open |
 | D1 | In progress | USB sessions, platform diagnostics, log streaming and host simulator implemented; input observation and hardware qualification remain open |
-| M5 | In progress | A/B partition validation and boot confirmation watchdog implemented; image transfer and hardware rollback qualification remain open |
+| M5 | In progress | A/B partition validation, streamed firmware verification and boot confirmation watchdog implemented; update delivery and hardware qualification remain open |
 
 > [!CAUTION]
 > This project targets the black-and-white ZECTRIX NOTE4 hardware. It is not
@@ -95,7 +95,8 @@ The current partition layout preserves factory and NVS locations and adds two
 3 MiB OTA slots. Trial firmware must finish startup and its first launcher
 render within the boot confirmation window. See
 [ADR-0005](docs/adr/0005-ab-ota-boot-confirmation.md) for installation requirements,
-rollback behavior and the fresh-configuration build command.
+rollback behavior, the streamed CRC/header verification API and the
+fresh-configuration build command.
 
 ## Host maintenance CLI
 

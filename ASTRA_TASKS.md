@@ -41,7 +41,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
 - [x] **M5.1: A/B OTA Partition Verification & Rollback Policy**
   - Verify active running partition vs update partition layout.
   - Implement rollback watchdog on unconfirmed boot.
-- [ ] **M5.2: Streamed Firmware Chunk Verification**
+- [x] **M5.2: Streamed Firmware Chunk Verification**
   - CRC-32 and image header integrity check before commit.
 
 ---

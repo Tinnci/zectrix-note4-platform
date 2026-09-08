@@ -10,9 +10,10 @@ trap 'rm -rf "$tmp_dir"' EXIT
     -I"$repo_root/tools/host_include" \
     -I"$repo_root/components/zectrix_update/include" \
     "$repo_root/components/zectrix_update/zectrix_update_service.cc" \
+    "$repo_root/components/zectrix_update/zectrix_update_stream.cc" \
     "$repo_root/components/zectrix_update/zectrix_update_esp.cc" \
     "$repo_root/tools/update_service_test.cc" \
     -o "$tmp_dir/update_service_test"
 
-"$tmp_dir/update_service_test"
-printf 'PASS: A/B partition selection, boot confirmation and RTC watchdog tests.\n'
+"$tmp_dir/update_service_test" "$@"
+printf 'PASS: A/B boot protection, streamed CRC/header verification and OTA commit tests.\n'

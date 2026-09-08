@@ -63,8 +63,9 @@ Goal: select a safe update and partition layout from measured requirements.
 Status: In progress. M5.1 implements A/B partition validation, native OTA
 rollback and a hardware watchdog for unconfirmed startup. The owner confirms
 a trial after platform initialization and the first launcher render. See
-[ADR-0005](adr/0005-ab-ota-boot-confirmation.md). Streamed image verification,
-update delivery and hardware fault injection remain open.
+[ADR-0005](adr/0005-ab-ota-boot-confirmation.md). M5.2 adds streamed CRC-32 and
+header verification, bounded native image validation, flash readback and boot
+selection. Update delivery and hardware fault injection remain open.
 
 - Measure maximum firmware, assets and user-data requirements.
 - Select an A/B OTA, rollback and recovery design.
