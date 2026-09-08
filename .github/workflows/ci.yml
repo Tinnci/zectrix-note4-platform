@@ -36,6 +36,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends ripgrep shellcheck
 
+      - name: Install uv for host integration tests
+        run: |
+          curl --fail --silent --show-error --location https://astral.sh/uv/install.sh |
+            env UV_UNMANAGED_INSTALL="$RUNNER_TEMP/uv" sh
+          printf '%s\n' "$RUNNER_TEMP/uv" >> "$GITHUB_PATH"
+
       - name: Check shell scripts
         run: shellcheck tools/*.sh
 

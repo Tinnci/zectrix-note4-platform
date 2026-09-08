@@ -16,6 +16,7 @@ public:
     ExecuteStatus Execute(const Invocation&, BoundedOutput*) override;
     ExecuteStatus Poll(BoundedOutput*) override;
     void Cancel() override;
+    bool streaming() const { return active_ == Handler::kLogFollow; }
 
 private:
     ExecuteStatus Help(const Invocation&, BoundedOutput*);

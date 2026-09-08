@@ -27,7 +27,7 @@ at commit `ca285c98`. See [UPSTREAM.md](UPSTREAM.md) for provenance.
 | Gallery UI and hardware capability demo | Static multi-application runtime with Launcher, Settings, Diagnostics and Clock |
 | Wi-Fi RF, audio, RTC, charging, LED, buttons, NFC and battery self-tests | Source-stable C++17 SDK v1 with compatibility and architecture checks |
 | Basic on-device navigation and shutdown | Versioned companion protocol, durable synchronization, secure BLE transport, Android companion and NFC-assisted enrollment |
-| Hardware-oriented serial diagnostics | Bounded maintenance CLI architecture and tested parser core |
+| Hardware-oriented serial diagnostics | Bounded maintenance CLI, platform diagnostics and interactive host simulator |
 
 ## Development status
 
@@ -41,7 +41,7 @@ Development follows dependency-aware stage gates defined in
 | M3 | Complete | Static application lifecycle and first-party applications |
 | M4 | Complete | Source-stable SDK v1 and unified software/hardware exit gate |
 | C1 | In progress | Companion protocol, durable sync, secure BLE/Android path and NFC-assisted enrollment; full hardware qualification remains open |
-| D1 | In progress | Bounded maintenance CLI core; service commands and hardware exit gate remain open |
+| D1 | In progress | USB sessions, platform diagnostics, log streaming and host simulator implemented; input observation and hardware qualification remain open |
 | M5 | Planned | Measured A/B update, rollback and recovery architecture |
 
 > [!CAUTION]
@@ -90,6 +90,32 @@ prerequisites. See [docs/TOOLCHAIN_POLICY.md](docs/TOOLCHAIN_POLICY.md) for the
 ESP-IDF version policy. See
 [docs/CONTROLLED_TECHNICAL_ENGLISH.md](docs/CONTROLLED_TECHNICAL_ENGLISH.md)
 for the documentation style policy.
+
+## Host maintenance CLI
+
+Run the maintenance CLI on Linux or macOS with a C++17 compiler. The host
+simulator uses the firmware parser, terminal session and diagnostic executor.
+Hardware values are synthetic. It does not require ESP-IDF or a connected board.
+
+```bash
+bash tools/run-cli-host.sh
+# Build once for repeated runs or piped commands.
+bash tools/build-cli-host.sh
+build-host/zectrix-cli-host --owner-delay-ms 500 --log-burst 80
+printf 'sysinfo\nheap\nepd-inspect\n' | build-host/zectrix-cli-host
+```
+
+Use `help` to list commands. `Ctrl+C` cancels, `Ctrl+R` reconnects the session,
+and `Ctrl+D` exits. `--owner-delay-ms` delays diagnostic replies without stopping
+the terminal. `--log-interval-ms 0` disables periodic logs. Piped commands run in
+order, and EOF completes pending replies and cancels log streams.
+
+Run terminal and pipe integration tests with `bash tools/test-cli-host.sh`, or
+the complete suite with `bash tools/test-host.sh`. Tests require Python 3 and
+[uv](https://docs.astral.sh/uv/getting-started/installation/) and use only the
+Python standard library. See the
+[maintenance CLI contract](docs/MAINTENANCE_CLI_CONTRACT.md) for the execution
+model and limits.
 
 ## Controls
 

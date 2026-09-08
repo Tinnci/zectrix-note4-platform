@@ -5,7 +5,8 @@ The `CI` GitHub Actions workflow runs for pull requests to `main`, pushes to
 validation into independent jobs so a failure identifies its platform:
 
 - `Host tests and static checks` runs ShellCheck, architecture checks and the
-  complete C++ host test suite.
+  complete C++ host test suite. It also builds the interactive CLI simulator
+  and runs terminal and pipe integration tests with Python through `uv`.
 - `Android companion` installs JDK 21 and the qualified Android SDK 37.0
   packages, then runs a clean JVM test and debug APK build with the committed
   Gradle Wrapper.
@@ -16,10 +17,11 @@ Successful runs retain the debug APK, firmware images, ELF, map, size report
 and provenance for 14 days. Android test reports are uploaded for non-cancelled
 runs, including failed tests when Gradle produced a report.
 
-Third-party execution is limited to official GitHub, Gradle and Espressif
+Third-party actions are limited to official GitHub, Gradle and Espressif
 actions. Action references are pinned to immutable commits, with the audited
 release version recorded in a comment. Dependabot proposes grouped weekly
 updates instead of allowing action tags to change underneath an existing run.
+Host integration tests install `uv` with its official standalone installer.
 
 Run the corresponding checks locally with:
 

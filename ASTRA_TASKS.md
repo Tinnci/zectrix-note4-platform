@@ -31,7 +31,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Implement `sysinfo`, `heap`, `tasks`, and `uptime` inspection commands.
   - Implement `epd-inspect` (framebuffer and refresh status dump).
   - Implement `log-stream` tap without disturbing the main EPD refresh loop.
-- [ ] **D1.3: Host Integration & Tooling Verification**
+- [x] **D1.3: Host Integration & Tooling Verification**
   - Implement interactive host simulation for CLI testing.
 
 ---
