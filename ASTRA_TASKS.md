@@ -107,6 +107,36 @@ Each iteration picks the top unfinished task, implements production code, verifi
 
 ---
 
+## Milestone S1: Modular Build, Kconfig Tailorability & Service Registry Decoupling (系统模块化积木与Kconfig裁剪解耦)
+
+### 背景与决策意图 (Rationale & Context)
+随着系统功能（Wi-Fi 直连、Web 传书后台、CrossPoint 电子书、USB 维护终端、A/B OTA 等）日益丰富，当前 `main/app_main.cc` 与 `main/CMakeLists.txt` 存在大一统硬编码依赖，缺乏灵活的可选裁剪机制。在 ESP32-S3 这类内存与 Flash 资源极其宝贵的嵌入式主控上，针对不同开发者场景（例如：纯离线阅读器、无屏幕调试网关、极简墨水屏时钟），系统必须支持“一键开/关模块”，且在关闭时通过链接器垃圾回收实现 0 字节 Flash 占用。
+同时，充分信任并赋予 Astra 自主探索权，深度结合硬件 RTC 掉电保持电路与系统绝对时间维持，探索最优雅健壮的工程方案。
+
+### 架构设计准则 (Architectural Principles)
+1. **原生 Kconfig 驱动**：使用 ESP-IDF 原生的 `Kconfig.projbuild` 机制，暴露标准配置项，支持终端 `idf.py menuconfig` 和纯文本 `sdkconfig.defaults`（对 AI / CI 零成本配置友好）。
+2. **CMake 动态组件过滤**：在 `main/CMakeLists.txt` 中依据 `CONFIG_ZECTRIX_ENABLE_*` 动态引入依赖，未选中的组件不参与编译与链接。
+3. **轻量服务注册表 (Service Registry)**：引入无堆分配或极轻量的服务定位抽象（Interface-based），避免 `app_main.cc` 静态 `#include` 所有非必要头文件；上层 Launcher / UI 查询服务为 `nullptr` 时实现优雅降级。
+4. **硬件 RTC 绝对时钟长效维持 (Persistent Wall Clock via RTC Circuit)**：深入分析硬件板载 PCF8563 独立 RTC 电路与备用供电机制。确保设备关机/Deep Sleep 期间 RTC 持续低功耗计时，开机时精准同步回系统墙上时钟（Wall Clock）而非单调运行时间（Monotonic/Uptime fallback），并结合 Companion BLE / 网络时间实现自动回写校准。
+
+### 迭代任务清单 (Backlog Items)
+- [ ] **S1.1: 基础服务抽象与轻量 Service Registry 设计**
+  - 在 `components/zectrix_platform` 或核心库中定义标准化的纯虚服务接口基类与轻量服务注册表 (`zectrix_service_registry.h`)。
+  - 规范各子系统的生命周期契约（`Init()`, `Start()`, `Stop()`），支持无堆或静态 slot 注册与解耦查询。
+- [ ] **S1.2: 组件级 Kconfig 定义与 CMake 条件依赖绑定**
+  - 为 `zectrix_connectivity`、`zectrix_reader`、`zectrix_cli`、`zectrix_update` 编写 `Kconfig.projbuild`。
+  - 声明 `CONFIG_ZECTRIX_ENABLE_CONNECTIVITY`、`CONFIG_ZECTRIX_ENABLE_READER`、`CONFIG_ZECTRIX_ENABLE_USB_CLI` 等选项及其依赖拓扑（如 HTTP 依赖 Wi-Fi）。
+  - 重构 `main/CMakeLists.txt` 为动态 `REQUIRES`，未开启的组件彻底从构建树中剪除。
+- [ ] **S1.3: app_main 解耦与条件装配 (Conditional Wiring) & 硬件 RTC 深度集成**
+  - 将 `main/app_main.cc` 中的具体业务类实例化改造为基于配置宏/服务注册表的装配逻辑。
+  - Launcher / Menu 系统自动根据已启用的模块动态生成菜单项与场景导航，未启用的功能完全剥离。
+  - 完善硬件板载 RTC（PCF8563）的初始化与绝对时钟恢复：关机与微安级休眠期间持续走时，开机自动复原真实世界墙上时间（绝对日期/时间戳），避免时钟归零或仅作为开机计时器。
+- [ ] **S1.4: 极限轻量化配置档验证 (Minimal Profile Regression)**
+  - 在 `tools/` 中新增最小化构建验证脚本（如纯离线 Minimal Profile 测试），验证禁用网络和阅读器后固件体积与片内 RAM 占用的削减效果（目标减少 30%+ 固件体积）。
+  - 确保全套 Host 测试与实机烧录冒烟测试在全量（Full）与最小化（Minimal）两种配置模式下均 100% 正常工作。
+
+---
+
 ## Post-L1 Autonomous Exploration Roadmap (后续自主架构拓展与衍生项目探索)
 
 - [ ] **E1.1: CrossPoint & Flipper Zero 衍生项目调研与风格演进 (Firmware Forks & UI Architecture Study)**

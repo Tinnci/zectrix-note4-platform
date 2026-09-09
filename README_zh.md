@@ -1,15 +1,22 @@
-# ZECTRIX NOTE4 开放固件平台
+# Note4 开放固件平台
 
-[English](README.md) | 中文
+[English](README.md) | 简体中文
 
-本项目将上游 ZECTRIX NOTE4 ESP-IDF 硬件 Demo 演进为一个可复现、低功耗的应用
-平台。项目保留原有板级支持和 SSD2683 显示驱动作为经过验证的硬件基线，并在其上
-增加系统服务、多应用运行时、稳定 SDK、伴侣设备连接和受控维护接口。
+本项目是由 **[Tinnci](https://github.com/Tinnci)** 维护的独立固件框架与应用平台，适用于搭载 SSD2683 黑白墨水屏的 ESP32-S3 设备（基于 Note4 硬件布局）。
 
-项目目标是让应用通过受控接口使用显示、输入、电源、时间、存储和连接能力，而不
-直接操作 GPIO、SPI、裸分区、ESP-NimBLE 或 FreeRTOS 对象。工程只依赖本目录中
-的组件和 ESP-IDF Component Manager 下载的官方依赖，不连接 NOTE4 商业固件，
-也不依赖 LVGL。本项目不是完整的 NOTE4 消费版固件或云服务。
+项目保留原有板级支持和 SSD2683 显示驱动作为经过验证的硬件基线，并在其上增加系统服务、多应用运行时、电子书引擎、稳定 SDK、伴侣设备连接和受控维护接口。
+
+项目目标是让应用通过受控接口使用显示、输入、电源、时间、存储和连接能力，而不直接操作 GPIO、SPI、裸分区、ESP-NimBLE 或 FreeRTOS 对象。工程只依赖本目录中的组件和 ESP-IDF Component Manager 下载的官方依赖，不连接 NOTE4 商业固件，也不依赖 LVGL。本项目不是完整的 NOTE4 消费版固件或云服务。
+
+---
+
+## 声明与商标说明
+
+> [!NOTE]
+> **NOTE4** 与 **ZECTRIX** 是 Zectrix Lab / 相关权利人的产品名称或商标。  
+> 本代码库为独立的第三方开源社区项目，**不是**官方发布的固件，与 Zectrix Lab 亦无官方附属、赞助或背书关系。
+>
+> 刷入第三方固件存在覆盖连接设备上现有软件的风险，操作前请确认硬件版本与准确串口。
 
 ## 从参考 Demo 到应用平台
 
@@ -177,14 +184,20 @@ docs/                         架构、契约与验收记录
 - NFC URL 默认 `https://www.zectrix.com`；测试会备份 NFC 用户区，临时写入并
   回读验证，测试结束后恢复原数据。
 
-## 开源说明
+## 开源与许可证说明
 
-本 Demo 版权归 Zectrix Lab 所有，采用 [MIT License](LICENSE)。第三方依赖和
-字库授权见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。EPD 集成接口见
-[docs/EPD_API.md](docs/EPD_API.md)，硬件引脚见
-[docs/HARDWARE.md](docs/HARDWARE.md)，测试判定见
-[docs/TEST_CRITERIA.md](docs/TEST_CRITERIA.md)。
-欢迎参与改进，提交前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+Copyright (c) 2026 Zectrix Lab  
+Copyright (c) 2026 Tinnci  
+本项目采用 [MIT License](LICENSE) 开源。第三方依赖和字库授权见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。EPD 集成接口见 [docs/EPD_API.md](docs/EPD_API.md)，硬件引脚见 [docs/HARDWARE.md](docs/HARDWARE.md)，测试判定见 [docs/TEST_CRITERIA.md](docs/TEST_CRITERIA.md)。欢迎参与改进，提交前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## 致谢
+
+感谢开源硬件与软件社区的贡献与启发：
+
+- **[ZECTRIX Lab](https://wiki.zectrix.com/)** — 研发了出色的 Note4 硬件，并开源了初始参考演示工程（`itopinion/zectrix-note4-epd-demo`）。
+- **[CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader)** — 为墨水屏流式排版与局域网文件传输提供了良好的架构参考。
+- **[Flipper Zero](https://github.com/flipperdevices/flipperzero-firmware)** — 为轻量场景状态机与 CDC-ACM 终端交互提供了设计灵感。
+- **Heavyweight Type Foundry 与 GNU Unifont** — 提供基于 SIL OFL 协议的开源字库资源。
 
 ## 官方链接
 
