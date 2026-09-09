@@ -75,6 +75,11 @@ Add `--device` to smoke-test both profiles on a connected Note4 and finish on
 Full. See the [profile workflow](docs/MODULAR_BUILD.md#repeatable-fullminimal-regression)
 for individual build/flash commands and measured results.
 
+The [firmware fork and UI study](docs/FIRMWARE_UI_STUDY.md) compares Biscuit,
+CrossMux, CrossInk, Momentum and Unleashed. It proposes daily Home, typography
+and personal cover improvements within the existing ownership and power model.
+The Launcher now shows a scroll indicator when its entries exceed eight rows.
+
 > [!CAUTION]
 > This project targets the black-and-white ZECTRIX NOTE4 hardware. It is not
 > compatible with NOTE4C. Flashing replaces the firmware on the connected

@@ -106,9 +106,10 @@ esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
         return ESP_ERR_INVALID_ARG;
     }
     DrawFrame(title, footer);
+    constexpr int kListHeight = 208;
     const size_t visible = std::min<size_t>(count, 8);
     const size_t first = selected >= visible ? selected - visible + 1 : 0;
-    const int row_height = std::min(42, 208 / static_cast<int>(visible));
+    const int row_height = std::min(42, kListHeight / static_cast<int>(visible));
     const int box_height = std::min(34, row_height - 2);
     const int start_y = 52;
     for (size_t row = 0; row < visible; ++row) {
@@ -122,6 +123,14 @@ esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
             canvas_.Rect(16, y, 368, box_height);
             canvas_.Text(28, y + (box_height - 16) / 2, items[i]);
         }
+    }
+    if (count > visible) {
+        const size_t thumb_height = std::max<size_t>(8, kListHeight * visible / count);
+        const int thumb_offset = static_cast<int>(
+            (kListHeight - thumb_height) * first / (count - visible));
+        canvas_.Line(391, start_y, 391, start_y + kListHeight - 1);
+        canvas_.FillRect(389, start_y + thumb_offset, 5,
+                         static_cast<int>(thumb_height), true);
     }
     return full_refresh ? RefreshFull()
                         : RefreshAuto();
