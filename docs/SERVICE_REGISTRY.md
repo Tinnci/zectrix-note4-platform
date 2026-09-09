@@ -55,8 +55,9 @@ zectrix::time::ClockSnapshot ReadClock(const zectrix::Platform& platform) {
 ```
 
 `Display()`, `Input()`, `Power()`, `Time()`, `Storage()`, `System()`,
-`Connectivity()`, `Update()` and `Diagnostics()` keep their reference API and
-assert if used before successful Platform initialization. Their results are the
+`Boot()`, `Connectivity()`, `Update()` and `Diagnostics()` expose reference APIs and
+assert if used before successful Platform initialization or when the provider
+is excluded. Their results are the
 same objects returned by typed lookup. Availability describes provider lifetime,
 not a live radio connection, valid RTC reading or mounted book file. For
 example, `StopMaintenance()` quiesces the CLI session while its facade remains
@@ -88,12 +89,14 @@ or boot. Hardware operations are never retried automatically by the registry.
 
 ## Production composition
 
-Ten bindings are embedded in Platform's existing `Impl` allocation. The
+Eight core bindings and up to three optional bindings are embedded in Platform's
+existing `Impl` allocation. The
 registry is embedded in Platform itself. Operation order remains explicit:
 
 | Provider | Init | Start | Stop |
 | --- | --- | --- | --- |
-| Update | Validate boot layout and arm trial protection | Ready | Abort unfinished writer; preserve unconfirmed boot watchdog |
+| BootGuard | Validate boot layout and arm trial protection | Ready | Preserve unconfirmed boot watchdog |
+| Update (optional) | Expose firmware writer sharing BootGuard | Ready | Abort unfinished writer |
 | Input | Initialize board, attach optional NFC adapter and Input | Ready | Withdraw Input; retain owner's handle for final board shutdown |
 | Power | Attach Power | Ready | Withdraw Power; retain owner's final power handle |
 | Time | Attach Time | Ready | Release facade |
@@ -101,8 +104,8 @@ registry is embedded in Platform itself. Operation order remains explicit:
 | System | Attach System | Ready | Release facade |
 | Display | Create Display | Ready | Release SPI/DMA and display resources |
 | Diagnostics | Construct with typed service dependencies | Ready | Destroy diagnostic consumer |
-| Connectivity | Create and supply Storage/NFC dependencies | Initialize connectivity | Stop/destroy connectivity before releasing its NFC adapter |
-| Maintenance | Create diagnostic executor and USB CLI | Start USB CLI | Cancel dispatch, join USB session, then destroy both consumers |
+| Connectivity (optional) | Create and supply Storage/NFC dependencies | Initialize connectivity | Stop/destroy connectivity before releasing its NFC adapter |
+| Maintenance (optional) | Create diagnostic executor and USB CLI | Start USB CLI | Cancel dispatch, join USB session, then destroy both consumers |
 
 If initialization stops before Connectivity runs, Platform still releases the
 NFC adapter attached during board initialization. Board support and NFC remain
@@ -110,10 +113,13 @@ private and are not registered application capabilities. Shutdown withdraws
 all public interfaces before the retained Power handle releases board devices,
 cuts rails and sleeps. Final cover rendering still occurs before that sequence.
 
-S1.2 will add Kconfig/CMake component selection. S1.3 will adapt application
-registration and optional consumers to selected services. S1.1 supplies the
-working registry and lifecycle foundation; the full build still enables the
-current service set. The SDK v1 foreground lifecycle and header set are unchanged.
+S1.2 supplies [Kconfig/CMake selection](MODULAR_BUILD.md) and the conditional
+consumers needed to run selected builds. Without Connectivity, Platform does
+not attach the NFC enrollment adapter. Without USB CLI, maintenance polling
+and stop calls are safe no-ops. Without Update, `Platform::Boot()` exposes a
+standalone guard from the core System component. Full builds expose the same
+guard through `Platform::Update().Boot()` and the registry. S1.3 continues the
+application composition and RTC work. SDK v1's lifecycle and headers are unchanged.
 
 ## Verification and references
 

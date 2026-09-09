@@ -27,8 +27,10 @@ first, then board support and the dependent services in a documented order.
 Application code gets non-owning service references from `Platform`. It does
 not call a service factory, call `Attach()`, or delete a service.
 
-S1.1 routes these services plus Update, Connectivity, Diagnostics and
-Maintenance through a fixed 16-slot `ServiceRegistry`. Providers implement the
+These services plus BootGuard, Diagnostics and selected Update, Connectivity
+and Maintenance providers use a fixed 16-slot `ServiceRegistry`. S1.2 makes the
+optional components selectable through [Kconfig](MODULAR_BUILD.md), while
+boot protection remains mandatory. Providers implement the
 pure virtual `Init()`, `Start()`, `Stop()` lifecycle through embedded adapters.
 The composition owner starts providers in dependency order and withdraws each
 interface before stopping it. See [SERVICE_REGISTRY.md](SERVICE_REGISTRY.md).

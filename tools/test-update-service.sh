@@ -9,7 +9,9 @@ trap 'rm -rf "$tmp_dir"' EXIT
     -I"$repo_root/tools/update_host_include" \
     -I"$repo_root/tools/host_include" \
     -I"$repo_root/components/zectrix_update/include" \
-    "$repo_root/components/zectrix_update/zectrix_update_service.cc" \
+    -I"$repo_root/components/zectrix_system/include" \
+    "$repo_root/components/zectrix_system/zectrix_boot_guard.cc" \
+    "$repo_root/components/zectrix_system/zectrix_boot_esp.cc" \
     "$repo_root/components/zectrix_update/zectrix_update_stream.cc" \
     "$repo_root/components/zectrix_update/zectrix_update_esp.cc" \
     "$repo_root/tools/update_service_test.cc" \

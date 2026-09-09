@@ -1,6 +1,7 @@
 #include "zectrix_demo_ui.h"
 #include "zectrix_sleep_cover.h"
 #include "zectrix_unicode_text.h"
+#include "sdkconfig.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -36,7 +37,9 @@ void DrawCalendar(ZectrixCanvas& canvas, const SleepCoverSnapshot& snapshot, con
     if (!calendar.valid) {
         canvas.TextCentered(58, "TIME NOT SET", 2);
         canvas.TextCentered(114, "Set the clock for a daily calendar.");
+#if CONFIG_ZECTRIX_ENABLE_READER
         canvas.TextCentered(147, "Your saved reading position is below.");
+#endif
         return;
     }
     char line[40];
@@ -59,6 +62,7 @@ void DrawCalendar(ZectrixCanvas& canvas, const SleepCoverSnapshot& snapshot, con
     }
 }
 
+#if CONFIG_ZECTRIX_ENABLE_READER
 void DrawReading(ZectrixCanvas& canvas, const SleepCoverSnapshot& snapshot) {
     canvas.Line(16, 175, 383, 175);
     canvas.Text(16, 183, "LAST SAVED READING");
@@ -76,13 +80,20 @@ void DrawReading(ZectrixCanvas& canvas, const SleepCoverSnapshot& snapshot) {
     canvas.Rect(16, 229, 368, 5);
     canvas.FillRect(17, 230, 366 * progress / 1000, 3, true);
 }
+#endif
 }  // namespace
 
 esp_err_t ZectrixDemoUi::ShowSleepCoverMenu(SleepCoverStyle selected, SleepCoverStyle active,
                                            const char* status, bool full_refresh) {
     DrawFrame("SLEEP COVER", "UP/DOWN Select  OK Preview  Hold OK Home");
     const char* styles[] = {"DAILY DASHBOARD", "QUIET LANDSCAPE", "BLANK / PRIVACY"};
-    const char* details[] = {"Calendar, saved reading and a daily line", "A daily line with a mountain illustration", "A clean white screen after power-off"};
+    const char* details[] = {
+#if CONFIG_ZECTRIX_ENABLE_READER
+        "Calendar, saved reading and a daily line",
+#else
+        "Calendar and a daily line",
+#endif
+        "A daily line with a mountain illustration", "A clean white screen after power-off"};
     for (unsigned i = 0; i < std::size(styles); ++i) {
         const bool chosen = i == static_cast<unsigned>(selected);
         const int y = 54 + i * 62;
@@ -118,7 +129,9 @@ esp_err_t ZectrixDemoUi::ShowSleepCover(const SleepCoverSnapshot& snapshot, Slee
     const auto& quote = QuoteForSleep(calendar);
     if (style == SleepCoverStyle::Dashboard) {
         DrawCalendar(canvas_, snapshot, calendar);
+#if CONFIG_ZECTRIX_ENABLE_READER
         DrawReading(canvas_, snapshot);
+#endif
         char line[96];
         std::snprintf(line, sizeof(line), "%s %s", quote.first, quote.second);
         zectrix::ui::DrawUtf8Line(canvas_, 16, 246, line, 368);

@@ -28,6 +28,7 @@ enum class ZectrixTestState : uint8_t {
     kRunning,
     kPass,
     kFail,
+    kSkipped,
 };
 
 enum class ZectrixTestResult : uint8_t {
@@ -35,6 +36,7 @@ enum class ZectrixTestResult : uint8_t {
     kFail,
     kCancelled,
     kShutdown,
+    kSkipped,
 };
 
 struct ZectrixTestUpdate {

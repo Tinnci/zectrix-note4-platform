@@ -3,7 +3,10 @@
 #include <cstring>
 #include <strings.h>
 
+#include "sdkconfig.h"
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
 #include "zectrix_connectivity_service.h"
+#endif
 
 namespace zectrix::reader {
 namespace {
@@ -20,6 +23,7 @@ Result StorageResult(esp_err_t result) {
     }
 }
 
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
 Result SyncResult(companion::SyncStatus result) {
     using Status = companion::SyncStatus;
     switch (result) {
@@ -34,6 +38,7 @@ Result SyncResult(companion::SyncStatus result) {
         default: return Result::Invalid;
     }
 }
+#endif
 }
 
 Result StorageLibrary::Refresh() {
@@ -80,15 +85,28 @@ Result PlatformBookmarkStore::Save(const uint8_t* bytes, std::size_t size) {
     return StorageResult(storage_.SetBlob(kBookmarksKey, bytes, size));
 }
 
-Result PlatformBookmarkStore::Publish(uint32_t revision, const uint8_t* bytes, std::size_t size) {
-    return SyncResult(connectivity_.PutDurableState(kProgressSyncKey, revision, bytes, size));
+Result PlatformBookmarkStore::Publish([[maybe_unused]] uint32_t revision,
+                                     [[maybe_unused]] const uint8_t* bytes,
+                                     [[maybe_unused]] std::size_t size) {
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+    if (connectivity_) return SyncResult(connectivity_->PutDurableState(kProgressSyncKey, revision, bytes, size));
+#endif
+    // Keep the persisted revision pending for a later connected firmware.
+    return Result::Pending;
 }
 
 Result PlatformBookmarkStore::Receive(uint32_t* revision, uint8_t* output,
-                                    std::size_t capacity, std::size_t* size) {
+                                    [[maybe_unused]] std::size_t capacity, std::size_t* size) {
     if (!revision || !output || !size) return Result::Invalid;
-    *size = capacity;
-    return SyncResult(connectivity_.ReadDurableState(kProgressSyncKey, revision, output, size));
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+    if (connectivity_) {
+        *size = capacity;
+        return SyncResult(connectivity_->ReadDurableState(kProgressSyncKey, revision, output, size));
+    }
+#endif
+    *revision = 0;
+    *size = 0;
+    return Result::End;
 }
 
 }  // namespace zectrix::reader

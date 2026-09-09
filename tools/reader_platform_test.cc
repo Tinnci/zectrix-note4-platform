@@ -1,5 +1,8 @@
 #include "zectrix_reader_platform.h"
+#include "sdkconfig.h"
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
 #include "zectrix_connectivity_service.h"
+#endif
 
 #include <cassert>
 #include <cstring>
@@ -12,6 +15,7 @@ using namespace zectrix;
 std::vector<uint8_t> local_record;
 bool fail_local_save = false;
 storage::BookStorage* files = nullptr;
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
 companion::SyncEngine* sync = nullptr;
 
 class MemorySyncStore final : public companion::SyncStore {
@@ -31,6 +35,7 @@ public:
         record.assign(input, input + size); ++writes; return true;
     }
 };
+#endif
 }
 
 namespace zectrix::storage {
@@ -55,6 +60,7 @@ esp_err_t StorageService::ListBooks(BookEntry* entries, std::size_t capacity, st
 esp_err_t StorageService::OpenBook(const char* name, BookFile* file) { return files->Open(name, file); }
 }
 
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
 namespace zectrix::connectivity {
 ConnectivityResult ConnectivityService::Create(ConnectivityService** output) {
     *output = new ConnectivityService(nullptr); return ConnectivityResult::kOk;
@@ -75,6 +81,8 @@ companion::SyncStatus ConnectivityService::ReadDurableState(
     return result;
 }
 }
+
+#endif
 
 void TestReaderPlatform(const char* directory) {
     using namespace zectrix::reader;
@@ -124,6 +132,7 @@ void TestReaderPlatform(const char* directory) {
     engine.Close();
     library.Close();
 
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
     MemorySyncStore sync_store;
     companion::SyncEngine initial_sync;
     assert(initial_sync.Initialize(sync_store) == companion::SyncStatus::kOk);
@@ -179,10 +188,41 @@ void TestReaderPlatform(const char* directory) {
     Bookmarks again(adapter);
     assert(again.Load() == Result::Ok && again.Sync() == Result::Ok && !again.remote());
     assert(*again.Find("alpha.txt", mark.source_bytes) == mark);
+    // Offline progress survives a later switch back to companion firmware.
+    PlatformBookmarkStore offline(*storage_service);
+    Bookmarks offline_reader(offline);
+    assert(offline_reader.Load() == Result::Ok);
+    mark.position.offset = 8;
+    assert(offline_reader.Save(mark) == Result::Ok);
+    assert(offline_reader.Sync() == Result::Pending && offline_reader.pending_sync());
+    Bookmarks reconnected(adapter);
+    assert(reconnected.Load() == Result::Ok && *reconnected.Latest() == mark);
+    assert(reconnected.Sync() == Result::Ok && !reconnected.pending_sync());
+    assert(sync->NextDurableState(&pending) == companion::SyncStatus::kOk);
+    assert(DecodeBookmark(pending.value, pending.value_size, &decoded) && decoded == mark);
     local_record.assign(kBookmarkStoreBytes + 1, 1);
     assert(adapter.Load(payload.data(), payload.size(), &size) == Result::TooLarge);
     delete connectivity_service;
+    sync = nullptr;
+#else
+    PlatformBookmarkStore adapter(*storage_service);
+    Bookmarks bookmarks(adapter);
+    assert(bookmarks.Load() == Result::Ok && !bookmarks.Latest());
+    Bookmark mark;
+    mark.book_id = library.Get(0).id;
+    mark.source_bytes = library.Get(0).bytes;
+    mark.position.offset = 12;
+    assert(bookmarks.Save(mark) == Result::Ok);
+    assert(bookmarks.Sync() == Result::Pending && bookmarks.pending_sync());
+    Bookmarks reboot(adapter);
+    assert(reboot.Load() == Result::Ok && *reboot.Latest() == mark);
+    assert(reboot.Sync() == Result::Pending && !reboot.remote());
+    fail_local_save = true;
+    mark.position.offset = 0;
+    assert(reboot.Save(mark) == Result::IoError);
+    assert(reboot.Latest()->position.offset == 12);
+    fail_local_save = false;
+#endif
     delete storage_service;
     files = nullptr;
-    sync = nullptr;
 }

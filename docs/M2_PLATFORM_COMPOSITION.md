@@ -17,18 +17,19 @@ One `Platform` object owns board support and these services:
 The application owns only the `Platform` object. It gets non-owning references
 from `Platform`. It does not create, attach, or delete a service.
 
-S1.1 registers Update, Connectivity, Diagnostics and Maintenance alongside
-these six core services. `Platform::Services()` exposes a read-only typed
-registry; absent or stopped providers return `nullptr`. Ten lifecycle bindings
-live in the existing Platform implementation allocation. Details are in
+S1.2 registers mandatory BootGuard and Diagnostics alongside these six core
+services, plus selected Update, Connectivity and Maintenance providers.
+`Platform::Services()` exposes a read-only typed registry; absent or stopped
+providers return `nullptr`. Eight to eleven lifecycle bindings live in the
+existing Platform implementation allocation. Details are in
 [SERVICE_REGISTRY.md](SERVICE_REGISTRY.md).
 
 ## Initialization
 
 `Platform::Initialize()` performs these operations:
 
-1. Validate update layout and arm trial-boot protection when required.
-2. Initialize board support and attach the optional NFC adapter.
+1. Validate boot layout and arm trial-boot protection; expose the optional firmware writer.
+2. Initialize board support and attach the NFC enrollment adapter when Connectivity is selected.
 3. Attach InputService.
 4. Attach PowerService.
 5. Attach TimeService.
@@ -36,8 +37,8 @@ live in the existing Platform implementation allocation. Details are in
 7. Attach SystemService.
 8. Create DisplayService.
 9. Create Diagnostics with typed references to the services.
-10. Create and initialize Connectivity with Storage/NFC dependencies.
-11. Create the maintenance executor and start the USB CLI.
+10. Create and initialize Connectivity with Storage/NFC dependencies when selected.
+11. Create the maintenance executor and start the USB CLI when selected.
 
 The registry runs each provider's `Init()` and `Start()`, publishes its
 interface, then advances to the next provider. This preserves the existing

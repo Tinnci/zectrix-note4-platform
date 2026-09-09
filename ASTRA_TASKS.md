@@ -126,10 +126,13 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Added pure virtual Service/ServiceProvider interfaces and a 16-slot typed registry with no RTTI, task or registry heap allocation. Missing, unstarted and stopped providers return null; failed startup unwinds attempted providers in reverse order.
   - Integrated ten embedded lifecycle bindings into production Platform startup, accessors and cleanup. Preserved CLI/NFC cleanup, final Input/Power ownership and trial-boot watchdog behavior; Kconfig selection and application conditionals remain S1.2/S1.3.
   - Verified all 31 Host targets, focused registry/platform ASan/UBSan checks, ShellCheck, the ESP32-S3 build and connected-device flash/boot smoke. Registry size is 528 bytes on the 64-bit Host and 264 bytes in the ESP32-S3 ELF; registry dispatch allocates no heap. See docs/SERVICE_REGISTRY.md.
-- [ ] **S1.2: 组件级 Kconfig 定义与 CMake 条件依赖绑定**
+- [x] **S1.2: 组件级 Kconfig 定义与 CMake 条件依赖绑定**
   - 为 `zectrix_connectivity`、`zectrix_reader`、`zectrix_cli`、`zectrix_update` 编写 `Kconfig.projbuild`。
   - 声明 `CONFIG_ZECTRIX_ENABLE_CONNECTIVITY`、`CONFIG_ZECTRIX_ENABLE_READER`、`CONFIG_ZECTRIX_ENABLE_USB_CLI` 等选项及其依赖拓扑（如 HTTP 依赖 Wi-Fi）。
   - 重构 `main/CMakeLists.txt` 为动态 `REQUIRES`，未开启的组件彻底从构建树中剪除。
+  - Added four component Kconfig definitions with selectable connectivity, Wi-Fi, HTTPS, Web transfer, reader, USB CLI and firmware writing. Native Kconfig resolution runs before IDF dependency expansion, preserving defaults and saved settings while removing excluded components, sources, fonts and book storage.
+  - Integrated selected services and Launcher destinations, independent Web transfer, offline bookmark persistence and RF SKIP reporting. Moved existing boot validation, rollback confirmation and watchdog protection into the mandatory System component so disabling firmware writing preserves recovery safety.
+  - Verified all 32 Host targets, five Launcher profiles and five Platform compositions, six ESP32-S3 firmware profiles, a fresh core build, saved-config off/on/off changes, ShellCheck and connected-device flash/boot smoke. Full firmware is 2,990,112 bytes; Core is 545,216 bytes (81.8% smaller). See docs/MODULAR_BUILD.md; broader application/RTC work remains S1.3 and reusable minimal-profile qualification remains S1.4.
 - [ ] **S1.3: app_main 解耦与条件装配 (Conditional Wiring) & 硬件 RTC 深度集成**
   - 将 `main/app_main.cc` 中的具体业务类实例化改造为基于配置宏/服务注册表的装配逻辑。
   - Launcher / Menu 系统自动根据已启用的模块动态生成菜单项与场景导航，未启用的功能完全剥离。

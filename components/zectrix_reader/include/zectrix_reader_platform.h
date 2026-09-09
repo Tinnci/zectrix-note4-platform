@@ -1,5 +1,6 @@
 #pragma once
 
+#include "sdkconfig.h"
 #include "zectrix_reader_bookmarks.h"
 #include "zectrix_reader_library.h"
 #include "zectrix_storage_service.h"
@@ -36,9 +37,16 @@ private:
 
 class PlatformBookmarkStore final : public BookmarkStore {
 public:
+    explicit PlatformBookmarkStore(storage::StorageService& storage,
+                          [[maybe_unused]] connectivity::ConnectivityService* connectivity = nullptr)
+        : storage_(storage)
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+        , connectivity_(connectivity)
+#endif
+        {}
     PlatformBookmarkStore(storage::StorageService& storage,
                           connectivity::ConnectivityService& connectivity)
-        : storage_(storage), connectivity_(connectivity) {}
+        : PlatformBookmarkStore(storage, &connectivity) {}
     Result Load(uint8_t* output, std::size_t capacity, std::size_t* size) override;
     Result Save(const uint8_t* bytes, std::size_t size) override;
     Result Publish(uint32_t revision, const uint8_t* bytes, std::size_t size) override;
@@ -46,7 +54,9 @@ public:
 
 private:
     storage::StorageService& storage_;
-    connectivity::ConnectivityService& connectivity_;
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+    connectivity::ConnectivityService* connectivity_;
+#endif
 };
 
 }  // namespace zectrix::reader

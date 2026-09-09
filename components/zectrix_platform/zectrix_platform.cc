@@ -1,23 +1,31 @@
 #include "zectrix_platform.h"
-#include "zectrix_platform_diagnostics.h"
 
 #include <cassert>
 #include <new>
 #include <utility>
 
 #include "esp_log.h"
+#include "sdkconfig.h"
 #include "zectrix_board.h"
+#include "zectrix_boot_esp.h"
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+#include "zectrix_platform_diagnostics.h"
 #include "zectrix_cli_usb.h"
+#endif
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
 #include "zectrix_connectivity_service.h"
-#include "zectrix_display_service.h"
 #include "zectrix_nfc_service.h"
+#endif
+#include "zectrix_display_service.h"
 #include "zectrix_input_service.h"
 #include "zectrix_power_service.h"
 #include "zectrix_self_test.h"
 #include "zectrix_storage_service.h"
 #include "zectrix_system_service.h"
 #include "zectrix_time_service.h"
+#if CONFIG_ZECTRIX_ENABLE_UPDATE
 #include "zectrix_update_esp.h"
+#endif
 
 namespace zectrix {
 
@@ -49,10 +57,20 @@ private:
 }  // namespace
 
 struct Platform::Impl {
+#if CONFIG_ZECTRIX_ENABLE_UPDATE
     update::EspUpdateBackend update_backend;
     update::UpdateService update{update_backend};
+    update::BootGuard* boot_facade = &update.Boot();
+#else
+    update::EspBootBackend boot_backend;
+    update::BootGuard boot{boot_backend};
+    update::BootGuard* boot_facade = &boot;
+#endif
     ZectrixBoard board;
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
     nfc::NfcService* nfc_service = nullptr;
+    connectivity::ConnectivityService* connectivity = nullptr;
+#endif
     input::InputService* input = nullptr;
     power::PowerService* power = nullptr;
     time::TimeService* time = nullptr;
@@ -60,25 +78,27 @@ struct Platform::Impl {
     system::SystemService* system = nullptr;
     display::DisplayService* display = nullptr;
     ZectrixSelfTest* diagnostics = nullptr;
-    connectivity::ConnectivityService* connectivity = nullptr;
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
     cli::CliUsbService* cli_usb = nullptr;
     PlatformDiagnostics* maintenance = nullptr;
+#endif
 
     void StopMaintenance() {
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
         if (maintenance != nullptr) maintenance->Shutdown();
         if (cli_usb != nullptr) cli_usb->Stop();
+#endif
     }
 
     static esp_err_t KeepForPowerTransition(Impl&) { return ESP_OK; }
-    update::UpdateService* update_facade = &update;
-    ServiceBinding<update::UpdateService, Impl> update_binding{
-        *this, update_facade, [](Impl& self) {
-            const auto result = self.update.BeginBoot();
+    ServiceBinding<update::BootGuard, Impl> boot_binding{
+        *this, boot_facade, [](Impl& self) {
+            const auto result = self.boot_facade->BeginBoot();
             if (result != update::Result::kOk) {
                 ESP_LOGE("update", "boot protection failed: %s", update::ResultName(result));
                 return ESP_FAIL;
             }
-            const auto boot = self.update.ReadBootStatus();
+            const auto boot = self.boot_facade->ReadBootStatus();
             ESP_LOGI("update", "running=0x%08lx selected=0x%08lx update=0x%08lx state=%u layout=%s",
                      static_cast<unsigned long>(boot.running.address),
                      static_cast<unsigned long>(boot.boot.address),
@@ -87,16 +107,23 @@ struct Platform::Impl {
             if (boot.confirmation_pending && !boot.rollback_available)
                 ESP_LOGW("update", "trial boot has no verified fallback image");
             return ESP_OK;
-        }, nullptr, [](Impl& self) {
+        }, nullptr, KeepForPowerTransition};
+#if CONFIG_ZECTRIX_ENABLE_UPDATE
+    update::UpdateService* update_facade = &update;
+    ServiceBinding<update::UpdateService, Impl> update_binding{
+        *this, update_facade, nullptr, nullptr, [](Impl& self) {
             // Stopping a provider must never confirm a trial image or disarm its watchdog.
             self.update.AbortFirmware();
             return ESP_OK;
         }};
+#endif
     ServiceBinding<input::InputService, Impl> input_binding{
         *this, input, [](Impl& self) {
             esp_err_t err = self.board.Init();
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
             if (err == ESP_OK && self.board.HasNfc() && self.board.nfc() != nullptr)
                 err = nfc::NfcService::Attach(*self.board.nfc(), &self.nfc_service);
+#endif
             if (err == ESP_OK) err = input::InputService::Attach(self.board, &self.input);
             return err;
         }, nullptr, KeepForPowerTransition};
@@ -118,6 +145,7 @@ struct Platform::Impl {
                 self.board, *self.input, *self.power, *self.time, *self.storage, *self.system);
             return self.diagnostics ? ESP_OK : ESP_ERR_NO_MEM;
         }};
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
     ServiceBinding<connectivity::ConnectivityService, Impl> connectivity_binding{
         *this, connectivity, [](Impl& self) {
             const auto result = connectivity::ConnectivityService::Create(&self.connectivity);
@@ -132,6 +160,8 @@ struct Platform::Impl {
             delete std::exchange(self.nfc_service, nullptr);
             return ESP_OK;
         }};
+#endif
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
     ServiceBinding<cli::CliUsbService, Impl> maintenance_binding{
         *this, cli_usb, [](Impl& self) {
             self.maintenance = new (std::nothrow) PlatformDiagnostics(
@@ -146,9 +176,13 @@ struct Platform::Impl {
             delete std::exchange(self.maintenance, nullptr);
             return ESP_OK;
         }};
+#endif
 
     esp_err_t RegisterServices(ServiceRegistry& registry) {
-        esp_err_t err = registry.Register(update_binding);
+        esp_err_t err = registry.Register(boot_binding);
+#if CONFIG_ZECTRIX_ENABLE_UPDATE
+        if (err == ESP_OK) err = registry.Register(update_binding);
+#endif
         if (err == ESP_OK) err = registry.Register(input_binding);
         if (err == ESP_OK) err = registry.Register(power_binding);
         if (err == ESP_OK) err = registry.Register(time_binding);
@@ -156,8 +190,12 @@ struct Platform::Impl {
         if (err == ESP_OK) err = registry.Register(system_binding);
         if (err == ESP_OK) err = registry.Register(display_binding);
         if (err == ESP_OK) err = registry.Register(diagnostics_binding);
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
         if (err == ESP_OK) err = registry.Register(connectivity_binding);
+#endif
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
         if (err == ESP_OK) err = registry.Register(maintenance_binding);
+#endif
         return err;
     }
 };
@@ -194,6 +232,7 @@ ZECTRIX_PLATFORM_ACCESSOR(power::PowerService, Power)
 ZECTRIX_PLATFORM_ACCESSOR(time::TimeService, Time)
 ZECTRIX_PLATFORM_ACCESSOR(storage::StorageService, Storage)
 ZECTRIX_PLATFORM_ACCESSOR(system::SystemService, System)
+ZECTRIX_PLATFORM_ACCESSOR(update::BootGuard, Boot)
 ZECTRIX_PLATFORM_ACCESSOR(connectivity::ConnectivityService, Connectivity)
 ZECTRIX_PLATFORM_ACCESSOR(update::UpdateService, Update)
 ZECTRIX_PLATFORM_ACCESSOR(ZectrixSelfTest, Diagnostics)
@@ -201,7 +240,9 @@ ZECTRIX_PLATFORM_ACCESSOR(ZectrixSelfTest, Diagnostics)
 #undef ZECTRIX_PLATFORM_ACCESSOR
 
 void Platform::PollMaintenance() {
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
     if (impl_ != nullptr && impl_->maintenance != nullptr) impl_->maintenance->Poll();
+#endif
 }
 
 void Platform::StopMaintenance() {
@@ -220,8 +261,10 @@ void Platform::ReleaseServices() {
     if (impl_ == nullptr) return;
     const auto stopped = services_.StopAll();
     if (stopped != ESP_OK) ESP_LOGW("platform", "service stop failed: %d", stopped);
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
     // Board initialization can attach NFC before the connectivity provider runs.
     delete std::exchange(impl_->nfc_service, nullptr);
+#endif
 }
 
 void Platform::ResetServices() {

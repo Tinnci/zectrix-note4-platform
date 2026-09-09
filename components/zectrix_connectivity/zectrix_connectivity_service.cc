@@ -9,6 +9,7 @@
 #include <new>
 
 #include "esp_log.h"
+#include "sdkconfig.h"
 #include "esp_mac.h"
 #include "esp_random.h"
 #include "esp_timer.h"
@@ -24,9 +25,13 @@
 #include "zectrix_power_service.h"
 #include "zectrix_storage_service.h"
 #include "zectrix_sync_session.h"
+#if CONFIG_ZECTRIX_ENABLE_WIFI
 #include "zectrix_wifi_credentials.h"
 #include "zectrix_wifi_esp_driver.h"
+#endif
+#if CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
 #include "zectrix_book_web.h"
+#endif
 
 namespace zectrix::connectivity {
 namespace {
@@ -103,6 +108,7 @@ void LogEnrollmentRejection(const char* reason, uint32_t session_id) {
              static_cast<unsigned long>(session_id), reason);
 }
 
+#if CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
 class BookRadio final : public BookTransferRadio {
 public:
     WifiDriverResult Start(BookTransferMode mode, const WifiCredentials& credentials) override {
@@ -135,6 +141,8 @@ bool BookPolicyAllowed(const companion::ConnectivityConditions& conditions) {
         conditions.user_policy != companion::UserConnectivityPolicy::kPhoneOnly;
 }
 
+#endif
+
 }  // namespace
 
 struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
@@ -161,12 +169,26 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
         ConnectivityResult::kTransportError};
     std::array<uint8_t, 16> stored_companion_id{};
     bool stored_companion_id_valid = false;
+#if CONFIG_ZECTRIX_ENABLE_WIFI
     std::unique_ptr<StoredWifiCredentials> wifi_credentials;
+#endif
+#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
     EspWifiBackendDriver wifi_driver;
+#endif
     std::unique_ptr<WifiBackend> wifi_backend;
     std::unique_ptr<ResourceClient> resource_client;
+#if CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
     std::unique_ptr<BookShare> book_share;
     BookTransferSnapshot book_status;
+#endif
+
+    bool BookBusy() const {
+#if CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
+        return book_share && book_share->transfer.Busy();
+#else
+        return false;
+#endif
+    }
     companion::ConnectivityConditions resource_conditions{};
     uint32_t resource_sequence = 0;
     uint32_t resource_phone_session = 0;
@@ -609,7 +631,7 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
             : resource_client->NextWakeMs(MonotonicMilliseconds());
         uint32_t next = std::min(resource_next, sync_session.NextWakeMs(MonotonicMilliseconds(),
             resource_client == nullptr || !resource_client->AwaitingPhone()));
-        if (book_share && book_share->transfer.Busy()) next = std::min(next, uint32_t{100});
+        if (BookBusy()) next = std::min(next, uint32_t{100});
         xSemaphoreGive(resource_mutex);
         return next;
     }
@@ -635,10 +657,12 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
                 ? companion::PhoneAvailability::kConnected
                 : companion::PhoneAvailability::kUnavailable;
         resource_client->Poll(resource_conditions, MonotonicMilliseconds());
+#if CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
         if (book_share && book_share->transfer.Busy()) {
             book_share->transfer.Poll(MonotonicMilliseconds(), BookPowerAllowed(resource_conditions), BookPolicyAllowed(resource_conditions));
             book_status = book_share->transfer.Snapshot();
         }
+#endif
         xSemaphoreGive(resource_mutex);
     }
 
@@ -891,6 +915,7 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
                 vTaskDelay(pdMS_TO_TICKS(20));
             }
         }
+#if CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
         if (self->book_share) {
             const auto started = MonotonicMilliseconds();
             do {
@@ -902,6 +927,7 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
                 vTaskDelay(pdMS_TO_TICKS(20));
             } while (MonotonicMilliseconds() - started < 2000);
         }
+#endif
         xSemaphoreGive(self->session_task_done);
         vTaskDelete(nullptr);
     }
@@ -963,7 +989,7 @@ ConnectivityResult ConnectivityService::Stop() {
     impl_->ble.Stop();
     return (impl_->wifi_backend != nullptr &&
         impl_->wifi_backend->State() == WifiBackendState::kStopFailed) ||
-        (impl_->book_share && impl_->book_share->transfer.Busy())
+        (impl_->BookBusy())
             ? ConnectivityResult::kTransportError : ConnectivityResult::kOk;
 }
 
@@ -984,17 +1010,25 @@ ConnectivityResult ConnectivityService::Initialize() {
     if (impl_->initialization_started) return ConnectivityResult::kInvalidState;
     impl_->initialization_started = true;
 
+#if CONFIG_ZECTRIX_ENABLE_WIFI
     impl_->wifi_credentials.reset(new (std::nothrow)
         StoredWifiCredentials(impl_->storage_service));
     if (impl_->wifi_credentials == nullptr) return ConnectivityResult::kUnavailable;
+#endif
+#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
     impl_->wifi_backend.reset(new (std::nothrow)
         WifiBackend(impl_->wifi_credentials.get(), &impl_->wifi_driver));
+#else
+    impl_->wifi_backend.reset(new (std::nothrow) WifiBackend(nullptr, nullptr));
+#endif
     if (impl_->wifi_backend == nullptr) return ConnectivityResult::kUnavailable;
     impl_->resource_client.reset(new (std::nothrow)
         ResourceClient(*impl_->wifi_backend, *impl_));
     if (impl_->resource_client == nullptr) return ConnectivityResult::kUnavailable;
     impl_->resource_conditions.battery_percent = 0;
+#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
     impl_->resource_conditions.wifi_credentials_available = impl_->wifi_credentials->Available();
+#endif
     uint32_t stored_policy = 0;
     if (impl_->storage_service != nullptr &&
         impl_->storage_service->GetUInt32("conn_policy", &stored_policy) == ESP_OK &&
@@ -1140,7 +1174,8 @@ ConnectivitySnapshot ConnectivityService::Snapshot() const {
         snapshot.wifi_credentials_available = impl_->resource_conditions.wifi_credentials_available;
         snapshot.resource_busy = impl_->resource_client->Busy();
         snapshot.wifi_state = impl_->resource_client->WifiState();
-        snapshot.book_transfer_active = impl_->book_share && impl_->book_share->transfer.Busy();
+#if CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
+        snapshot.book_transfer_active = impl_->BookBusy();
         if (snapshot.book_transfer_active) {
             const auto& books = impl_->book_status;
             snapshot.wifi_state = books.state == BookTransferState::Sharing ? WifiBackendState::kTransferring :
@@ -1148,6 +1183,7 @@ ConnectivitySnapshot ConnectivityService::Snapshot() const {
                     (books.error == BookTransferError::Stop ? WifiBackendState::kStopFailed : WifiBackendState::kStopping) :
                 WifiBackendState::kStartingStation;
         }
+#endif
         snapshot.resource_decision = impl_->resource_client->Decision();
         snapshot.sync_converged = snapshot.peer_authorized && snapshot.protocol_negotiated_local &&
             impl_->sync_session.Converged();
@@ -1206,6 +1242,7 @@ ConnectivityResult ConnectivityService::SetUserPolicy(companion::UserConnectivit
     return saved == ESP_OK ? ConnectivityResult::kOk : ConnectivityResult::kUnavailable;
 }
 
+#if CONFIG_ZECTRIX_ENABLE_WIFI
 ConnectivityResult ConnectivityService::ConfigureWifi(const WifiCredentials& credentials) {
     if (impl_ == nullptr || !impl_->initialized.load() ||
         impl_->wifi_credentials == nullptr) return ConnectivityResult::kInvalidState;
@@ -1215,16 +1252,24 @@ ConnectivityResult ConnectivityService::ConfigureWifi(const WifiCredentials& cre
         xSemaphoreGive(impl_->resource_mutex);
         return ConnectivityResult::kInvalidState;
     }
-    if (impl_->resource_client->WifiBusy() || (impl_->book_share && impl_->book_share->transfer.Busy())) {
+    if (impl_->resource_client->WifiBusy() || (impl_->BookBusy())) {
         xSemaphoreGive(impl_->resource_mutex);
         return ConnectivityResult::kBusy;
     }
     const esp_err_t saved = impl_->wifi_credentials->Save(credentials);
+#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
     if (saved == ESP_OK) impl_->resource_conditions.wifi_credentials_available = true;
+#endif
     xSemaphoreGive(impl_->resource_mutex);
     impl_->ble.WakeSessionWaiter();
     return saved == ESP_OK ? ConnectivityResult::kOk : ConnectivityResult::kUnavailable;
 }
+
+#else
+ConnectivityResult ConnectivityService::ConfigureWifi(const WifiCredentials&) {
+    return ConnectivityResult::kUnavailable;
+}
+#endif
 
 ConnectivityResult ConnectivityService::RequestResource(
     const companion::ResourceRequestMessage& request) {
@@ -1243,7 +1288,7 @@ ConnectivityResult ConnectivityService::RequestResource(
         xSemaphoreGive(impl_->resource_mutex);
         return ConnectivityResult::kInvalidState;
     }
-    if (impl_->book_share && impl_->book_share->transfer.Busy()) {
+    if (impl_->BookBusy()) {
         xSemaphoreGive(impl_->resource_mutex);
         return ConnectivityResult::kBusy;
     }
@@ -1266,6 +1311,7 @@ bool ConnectivityService::TakeResourceResponse(ResourceResponse* response) {
     return received;
 }
 
+#if CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
 ConnectivityResult ConnectivityService::StartBookTransfer(BookTransferMode mode) {
     if (!impl_ || !impl_->initialized.load() || !impl_->resource_mutex || !impl_->storage_service ||
         (mode != BookTransferMode::Hotspot && mode != BookTransferMode::Station)) return ConnectivityResult::kInvalidState;
@@ -1276,7 +1322,7 @@ ConnectivityResult ConnectivityService::StartBookTransfer(BookTransferMode mode)
         return result;
     };
     if (!impl_->initialized.load()) return finish(ConnectivityResult::kInvalidState);
-    if (impl_->book_share && impl_->book_share->transfer.Busy()) return finish(ConnectivityResult::kBusy);
+    if (impl_->BookBusy()) return finish(ConnectivityResult::kBusy);
     impl_->book_status = {};
     impl_->book_status.mode = mode;
     auto fail = [&](BookTransferError error) {
@@ -1329,6 +1375,14 @@ BookTransferSnapshot ConnectivityService::BookTransferStatus() const {
     xSemaphoreGive(impl_->resource_mutex);
     return status;
 }
+
+#else
+ConnectivityResult ConnectivityService::StartBookTransfer(BookTransferMode) {
+    return ConnectivityResult::kUnavailable;
+}
+ConnectivityResult ConnectivityService::StopBookTransfer() { return ConnectivityResult::kOk; }
+BookTransferSnapshot ConnectivityService::BookTransferStatus() const { return {}; }
+#endif
 
 companion::SyncStatus ConnectivityService::PutDurableState(
     uint16_t key, uint32_t revision, const uint8_t* value, std::size_t size) {

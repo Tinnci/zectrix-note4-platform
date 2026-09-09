@@ -1,6 +1,7 @@
 #pragma once
 
 #include "zectrix_update_service.h"
+#include "zectrix_boot_esp.h"
 
 namespace zectrix::update {
 
@@ -12,11 +13,11 @@ public:
     EspUpdateBackend(const EspUpdateBackend&) = delete;
     EspUpdateBackend& operator=(const EspUpdateBackend&) = delete;
 
-    Result ReadBootInfo(BootInfo* info) override;
-    uint64_t Milliseconds() const override;
-    Result ArmBootWatchdog(uint32_t timeout_ms) override;
-    void DisarmBootWatchdog() override;
-    Result ConfirmRunningImage(const Partition& expected) override;
+    Result ReadBootInfo(BootInfo* info) override { return boot_.ReadBootInfo(info); }
+    uint64_t Milliseconds() const override { return boot_.Milliseconds(); }
+    Result ArmBootWatchdog(uint32_t timeout_ms) override { return boot_.ArmBootWatchdog(timeout_ms); }
+    void DisarmBootWatchdog() override { boot_.DisarmBootWatchdog(); }
+    Result ConfirmRunningImage(const Partition& expected) override { return boot_.ConfirmRunningImage(expected); }
     Result BeginImage(const Partition& target, uint32_t image_bytes,
                       const uint8_t* header, std::size_t header_bytes) override;
     Result WriteImage(const uint8_t* data, std::size_t size) override;
@@ -24,6 +25,7 @@ public:
     void AbortImage() override;
 
 private:
+    EspBootBackend boot_;
     Result CheckImageTarget() const;
     Partition image_target_;
     Partition image_running_;

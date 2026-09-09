@@ -1,6 +1,6 @@
 #pragma once
 
-#include "zectrix_update_service.h"
+#include "zectrix_boot_guard.h"
 
 inline zectrix::update::BootInfo UpdateBootFixture(
     zectrix::update::PartitionKind running = zectrix::update::PartitionKind::kFactory) {

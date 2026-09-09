@@ -1,0 +1,11 @@
+config ZECTRIX_ENABLE_READER
+    bool "TXT and EPUB reader"
+    default y
+    help
+        Enable streamed text/EPUB pagination, the CJK font and reading scenes.
+        Local bookmarks work without connectivity. Companion sync is used when
+        available. Disabling the reader keeps the calendar and sleep covers.
+
+config ZECTRIX_ENABLE_BOOK_STORAGE
+    bool
+    default y if ZECTRIX_ENABLE_READER || ZECTRIX_ENABLE_BOOK_TRANSFER

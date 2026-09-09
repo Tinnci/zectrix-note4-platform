@@ -19,14 +19,7 @@ LauncherResult LauncherController::Handle(const sdk::InputEvent& event) {
         return {LauncherDecision::RenderFast, selected_};
     }
     if (event.button == sdk::Button::Ok) {
-        constexpr LauncherDecision decisions[] = {
-            LauncherDecision::OpenReader,
-            LauncherDecision::OpenBookTransfer,
-            LauncherDecision::OpenClock, LauncherDecision::OpenSleepCover, LauncherDecision::OpenSettings,
-            LauncherDecision::OpenConnectivity, LauncherDecision::OpenShowcase,
-            LauncherDecision::OpenGallery, LauncherDecision::OpenDiagnostics,
-            LauncherDecision::OpenDeviceInfo, LauncherDecision::OpenAbout};
-        return {decisions[selected_], selected_};
+        return {kLauncherItems[selected_].decision, selected_};
     }
     return {LauncherDecision::None, selected_};
 }

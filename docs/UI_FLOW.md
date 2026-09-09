@@ -28,6 +28,10 @@ The home menu contains:
 10. **DEVICE INFO** — board information and live power measurements.
 11. **ABOUT & LICENSE** — project ownership and license.
 
+Kconfig removes BOOK READER, SEND BOOKS and CONNECTIVITY when their modules
+are disabled. Menu selection, scrolling and navigation use the same selected
+item table. See [MODULAR_BUILD.md](MODULAR_BUILD.md).
+
 Returning home restores the previous selection. Auto Showcase is off by
 default for new installations; valid existing preferences are retained. If
 enabled, it starts after 15 seconds without physical input on the home screen.
@@ -51,7 +55,8 @@ See [READER.md](READER.md) for supported books and content installation.
 Send Books uses Mode -> Session. UP/DOWN selects a temporary hotspot or a saved
 home network. OK starts the session, which shows SSID, access code, HTTP address
 and upload progress. OK during transfer finishes it. Completion OK opens the
-reader. Hold OK stops and returns to Mode, then home. HTTP and radio work run
+reader, or returns home when the reader is disabled. Hold OK stops and returns
+to Mode, then home. HTTP and radio work run
 under Connectivity ownership. Progress renders are limited to one per second
 and 10-percent steps or saved-book count changes. See
 [BOOK_TRANSFER.md](BOOK_TRANSFER.md) for browser controls and timeouts.
@@ -115,7 +120,9 @@ while return and shutdown remain available.
 ## Hardware-test screen
 
 A full-width strip below the page title shows all seven tests and their
-WAIT/RUN/PASS/FAIL state. The selected test uses an inverted cell. Instructions
+WAIT/RUN/PASS/FAIL/SKIP state. With Wi-Fi disabled, RF reports SKIP and the
+summary excludes it from executed tests and failures. The selected test uses
+an inverted cell. Instructions
 and measurements use the full content width below the strip. Shorten
 exceptionally long runtime values with an ellipsis.
 Interactive tests use explicit operator prompts. Long OK cancels the active

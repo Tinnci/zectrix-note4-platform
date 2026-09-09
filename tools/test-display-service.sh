@@ -33,6 +33,7 @@ reader_dir="$root_dir/components/zectrix_reader"
   "$root_dir/components/zectrix_demo_ui/zectrix_view_port.cc" \
   "$root_dir/components/zectrix_demo_ui/zectrix_status_bar.cc" \
   "$root_dir/components/zectrix_demo_ui/zectrix_reader_ui.cc" \
+  "$root_dir/components/zectrix_demo_ui/zectrix_book_transfer_ui.cc" \
   "$root_dir/components/zectrix_demo_ui/zectrix_unicode_text.cc" \
   "$root_dir/components/zectrix_demo_ui/zectrix_sleep_ui.cc" \
   "$root_dir/components/zectrix_app/zectrix_scene_manager.cc" \

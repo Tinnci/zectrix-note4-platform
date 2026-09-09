@@ -1,3 +1,8 @@
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/zectrix_features.cmake")
+set(private_requires)
+if(CONFIG_ZECTRIX_ENABLE_CONNECTIVITY)
+    list(APPEND private_requires zectrix_connectivity)
+endif()
 idf_component_register(
     SRCS "zectrix_reader.cc" "zectrix_reader_zip.cc" "zectrix_reader_text.cc"
          "zectrix_reader_font.cc" "zectrix_reader_font_data.S"
@@ -6,7 +11,8 @@ idf_component_register(
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "private" "third_party/miniz"
     REQUIRES zectrix_storage
-    PRIV_REQUIRES zectrix_connectivity
+    PRIV_REQUIRES ${private_requires}
+    KCONFIG_PROJBUILD "${CMAKE_CURRENT_LIST_DIR}/../../cmake/Kconfig.empty"
 )
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_17)
 target_compile_definitions(${COMPONENT_LIB} PRIVATE

@@ -8,18 +8,27 @@
 #include <new>
 
 #include "esp_log.h"
+#include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "zectrix/zectrix_sdk.h"
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
 #include "zectrix_connectivity_service.h"
+#endif
 #include "zectrix_demo_ui.h"
 #include "zectrix_first_party_app_controllers.h"
 #include "zectrix_scene_manager.h"
 #include "zectrix_gallery_controller.h"
+#if CONFIG_ZECTRIX_ENABLE_READER
 #include "zectrix_reader_controller.h"
+#endif
+#if CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
 #include "zectrix_book_transfer_controller.h"
+#endif
 #include "zectrix_sleep_cover.h"
+#if CONFIG_ZECTRIX_ENABLE_READER
 #include "zectrix_reader_platform.h"
+#endif
 #include "zectrix_display_service.h"
 #include "zectrix_input_service.h"
 #include "zectrix_power_service.h"
@@ -28,7 +37,7 @@
 #include "zectrix_storage_service.h"
 #include "zectrix_system_service.h"
 #include "zectrix_time_service.h"
-#include "zectrix_update_service.h"
+#include "zectrix_boot_guard.h"
 
 extern "C" {
 extern const uint8_t kLighthouse1bppStart[]
@@ -108,8 +117,10 @@ public:
         time_ = &platform_.Time();
         storage_ = &platform_.Storage();
         system_ = &platform_.System();
-        connectivity_ = &platform_.Connectivity();
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+        connectivity_ = platform_.Services().Get<zectrix::connectivity::ConnectivityService>();
         connectivity_->UpdatePower(power_->ReadSnapshot());
+#endif
         uint32_t sleep_style = static_cast<uint32_t>(zectrix::app::kSleepCoverDefault);
         const esp_err_t sleep_setting = storage_->GetUInt32(zectrix::app::kSleepCoverSettingKey, &sleep_style);
         if (sleep_setting != ESP_OK) sleep_style = static_cast<uint32_t>(zectrix::app::kSleepCoverDefault);
@@ -222,12 +233,11 @@ private:
             return sdk::Status::Ok;
         }
         sdk::Status Render(const sdk::RenderRequest& request) override {
-            static constexpr const char* kItems[] = {
-                "BOOK READER", "SEND BOOKS", "CLOCK", "SLEEP COVER", "SETTINGS", "CONNECTIVITY", "AUTO SHOWCASE",
-                "DISPLAY GALLERY", "HARDWARE TESTS", "DEVICE INFO",
-                "ABOUT & LICENSE"};
+            const auto& items = zectrix::app::kLauncherItems;
+            std::array<const char*, std::size(items)> labels{};
+            for (std::size_t i = 0; i < labels.size(); ++i) labels[i] = items[i].label;
             return ToSdkStatus(owner_->ui_.ShowMenu(
-                "ZECTRIX | LAUNCHER", kItems, std::size(kItems),
+                "ZECTRIX | LAUNCHER", labels.data(), labels.size(),
                 controller_.selected(),
                 "UP/DOWN Move  OK Select  Hold DOWN Off",
                 request.intent == sdk::RenderIntent::Quality));
@@ -244,11 +254,12 @@ private:
         int64_t last_input_us_ = 0;
     };
 
+#if CONFIG_ZECTRIX_ENABLE_READER
     class ReaderApplication final : public sdk::Application {
     public:
         explicit ReaderApplication(TerminalApp& owner)
             : owner_(&owner), library_(*owner.storage_),
-              store_(*owner.storage_, *owner.connectivity_), bookmarks_(store_),
+              store_(*owner.storage_, owner.connectivity_), bookmarks_(store_),
               controller_(library_, bookmarks_, owner.reader_selection_) {}
 
         sdk::Status Enter(sdk::ApplicationContext& context) override {
@@ -301,6 +312,9 @@ private:
         zectrix::app::ReaderController controller_;
     };
 
+#endif
+
+#if CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
     class BookTransferApplication final : public sdk::Application {
     public:
         explicit BookTransferApplication(TerminalApp& owner) : owner_(owner) {}
@@ -349,9 +363,13 @@ private:
                     context.RequestRender({0, 24, 400, 276}, decision == Decision::RenderQuality ? sdk::RenderIntent::Quality : sdk::RenderIntent::Fast);
                     break;
                 case Decision::Reader: {
+#if CONFIG_ZECTRIX_ENABLE_READER
                     sdk::AppCommand open;
                     if (!sdk::AppCommand::Open("reader", &open)) return sdk::Status::InternalError;
                     context.RequestCommand(open);
+#else
+                    context.RequestCommand(sdk::AppCommand::Home());
+#endif
                     break;
                 }
                 case Decision::Home: context.RequestCommand(sdk::AppCommand::Home()); break;
@@ -363,6 +381,8 @@ private:
         TerminalApp& owner_;
         zectrix::app::BookTransferController controller_;
     };
+
+#endif
 
     class SleepCoverApplication final : public sdk::Application {
     public:
@@ -555,6 +575,7 @@ private:
         const char* status_ = "";
     };
 
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
     class ConnectivityApplication final : public sdk::Application {
     public:
         explicit ConnectivityApplication(TerminalApp& owner) : owner_(&owner) {}
@@ -608,6 +629,7 @@ private:
                 status_ = result == zectrix::connectivity::ConnectivityResult::kOk
                               ? "TRUSTED PHONE FORGOTTEN"
                               : "DISCONNECT BEFORE FORGETTING";
+#if CONFIG_ZECTRIX_ENABLE_READER
                 if (result == zectrix::connectivity::ConnectivityResult::kOk) {
                     zectrix::reader::PlatformBookmarkStore store(*owner_->storage_, *owner_->connectivity_);
                     zectrix::reader::Bookmarks bookmarks(store);
@@ -617,6 +639,7 @@ private:
                         ESP_LOGW(kTag, "reader phone cursor reset failed");
                     }
                 }
+#endif
                 context.RequestRender({0, 24, 400, 276},
                                       sdk::RenderIntent::Fast);
             }
@@ -774,6 +797,8 @@ private:
             zectrix::connectivity::ConnectivityState::kStopped;
     };
 
+#endif
+
     class DiagnosticsApplication final : public sdk::Application {
     public:
         explicit DiagnosticsApplication(TerminalApp& owner) : owner_(&owner) {}
@@ -864,9 +889,12 @@ private:
                     return sdk::Status::Ok;
                 }
                 if (result == ZectrixTestResult::kCancelled) break;
-                owner_->test_states_[index] =
-                    result == ZectrixTestResult::kPass
+                if (result == ZectrixTestResult::kSkipped) {
+                    owner_->test_states_[index] = ZectrixTestState::kSkipped;
+                } else {
+                    owner_->test_states_[index] = result == ZectrixTestResult::kPass
                         ? ZectrixTestState::kPass : ZectrixTestState::kFail;
+                }
                 if (owner_->Wait(pdMS_TO_TICKS(800), false) ==
                     ControlResult::kShutdown) {
                     context.RequestCommand(sdk::AppCommand::Shutdown());
@@ -890,6 +918,8 @@ private:
                 owner_->test_states_[selected] = ZectrixTestState::kPass;
             } else if (result == ZectrixTestResult::kFail) {
                 owner_->test_states_[selected] = ZectrixTestState::kFail;
+            } else if (result == ZectrixTestResult::kSkipped) {
+                owner_->test_states_[selected] = ZectrixTestState::kSkipped;
             }
             if (owner_->Wait(pdMS_TO_TICKS(1200), true) ==
                 ControlResult::kShutdown) {
@@ -1078,7 +1108,9 @@ private:
         const int64_t now = time_->MonotonicMicroseconds();
         if (now >= next_power_sample_us_) {
             power_snapshot_ = power_->ReadSnapshot();
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
             connectivity_->UpdatePower(power_snapshot_);
+#endif
             status_.battery_valid = power_snapshot_.battery_valid && !power_snapshot_.battery_absent;
             status_.battery_percent = std::min<uint8_t>(power_snapshot_.battery_percent, 100);
             status_.charging = power_snapshot_.charging;
@@ -1098,6 +1130,7 @@ private:
             status_.minute = status_.time_valid ? static_cast<uint8_t>(value.minute) : 0;
             next_clock_sample_us_ = now + 1000000;
         }
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
         const auto link = connectivity_->Snapshot();
         using Indicator = zectrix::ui::RadioIndicator;
         using Ble = zectrix::connectivity::ConnectivityState;
@@ -1122,17 +1155,24 @@ private:
             case Wifi::kStopFailed: status_.wifi = Indicator::Fault; break;
             default: status_.wifi = Indicator::Busy; break;
         }
+#endif
         ui_.UpdateStatus(status_);
     }
 
     void RunApplicationShell() {
         OwnedFactory<LauncherApplication> launcher_factory(*this);
+#if CONFIG_ZECTRIX_ENABLE_READER
         OwnedFactory<ReaderApplication> reader_factory(*this);
+#endif
+#if CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
         OwnedFactory<BookTransferApplication> book_transfer_factory(*this);
+#endif
         OwnedFactory<ClockApplication> clock_factory(*this);
         OwnedFactory<SleepCoverApplication> sleep_cover_factory(*this);
         OwnedFactory<SettingsApplication> settings_factory(*this);
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
         OwnedFactory<ConnectivityApplication> connectivity_factory(*this);
+#endif
         OwnedFactory<DiagnosticsApplication> diagnostics_factory(*this);
         OwnedFactory<GalleryApplication> gallery_factory(*this);
         OwnedFactory<ShowcaseApplication> showcase_factory(*this);
@@ -1140,12 +1180,18 @@ private:
         OwnedFactory<AboutApplication> about_factory(*this);
         const sdk::ApplicationDescriptor descriptors[] = {
             {"launcher", "Launcher", &launcher_factory},
+#if CONFIG_ZECTRIX_ENABLE_READER
             {"reader", "Book Reader", &reader_factory},
+#endif
+#if CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
             {"book-transfer", "Send Books", &book_transfer_factory},
+#endif
             {"clock", "Clock", &clock_factory},
             {"sleep-cover", "Sleep Cover", &sleep_cover_factory},
             {"settings", "Settings", &settings_factory},
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
             {"connectivity", "Connectivity", &connectivity_factory},
+#endif
             {"diagnostics", "Diagnostics", &diagnostics_factory},
             {"gallery", "Display Gallery", &gallery_factory},
             {"showcase", "Auto Showcase", &showcase_factory},
@@ -1159,7 +1205,7 @@ private:
         if (!sdk::IsOk(runtime.Step())) return;
         // Confirm a trial image only after platform startup and the first
         // launcher frame have both succeeded.
-        const auto confirmed = platform_.Update().ConfirmBoot();
+        const auto confirmed = platform_.Boot().ConfirmBoot();
         if (confirmed != zectrix::update::Result::kOk) {
             ESP_LOGE(kTag, "boot confirmation failed: %s", zectrix::update::ResultName(confirmed));
             return;
@@ -1167,7 +1213,12 @@ private:
         while (runtime.state() == sdk::LifecycleState::Active) {
             sdk::InputEvent event;
             // Pending pagination yields one tick between bounded parse slices.
-            const bool received = input_->Wait(&event, reader_busy_ ? TickType_t{1} : kOwnerPollTimeout);
+#if CONFIG_ZECTRIX_ENABLE_READER
+            const TickType_t timeout = reader_busy_ ? TickType_t{1} : kOwnerPollTimeout;
+#else
+            const TickType_t timeout = kOwnerPollTimeout;
+#endif
+            const bool received = input_->Wait(&event, timeout);
             UpdateSystemStatus();
             const sdk::Status result = received ? runtime.Step(&event) : runtime.Idle();
             if (!sdk::IsOk(result)) {
@@ -1238,21 +1289,26 @@ private:
         if (time_->ReadRtc(&snapshot.clock.value) == ESP_OK) snapshot.clock.source = zectrix::time::ClockSource::Rtc;
         else snapshot.clock = time_->Now();
         snapshot.power = power_->ReadSnapshot();
-        zectrix::reader::PlatformBookmarkStore store(*storage_, *connectivity_);
+#if CONFIG_ZECTRIX_ENABLE_READER
+        zectrix::reader::PlatformBookmarkStore store(*storage_, connectivity_);
         zectrix::reader::Bookmarks bookmarks(store);
         if (bookmarks.Load() == zectrix::reader::Result::Ok && bookmarks.Latest()) {
-            snapshot.reading = *bookmarks.Latest();
+            snapshot.reading.book_id = bookmarks.Latest()->book_id;
+            snapshot.reading.progress_per_mille = bookmarks.Latest()->progress_per_mille;
             snapshot.has_reading = true;
         }
+#endif
         return snapshot;
     }
 
     [[noreturn]] void PowerOff() {
         platform_.StopMaintenance();
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
         const auto stopped = connectivity_->Stop();
         if (stopped != zectrix::connectivity::ConnectivityResult::kOk) {
             ESP_LOGW(kTag, "connectivity stop incomplete before shutdown");
         }
+#endif
         ESP_LOGI(kTag, "presenting sleep cover before shutdown");
         const esp_err_t cover = ui_.ShowSleepCover(ReadSleepCover(), sleep_cover_style_);
         if (cover != ESP_OK) {
@@ -1271,15 +1327,19 @@ private:
     zectrix::time::TimeService* time_ = nullptr;
     zectrix::storage::StorageService* storage_ = nullptr;
     zectrix::system::SystemService* system_ = nullptr;
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY || CONFIG_ZECTRIX_ENABLE_READER
     zectrix::connectivity::ConnectivityService* connectivity_ = nullptr;
+#endif
     ZectrixDemoUi ui_;
     ZectrixSelfTest* tests_ = nullptr;
     std::array<ZectrixTestState,
                static_cast<size_t>(ZectrixTestId::kCount)> test_states_;
     size_t launcher_selection_ = 0;
     uint32_t gallery_selection_ = 0;
+#if CONFIG_ZECTRIX_ENABLE_READER
     uint32_t reader_selection_ = 0;
     bool reader_busy_ = false;
+#endif
     zectrix::app::SleepCoverStyle sleep_cover_style_ = zectrix::app::kSleepCoverDefault;
     bool sleep_cover_saved_ = true;
     zectrix::power::PowerSnapshot power_snapshot_{};

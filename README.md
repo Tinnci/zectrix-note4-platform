@@ -61,11 +61,14 @@ Development follows dependency-aware stage gates defined in
 | M5 | In progress | A/B partition validation, streamed firmware verification and boot confirmation watchdog implemented; update delivery and hardware qualification remain open |
 | R1 | In progress | Minimal dirty-region updates, unchanged-frame suppression and adaptive full-refresh policy implemented; hardware qualification remains open |
 | L1 | Implemented | Status bar, scene navigation, streamed TXT/EPUB reader, local Wi-Fi book management and ambient sleep covers; physical sleep/wake and standby-current measurements remain open |
-| S1 | In progress | Typed service registry and lifecycle adapters integrated; Kconfig selection and conditional application composition follow in S1.2/S1.3 |
+| S1 | In progress | Typed service registry and Kconfig module selection implemented; application composition and persistent RTC work continue in S1.3 |
 
 The [service registry](docs/SERVICE_REGISTRY.md) provides optional typed lookup,
 ordered startup and failure cleanup with 16 fixed slots and no registry heap
 allocation. Existing Platform accessors use the same service instances.
+The [module build options](docs/MODULAR_BUILD.md) select connectivity, Wi-Fi,
+HTTPS, Web transfer, reading, USB maintenance and firmware writing. Core boot
+protection and the clock/sleep UI remain available in trimmed builds.
 
 > [!CAUTION]
 > This project targets the black-and-white ZECTRIX NOTE4 hardware. It is not
@@ -168,8 +171,9 @@ order, and EOF completes pending replies and cancels log streams.
 
 Run terminal and pipe integration tests with `bash tools/test-cli-host.sh`, or
 the complete suite with `bash tools/test-host.sh`. Tests require Python 3 and
-[uv](https://docs.astral.sh/uv/getting-started/installation/) and use only the
-Python standard library. See the
+[uv](https://docs.astral.sh/uv/getting-started/installation/). Python fixtures use
+the standard library; module configuration tests provision IDF's Kconfig library
+through uv. See the
 [maintenance CLI contract](docs/MAINTENANCE_CLI_CONTRACT.md) for the execution
 model and limits.
 

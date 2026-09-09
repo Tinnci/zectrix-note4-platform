@@ -9,6 +9,7 @@ idf_component_register(
         "zectrix_cli_log_esp.cc"
     INCLUDE_DIRS "include"
     REQUIRES esp_driver_usb_serial_jtag zectrix_display zectrix_system
+    KCONFIG_PROJBUILD "${CMAKE_CURRENT_LIST_DIR}/../../cmake/Kconfig.empty"
 )
 
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_17)

@@ -1,0 +1,6 @@
+config ZECTRIX_ENABLE_USB_CLI
+    bool "USB maintenance CLI"
+    default y
+    help
+        Enable the USB serial/JTAG maintenance task and diagnostic executor.
+        Disabling the CLI preserves the normal ESP-IDF console and boot logs.

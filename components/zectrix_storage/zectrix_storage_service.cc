@@ -5,6 +5,7 @@
 
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "sdkconfig.h"
 
 namespace zectrix::storage {
 namespace {
@@ -24,7 +25,9 @@ esp_err_t PublicResult(esp_err_t result) {
 struct StorageService::Impl {
     nvs_handle_t handle = 0;
     bool initialized = false;
+#if CONFIG_ZECTRIX_ENABLE_BOOK_STORAGE
     std::unique_ptr<BookStorage> books;
+#endif
 };
 
 esp_err_t StorageService::Create(StorageService** out_service) {
@@ -146,6 +149,7 @@ esp_err_t StorageService::Commit(esp_err_t operation_result) {
     return nvs_commit(impl_->handle);
 }
 
+#if CONFIG_ZECTRIX_ENABLE_BOOK_STORAGE
 esp_err_t StorageService::InitializeBooks() {
     if (!IsInitialized()) return ESP_ERR_INVALID_STATE;
     if (!impl_->books) impl_->books.reset(new (std::nothrow) BookStorage);
@@ -172,5 +176,6 @@ esp_err_t StorageService::BeginBookManagement(BookStorage** books) {
     if (acquired == ESP_OK) *books = impl_->books.get();
     return acquired;
 }
+#endif
 
 }  // namespace zectrix::storage

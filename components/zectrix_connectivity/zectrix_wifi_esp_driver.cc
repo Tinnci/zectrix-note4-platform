@@ -9,24 +9,27 @@
 #include <sys/select.h>
 #include <sys/socket.h>
 
-#include "esp_crt_bundle.h"
 #include "esp_event.h"
 #include "esp_netif.h"
-#include "esp_tls.h"
 #include "esp_wifi.h"
 #include "esp_wifi_default.h"
 #include "sdkconfig.h"
+#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
+#include "esp_crt_bundle.h"
+#include "esp_tls.h"
 #include "lwip/dns.h"
 #include "lwip/ip_addr.h"
 #include "lwip/tcpip.h"
 #include "zectrix_wifi_http.h"
+#endif
 
 namespace zectrix::connectivity {
 namespace {
 
-constexpr char kResourceHost[] = "zectrix.com";
-
 std::atomic<bool> radio_claimed{false};
+
+#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
+constexpr char kResourceHost[] = "zectrix.com";
 
 bool Supported(companion::ResourceCapability capability) {
     return capability == companion::ResourceCapability::kPublicTestDocumentV1;
@@ -94,6 +97,8 @@ struct DnsQuery {
     }
 };
 
+#endif
+
 WifiDriverResult DisconnectionFailure(uint8_t reason) {
     switch (reason) {
         case WIFI_REASON_AUTH_FAIL:
@@ -109,13 +114,20 @@ WifiDriverResult DisconnectionFailure(uint8_t reason) {
 
 }  // namespace
 
-struct EspWifiBackendDriver::Impl : WifiHttpStream {
+struct EspWifiBackendDriver::Impl
+#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
+    : WifiHttpStream
+#endif
+{
     esp_netif_t* netif = nullptr;
     esp_event_handler_instance_t wifi_handler = nullptr;
     esp_event_handler_instance_t ip_handler = nullptr;
+#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
     esp_tls_t* tls = nullptr;
     DnsQuery* dns = nullptr;
     WifiHttpClient http;
+    bool http_started = false;
+#endif
     std::atomic<WifiDriverResult> link_error{WifiDriverResult::kPending};
     std::atomic<bool> station_ready{false};
     std::atomic<bool> associated{false};
@@ -129,9 +141,9 @@ struct EspWifiBackendDriver::Impl : WifiHttpStream {
     bool scan_mode = false;
     bool ap_mode = false;
     bool scan_requested = false;
-    bool http_started = false;
     std::array<char, kMaximumWifiSsidBytes + 1> scan_target{};
 
+#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
     int Read(uint8_t* data, std::size_t capacity) override {
         const int result = esp_tls_conn_read(tls, data, capacity);
         return TlsPending(result) ? kWouldBlock : result < 0 ? kFailure : result;
@@ -142,6 +154,7 @@ struct EspWifiBackendDriver::Impl : WifiHttpStream {
         return TlsPending(result) ? kWouldBlock : result < 0 ? kFailure : result;
     }
 
+#endif
     static void OnEvent(void* context, esp_event_base_t base,
                         int32_t id, void* data) {
         auto* self = static_cast<Impl*>(context);
@@ -262,6 +275,7 @@ struct EspWifiBackendDriver::Impl : WifiHttpStream {
         return claimed ? link_error.load() : WifiDriverResult::kUnavailable;
     }
 
+#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
     void ReleaseDns() {
         if (dns == nullptr) return;
         dns->cancelled.store(true, std::memory_order_release);
@@ -269,15 +283,19 @@ struct EspWifiBackendDriver::Impl : WifiHttpStream {
         dns = nullptr;
     }
 
+#endif
     WifiDriverResult Stop() {
         if (!claimed) return WifiDriverResult::kReady;
         stopping.store(true, std::memory_order_release);
+#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
         http.Close();
         if (tls != nullptr) {
             esp_tls_conn_destroy(tls);
             tls = nullptr;
         }
         ReleaseDns();
+        http_started = false;
+#endif
         if (wifi_started) {
             const esp_err_t error = esp_wifi_stop();
             if (error != ESP_OK && error != ESP_ERR_WIFI_NOT_STARTED) {
@@ -310,7 +328,6 @@ struct EspWifiBackendDriver::Impl : WifiHttpStream {
         }
         connect_requested = false;
         scan_requested = false;
-        http_started = false;
         claimed = false;
         radio_claimed.store(false, std::memory_order_release);
         return WifiDriverResult::kReady;
@@ -381,6 +398,7 @@ WifiDriverResult EspWifiBackendDriver::PollIp() {
                                 : WifiDriverResult::kPending;
 }
 
+#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
 WifiDriverResult EspWifiBackendDriver::Resolve(
     companion::ResourceCapability capability) {
     if (impl_ == nullptr || !Supported(capability)) {
@@ -456,6 +474,20 @@ WifiDriverResult EspWifiBackendDriver::Fetch(
     }
     return impl_->http.Poll(body_size);
 }
+
+#else
+WifiDriverResult EspWifiBackendDriver::Resolve(companion::ResourceCapability) {
+    return WifiDriverResult::kUnavailable;
+}
+WifiDriverResult EspWifiBackendDriver::OpenTls(companion::ResourceCapability) {
+    return WifiDriverResult::kUnavailable;
+}
+WifiDriverResult EspWifiBackendDriver::Fetch(companion::ResourceCapability, uint8_t*,
+                                           std::size_t, std::size_t* body_size) {
+    if (body_size) *body_size = 0;
+    return WifiDriverResult::kUnavailable;
+}
+#endif
 
 WifiDriverResult EspWifiBackendDriver::StopStation() {
     return impl_ == nullptr ? WifiDriverResult::kReady : impl_->Stop();

@@ -104,6 +104,13 @@ M5.2 adds streamed image verification, inactive-slot writes and boot selection
 through `Platform::Update()`. Update delivery still needs a transport and user
 workflow. No firmware download command or automatic restart is added.
 
+S1.2 moves boot policy and its ESP backend into the core `zectrix_system`
+component. `Platform::Boot()` always exposes `BootGuard`; the optional
+`UpdateService` delegates its boot methods to that same guard. Disabling
+`CONFIG_ZECTRIX_ENABLE_UPDATE` removes firmware writing without removing
+partition validation, trial deadlines or first-frame confirmation. The
+standalone guard's destruction also leaves an unconfirmed watchdog armed.
+
 ## Streamed firmware verification
 
 The platform owner uses the same `UpdateService` for boot protection and one
