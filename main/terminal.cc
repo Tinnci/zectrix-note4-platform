@@ -135,6 +135,7 @@ void TerminalApp::RunApplicationShell() {
         ESP_LOGE(kTag, "boot confirmation failed: %s", zectrix::update::ResultName(confirmed));
         return;
     }
+    ESP_LOGI(kTag, "launcher ready: applications=%u", static_cast<unsigned>(applications_.size()));
     while (runtime.state() == sdk::LifecycleState::Active) {
         sdk::InputEvent event;
         // Pending pagination yields one tick between bounded parse slices.

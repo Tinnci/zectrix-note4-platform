@@ -141,9 +141,12 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Moved RTC restoration before Connectivity startup and unified Clock/status/sleep time snapshots. Added an offline View/Edit clock scene and authorized Companion Hello calibration, with current-session/age checks and foreground RTC ownership.
   - Hardened PCF8563 reads and STOP-protected calendar/offset saves, retained valid time during persistence failures, and added bounded retries. Initialization disables unused CLKOUT; normal shutdown preserves the running calendar. Documented the external backup-supply requirement without claiming unmeasured board current or retention.
   - Verified all 32 Host targets, 29 Android JVM tests and the debug build, five ESP32-S3 firmware profiles and connected-device flash/boot smoke. Full is 2,995,520 bytes and Core is 548,784 bytes. Host tests cover restart restoration and interrupted calibration; the device smoke exercised invalid retained-clock fallback. Physical backup retention, standby current and phone calibration remain hardware qualification work. See docs/TIME.md.
-- [ ] **S1.4: 极限轻量化配置档验证 (Minimal Profile Regression)**
+- [x] **S1.4: 极限轻量化配置档验证 (Minimal Profile Regression)**
   - 在 `tools/` 中新增最小化构建验证脚本（如纯离线 Minimal Profile 测试），验证禁用网络和阅读器后固件体积与片内 RAM 占用的削减效果（目标减少 30%+ 固件体积）。
   - 确保全套 Host 测试与实机烧录冒烟测试在全量（Full）与最小化（Minimal）两种配置模式下均 100% 正常工作。
+  - Added committed Full/Minimal profiles, isolated repeatable builds and `tools/test-minimal-profile.sh` with actual binary/ESP-IDF RAM reports. Checks cover module/source exclusion, retained boot protection and identical OTA/book partitions; saved developer configuration remains untouched.
+  - Full firmware is 2,995,728 bytes; Minimal is 548,864 bytes (81.7% smaller). Static internal RAM falls from 213,495 to 118,651 bytes (44.4%); its data/BSS subset falls from 72,168 to 32,156 bytes (55.4%). See docs/MODULAR_BUILD.md.
+  - Verified all 32 Host targets including Full/Minimal compositions, nine module/profile cases, fresh firmware builds with contradictory saved settings, ShellCheck and both connected-device flash/boot smokes. Readiness now confirms the first Launcher frame, boot confirmation and selected catalog/CLI. The device finished on Full; physical RTC retention and standby-current measurement remain separate hardware work.
 
 ---
 

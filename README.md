@@ -61,7 +61,7 @@ Development follows dependency-aware stage gates defined in
 | M5 | In progress | A/B partition validation, streamed firmware verification and boot confirmation watchdog implemented; update delivery and hardware qualification remain open |
 | R1 | In progress | Minimal dirty-region updates, unchanged-frame suppression and adaptive full-refresh policy implemented; hardware qualification remains open |
 | L1 | Implemented | Status bar, scene navigation, streamed TXT/EPUB reader, local Wi-Fi book management and ambient sleep covers; physical sleep/wake and standby-current measurements remain open |
-| S1 | In progress | Typed service registry and Kconfig module selection implemented; application composition and persistent RTC work continue in S1.3 |
+| S1 | Implemented | Typed service registry, selectable modules, conditional application composition, RTC restoration/editor and Full/Minimal regression; physical RTC retention and standby-current measurements remain open |
 
 The [service registry](docs/SERVICE_REGISTRY.md) provides optional typed lookup,
 ordered startup and failure cleanup with 16 fixed slots and no registry heap
@@ -69,6 +69,11 @@ allocation. Existing Platform accessors use the same service instances.
 The [module build options](docs/MODULAR_BUILD.md) select connectivity, Wi-Fi,
 HTTPS, Web transfer, reading, USB maintenance and firmware writing. Core boot
 protection and the clock/sleep UI remain available in trimmed builds.
+Run `bash tools/test-minimal-profile.sh` for the complete Host suite and
+isolated Full/Minimal firmware builds with size and static RAM comparison.
+Add `--device` to smoke-test both profiles on a connected Note4 and finish on
+Full. See the [profile workflow](docs/MODULAR_BUILD.md#repeatable-fullminimal-regression)
+for individual build/flash commands and measured results.
 
 > [!CAUTION]
 > This project targets the black-and-white ZECTRIX NOTE4 hardware. It is not

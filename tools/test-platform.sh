@@ -23,10 +23,10 @@ common=(
   "$root_dir/components/zectrix_system/zectrix_boot_guard.cc" \
   "$root_dir/tools/platform_test.cc"
 )
-for profile in full core connectivity cli update; do
-    connectivity=0 cli=0 update=0
+for profile in full minimal connectivity cli update; do
+    connectivity=0 cli=0 update=0 reader=0
     case "$profile" in
-        full) connectivity=1 cli=1 update=1 ;;
+        full) connectivity=1 cli=1 update=1 reader=1 ;;
         connectivity) connectivity=1 ;;
         cli) cli=1 ;;
         update) update=1 ;;
@@ -51,6 +51,7 @@ for profile in full core connectivity cli update; do
     fi
     "${CXX:-c++}" -std=c++17 "${flags[@]}" \
         -DCONFIG_ZECTRIX_ENABLE_CONNECTIVITY="$connectivity" \
+        -DCONFIG_ZECTRIX_ENABLE_READER="$reader" \
         -DCONFIG_ZECTRIX_ENABLE_USB_CLI="$cli" -DCONFIG_ZECTRIX_ENABLE_UPDATE="$update" \
         "${common[@]}" "${optional[@]}" -o "$test_binary"
     "$test_binary"

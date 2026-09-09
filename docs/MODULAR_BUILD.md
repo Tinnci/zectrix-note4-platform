@@ -123,7 +123,91 @@ and descriptors for the entire runtime lifetime. No menu index is persisted.
 Clock remains in Core, including its offline editor; the platform restores its
 RTC before Connectivity starts. See [TIME.md](TIME.md).
 
-S1.4 covers a reusable minimal-profile firmware/device regression workflow.
+## Repeatable Full/Minimal regression
+
+S1.4 provides committed profiles in `tools/profiles/`. Full explicitly selects
+every optional module. Minimal disables Connectivity, Reader, USB maintenance
+and firmware writing, including their network and book-storage dependencies.
+It retains the Launcher, Clock/editor, Sleep Cover, Settings, gallery,
+Diagnostics, device information and mandatory boot protection. SceneManager,
+ViewPort and the platform's single-owner lifecycle are unchanged.
+
+```bash
+# Runs the complete Host suite and builds/compares both firmware profiles.
+bash tools/test-minimal-profile.sh
+
+# Also flashes and checks Minimal, then Full, on the connected Note4.
+ZECTRIX_PORT=/dev/cu.usbmodem14301 bash tools/test-minimal-profile.sh --device
+
+# Individual builds or hardware checks use the same profiles.
+source tools/activate-dev-env.sh
+bash tools/build-firmware.sh --profile minimal
+bash tools/build-firmware.sh --profile full --clean
+bash tools/device-smoke-test.sh --profile minimal
+```
+
+Named builds use `build-full/` and `build-minimal/`, each with its own
+`sdkconfig`. Each invocation regenerates that configuration from the root
+`sdkconfig.defaults` plus the committed overlay; a previously saved profile
+configuration cannot silently override the selection. Compiled objects and
+ccache remain reusable. The ordinary `build/` and root `sdkconfig` are not
+changed. For interactive customization, use the separate-build example above
+instead of editing these reproducible profile configurations.
+
+The Host suite runs once and includes actual Full/Minimal Platform builds,
+the Kconfig profile checks, reduced Launcher/runtime navigation, and the
+existing offline/connected Reader cases. Optional component unit tests still
+run independently of the selected firmware. Repeating this same suite under
+two labels would not add coverage.
+
+`build-profile-regression/` contains the Host/build logs, `comparison.log`
+and `report.json`. The comparison uses both fresh application binaries and
+ESP-IDF's `size --format json` output from the same run. It verifies generated
+module settings, the compiled components and source files, and preserved
+boot protection and partition tables. Minimal must reduce the application
+binary by at least 30% and use less static internal RAM. This is a runnable
+regression test against the current Full build, with no stored size baseline
+or new release gate.
+
+Static internal RAM is ESP-IDF's `used_dram + used_iram + used_diram`;
+the report also gives the data/BSS subset. This avoids double-counting the
+ESP32-S3's aliased SRAM and excludes PSRAM and dynamically allocated heap or
+task stacks. It is not a runtime free-heap or power measurement.
+
+Hardware smoke checks the selected profile's CLI presence and application
+catalog, including a readiness log emitted only after the first Launcher
+frame and boot confirmation. Both profiles also check PSRAM, partitions and
+startup errors. Raw boot logs are retained as `build-<profile>/device-smoke.log`;
+they include the existing internal-heap snapshots. Normal flash preserves
+book content. A successful two-profile smoke leaves Full installed. Without a
+connected board, `--device` reports SKIP after completing Host/build checks;
+a connected device's flash or startup failure remains a test failure.
+Physical reading, transfer, sleep/wake and standby-current qualification are
+separate from this boot smoke.
+
+The S1.4 run with ESP-IDF 5.5.2 measured:
+
+| Metric | Full | Minimal | Reduction |
+| --- | ---: | ---: | ---: |
+| Application binary | 2,995,728 bytes | 548,864 bytes | 81.7% |
+| Static internal RAM (IRAM + DRAM + DIRAM) | 213,495 bytes | 118,651 bytes | 44.4% |
+| Data + BSS subset | 72,168 bytes | 32,156 bytes | 55.4% |
+
+Both build directories started without compiled artifacts and with saved
+configurations requesting the opposite module selections. The resulting
+images matched their named profiles; the developer's root `sdkconfig` remained
+byte-for-byte unchanged. All 32 Host targets passed, including both Platform
+profiles, and the module tests cover rejection of a symlinked profile directory
+before cleanup. ShellCheck passed for the changed shell scripts.
+
+The connected black-and-white Note4 passed Minimal and Full flash/boot smoke,
+reporting nine and twelve registered applications respectively. Full's CLI
+log-follow path and Minimal's normal console path both reached the first-frame
+readiness marker. At the existing `M3 runtime active` snapshot, free internal
+heap was 97,407 bytes in Full and 308,575 bytes in Minimal. These are boot-time
+observations, not peak application memory measurements. Both boots tolerated
+the invalid retained RTC and kept clock setup available. The run finished with
+Full installed; physical RTC retention and standby current remain unmeasured.
 
 ## Verification
 
