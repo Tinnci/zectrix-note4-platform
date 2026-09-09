@@ -16,6 +16,8 @@
 #include "zectrix_first_party_app_controllers.h"
 #include "zectrix_scene_manager.h"
 #include "zectrix_gallery_controller.h"
+#include "zectrix_reader_controller.h"
+#include "zectrix_reader_platform.h"
 #include "zectrix_display_service.h"
 #include "zectrix_input_service.h"
 #include "zectrix_power_service.h"
@@ -178,6 +180,7 @@ private:
                 case Decision::RenderFast:
                     context.RequestRender({0, 24, 400, 276}, sdk::RenderIntent::Fast);
                     break;
+                case Decision::OpenReader: target = "reader"; break;
                 case Decision::OpenClock: target = "clock"; break;
                 case Decision::OpenSettings: target = "settings"; break;
                 case Decision::OpenConnectivity: target = "connectivity"; break;
@@ -209,7 +212,7 @@ private:
         }
         sdk::Status Render(const sdk::RenderRequest& request) override {
             static constexpr const char* kItems[] = {
-                "CLOCK", "SETTINGS", "CONNECTIVITY", "AUTO SHOWCASE",
+                "BOOK READER", "CLOCK", "SETTINGS", "CONNECTIVITY", "AUTO SHOWCASE",
                 "DISPLAY GALLERY", "HARDWARE TESTS", "DEVICE INFO",
                 "ABOUT & LICENSE"};
             return ToSdkStatus(owner_->ui_.ShowMenu(
@@ -228,6 +231,63 @@ private:
         zectrix::app::LauncherController controller_;
         bool auto_showcase_ = false;
         int64_t last_input_us_ = 0;
+    };
+
+    class ReaderApplication final : public sdk::Application {
+    public:
+        explicit ReaderApplication(TerminalApp& owner)
+            : owner_(&owner), library_(*owner.storage_),
+              store_(*owner.storage_, *owner.connectivity_), bookmarks_(store_),
+              controller_(library_, bookmarks_, owner.reader_selection_) {}
+
+        sdk::Status Enter(sdk::ApplicationContext& context) override {
+            const auto result = controller_.Start();
+            if (!sdk::IsOk(result)) return result;
+            owner_->LogHeap("reader active");
+            return context.RequestRender({0, 24, 400, 276}, sdk::RenderIntent::Quality)
+                ? sdk::Status::Ok : sdk::Status::InternalError;
+        }
+        sdk::Status HandleEvent(const sdk::InputEvent& event, sdk::ApplicationContext& context) override {
+            return Apply(controller_.Handle(event), context);
+        }
+        sdk::Status HandleIdle(sdk::ApplicationContext& context) override {
+            return Apply(controller_.Tick(owner_->time_->MonotonicMicroseconds()), context);
+        }
+        sdk::Status Render(const sdk::RenderRequest& request) override {
+            const auto result = owner_->ui_.ShowReader(controller_, request.intent == sdk::RenderIntent::Quality);
+            controller_.Presented(result == ESP_OK);
+            return ToSdkStatus(result);
+        }
+        sdk::Status Exit() override {
+            owner_->reader_selection_ = controller_.selected();
+            owner_->reader_busy_ = false;
+            controller_.Stop();
+            if (controller_.save_result() != zectrix::reader::Result::Ok)
+                ESP_LOGW(kTag, "reader progress save failed: %s", zectrix::reader::ResultName(controller_.save_result()));
+            return sdk::Status::Ok;
+        }
+
+    private:
+        sdk::Status Apply(zectrix::app::ReaderDecision decision, sdk::ApplicationContext& context) {
+            using Decision = zectrix::app::ReaderDecision;
+            owner_->reader_busy_ = controller_.busy();
+            switch (decision) {
+                case Decision::RenderFast:
+                case Decision::RenderQuality:
+                    context.RequestRender({0, 24, 400, 276}, decision == Decision::RenderQuality
+                        ? sdk::RenderIntent::Quality : sdk::RenderIntent::Fast);
+                    break;
+                case Decision::Home: context.RequestCommand(sdk::AppCommand::Home()); break;
+                case Decision::Shutdown: context.RequestCommand(sdk::AppCommand::Shutdown()); break;
+                case Decision::None: break;
+            }
+            return sdk::Status::Ok;
+        }
+        TerminalApp* owner_;
+        zectrix::reader::StorageLibrary library_;
+        zectrix::reader::PlatformBookmarkStore store_;
+        zectrix::reader::Bookmarks bookmarks_;
+        zectrix::app::ReaderController controller_;
     };
 
     class ClockApplication final : public sdk::Application {
@@ -428,6 +488,15 @@ private:
                 status_ = result == zectrix::connectivity::ConnectivityResult::kOk
                               ? "TRUSTED PHONE FORGOTTEN"
                               : "DISCONNECT BEFORE FORGETTING";
+                if (result == zectrix::connectivity::ConnectivityResult::kOk) {
+                    zectrix::reader::PlatformBookmarkStore store(*owner_->storage_, *owner_->connectivity_);
+                    zectrix::reader::Bookmarks bookmarks(store);
+                    if (bookmarks.Load() != zectrix::reader::Result::Ok ||
+                        bookmarks.ResetPeer() != zectrix::reader::Result::Ok) {
+                        status_ = "PHONE RESET; READER SYNC ERROR";
+                        ESP_LOGW(kTag, "reader phone cursor reset failed");
+                    }
+                }
                 context.RequestRender({0, 24, 400, 276},
                                       sdk::RenderIntent::Fast);
             }
@@ -938,6 +1007,7 @@ private:
 
     void RunApplicationShell() {
         OwnedFactory<LauncherApplication> launcher_factory(*this);
+        OwnedFactory<ReaderApplication> reader_factory(*this);
         OwnedFactory<ClockApplication> clock_factory(*this);
         OwnedFactory<SettingsApplication> settings_factory(*this);
         OwnedFactory<ConnectivityApplication> connectivity_factory(*this);
@@ -948,6 +1018,7 @@ private:
         OwnedFactory<AboutApplication> about_factory(*this);
         const sdk::ApplicationDescriptor descriptors[] = {
             {"launcher", "Launcher", &launcher_factory},
+            {"reader", "Book Reader", &reader_factory},
             {"clock", "Clock", &clock_factory},
             {"settings", "Settings", &settings_factory},
             {"connectivity", "Connectivity", &connectivity_factory},
@@ -971,7 +1042,8 @@ private:
         }
         while (runtime.state() == sdk::LifecycleState::Active) {
             sdk::InputEvent event;
-            const bool received = input_->Wait(&event, kOwnerPollTimeout);
+            // Pending pagination yields one tick between bounded parse slices.
+            const bool received = input_->Wait(&event, reader_busy_ ? TickType_t{1} : kOwnerPollTimeout);
             UpdateSystemStatus();
             const sdk::Status result = received ? runtime.Step(&event) : runtime.Idle();
             if (!sdk::IsOk(result)) {
@@ -1066,6 +1138,8 @@ private:
                static_cast<size_t>(ZectrixTestId::kCount)> test_states_;
     size_t launcher_selection_ = 0;
     uint32_t gallery_selection_ = 0;
+    uint32_t reader_selection_ = 0;
+    bool reader_busy_ = false;
     zectrix::power::PowerSnapshot power_snapshot_{};
     zectrix::ui::StatusBarState status_{};
     int64_t next_power_sample_us_ = 0;

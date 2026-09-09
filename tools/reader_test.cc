@@ -1,5 +1,6 @@
 #include "zectrix_reader.h"
 #include "zectrix_reader_bookmarks.h"
+#include "zectrix_reader_controller.h"
 #include "reader_internal.h"
 
 #include <algorithm>
@@ -12,6 +13,8 @@
 #include <vector>
 
 using namespace zectrix::reader;
+
+void TestReaderPlatform(const char* directory);
 
 namespace {
 class Bytes final : public Source {
@@ -38,6 +41,11 @@ Result Finish(Engine& engine, std::size_t budget = 4096) {
     }
     assert(false && "Reader failed to make progress");
     return Result::Invalid;
+}
+
+Result OpenReady(Engine& engine, Source& source, Format format) {
+    const auto result = engine.Open(source, format);
+    return result == Result::Pending ? Finish(engine, 37) : result;
 }
 
 std::u32string Text(const Page& page) {
@@ -127,12 +135,29 @@ void TextTests() {
     assert(engine.Seek({}, FontSize::Small) == Result::Pending);
     assert(Finish(engine) == Result::Ok);
     assert(engine.page().count == 0 && engine.page().end);
+
+    std::string long_text(2 * 1024 * 1024, 'w');
+    long_text += "\r\n \t\xef\xbb\xbf中文段落。 After two megabytes.\n";
+    Bytes long_source(long_text);
+    const auto anchor = static_cast<uint32_t>(long_text.find("中文"));
+    assert(engine.Open(long_source, Format::Text) == Result::Ok);
+    assert(engine.Seek({anchor, 0}, FontSize::Small) == Result::Pending);
+    assert(Finish(engine, 1) == Result::Ok);
+    assert(Text(engine.page()).find(U"中文段落。") == 0);
+    assert(engine.page().glyphs[0].x == 32);
+    assert(long_source.total_read < 4096);
+    const auto read_bytes = long_source.total_read;
+    assert(engine.Seek({anchor + 1, 0}, FontSize::Large) == Result::Pending);
+    assert(Finish(engine) == Result::Ok);
+    assert(engine.page().start.offset == anchor && engine.page().glyphs[0].x == 48);
+    assert(long_source.total_read - read_bytes < 4096);
+    std::printf("MEASURE: 2 MiB TXT resume source reads=%llu bytes.\n", static_cast<unsigned long long>(read_bytes));
 }
 
 std::u32string EpubTest(const std::string& path) {
     Bytes source(ReadFile(path));
     Engine engine;
-    assert(engine.Open(source, Format::Epub) == Result::Ok);
+    assert(OpenReady(engine, source, Format::Epub) == Result::Ok);
     assert(engine.chapters() == 2);
     assert(!engine.ValidPosition({0, 2}));
     assert(engine.Seek({}, FontSize::Small) == Result::Pending);
@@ -204,6 +229,8 @@ void BookmarkTests() {
     std::array<uint8_t, kBookmarkBytes> bytes{};
     std::size_t size = 0;
     assert(EncodeBookmark(mark, bytes.data(), bytes.size(), &size));
+    const uint8_t prefix[] = {1, 0, 2, 0, 0xc3, 1, 0, 0, 0x30, 0x75, 0, 0, 45, 0, 9};
+    assert(std::memcmp(bytes.data(), prefix, sizeof(prefix)) == 0);
     Bookmark copy;
     assert(DecodeBookmark(bytes.data(), size, &copy) && copy == mark);
     assert(!DecodeBookmark(bytes.data(), size - 1, &copy));
@@ -239,8 +266,19 @@ void BookmarkTests() {
     assert(reboot.Find("test.epub", 30000)->position.offset == 1234);
     Bookmarks again(store);
     assert(again.Load() == Result::Ok && again.Sync() == Result::Ok && !again.remote());
-    assert(store.sent == 2);
+    assert(store.sent == 3);
     assert(again.Find("test.epub", 30000)->position.offset == 1234);
+    store.inbound.clear();
+    assert(again.ResetPeer() == Result::Ok);
+    assert(again.Find("test.epub", 30000)->position.offset == 1234);
+    mark.position.offset = 777;
+    assert(EncodeBookmark(mark, bytes.data(), bytes.size(), &size));
+    store.inbound.assign(bytes.begin(), bytes.begin() + size);
+    store.received = 1;
+    assert(again.Sync() == Result::Ok && again.remote()->position.offset == 777);
+    Bookmark invalid = mark;
+    invalid.book_id.fill('x');
+    assert(again.Save(invalid) == Result::Invalid);
     for (unsigned i = 0; i < 10; ++i) {
         std::snprintf(mark.book_id.data(), mark.book_id.size(), "book%u.txt", i);
         assert(again.Save(mark) == Result::Ok);
@@ -253,6 +291,140 @@ void BookmarkTests() {
     assert(corrupt.Save(mark) == Result::Invalid);
     assert(store.local == saved);
 }
+
+class TestLibrary final : public Library {
+public:
+    explicit TestLibrary(Bytes& text, Bytes& epub) : sources{{&text, &epub}} {}
+    std::array<Bytes*, 2> sources;
+    bool opened = false;
+    Result Refresh() override { Close(); return Result::Ok; }
+    std::size_t count() const override { return sources.size(); }
+    bool truncated() const override { return false; }
+    BookInfo Get(std::size_t index) const override {
+        BookInfo info;
+        assert(index < count());
+        std::strcpy(info.id.data(), index ? "other.epub" : "小说.txt");
+        info.bytes = sources[index]->Size();
+        info.format = index ? Format::Epub : Format::Text;
+        return info;
+    }
+    Result Open(std::size_t index, Source** source) override {
+        *source = sources[index]; opened = true; return Result::Ok;
+    }
+    void Close() override { opened = false; }
+};
+
+void ControllerTests(const std::string& dir) {
+    using namespace zectrix::app;
+    using zectrix::sdk::Button;
+    using zectrix::sdk::InputAction;
+    using zectrix::sdk::InputEvent;
+    constexpr InputEvent next{Button::Down, InputAction::Click};
+    constexpr InputEvent ok{Button::Ok, InputAction::Click};
+    constexpr InputEvent back{Button::Ok, InputAction::LongPress};
+    Bytes source(std::string(12000, 'w'));
+    Bytes epub(ReadFile(dir + "/long-hidden.epub"));
+    TestLibrary library(source, epub);
+    Store store;
+    Bookmarks bookmarks(store);
+    ReaderController reader(library, bookmarks, 0);
+    assert(zectrix::sdk::IsOk(reader.Start()));
+    assert(reader.scene() == ReaderScene::Library && !library.opened);
+    assert(reader.Tick(0) == ReaderDecision::None);
+    assert(reader.Handle(ok) == ReaderDecision::RenderQuality);
+    assert(reader.scene() == ReaderScene::Reading && library.opened);
+    assert(reader.engine().has_page() && !reader.busy());
+    const auto first = reader.engine().page().start;
+    reader.Presented(false);
+    assert(store.writes == 0);
+    assert(reader.Tick(1) == ReaderDecision::RenderQuality);
+    reader.Presented(false);
+    assert(reader.Tick(2) == ReaderDecision::RenderQuality);
+    assert(store.writes == 0);
+    reader.Presented(true);
+    assert(bookmarks.Find("小说.txt", source.Size())->position == first);
+    assert(reader.Handle(next) == ReaderDecision::RenderFast);
+    const auto second = reader.engine().page().start;
+    assert(first < second);
+    reader.Presented(false);
+    assert(bookmarks.Find("小说.txt", source.Size())->position == first);
+    assert(reader.Tick(3) == ReaderDecision::RenderQuality);
+    reader.Presented(true);
+    assert(bookmarks.Find("小说.txt", source.Size())->position == second);
+    const auto writes = store.writes;
+    assert(reader.Tick(5000000) == ReaderDecision::None);
+    reader.Presented(true);
+    assert(store.writes == writes);
+    assert(reader.Handle(ok) == ReaderDecision::RenderQuality);
+    assert(reader.scene() == ReaderScene::Options);
+    assert(reader.Handle(ok) == ReaderDecision::RenderQuality);
+    assert(reader.engine().page().font == FontSize::Large);
+    assert(reader.engine().page().start == second);
+    assert(bookmarks.Find("小说.txt", source.Size())->font == FontSize::Small);
+    reader.Presented(true);
+    assert(bookmarks.Find("小说.txt", source.Size())->font == FontSize::Large);
+
+    Bookmark remote = *bookmarks.Find("小说.txt", source.Size());
+    remote.position = {};
+    remote.font = FontSize::Small;
+    std::array<uint8_t, kBookmarkBytes> bytes{};
+    std::size_t size = 0;
+    assert(EncodeBookmark(remote, bytes.data(), bytes.size(), &size));
+    store.inbound.assign(bytes.begin(), bytes.begin() + size);
+    store.received = 1;
+    assert(reader.Tick(10000000) == ReaderDecision::RenderFast);
+    assert(reader.remote_available() && reader.engine().page().start == second);
+    assert(reader.Handle(ok) == ReaderDecision::RenderQuality);
+    assert(reader.Handle(next) == ReaderDecision::RenderFast);
+    assert(reader.option() == 1);
+    assert(reader.Handle(ok) == ReaderDecision::RenderQuality);
+    reader.Presented(false);
+    assert(bookmarks.Find("小说.txt", source.Size())->position == second);
+    assert(reader.Tick(10000001) == ReaderDecision::RenderQuality);
+    reader.Presented(true);
+    assert(!reader.remote_available());
+    assert(bookmarks.Find("小说.txt", source.Size())->position == first);
+    assert(reader.engine().page().font == FontSize::Small);
+
+    store.fail_save = true;
+    assert(reader.Handle(next) == ReaderDecision::RenderFast);
+    reader.Presented(true);
+    assert(reader.save_result() == Result::IoError);
+    assert(bookmarks.Find("小说.txt", source.Size())->position == first);
+    store.fail_save = false;
+    assert(reader.Tick(15000000) == ReaderDecision::RenderFast);
+    assert(reader.save_result() == Result::Ok);
+    assert(bookmarks.Find("小说.txt", source.Size())->position == second);
+    assert(reader.Handle(back) == ReaderDecision::RenderQuality);
+    assert(reader.scene() == ReaderScene::Library && !library.opened);
+    assert(reader.Handle(ok) == ReaderDecision::RenderQuality);
+    assert(reader.engine().page().start == second);
+    assert(reader.Handle(back) == ReaderDecision::RenderQuality);
+    assert(reader.Handle(next) == ReaderDecision::RenderFast);
+    assert(reader.selected() == 1);
+    assert(reader.Handle(ok) == ReaderDecision::RenderQuality);
+    assert(reader.busy());
+    assert(reader.Handle({Button::Down, InputAction::LongPress}) == ReaderDecision::Shutdown);
+    assert(reader.Handle(back) == ReaderDecision::RenderQuality);
+    assert(!reader.busy() && !library.opened && reader.selected() == 1);
+    assert(reader.Handle(back) == ReaderDecision::Home);
+    reader.Stop();
+    reader.Stop();
+    assert(!library.opened);
+
+    Bookmarks restarted(store);
+    ReaderController reboot(library, restarted);
+    assert(zectrix::sdk::IsOk(reboot.Start()));
+    assert(reboot.Handle(ok) == ReaderDecision::RenderQuality);
+    assert(reboot.engine().page().start == second);
+    reboot.Presented(true);
+    source.fail = true;
+    assert(reboot.Handle({Button::Up, InputAction::Click}) == ReaderDecision::RenderFast);
+    assert(reboot.result() == Result::IoError);
+    reboot.Presented(true);
+    assert(restarted.Find("小说.txt", source.Size())->position == second);
+    reboot.Stop();
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -264,7 +436,7 @@ int main(int argc, char** argv) {
     assert(text == EpubTest(dir + "/descriptor.epub"));
     Bytes hidden(ReadFile(dir + "/long-hidden.epub"));
     Engine engine;
-    assert(engine.Open(hidden, Format::Epub) == Result::Ok);
+    assert(OpenReady(engine, hidden, Format::Epub) == Result::Ok);
     assert(engine.Seek({}, FontSize::Small) == Result::Pending);
     for (unsigned i = 0; i < 10; ++i) assert(engine.Poll(1000) == Result::Pending);
     engine.Cancel();
@@ -272,16 +444,47 @@ int main(int argc, char** argv) {
     assert(engine.Seek({}, FontSize::Small) == Result::Pending);
     assert(Finish(engine) == Result::Ok && Text(engine.page()) == U"VISIBLE");
     Bytes empty(ReadFile(dir + "/empty-chapter.epub"));
-    assert(engine.Open(empty, Format::Epub) == Result::Ok);
+    assert(OpenReady(engine, empty, Format::Epub) == Result::Ok);
     assert(engine.Seek({}, FontSize::Small) == Result::Pending);
     assert(Finish(engine) == Result::Ok && Text(engine.page()) == U"Visible chapter");
     Bytes truncated(ReadFile(dir + "/deflated.epub"));
     truncated.bytes.resize(truncated.bytes.size() - 1);
-    assert(engine.Open(truncated, Format::Epub) == Result::Invalid);
+    assert(OpenReady(engine, truncated, Format::Epub) == Result::Invalid);
+    Bytes metadata(ReadFile(dir + "/long-metadata.epub"));
+    assert(engine.Open(metadata, Format::Epub) == Result::Pending);
+    for (unsigned i = 0; i < 20; ++i) assert(engine.Poll(32) == Result::Pending);
+    assert(!engine.has_page() && engine.chapters() == 0);
+    engine.Cancel();
+    assert(!engine.busy());
+    assert(OpenReady(engine, metadata, Format::Epub) == Result::Ok);
+    Bytes bad_crc(ReadFile(dir + "/bad-crc.epub"));
+    assert(OpenReady(engine, bad_crc, Format::Epub) == Result::Ok);
+    assert(engine.Seek({}, FontSize::Small) == Result::Pending);
+    Result crc_result;
+    do {
+        crc_result = Finish(engine);
+        if (crc_result != Result::Ok) break;
+    } while (engine.Next() == Result::Pending);
+    assert(crc_result == Result::Invalid && !engine.busy());
+    Bytes huge_metadata(ReadFile(dir + "/huge-metadata.epub"));
+    assert(OpenReady(engine, huge_metadata, Format::Epub) == Result::TooLarge);
+    Bytes unsupported(ReadFile(dir + "/bzip2.epub"));
+    assert(OpenReady(engine, unsupported, Format::Epub) == Result::Unsupported);
+    Bytes encrypted(ReadFile(dir + "/encrypted.epub"));
+    assert(OpenReady(engine, encrypted, Format::Epub) == Result::Unsupported);
+    Bytes empty_blocks(ReadFile(dir + "/empty-blocks.epub"));
+    assert(OpenReady(engine, empty_blocks, Format::Epub) == Result::Ok);
+    assert(engine.Seek({}, FontSize::Small) == Result::Pending);
+    const auto before_empty = empty_blocks.total_read;
+    assert(engine.Poll() == Result::Pending && engine.busy());
+    assert(empty_blocks.total_read - before_empty <= 1024);
+    assert(Finish(engine) == Result::Ok && Text(engine.page()) == U"VISIBLE");
     char path[192];
     assert(detail::ResolvePath("OPS/package.opf", "text/../chapter%201.xhtml#id", path, sizeof(path)));
     assert(std::strcmp(path, "OPS/chapter 1.xhtml") == 0);
     assert(!detail::ResolvePath("OPS/package.opf", "../../outside", path, sizeof(path)));
     assert(!detail::ResolvePath("", "https://example.com/book", path, sizeof(path)));
     BookmarkTests();
+    ControllerTests(dir);
+    TestReaderPlatform(argv[1]);
 }

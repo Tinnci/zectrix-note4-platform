@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "esp_err.h"
+#include "zectrix_book_storage.h"
 
 namespace zectrix::storage {
 
@@ -31,10 +32,15 @@ public:
     esp_err_t GetBlob(const char* key, void* value, std::size_t* length) const;
     esp_err_t Erase(const char* key);
 
+    esp_err_t ListBooks(BookEntry* entries, std::size_t capacity,
+                        std::size_t* count, bool* truncated);
+    esp_err_t OpenBook(const char* name, BookFile* file);
+
 private:
     struct Impl;
     explicit StorageService(Impl* impl) : impl_(impl) {}
     esp_err_t Commit(esp_err_t operation_result);
+    esp_err_t InitializeBooks();
     Impl* impl_;
 };
 

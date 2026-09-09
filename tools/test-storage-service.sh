@@ -7,6 +7,7 @@ c++ -std=c++17 -Wall -Wextra -Werror \
   -I"$root_dir/tools/host_include" \
   -I"$root_dir/components/zectrix_storage/include" \
   "$root_dir/components/zectrix_storage/zectrix_storage_service.cc" \
+  "$root_dir/components/zectrix_storage/zectrix_book_storage.cc" \
   "$root_dir/tools/storage_service_test.cc" -o "$test_binary"
 "$test_binary"
 echo 'PASS: storage service tests.'

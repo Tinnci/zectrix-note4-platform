@@ -118,6 +118,38 @@ replace the committed file and sync its directory; they never delete the previou
 record before replacement. Invalid files are reported without partially loading
 or overwriting them.
 
+### Reader progress
+
+L1.2 uses durable key `0x0101` for the latest reading position. The application
+payload is version 1, little-endian, 16–78 bytes:
+
+| Offset | Bytes | Value |
+| ---: | ---: | --- |
+| 0 | 1 | Format version, `1` |
+| 1 | 1 | Font size: `0` = 16px, `1` = 24px |
+| 2 | 2 | Zero-based EPUB spine chapter; zero for TXT |
+| 4 | 4 | UTF-8 TXT byte offset or uncompressed XHTML byte offset |
+| 8 | 4 | Source file length |
+| 12 | 2 | Current page-end progress, 0–1000 per mille |
+| 14 | 1 | Book ID length, 1–63 bytes |
+| 15 | Variable | UTF-8 filename without a terminator or path separators |
+
+The local reader record contains eight recent bookmarks, an outgoing snapshot
+and bidirectional application revisions in Storage's `reader.marks` blob. That
+snapshot commits before `PutDurableState`; replay after a crash uses the same
+revision and bytes. C1 retains ownership of protocol ACKs and its inbox/outbox.
+The reader saves a newly displayed page only after display success. Repeated
+unchanged saves do not write NVS.
+
+Incoming progress is offered through Reading Options for the matching filename,
+source length and valid chapter/offset. Receipt never navigates an application
+or changes a page. A local choice applies it after display success and publishes
+the selected position as a new local revision. Forgetting the trusted phone also
+resets the reader's incoming application cursor while preserving local bookmarks.
+Android decodes this payload for its progress card and assigns outgoing revisions
+from its existing durable queue when the user selects Resume this position.
+See [READER.md](READER.md) for file identity, coalescing, limits and installation.
+
 ### Cursor exchange and durable replay
 
 Hello and accepted, authorized HelloAck require TLV type `4` (sync cursors).

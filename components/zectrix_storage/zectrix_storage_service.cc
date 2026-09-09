@@ -1,6 +1,7 @@
 #include "zectrix_storage_service.h"
 
 #include <new>
+#include <memory>
 
 #include "nvs.h"
 #include "nvs_flash.h"
@@ -23,6 +24,7 @@ esp_err_t PublicResult(esp_err_t result) {
 struct StorageService::Impl {
     nvs_handle_t handle = 0;
     bool initialized = false;
+    std::unique_ptr<BookStorage> books;
 };
 
 esp_err_t StorageService::Create(StorageService** out_service) {
@@ -142,6 +144,23 @@ esp_err_t StorageService::Erase(const char* key) {
 esp_err_t StorageService::Commit(esp_err_t operation_result) {
     if (operation_result != ESP_OK) return operation_result;
     return nvs_commit(impl_->handle);
+}
+
+esp_err_t StorageService::InitializeBooks() {
+    if (!IsInitialized()) return ESP_ERR_INVALID_STATE;
+    if (!impl_->books) impl_->books.reset(new (std::nothrow) BookStorage);
+    return impl_->books ? ESP_OK : ESP_ERR_NO_MEM;
+}
+
+esp_err_t StorageService::ListBooks(BookEntry* entries, std::size_t capacity,
+                                  std::size_t* count, bool* truncated) {
+    const auto result = InitializeBooks();
+    return result == ESP_OK ? impl_->books->List(entries, capacity, count, truncated) : result;
+}
+
+esp_err_t StorageService::OpenBook(const char* name, BookFile* file) {
+    const auto result = InitializeBooks();
+    return result == ESP_OK ? impl_->books->Open(name, file) : result;
 }
 
 }  // namespace zectrix::storage

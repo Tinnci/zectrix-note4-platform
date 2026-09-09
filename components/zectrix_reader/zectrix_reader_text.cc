@@ -61,6 +61,11 @@ bool Block(const char* tag) {
 
 bool Xml::complete() const { return state_ == State::Text; }
 
+void Xml::Reset() {
+    state_ = State::Text;
+    size_ = start_ = quote_ = dashes_ = brackets_ = 0;
+}
+
 Result Xml::Feed(uint8_t c, uint32_t offset, XmlEvent* event) {
     *event = {};
     if (state_ == State::Text) {
@@ -216,7 +221,14 @@ bool ResolvePath(const char* base, const char* href, char* output, std::size_t c
 }
 
 void Decoder::Reset(uint16_t chapter, Format format) {
-    *this = Decoder{};
+    xml_.Reset();
+    utf8_value_ = utf8_start_ = utf8_min_ = utf8_remaining_ = 0;
+    hidden_.fill(0);
+    hidden_depth_ = 0;
+    paragraph_ = space_ = true;
+    cr_ = pending_ = false;
+    pending_event_ = {};
+    pending_after_ = 0;
     chapter_ = chapter;
     format_ = format;
 }

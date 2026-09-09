@@ -129,12 +129,17 @@ Result Bookmarks::Commit(const State& state) {
 
 Result Bookmarks::Save(const Bookmark& mark) {
     if (!loaded_) return Result::Invalid;
-    const auto* previous = Find(mark.book_id.data(), mark.source_bytes);
-    if (previous && *previous == mark) return Result::Ok;
+    std::array<uint8_t, kBookmarkBytes> bytes{};
+    std::size_t size = 0;
+    Bookmark canonical;
+    if (!EncodeBookmark(mark, bytes.data(), bytes.size(), &size) ||
+        !DecodeBookmark(bytes.data(), size, &canonical)) return Result::Invalid;
+    const auto* previous = Find(canonical.book_id.data(), canonical.source_bytes);
+    if (previous && *previous == canonical) return Result::Ok;
     if (state_.outbound_revision == UINT32_MAX) return Result::TooLarge;
     State candidate = state_;
-    Put(candidate, mark);
-    candidate.outgoing = mark;
+    Put(candidate, canonical);
+    candidate.outgoing = canonical;
     ++candidate.outbound_revision;
     // The application snapshot and its replay revision commit together before
     // enqueue. A reboot in between retries the exact same durable payload.
@@ -164,12 +169,24 @@ Result Bookmarks::Sync() {
 
 Result Bookmarks::ApplyRemote() {
     if (!loaded_ || !remote_revision_) return Result::Invalid;
+    if (state_.outbound_revision == UINT32_MAX) return Result::TooLarge;
     State candidate = state_;
     Put(candidate, remote_);
     candidate.inbound_revision = remote_revision_;
+    candidate.outgoing = remote_;
+    ++candidate.outbound_revision;
     const auto saved = Commit(candidate);
     if (saved == Result::Ok) remote_revision_ = 0;
     return saved;
+}
+
+Result Bookmarks::ResetPeer() {
+    if (!loaded_) return Result::Invalid;
+    State candidate = state_;
+    candidate.inbound_revision = 0;
+    const auto result = state_.inbound_revision ? Commit(candidate) : Result::Ok;
+    if (result == Result::Ok) remote_revision_ = queued_revision_ = 0;
+    return result;
 }
 
 }  // namespace zectrix::reader

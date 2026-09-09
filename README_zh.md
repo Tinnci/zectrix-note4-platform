@@ -21,7 +21,7 @@
 | --- | --- |
 | SSD2683 1bpp 全刷、局刷和 4bpp 显示路径 | 可复现 ESP-IDF 工具链、构建溯源、硬件验收与原厂恢复流程 |
 | NOTE4 板级适配和外设访问 | 显示、输入、电源、时间、存储和系统服务的单一所有权 |
-| 图库 UI 和硬件能力展示 | 含 Launcher、Settings、Diagnostics、Clock 的静态多应用运行时 |
+| 图库 UI 和硬件能力展示 | 含 Launcher、Reader、Settings、Diagnostics、Clock 的静态应用运行时 |
 | Wi-Fi RF、音频、RTC、充电、LED、按键、NFC 和电池自检 | 具备兼容性与架构检查的源码稳定 C++17 SDK v1 |
 | 基础设备交互和关机流程 | 版本化伴侣协议、持久同步、安全 BLE、Android 伴侣端和 NFC 辅助注册 |
 | 面向硬件的串口诊断 | 有资源边界的维护 CLI、平台诊断和交互式 Host 模拟器 |
@@ -40,6 +40,7 @@
 | D1 | 进行中 | USB 会话、平台诊断、日志流和 Host 模拟器已实现；输入观察和硬件验收尚未结束 |
 | M5 | 进行中 | A/B 分区校验、固件流式校验和启动确认看门狗已实现；升级交付流程与硬件验收尚未结束 |
 | R1 | 进行中 | 最小脏矩形局刷、相同画面跳过与自适应全刷策略已实现；硬件验收尚未结束 |
+| L1 | 进行中 | 常驻状态栏、场景导航与 TXT/EPUB 流式阅读已实现；局域网传书和待机画报为后续任务 |
 
 > [!IMPORTANT]
 > 本项目仅适用于黑白墨水屏版 ZECTRIX NOTE4，不适用于 NOTE4C。烧录本 Demo
@@ -54,7 +55,8 @@
 - 灯塔、六步脚印动画和高对比度灰阶山景展示
 - Wi-Fi RF、扬声器/麦克风回环、RTC、充电、电池、LED、三按键和 NFC 自检
 - Flash、PSRAM、MAC 地址、外设与电源状态设备信息页
-- 内置 TRMNL16 ASCII 点阵字库，无运行时字体或文件系统依赖
+- 内置 TRMNL16 界面字库及支持 16px/24px 的 Unifont 中日韩阅读字库
+- 独立 SPIFFS 书库中的 TXT/EPUB 流式阅读、NVS 断点保存与手机持久进度同步
 - 长按下键 3 秒清屏、关闭外设并关机
 - ZECTRIX Lab 以 MIT License 开源
 
@@ -75,6 +77,17 @@ idf.py -p /dev/ttyACM0 flash monitor
 当前分区布局保留 factory 和 NVS 地址，增加两个 3 MiB OTA 槽位。试运行固件须在
 启动确认期限内完成初始化及 Launcher 首帧渲染。首次安装要求、回滚行为、分块 CRC
 和镜像头校验接口及独立配置编译命令见 [ADR-0005](docs/adr/0005-ab-ota-boot-confirmation.md)。
+
+## 电子书阅读
+
+主菜单进入 **BOOK READER**，用上下键选书、OK 打开。阅读时上下键翻页，OK 打开
+字号与阅读位置选项，长按 OK 返回书库。每次显示成功后保存进度；Android 伴侣端
+可以查看进度并回传阅读位置，设备端需手动选择 **USE PHONE POSITION** 才会跳转。
+
+编译会从 `books/` 生成 `build/books.bin`。使用 `idf.py -p 串口 books-flash` 单独
+安装书库；该命令替换整个书籍分区，普通固件刷写保留书库。通过
+`-D "ZECTRIX_BOOKS_DIR=/书籍目录的绝对路径"` 可选用自己的 TXT/EPUB 目录。
+首次升级须安装新分区表，完整步骤与格式限制见 [docs/READER.md](docs/READER.md)。
 
 ## Host 维护 CLI
 
@@ -106,10 +119,12 @@ components/zectrix_board/     NOTE4 引脚与外设适配层
 components/zectrix_demo_ui/   画布、点阵字库与英文演示 UI
 components/zectrix_self_test/ 硬件自检实现
 components/zectrix_platform/  平台组合根
+components/zectrix_reader/    TXT/EPUB 流式排版、字库与书签
 components/zectrix_*          系统服务与应用运行时
 android-companion/            开发中的 Android BLE/NFC 伴侣端
 protocol/                     跨端协议黄金向量
 main/assets/                  内嵌显示素材
+books/                        默认书库镜像的源目录
 tools/                        主机测试、检查与素材转换工具
 docs/                         架构、契约与验收记录
 ```

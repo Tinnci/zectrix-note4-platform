@@ -16,14 +16,15 @@ each menu.
 
 The home menu contains:
 
-1. **CLOCK** — calendar time, with system time or explicit uptime fallback when RTC fails.
-2. **SETTINGS** — persist the automatic showcase preference.
-3. **CONNECTIVITY** — phone pairing, resource fetch and trusted-phone management.
-4. **AUTO SHOWCASE** — unattended rotation of all three display modes.
-5. **DISPLAY GALLERY** — individual display previews and measurements.
-6. **HARDWARE TESTS** — run all tests or choose one test.
-7. **DEVICE INFO** — board information and live power measurements.
-8. **ABOUT & LICENSE** — project ownership and license.
+1. **BOOK READER** — TXT/EPUB library, paginated reading, font size and saved progress.
+2. **CLOCK** — calendar time, with system time or explicit uptime fallback when RTC fails.
+3. **SETTINGS** — persist the automatic showcase preference.
+4. **CONNECTIVITY** — phone pairing, resource fetch and trusted-phone management.
+5. **AUTO SHOWCASE** — unattended rotation of all three display modes.
+6. **DISPLAY GALLERY** — individual display previews and measurements.
+7. **HARDWARE TESTS** — run all tests or choose one test.
+8. **DEVICE INFO** — board information and live power measurements.
+9. **ABOUT & LICENSE** — project ownership and license.
 
 Returning home restores the previous selection. Auto Showcase is off by
 default for new installations; valid existing preferences are retained. If
@@ -36,6 +37,14 @@ and OK on the report returns to the gallery menu. Long OK pops to the previous
 menu; at a root screen it returns home. Menu selection survives push/pop.
 Run All returns to its menu after three previews. The rotation and footprint
 animation use idle deadlines rather than separate blocking input loops.
+
+The Launcher scrolls its eight visible rows to reach the ninth item. Reader
+uses Library -> Reading -> Options. UP/DOWN turn pages in Reading; OK opens
+font/resume/restart/save options. Long OK returns one scene, and loading remains
+cancellable. Font changes preserve the current source anchor. A successful
+display saves progress to NVS and the C1 outbox. Phone progress is offered for
+explicit application, never used to move an active page automatically.
+See [READER.md](READER.md) for supported books and content installation.
 
 ## Persistent status bar
 
@@ -59,7 +68,8 @@ automatically resumes RTC display after recovery.
 
 ## Refresh policy
 
-- Splash, page changes, scene reports and summaries use full 1bpp refresh.
+- Splash, scene changes, initial reader pages, font changes, reports and summaries use full 1bpp refresh.
+- Reader page turns request Fast; DisplayService selects partial or full refresh.
 - Menu selection and live test content use partial 1bpp refresh.
 - After eight UI partial refreshes, promote the next update to full refresh.
 - Test updates are throttled to 500 ms unless a PASS/FAIL state must be shown.

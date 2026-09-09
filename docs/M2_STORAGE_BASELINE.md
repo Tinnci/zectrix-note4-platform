@@ -34,3 +34,7 @@ filesystem or change the qualified Wi-Fi self-test behavior.
 - M2.5 does not define asset storage, an application package format, or an
   application database.
 - M2.5 does not define encryption or a schema-migration framework.
+
+L1.2 subsequently adds the independent book partition and read-only file API.
+The NVS behavior above remains the M2 migration record; current reader storage
+and installation are documented in [READER.md](READER.md).

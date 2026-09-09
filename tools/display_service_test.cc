@@ -1,5 +1,6 @@
 #include "zectrix_display_service.h"
 #include "zectrix_demo_ui.h"
+#include "zectrix_reader_controller.h"
 #include "zectrix_epd.h"
 
 #include <algorithm>
@@ -12,6 +13,7 @@
 #include <map>
 #include <memory>
 #include <new>
+#include <string>
 #include <vector>
 
 #include "esp_heap_caps.h"
@@ -681,9 +683,9 @@ void TestStatusAndImageComposition() {
     state.battery_percent = 65;
     state.ble = zectrix::ui::RadioIndicator::Connected;
     ui.UpdateStatus(state);
-    const char* items[] = {"CLOCK", "SETTINGS", "CONNECTIVITY", "AUTO SHOWCASE",
+    const char* items[] = {"BOOK READER", "CLOCK", "SETTINGS", "CONNECTIVITY", "AUTO SHOWCASE",
         "DISPLAY GALLERY", "HARDWARE TESTS", "DEVICE INFO", "ABOUT & LICENSE"};
-    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", items, 8, 0,
+    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", items, 9, 0,
         "UP/DOWN Move  OK Select  Hold DOWN Off", true) == ESP_OK);
     assert(Inspect(*service).refresh_count == 1);
     SavePreview(ui.canvas(), "launcher");
@@ -706,14 +708,14 @@ void TestStatusAndImageComposition() {
 
     std::memcpy(before.data(), ui.canvas().data(), before.size());
     ClearTraffic();
-    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", items, 8, 7,
+    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", items, 9, 8,
         "UP/DOWN Move  OK Select  Hold DOWN Off", false) == ESP_OK);
     assert(std::memcmp(before.data(), ui.canvas().data(), content_offset) == 0);
     SavePreview(ui.canvas(), "launcher-last");
     const auto count = Inspect(*service).refresh_count;
     ++state.minute;
     ui.UpdateStatus(state);
-    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", items, 8, 6,
+    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", items, 9, 7,
         "UP/DOWN Move  OK Select  Hold DOWN Off", false) == ESP_OK);
     assert(ui.RefreshPending() == ESP_OK && Inspect(*service).refresh_count == count + 1);
 
@@ -791,6 +793,93 @@ void TestStatusAndImageComposition() {
     CheckFull(white);
     assert(ui.ShowAbout() == ESP_OK);
     assert(!Bit(ui.canvas().data(), 50, 0, 23));
+}
+
+void TestReaderComposition() {
+    using namespace zectrix::reader;
+    using namespace zectrix::app;
+    using zectrix::sdk::Button;
+    using zectrix::sdk::InputAction;
+    Reset();
+    auto service = CreateService();
+    ZectrixDemoUi ui(service.get());
+    zectrix::ui::StatusBarState status;
+    status.time_valid = status.battery_valid = true;
+    status.hour = 20; status.minute = 26; status.battery_percent = 82;
+    ui.UpdateStatus(status);
+    class PreviewLibrary final : public Library {
+    public:
+        std::string text;
+        std::unique_ptr<MemorySource> source;
+        PreviewLibrary() {
+            for (unsigned i = 0; i < 30; ++i)
+                text += "第一段：风从海上来，带着远方的消息。\nEnglish words stay together on a quiet page.\n日本語と한국어。轻按按键，继续阅读。\n";
+            source = std::make_unique<MemorySource>(reinterpret_cast<const uint8_t*>(text.data()), text.size());
+        }
+        Result Refresh() override { return Result::Ok; }
+        std::size_t count() const override { return 1; }
+        BookInfo Get(std::size_t) const override {
+            BookInfo book;
+            std::strcpy(book.id.data(), "风从海上来.txt"); book.bytes = text.size(); return book;
+        }
+        bool truncated() const override { return false; }
+        Result Open(std::size_t, Source** output) override { *output = source.get(); return Result::Ok; }
+        void Close() override {}
+    } library;
+    class PreviewStore final : public BookmarkStore {
+    public:
+        Result Load(uint8_t*, std::size_t, std::size_t*) override { return Result::End; }
+        Result Save(const uint8_t*, std::size_t) override { return Result::Ok; }
+        Result Publish(uint32_t, const uint8_t*, std::size_t) override { return Result::Ok; }
+        Result Receive(uint32_t*, uint8_t*, std::size_t, std::size_t*) override { return Result::End; }
+    } store;
+    Bookmarks bookmarks(store);
+    ReaderController reader(library, bookmarks);
+    assert(zectrix::sdk::IsOk(reader.Start()));
+    assert(ui.ShowReader(reader, true) == ESP_OK);
+    SavePreview(ui.canvas(), "reader-library");
+    assert(reader.Handle({Button::Ok, InputAction::Click}) == ReaderDecision::RenderQuality);
+    assert(ui.ShowReader(reader, true) == ESP_OK);
+    reader.Presented(true);
+    SavePreview(ui.canvas(), "reader-small");
+    const auto small = reader.engine().page().count;
+    const auto glyph = reader.engine().page().glyphs[0];
+    assert(glyph.codepoint == U'第');
+    const auto* bitmap = GlyphBitmap(glyph.codepoint);
+    for (int row = 0; row < 16; ++row) {
+        const uint16_t bits = static_cast<uint16_t>(bitmap[row * 2 + 1]) << 8 | bitmap[row * 2 + 2];
+        for (int col = 0; col < 16; ++col)
+            assert(Bit(ui.canvas().data(), 50, 8 + glyph.x + col, 48 + glyph.y + row) == !(bits & (0x8000 >> col)));
+    }
+    Frame page;
+    std::memcpy(page.data(), ui.canvas().data(), page.size());
+    ++status.minute;
+    ui.UpdateStatus(status);
+    ClearTraffic();
+    assert(ui.RefreshPending() == ESP_OK);
+    assert(std::memcmp(page.data() + 1200, ui.canvas().data() + 1200, page.size() - 1200) == 0);
+    assert(ReferenceDirty(page, {0, 0, 400, 300}, ui.canvas().data()).height <= 24);
+
+    assert(reader.Handle({Button::Ok, InputAction::Click}) == ReaderDecision::RenderQuality);
+    assert(ui.ShowReader(reader, true) == ESP_OK);
+    SavePreview(ui.canvas(), "reader-options");
+    assert(reader.Handle({Button::Ok, InputAction::Click}) == ReaderDecision::RenderQuality);
+    assert(reader.engine().page().font == FontSize::Large && reader.engine().page().count < small);
+    assert(ui.ShowReader(reader, true) == ESP_OK);
+    reader.Presented(true);
+    SavePreview(ui.canvas(), "reader-large");
+    const auto saved = *bookmarks.Find(library.Get(0).id.data(), library.Get(0).bytes);
+    assert(reader.Handle({Button::Down, InputAction::Click}) == ReaderDecision::RenderFast);
+    fail_command = 0xe9;
+    const auto failed = ui.ShowReader(reader, false);
+    assert(failed == ESP_FAIL);
+    reader.Presented(false);
+    assert(*bookmarks.Find(saved.book_id.data(), saved.source_bytes) == saved);
+    assert(reader.Tick(0) == ReaderDecision::RenderQuality);
+    assert(ui.ShowReader(reader, true) == ESP_OK);
+    reader.Presented(true);
+    assert(saved.position < bookmarks.Find(saved.book_id.data(), saved.source_bytes)->position);
+    assert(reader.Tick(1) == ReaderDecision::None);
 }
 
 }  // namespace
@@ -903,5 +992,6 @@ int main() {
     TestUiTraffic();
     TestViewPorts();
     TestStatusAndImageComposition();
+    TestReaderComposition();
     Reset();
 }

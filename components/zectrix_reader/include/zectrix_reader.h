@@ -78,14 +78,17 @@ public:
     Engine(const Engine&) = delete;
     Engine& operator=(const Engine&) = delete;
 
+    // EPUB metadata opens cooperatively: Poll Pending to completion, then Seek.
     Result Open(Source& source, Format format);
     void Close();
     Result Seek(Position position, FontSize font);
     Result Next();
     Result Previous();
     Result SetFont(FontSize font);
-    // At most byte_budget source bytes are parsed per owner-loop callback.
-    // A single inflate call can produce at most its fixed 32 KiB dictionary.
+    // Bound decoding steps per owner callback. A step consumes one body byte
+    // or up to four UTF-8 context bytes; ZIP lookups account for header bytes.
+    // Fixed-buffer I/O may read ahead by one entry or input block.
+    // A single inflate call produces at most its fixed 32 KiB dictionary.
     Result Poll(std::size_t byte_budget = 4096);
     void Cancel();
     bool busy() const;

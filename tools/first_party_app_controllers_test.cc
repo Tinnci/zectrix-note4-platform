@@ -10,20 +10,20 @@ int main() {
 
     LauncherController launcher;
     LauncherResult result = launcher.Handle({Button::Ok, Action::Click});
-    assert(result.decision == LauncherDecision::OpenClock);
+    assert(result.decision == LauncherDecision::OpenReader);
     assert(result.selected == 0);
 
     result = launcher.Handle({Button::Down, Action::Click});
     assert(result.decision == LauncherDecision::RenderFast);
     assert(result.selected == 1);
     result = launcher.Handle({Button::Ok, Action::Click});
-    assert(result.decision == LauncherDecision::OpenSettings);
+    assert(result.decision == LauncherDecision::OpenClock);
     assert(result.selected == 1);
 
     result = launcher.Handle({Button::Down, Action::Click});
     assert(result.selected == 2);
     result = launcher.Handle({Button::Ok, Action::Click});
-    assert(result.decision == LauncherDecision::OpenConnectivity);
+    assert(result.decision == LauncherDecision::OpenSettings);
 
     result = launcher.Handle({Button::Up, Action::Click});
     assert(result.selected == 1);
@@ -33,6 +33,7 @@ int main() {
     assert(result.selected == LauncherController::kItemCount - 1);
 
     const LauncherDecision destinations[] = {
+        LauncherDecision::OpenReader,
         LauncherDecision::OpenClock, LauncherDecision::OpenSettings,
         LauncherDecision::OpenConnectivity, LauncherDecision::OpenShowcase,
         LauncherDecision::OpenGallery, LauncherDecision::OpenDiagnostics,

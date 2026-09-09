@@ -24,7 +24,7 @@ at commit `ca285c98`. See [UPSTREAM.md](UPSTREAM.md) for provenance.
 | --- | --- |
 | SSD2683 1 bpp, partial and 4 bpp display paths | Reproducible ESP-IDF toolchain, build provenance, hardware qualification and factory-recovery procedure |
 | NOTE4 board adapters and peripheral access | Display, input, power, time, storage and system service ownership |
-| Gallery UI and hardware capability demo | Static multi-application runtime with Launcher, Settings, Diagnostics and Clock |
+| Gallery UI and hardware capability demo | Static application runtime with Launcher, Reader, Settings, Diagnostics and Clock |
 | Wi-Fi RF, audio, RTC, charging, LED, buttons, NFC and battery self-tests | Source-stable C++17 SDK v1 with compatibility and architecture checks |
 | Basic on-device navigation and shutdown | Versioned companion protocol, durable synchronization, secure BLE transport, Android companion and NFC-assisted enrollment |
 | Hardware-oriented serial diagnostics | Bounded maintenance CLI, platform diagnostics and interactive host simulator |
@@ -44,6 +44,7 @@ Development follows dependency-aware stage gates defined in
 | D1 | In progress | USB sessions, platform diagnostics, log streaming and host simulator implemented; input observation and hardware qualification remain open |
 | M5 | In progress | A/B partition validation, streamed firmware verification and boot confirmation watchdog implemented; update delivery and hardware qualification remain open |
 | R1 | In progress | Minimal dirty-region updates, unchanged-frame suppression and adaptive full-refresh policy implemented; hardware qualification remains open |
+| L1 | In progress | Persistent status bar, scene navigation and streamed TXT/EPUB reader; LAN upload and ambient sleep cover remain next |
 
 > [!CAUTION]
 > This project targets the black-and-white ZECTRIX NOTE4 hardware. It is not
@@ -63,8 +64,9 @@ Development follows dependency-aware stage gates defined in
 - Wi-Fi RF scan, acoustic speaker/microphone loopback, PCF8563 RTC, charging,
   LED, three-button and NFC self-tests
 - Device information page for flash, PSRAM, MAC address, peripherals and power
-- Embedded proportional-width TRMNL16 ASCII bitmap font. The demo has no
-  runtime font or filesystem dependency.
+- Embedded TRMNL16 UI font and Unifont CJK reader bitmaps at 16px/24px.
+- Streamed TXT/EPUB reading from a Storage-owned SPIFFS book partition, with
+  NVS bookmarks and durable phone progress synchronization.
 - Long-press DOWN for 3 seconds to clear the panel and shut down
 - MIT licensed by ZECTRIX Lab
 
@@ -98,6 +100,20 @@ render within the boot confirmation window. See
 [ADR-0005](docs/adr/0005-ab-ota-boot-confirmation.md) for installation requirements,
 rollback behavior, the streamed CRC/header verification API and the
 fresh-configuration build command.
+
+## Book reader
+
+Open **BOOK READER**, choose a book with UP/DOWN, and press OK. While reading,
+UP/DOWN turn pages and OK opens font and resume options. Hold OK returns to
+the library. The current position is saved after each successful page display.
+Android shows the synchronized progress and can queue a position for explicit
+resume on Note4.
+
+The build creates `build/books.bin` from `books/`. Install it separately with
+`idf.py -p PORT books-flash`; this replaces the book partition. Ordinary firmware
+flash preserves books. You can select your own source directory through
+`-D "ZECTRIX_BOOKS_DIR=/absolute/path/to/books"`. See
+[docs/READER.md](docs/READER.md) for installation and format limits.
 
 ## Host maintenance CLI
 
@@ -135,7 +151,8 @@ model and limits.
 | OK hold (1.5 s) | Return or cancel |
 | DOWN hold (3 s) | Clear display, power down peripherals and shut down |
 
-The home screen starts Auto Showcase after 15 seconds of inactivity. On
+When enabled in Settings, the home screen starts Auto Showcase after 15 seconds
+of inactivity. New installations leave it off. On
 battery power, shutdown releases the hardware power latch. While powered over
 USB, the board enters deep sleep after clearing the display.
 
@@ -144,6 +161,9 @@ USB, the board enters deep sleep after clearing the display.
 ```text
 Splash
   -> Home
+     |-- Book Reader
+     |    `-- Library -> Reading -> Font / Phone Position / Restart / Save
+     |-- Clock / Settings / Connectivity
      |-- Auto Showcase
      |    `-- 1bpp Full -> 1bpp Partial -> 4bpp Full
      |-- Display Gallery
@@ -182,10 +202,12 @@ components/zectrix_board/     Board pins and peripheral adapters
 components/zectrix_demo_ui/   Canvas, bitmap font and English UI
 components/zectrix_self_test/ Hardware test implementations
 components/zectrix_platform/  Platform composition root
+components/zectrix_reader/    Streaming TXT/EPUB engine, fonts and bookmarks
 components/zectrix_*          Owned system services and application runtime
 android-companion/            Android BLE/NFC companion under development
 protocol/                     Shared protocol golden vectors
 main/assets/                  Embedded display assets
+books/                        Default content image source
 tools/                        Host tests, checks and asset conversion tools
 docs/                         Architecture, contracts and qualification records
 ```

@@ -72,4 +72,7 @@ object CompanionConnectionManager {
 
     fun putDurableState(entry: DurableEntry): Boolean = client?.putDurableState(entry) == true
     fun readDurableState(key: Int): DurableEntry? = client?.readDurableState(key)
+    fun readingProgress(): ReaderProgress? = readDurableState(ReaderProgressCodec.SYNC_KEY)
+        ?.let { ReaderProgressCodec.decode(it.payload) }
+    fun sendReadingProgress(progress: ReaderProgress): Boolean = client?.sendReadingProgress(progress) == true
 }
