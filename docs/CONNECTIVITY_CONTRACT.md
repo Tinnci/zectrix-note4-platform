@@ -353,6 +353,31 @@ NFC, display and board resources through `Platform::Shutdown()`. Host resource
 counts establish software ownership and cleanup, not physical modem current
 or BLE link quality under RF contention.
 
+## Local book transfer (L1.3)
+
+`StartBookTransfer`, `StopBookTransfer` and `BookTransferStatus` form an internal
+service boundary for Send Books. The application chooses hotspot or saved-network
+mode and receives copied status. Credentials, HTTP requests and socket lifetimes
+stay inside Connectivity. No SDK v1 signature changes.
+
+The existing session owner starts/polls the shared ESP Wi-Fi driver under the
+resource mutex. AP mode uses WPA2, a new 12-character password and at most two
+clients. STA mode uses Storage-owned credentials. The same exclusive driver
+claim protects resource bursts and RF diagnostics. Active content sessions reject
+new resource requests and credential reconfiguration. Power and offline/phone-only
+rules are checked at startup and on every poll.
+
+The HTTP API streams files through a Storage management lease. All API calls
+require the screen code. ESP-IDF owns a bounded HTTP task. Stop cancels its work,
+interrupts client sockets and joins handlers before radio teardown and lease
+release. Failed cleanup retains ownership for retry. A completed browser batch,
+local cancellation, idle timeout or 15-minute absolute deadline ends the session.
+The application reads final upload counts after the server joins.
+
+See [BOOK_TRANSFER.md](BOOK_TRANSFER.md) for the API, exact time/memory limits,
+content initialization, local-network security and Host verification. Real
+association, radio current and BLE/Wi-Fi coexistence remain hardware measurements.
+
 ## Security lifecycle
 
 Pairing requires a local Note4 action. The firmware requests bonding, LE Secure

@@ -4,6 +4,7 @@
 #include <array>
 #include <atomic>
 #include <cstring>
+#include <cstdio>
 #include <memory>
 #include <new>
 
@@ -25,6 +26,7 @@
 #include "zectrix_sync_session.h"
 #include "zectrix_wifi_credentials.h"
 #include "zectrix_wifi_esp_driver.h"
+#include "zectrix_book_web.h"
 
 namespace zectrix::connectivity {
 namespace {
@@ -101,6 +103,38 @@ void LogEnrollmentRejection(const char* reason, uint32_t session_id) {
              static_cast<unsigned long>(session_id), reason);
 }
 
+class BookRadio final : public BookTransferRadio {
+public:
+    WifiDriverResult Start(BookTransferMode mode, const WifiCredentials& credentials) override {
+        return mode == BookTransferMode::Hotspot ? driver_.StartAccessPoint(credentials) : driver_.StartStation(credentials);
+    }
+    WifiDriverResult Poll(BookTransferMode mode, char* address, std::size_t capacity) override {
+        auto result = mode == BookTransferMode::Hotspot ? driver_.PollAccessPoint() : driver_.PollAssociation();
+        if (result == WifiDriverResult::kReady && mode == BookTransferMode::Station) result = driver_.PollIp();
+        if (result == WifiDriverResult::kReady && !driver_.LocalAddress(address, capacity)) return WifiDriverResult::kIpFailure;
+        return result;
+    }
+    WifiDriverResult Stop() override { return driver_.StopStation(); }
+private:
+    EspWifiBackendDriver driver_;
+};
+
+struct BookShare {
+    BookRadio radio;
+    EspBookWebServer server;
+    BookTransfer transfer{radio, server};
+};
+
+bool BookPowerAllowed(const companion::ConnectivityConditions& conditions) {
+    return conditions.power_state == companion::ProductPowerState::kActive &&
+        (conditions.external_power || conditions.battery_percent >= 20);
+}
+
+bool BookPolicyAllowed(const companion::ConnectivityConditions& conditions) {
+    return conditions.user_policy != companion::UserConnectivityPolicy::kOffline &&
+        conditions.user_policy != companion::UserConnectivityPolicy::kPhoneOnly;
+}
+
 }  // namespace
 
 struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
@@ -131,6 +165,8 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
     EspWifiBackendDriver wifi_driver;
     std::unique_ptr<WifiBackend> wifi_backend;
     std::unique_ptr<ResourceClient> resource_client;
+    std::unique_ptr<BookShare> book_share;
+    BookTransferSnapshot book_status;
     companion::ConnectivityConditions resource_conditions{};
     uint32_t resource_sequence = 0;
     uint32_t resource_phone_session = 0;
@@ -571,8 +607,9 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
         xSemaphoreTake(resource_mutex, portMAX_DELAY);
         const uint32_t resource_next = resource_client == nullptr ? UINT32_MAX
             : resource_client->NextWakeMs(MonotonicMilliseconds());
-        const uint32_t next = std::min(resource_next, sync_session.NextWakeMs(MonotonicMilliseconds(),
+        uint32_t next = std::min(resource_next, sync_session.NextWakeMs(MonotonicMilliseconds(),
             resource_client == nullptr || !resource_client->AwaitingPhone()));
+        if (book_share && book_share->transfer.Busy()) next = std::min(next, uint32_t{100});
         xSemaphoreGive(resource_mutex);
         return next;
     }
@@ -598,6 +635,10 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
                 ? companion::PhoneAvailability::kConnected
                 : companion::PhoneAvailability::kUnavailable;
         resource_client->Poll(resource_conditions, MonotonicMilliseconds());
+        if (book_share && book_share->transfer.Busy()) {
+            book_share->transfer.Poll(MonotonicMilliseconds(), BookPowerAllowed(resource_conditions), BookPolicyAllowed(resource_conditions));
+            book_status = book_share->transfer.Snapshot();
+        }
         xSemaphoreGive(resource_mutex);
     }
 
@@ -850,6 +891,17 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
                 vTaskDelay(pdMS_TO_TICKS(20));
             }
         }
+        if (self->book_share) {
+            const auto started = MonotonicMilliseconds();
+            do {
+                xSemaphoreTake(self->resource_mutex, portMAX_DELAY);
+                const bool stopped = self->book_share->transfer.Stop();
+                self->book_status = self->book_share->transfer.Snapshot();
+                xSemaphoreGive(self->resource_mutex);
+                if (stopped) break;
+                vTaskDelay(pdMS_TO_TICKS(20));
+            } while (MonotonicMilliseconds() - started < 2000);
+        }
         xSemaphoreGive(self->session_task_done);
         vTaskDelete(nullptr);
     }
@@ -909,8 +961,9 @@ ConnectivityResult ConnectivityService::Stop() {
         impl_->session_task_done = nullptr;
     }
     impl_->ble.Stop();
-    return impl_->wifi_backend != nullptr &&
-        impl_->wifi_backend->State() == WifiBackendState::kStopFailed
+    return (impl_->wifi_backend != nullptr &&
+        impl_->wifi_backend->State() == WifiBackendState::kStopFailed) ||
+        (impl_->book_share && impl_->book_share->transfer.Busy())
             ? ConnectivityResult::kTransportError : ConnectivityResult::kOk;
 }
 
@@ -1087,6 +1140,14 @@ ConnectivitySnapshot ConnectivityService::Snapshot() const {
         snapshot.wifi_credentials_available = impl_->resource_conditions.wifi_credentials_available;
         snapshot.resource_busy = impl_->resource_client->Busy();
         snapshot.wifi_state = impl_->resource_client->WifiState();
+        snapshot.book_transfer_active = impl_->book_share && impl_->book_share->transfer.Busy();
+        if (snapshot.book_transfer_active) {
+            const auto& books = impl_->book_status;
+            snapshot.wifi_state = books.state == BookTransferState::Sharing ? WifiBackendState::kTransferring :
+                books.state == BookTransferState::Stopping ?
+                    (books.error == BookTransferError::Stop ? WifiBackendState::kStopFailed : WifiBackendState::kStopping) :
+                WifiBackendState::kStartingStation;
+        }
         snapshot.resource_decision = impl_->resource_client->Decision();
         snapshot.sync_converged = snapshot.peer_authorized && snapshot.protocol_negotiated_local &&
             impl_->sync_session.Converged();
@@ -1154,7 +1215,7 @@ ConnectivityResult ConnectivityService::ConfigureWifi(const WifiCredentials& cre
         xSemaphoreGive(impl_->resource_mutex);
         return ConnectivityResult::kInvalidState;
     }
-    if (impl_->resource_client->WifiBusy()) {
+    if (impl_->resource_client->WifiBusy() || (impl_->book_share && impl_->book_share->transfer.Busy())) {
         xSemaphoreGive(impl_->resource_mutex);
         return ConnectivityResult::kBusy;
     }
@@ -1182,6 +1243,10 @@ ConnectivityResult ConnectivityService::RequestResource(
         xSemaphoreGive(impl_->resource_mutex);
         return ConnectivityResult::kInvalidState;
     }
+    if (impl_->book_share && impl_->book_share->transfer.Busy()) {
+        xSemaphoreGive(impl_->resource_mutex);
+        return ConnectivityResult::kBusy;
+    }
     uint32_t request_id = esp_random();
     if (request_id == 0) request_id = 1;
     const bool accepted = impl_->resource_client->Begin(
@@ -1199,6 +1264,70 @@ bool ConnectivityService::TakeResourceResponse(ResourceResponse* response) {
     xSemaphoreGive(impl_->resource_mutex);
     if (received) impl_->ble.WakeSessionWaiter();
     return received;
+}
+
+ConnectivityResult ConnectivityService::StartBookTransfer(BookTransferMode mode) {
+    if (!impl_ || !impl_->initialized.load() || !impl_->resource_mutex || !impl_->storage_service ||
+        (mode != BookTransferMode::Hotspot && mode != BookTransferMode::Station)) return ConnectivityResult::kInvalidState;
+    xSemaphoreTake(impl_->resource_mutex, portMAX_DELAY);
+    auto finish = [this](ConnectivityResult result) {
+        xSemaphoreGive(impl_->resource_mutex);
+        impl_->ble.WakeSessionWaiter();
+        return result;
+    };
+    if (!impl_->initialized.load()) return finish(ConnectivityResult::kInvalidState);
+    if (impl_->book_share && impl_->book_share->transfer.Busy()) return finish(ConnectivityResult::kBusy);
+    impl_->book_status = {};
+    impl_->book_status.mode = mode;
+    auto fail = [&](BookTransferError error) {
+        impl_->book_status.state = BookTransferState::Failed;
+        impl_->book_status.error = error;
+        return finish(ConnectivityResult::kUnavailable);
+    };
+    if (impl_->resource_client->Busy()) return fail(BookTransferError::Busy);
+    if (!BookPowerAllowed(impl_->resource_conditions)) return fail(BookTransferError::Power);
+    if (!BookPolicyAllowed(impl_->resource_conditions)) return fail(BookTransferError::Policy);
+    if (!impl_->book_share) impl_->book_share.reset(new (std::nothrow) BookShare);
+    if (!impl_->book_share) return fail(BookTransferError::Server);
+    WifiCredentials credentials;
+    if (mode == BookTransferMode::Station &&
+        impl_->wifi_credentials->Load(&credentials) != WifiCredentialResult::kAvailable) return fail(BookTransferError::Credentials);
+    storage::BookStorage* books = nullptr;
+    if (impl_->storage_service->BeginBookManagement(&books) != ESP_OK) {
+        ClearWifiCredentials(&credentials);
+        return fail(BookTransferError::Storage);
+    }
+    std::array<char, 13> code{};
+    constexpr char alphabet[] = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    for (std::size_t i = 0; i < code.size() - 1; ++i) code[i] = alphabet[esp_random() % (sizeof(alphabet) - 1)];
+    if (mode == BookTransferMode::Hotspot) {
+        std::snprintf(credentials.ssid.data(), credentials.ssid.size(), "NOTE4-%04X", static_cast<unsigned>(esp_random() & 0xffff));
+        std::strcpy(credentials.passphrase.data(), code.data());
+    }
+    const bool started = impl_->book_share->transfer.Begin(*books, mode, credentials, code.data(), Impl::MonotonicMilliseconds());
+    ClearWifiCredentials(&credentials);
+    code.fill(0);
+    if (!started) { books->EndManagement(); return fail(BookTransferError::Server); }
+    impl_->book_status = impl_->book_share->transfer.Snapshot();
+    return finish(ConnectivityResult::kOk);
+}
+
+ConnectivityResult ConnectivityService::StopBookTransfer() {
+    if (!impl_ || !impl_->resource_mutex) return ConnectivityResult::kOk;
+    xSemaphoreTake(impl_->resource_mutex, portMAX_DELAY);
+    const bool stopped = !impl_->book_share || impl_->book_share->transfer.Stop();
+    if (impl_->book_share) impl_->book_status = impl_->book_share->transfer.Snapshot();
+    xSemaphoreGive(impl_->resource_mutex);
+    impl_->ble.WakeSessionWaiter();
+    return stopped ? ConnectivityResult::kOk : ConnectivityResult::kTransportError;
+}
+
+BookTransferSnapshot ConnectivityService::BookTransferStatus() const {
+    if (!impl_ || !impl_->resource_mutex) return {};
+    xSemaphoreTake(impl_->resource_mutex, portMAX_DELAY);
+    const auto status = impl_->book_status;
+    xSemaphoreGive(impl_->resource_mutex);
+    return status;
 }
 
 companion::SyncStatus ConnectivityService::PutDurableState(

@@ -6,6 +6,8 @@ L1.1 updates the first-party shell and internal scene/viewport implementation;
 the SDK v1 application lifecycle and public signatures remain unchanged.
 L1.2 adds the Reader application and its private Library/Reading/Options scenes.
 Its streamed execution and persistence are described in [READER.md](READER.md).
+L1.3 adds Send Books with private Mode/Session scenes. Connectivity owns its
+temporary web service and Storage lease. See [BOOK_TRANSFER.md](BOOK_TRANSFER.md).
 
 ## Scope
 

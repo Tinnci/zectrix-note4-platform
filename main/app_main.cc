@@ -17,6 +17,7 @@
 #include "zectrix_scene_manager.h"
 #include "zectrix_gallery_controller.h"
 #include "zectrix_reader_controller.h"
+#include "zectrix_book_transfer_controller.h"
 #include "zectrix_reader_platform.h"
 #include "zectrix_display_service.h"
 #include "zectrix_input_service.h"
@@ -181,6 +182,7 @@ private:
                     context.RequestRender({0, 24, 400, 276}, sdk::RenderIntent::Fast);
                     break;
                 case Decision::OpenReader: target = "reader"; break;
+                case Decision::OpenBookTransfer: target = "book-transfer"; break;
                 case Decision::OpenClock: target = "clock"; break;
                 case Decision::OpenSettings: target = "settings"; break;
                 case Decision::OpenConnectivity: target = "connectivity"; break;
@@ -212,7 +214,7 @@ private:
         }
         sdk::Status Render(const sdk::RenderRequest& request) override {
             static constexpr const char* kItems[] = {
-                "BOOK READER", "CLOCK", "SETTINGS", "CONNECTIVITY", "AUTO SHOWCASE",
+                "BOOK READER", "SEND BOOKS", "CLOCK", "SETTINGS", "CONNECTIVITY", "AUTO SHOWCASE",
                 "DISPLAY GALLERY", "HARDWARE TESTS", "DEVICE INFO",
                 "ABOUT & LICENSE"};
             return ToSdkStatus(owner_->ui_.ShowMenu(
@@ -288,6 +290,69 @@ private:
         zectrix::reader::PlatformBookmarkStore store_;
         zectrix::reader::Bookmarks bookmarks_;
         zectrix::app::ReaderController controller_;
+    };
+
+    class BookTransferApplication final : public sdk::Application {
+    public:
+        explicit BookTransferApplication(TerminalApp& owner) : owner_(owner) {}
+        sdk::Status Enter(sdk::ApplicationContext& context) override {
+            const auto result = controller_.Start();
+            if (!sdk::IsOk(result)) return result;
+            return Apply(zectrix::app::BookTransferDecision::RenderQuality, context);
+        }
+        sdk::Status HandleEvent(const sdk::InputEvent& event, sdk::ApplicationContext& context) override {
+            return Apply(controller_.Handle(event), context);
+        }
+        sdk::Status HandleIdle(sdk::ApplicationContext& context) override {
+            return Apply(controller_.Update(owner_.connectivity_->BookTransferStatus(), owner_.time_->MonotonicMicroseconds()), context);
+        }
+        sdk::Status Render(const sdk::RenderRequest& request) override {
+            const auto result = owner_.ui_.ShowBookTransfer(controller_.snapshot(),
+                controller_.scene() == zectrix::app::BookTransferScene::Mode, controller_.station_selected(),
+                request.intent == sdk::RenderIntent::Quality);
+            controller_.Presented(result == ESP_OK);
+            return ToSdkStatus(result);
+        }
+        sdk::Status Exit() override {
+            const auto stopped = owner_.connectivity_->StopBookTransfer();
+            if (stopped != zectrix::connectivity::ConnectivityResult::kOk)
+                ESP_LOGW(kTag, "book transfer stop is retrying on the connectivity owner");
+            return sdk::Status::Ok;
+        }
+    private:
+        sdk::Status Apply(zectrix::app::BookTransferDecision decision, sdk::ApplicationContext& context) {
+            using Decision = zectrix::app::BookTransferDecision;
+            using Mode = zectrix::connectivity::BookTransferMode;
+            switch (decision) {
+                case Decision::Hotspot:
+                case Decision::Station:
+                    owner_.connectivity_->StartBookTransfer(decision == Decision::Hotspot ? Mode::Hotspot : Mode::Station);
+                    controller_.Update(owner_.connectivity_->BookTransferStatus(), owner_.time_->MonotonicMicroseconds());
+                    context.RequestRender({0, 24, 400, 276}, sdk::RenderIntent::Quality);
+                    break;
+                case Decision::Stop:
+                    owner_.connectivity_->StopBookTransfer();
+                    controller_.Update(owner_.connectivity_->BookTransferStatus(), owner_.time_->MonotonicMicroseconds());
+                    context.RequestRender({0, 24, 400, 276}, sdk::RenderIntent::Quality);
+                    break;
+                case Decision::RenderFast:
+                case Decision::RenderQuality:
+                    context.RequestRender({0, 24, 400, 276}, decision == Decision::RenderQuality ? sdk::RenderIntent::Quality : sdk::RenderIntent::Fast);
+                    break;
+                case Decision::Reader: {
+                    sdk::AppCommand open;
+                    if (!sdk::AppCommand::Open("reader", &open)) return sdk::Status::InternalError;
+                    context.RequestCommand(open);
+                    break;
+                }
+                case Decision::Home: context.RequestCommand(sdk::AppCommand::Home()); break;
+                case Decision::Shutdown: context.RequestCommand(sdk::AppCommand::Shutdown()); break;
+                case Decision::None: break;
+            }
+            return sdk::Status::Ok;
+        }
+        TerminalApp& owner_;
+        zectrix::app::BookTransferController controller_;
     };
 
     class ClockApplication final : public sdk::Application {
@@ -1008,6 +1073,7 @@ private:
     void RunApplicationShell() {
         OwnedFactory<LauncherApplication> launcher_factory(*this);
         OwnedFactory<ReaderApplication> reader_factory(*this);
+        OwnedFactory<BookTransferApplication> book_transfer_factory(*this);
         OwnedFactory<ClockApplication> clock_factory(*this);
         OwnedFactory<SettingsApplication> settings_factory(*this);
         OwnedFactory<ConnectivityApplication> connectivity_factory(*this);
@@ -1019,6 +1085,7 @@ private:
         const sdk::ApplicationDescriptor descriptors[] = {
             {"launcher", "Launcher", &launcher_factory},
             {"reader", "Book Reader", &reader_factory},
+            {"book-transfer", "Send Books", &book_transfer_factory},
             {"clock", "Clock", &clock_factory},
             {"settings", "Settings", &settings_factory},
             {"connectivity", "Connectivity", &connectivity_factory},

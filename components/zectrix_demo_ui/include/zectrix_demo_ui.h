@@ -17,6 +17,7 @@
 #include "zectrix_view_port.h"
 
 namespace zectrix::app { class ReaderController; }
+namespace zectrix::connectivity { struct BookTransferSnapshot; }
 
 class ZectrixDemoUi {
 public:
@@ -67,6 +68,8 @@ public:
     esp_err_t ShowConnectivity(const char* state, const char* status,
                                const char* passkey, bool full_refresh);
     esp_err_t ShowReader(const zectrix::app::ReaderController& reader, bool full_refresh);
+    esp_err_t ShowBookTransfer(const zectrix::connectivity::BookTransferSnapshot& status,
+                               bool choosing_mode, bool station_selected, bool full_refresh);
     esp_err_t ClearDisplay();
 
     ZectrixCanvas& canvas() { return canvas_; }

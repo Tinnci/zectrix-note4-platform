@@ -35,6 +35,7 @@ public:
     esp_err_t ListBooks(BookEntry* entries, std::size_t capacity,
                         std::size_t* count, bool* truncated);
     esp_err_t OpenBook(const char* name, BookFile* file);
+    esp_err_t BeginBookManagement(BookStorage** books);
 
 private:
     struct Impl;

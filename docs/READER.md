@@ -47,9 +47,12 @@ images and firmware must use the same object-name setting. The larger task stack
 provides headroom for the measured bookmark persistence and filesystem call
 chains; parsing does not create a worker task.
 
-LAN upload remains L1.3. The file source and Storage ownership used here provide
-its reading path. Sleep artwork remains L1.4; normal shutdown still clears the
-panel and uses the established peripheral cleanup sequence.
+L1.3 adds **SEND BOOKS** for browser upload, download and deletion over local
+Wi-Fi. Initialize a new content partition with the explicit installation above,
+then add individual files without replacing the library. The reader closes its
+file before the transfer session takes Storage ownership. See
+[BOOK_TRANSFER.md](BOOK_TRANSFER.md). Sleep artwork remains L1.4. Normal shutdown
+still clears the panel and uses the established peripheral cleanup sequence.
 
 ## Reading controls
 
@@ -144,8 +147,9 @@ The payload layout is documented in the
 CrossPoint's [EpubReaderActivity](https://github.com/crosspoint-reader/crosspoint-reader/blob/develop/src/activities/reader/EpubReaderActivity.cpp)
 informs chapter/page loading and position preservation. Its
 [web server](https://github.com/crosspoint-reader/crosspoint-reader/blob/develop/src/network/CrossPointWebServer.cpp)
-and [sleep activity](https://github.com/crosspoint-reader/crosspoint-reader/blob/develop/src/activities/boot_sleep/SleepActivity.cpp)
-inform the subsequent upload and ambient-cover tasks. Flipper Zero's
+informs L1.3 file transfer. Its
+[sleep activity](https://github.com/crosspoint-reader/crosspoint-reader/blob/develop/src/activities/boot_sleep/SleepActivity.cpp)
+informs the subsequent ambient-cover task. Flipper Zero's
 [SceneManager](https://github.com/flipperdevices/flipperzero-firmware/blob/dev/applications/services/gui/scene_manager.c)
 informs the Library → Reading → Options hierarchy and Back propagation. These
 are independently implemented adaptations on the existing single owner and

@@ -7,6 +7,8 @@ validation into independent jobs so a failure identifies its platform:
 - `Host tests and static checks` runs ShellCheck, architecture checks and the
   complete C++ host test suite. It also builds the interactive CLI simulator
   and runs terminal and pipe integration tests with Python through `uv`.
+  Book-transfer tests use Bun and real local HTTP sockets with the production
+  Storage and web API code.
 - `Android companion` installs JDK 21 and the qualified Android SDK 37.0
   packages, then runs a clean JVM test and debug APK build with the committed
   Gradle Wrapper.
@@ -21,7 +23,8 @@ Third-party actions are limited to official GitHub, Gradle and Espressif
 actions. Action references are pinned to immutable commits, with the audited
 release version recorded in a comment. Dependabot proposes grouped weekly
 updates instead of allowing action tags to change underneath an existing run.
-Host integration tests install `uv` with its official standalone installer.
+Host integration tests install `uv` and Bun with their official standalone
+installers. The HTTP tests use Bun 1.3.14.
 
 Run the corresponding checks locally with:
 

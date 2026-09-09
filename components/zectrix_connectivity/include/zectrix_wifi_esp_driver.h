@@ -29,6 +29,9 @@ public:
                            uint8_t* body, std::size_t capacity,
                            std::size_t* body_size) override;
     WifiDriverResult StopStation() override;
+    WifiDriverResult StartAccessPoint(const WifiCredentials& credentials);
+    WifiDriverResult PollAccessPoint();
+    bool LocalAddress(char* output, std::size_t capacity) const;
 
     // An empty target scans all APs. A non-empty target qualifies that SSID.
     WifiDriverResult StartScan();

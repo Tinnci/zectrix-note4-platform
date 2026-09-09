@@ -55,6 +55,12 @@ Use the explicit `books-flash` target to install the bundled guide or your own
 book directory; normal firmware flash preserves that partition. See
 [READER.md](READER.md) for installation, controls and format limits.
 
+After the first library installation, open **Send Books**. Select the Note4
+hotspot or a saved home network. Connect your phone or computer to that network.
+Open the HTTP address shown on Note4. Enter the displayed access code and select
+TXT/EPUB files. **Upload & finish** saves the files and turns Wi-Fi off. Press
+OK on Note4 to read them. See [BOOK_TRANSFER.md](BOOK_TRANSFER.md) for details.
+
 For a full hardware check, open **Hardware Tests**, select **Run All Tests**,
 and do the on-screen steps. Have the following ready:
 

@@ -18,6 +18,8 @@ reader_dir="$root_dir/components/zectrix_reader"
   -I"$root_dir/components/zectrix_demo_ui/include" \
   -I"$root_dir/components/zectrix_demo_ui/font" \
   -I"$root_dir/components/zectrix_app/include" \
+  -I"$root_dir/components/zectrix_connectivity/include" \
+  -I"$root_dir/components/zectrix_companion/include" \
   -I"$reader_dir/include" -I"$reader_dir/private" -I"$reader_dir/third_party/miniz" \
   -I"$root_dir/components/zectrix_power/include" \
   -I"$root_dir/components/zectrix_self_test/include" \
@@ -33,6 +35,7 @@ reader_dir="$root_dir/components/zectrix_reader"
   "$root_dir/components/zectrix_demo_ui/zectrix_reader_ui.cc" \
   "$root_dir/components/zectrix_app/zectrix_scene_manager.cc" \
   "$root_dir/components/zectrix_app/zectrix_reader_controller.cc" \
+  "$root_dir/components/zectrix_app/zectrix_book_transfer_controller.cc" \
   "$reader_dir/zectrix_reader.cc" "$reader_dir/zectrix_reader_zip.cc" \
   "$reader_dir/zectrix_reader_text.cc" "$reader_dir/zectrix_reader_font.cc" \
   "$reader_dir/zectrix_reader_bookmarks.cc" \

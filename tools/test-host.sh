@@ -5,6 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 host_tests=(
     test-app-contract.sh
     test-application-runtime.sh
+    test-book-transfer.sh
     test-cli-core.sh
     test-cli-diagnostics.sh
     test-cli-host.sh

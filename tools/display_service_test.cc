@@ -1,5 +1,6 @@
 #include "zectrix_display_service.h"
 #include "zectrix_demo_ui.h"
+#include "zectrix_book_transfer_controller.h"
 #include "zectrix_reader_controller.h"
 #include "zectrix_epd.h"
 
@@ -882,6 +883,74 @@ void TestReaderComposition() {
     assert(reader.Tick(1) == ReaderDecision::None);
 }
 
+void TestBookTransferComposition() {
+    using namespace zectrix::connectivity;
+    using namespace zectrix::app;
+    Reset();
+    auto service = CreateService();
+    ZectrixDemoUi ui(service.get());
+    zectrix::ui::StatusBarState status;
+    status.time_valid = status.battery_valid = true;
+    status.hour = 20; status.minute = 26; status.battery_percent = 82;
+    ui.UpdateStatus(status);
+    BookTransferController controller;
+    assert(zectrix::sdk::IsOk(controller.Start()));
+    BookTransferSnapshot transfer;
+    assert(ui.ShowBookTransfer(transfer, true, false, true) == ESP_OK);
+    SavePreview(ui.canvas(), "books-mode");
+    assert(ui.ShowBookTransfer(transfer, true, true, false) == ESP_OK);
+    SavePreview(ui.canvas(), "books-mode-station");
+    assert(controller.Handle({zectrix::sdk::Button::Ok, zectrix::sdk::InputAction::Click}) == BookTransferDecision::Hotspot);
+    transfer.state = BookTransferState::Starting;
+    std::strcpy(transfer.ssid.data(), "NOTE4-1234");
+    std::strcpy(transfer.code.data(), "ABCDEFGH2345");
+    assert(controller.Update(transfer, 0) == BookTransferDecision::RenderQuality);
+    assert(ui.ShowBookTransfer(controller.snapshot(), false, false, true) == ESP_OK);
+    SavePreview(ui.canvas(), "books-starting");
+    transfer.state = BookTransferState::Sharing;
+    transfer.expected = 20000; transfer.received = 11000; transfer.uploaded = 2;
+    std::strcpy(transfer.address.data(), "192.168.4.1");
+    status.wifi = zectrix::ui::RadioIndicator::Connected;
+    ui.UpdateStatus(status);
+    assert(controller.Update(transfer, 1000000) == BookTransferDecision::RenderQuality);
+    assert(ui.ShowBookTransfer(controller.snapshot(), false, false, true) == ESP_OK);
+    SavePreview(ui.canvas(), "books-sharing");
+    Frame page;
+    std::memcpy(page.data(), ui.canvas().data(), page.size());
+    ++status.minute;
+    ui.UpdateStatus(status);
+    assert(ui.RefreshPending() == ESP_OK);
+    assert(std::memcmp(page.data() + 1200, ui.canvas().data() + 1200, page.size() - 1200) == 0);
+
+    transfer.received = 15000;
+    assert(controller.Update(transfer, 2000000) == BookTransferDecision::RenderFast);
+    fail_command = 0xe9;
+    assert(ui.ShowBookTransfer(controller.snapshot(), false, false, false) == ESP_FAIL);
+    controller.Presented(false);
+    assert(controller.Update(transfer, 2000001) == BookTransferDecision::RenderQuality);
+    assert(ui.ShowBookTransfer(controller.snapshot(), false, false, true) == ESP_OK);
+    controller.Presented(true);
+    assert(controller.Update(transfer, 2000002) == BookTransferDecision::None);
+
+    transfer.mode = BookTransferMode::Station;
+    std::strcpy(transfer.ssid.data(), "海风书房-WiFi");
+    std::strcpy(transfer.address.data(), "192.168.100.123");
+    assert(ui.ShowBookTransfer(transfer, false, true, true) == ESP_OK);
+    SavePreview(ui.canvas(), "books-station");
+    transfer.state = BookTransferState::Complete;
+    status.wifi = zectrix::ui::RadioIndicator::Off;
+    ui.UpdateStatus(status);
+    assert(ui.ShowBookTransfer(transfer, false, false, true) == ESP_OK);
+    SavePreview(ui.canvas(), "books-complete");
+    transfer.state = BookTransferState::Failed;
+    transfer.error = BookTransferError::Storage;
+    assert(ui.ShowBookTransfer(transfer, false, false, true) == ESP_OK);
+    SavePreview(ui.canvas(), "books-storage-error");
+    transfer.error = BookTransferError::Power;
+    assert(ui.ShowBookTransfer(transfer, false, false, true) == ESP_OK);
+    SavePreview(ui.canvas(), "books-power-error");
+}
+
 }  // namespace
 
 void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
@@ -993,5 +1062,6 @@ int main() {
     TestViewPorts();
     TestStatusAndImageComposition();
     TestReaderComposition();
+    TestBookTransferComposition();
     Reset();
 }

@@ -45,6 +45,7 @@ std::vector<std::string> cleanup;
 WifiDriverResult http_result = WifiDriverResult::kPending;
 bool http_active = false;
 unsigned register_calls = 0, fail_register_at = 0, connect_calls = 0;
+int radio_mode = WIFI_MODE_STA;
 err_t dns_result = ERR_INPROGRESS;
 
 template <typename Predicate>
@@ -147,6 +148,34 @@ void TestExclusiveClaimAndStartupFailure() {
         assert(scan.target_found && scan.access_point_count == 1 && scan.best_rssi == -42);
         assert(second.StopStation() == WifiDriverResult::kReady);
     }
+    Reset();
+}
+
+void TestHotspotAndLanAddress() {
+    Reset();
+    EspWifiBackendDriver driver, other;
+    auto credentials = Credentials();
+    credentials.passphrase.fill(0);
+    assert(driver.StartAccessPoint(credentials) == WifiDriverResult::kUnavailable);
+    assert(driver.StartAccessPoint(Credentials()) == WifiDriverResult::kPending);
+    assert(radio_mode == WIFI_MODE_AP);
+    assert(driver.PollAccessPoint() == WifiDriverResult::kPending);
+    assert(other.StartStation(Credentials()) == WifiDriverResult::kUnavailable);
+    Emit(WIFI_EVENT, WIFI_EVENT_AP_START);
+    assert(driver.PollAccessPoint() == WifiDriverResult::kReady);
+    std::array<char, 16> address{};
+    assert(driver.LocalAddress(address.data(), address.size()));
+    assert(std::strcmp(address.data(), "192.168.4.1") == 0 && connect_calls == 0);
+    Emit(WIFI_EVENT, WIFI_EVENT_AP_STOP);
+    assert(driver.PollAccessPoint() == WifiDriverResult::kUnavailable);
+    fail_stop = true;
+    assert(driver.StopStation() == WifiDriverResult::kUnavailable);
+    assert(other.StartScan() == WifiDriverResult::kUnavailable);
+    fail_stop = false;
+    assert(driver.StopStation() == WifiDriverResult::kReady);
+    Connect(driver);
+    assert(radio_mode == WIFI_MODE_STA && driver.LocalAddress(address.data(), address.size()));
+    assert(driver.StopStation() == WifiDriverResult::kReady);
     Reset();
 }
 
@@ -390,6 +419,14 @@ void esp_netif_destroy(esp_netif_t* netif) {
 }
 esp_err_t esp_netif_attach_wifi_station(esp_netif_t*) { return ESP_OK; }
 esp_err_t esp_wifi_set_default_wifi_sta_handlers() { default_handlers = true; return ESP_OK; }
+esp_err_t esp_netif_attach_wifi_ap(esp_netif_t*) { return ESP_OK; }
+esp_err_t esp_wifi_set_default_wifi_ap_handlers() { default_handlers = true; return ESP_OK; }
+esp_err_t esp_netif_get_ip_info(esp_netif_t*, esp_netif_ip_info_t* info) {
+    info->ip.addr = 1; return ESP_OK;
+}
+char* esp_ip4addr_ntoa(const esp_ip4_addr_t*, char* output, int capacity) {
+    std::snprintf(output, capacity, "192.168.4.1"); return output;
+}
 esp_err_t esp_wifi_clear_default_wifi_driver_and_handlers(esp_netif_t*) {
     default_handlers = false;
     cleanup.emplace_back("default-handlers");
@@ -408,8 +445,15 @@ esp_err_t esp_wifi_deinit() {
     return ESP_OK;
 }
 esp_err_t esp_wifi_set_storage(int) { return ESP_OK; }
-esp_err_t esp_wifi_set_mode(int) { return ESP_OK; }
-esp_err_t esp_wifi_set_config(int, const wifi_config_t*) { return ESP_OK; }
+esp_err_t esp_wifi_set_mode(int mode) { radio_mode = mode; return ESP_OK; }
+esp_err_t esp_wifi_set_config(int iface, const wifi_config_t* config) {
+    if (iface == WIFI_IF_AP) {
+        assert(config->ap.authmode == WIFI_AUTH_WPA2_PSK && config->ap.max_connection == 2);
+        assert(config->ap.ssid_len == 7 && std::memcmp(config->ap.ssid, "test-ap", 7) == 0);
+        assert(std::memcmp(config->ap.password, "test-password", 13) == 0);
+    }
+    return ESP_OK;
+}
 esp_err_t esp_wifi_start() { assert(wifi_initialized); wifi_started = true; return ESP_OK; }
 esp_err_t esp_wifi_stop() {
     assert(!http_active && tls_objects == 0);
@@ -501,6 +545,7 @@ void WifiHttpClient::Close() {
 }
 
 int main() {
+    TestHotspotAndLanAddress();
     TestExclusiveClaimAndStartupFailure();
     TestConcurrentEventsAndTeardown();
     TestDnsCancellationAndReuse();

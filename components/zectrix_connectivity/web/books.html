@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Note4 · Pocket library</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23272d28'/%3E%3Cpath d='M11 11h8v19h-8zm11 0h7v19h-7z' fill='%23f5f4ed'/%3E%3C/svg%3E">
+<style>
+:root{color-scheme:light;--paper:#f5f4ed;--ink:#272d28;--muted:#687068;--line:#d9ddd2;--accent:#3a5941;--pale:#e8ecdf;--error:#963b30}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 system-ui,-apple-system,sans-serif}button,input{font:inherit}button{cursor:pointer}button:disabled{opacity:.48;cursor:default}button:focus-visible,input:focus-visible,label:focus-within{outline:3px solid #a6b79e;outline-offset:4px}[hidden]{display:none!important}
+.shell{max-width:1120px;margin:auto;padding:0 36px}header{display:flex;align-items:center;justify-content:space-between;padding:26px 0;border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:11px;font-weight:730;letter-spacing:-.6px;font-size:22px}.mark{display:flex;gap:3px;background:var(--ink);padding:8px;border-radius:9px}.mark i{width:6px;height:18px;background:var(--paper)}.badge{font-size:11px;font-weight:650;letter-spacing:1.5px;border:1px solid var(--line);border-radius:20px;padding:7px 12px;display:flex;align-items:center;gap:8px}.dot{width:6px;height:6px;background:#78856e;border-radius:50%}
+.intro{padding:46px 0 32px;display:flex;justify-content:space-between;align-items:flex-end;gap:24px}.eyebrow{margin:0 0 14px;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase}h1{font:normal clamp(36px,5vw,54px)/1.08 Georgia,serif;letter-spacing:-1.7px;margin:0 0 16px}p{margin:0}.sub{color:var(--muted);max-width:540px}.outline,.plain,.primary{border-radius:8px;padding:10px 16px;font-weight:600;border:1px solid var(--line);background:transparent;color:var(--ink);white-space:nowrap}.primary{background:var(--accent);border-color:var(--accent);color:white}.plain{border:0;padding:6px 9px;font-size:13px}.plain:hover,.outline:hover{background:var(--pale)}.danger{color:var(--error)}
+.card{border:1px solid var(--line);border-radius:14px;background:#fffefa}.unlock{padding:30px;max-width:610px;margin:8px 0 52px}.unlock h2{margin:0 0 8px;font:26px Georgia,serif}.unlock p{color:var(--muted)}.code-row{display:flex;gap:12px;margin-top:22px}.code-row input{background:white;border:1px solid #bbc2b5;border-radius:7px;padding:12px;min-width:0;flex:1;font-family:ui-monospace,monospace;letter-spacing:2px;text-transform:uppercase}.code-label{display:block;margin-top:22px;font-size:13px;font-weight:650}.code-label+.code-row{margin-top:8px}.notice{margin-top:16px;font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}.notice.error{color:var(--error)}
+.workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:24px;padding-bottom:42px}.section{padding:25px}.section-head{display:flex;gap:16px;justify-content:space-between;align-items:center;margin-bottom:23px}h2{font-size:18px;font-weight:650;margin:0;letter-spacing:-.4px}.small{font-size:12px;color:var(--muted)}.drop{border:1.5px dashed #aebca7;border-radius:10px;background:#f2f5ea;min-height:215px;padding:26px 18px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;cursor:pointer}.drop.over{background:#e3ead7;border-color:var(--accent)}.drop svg{width:38px;height:38px;margin-bottom:3px}.drop strong{font-size:16px}.drop .choose{text-decoration:underline;text-underline-offset:3px;color:var(--accent)}.visually-hidden{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.hint{font-size:12px;color:var(--muted);margin-top:13px}.queue{list-style:none;padding:0;margin:18px 0}.queue li{padding:10px 0;border-top:1px solid var(--line)}.queue-title{display:flex;justify-content:space-between;gap:12px;font-size:13px}.filename{overflow-wrap:anywhere;min-width:0}.queue-state{flex-shrink:0;color:var(--muted);font-size:12px}progress{width:100%;height:5px;accent-color:var(--accent);display:block;margin-top:8px}.actions{display:flex;align-items:center;gap:9px;margin-top:20px;flex-wrap:wrap}
+.capacity{margin-bottom:20px}.capacity-line{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--muted)}.capacity progress{height:4px;margin-top:10px}.library{list-style:none;padding:0;margin:0}.book{display:flex;align-items:flex-start;gap:12px;padding:17px 0;border-top:1px solid var(--line)}.book-icon{border:1px solid #b9c2b0;border-radius:4px;font:10px ui-monospace,monospace;padding:10px 5px;margin-top:2px;color:var(--accent);background:var(--pale);width:39px;text-align:center}.book-details{flex:1;min-width:0}.book-title{font-size:14px;font-weight:600;margin-bottom:4px;overflow-wrap:anywhere}.book-actions{display:flex;gap:3px;margin:5px 0 0 -9px}.empty{padding:38px 10px;text-align:center;color:var(--muted)}.empty strong{display:block;font:22px Georgia,serif;color:var(--ink);margin-bottom:8px}.saved{padding:34px;margin:8px 0 48px;max-width:660px}.saved h2{font:30px Georgia,serif;margin-bottom:12px}.saved p{color:var(--muted)}footer{border-top:1px solid var(--line);padding:24px 0 30px;display:flex;justify-content:space-between;gap:20px;font-size:12px;color:var(--muted)}dialog{background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:28px;width:min(440px,calc(100% - 32px))}dialog::backdrop{background:#1c271d66}dialog h2{font:26px Georgia,serif;margin-bottom:12px}dialog p{overflow-wrap:anywhere}dialog .actions{justify-content:flex-end}
+@media(max-width:740px){.shell{padding:0 20px}.intro{padding-top:32px;align-items:flex-start;flex-direction:column;gap:16px}.workspace{grid-template-columns:1fr;gap:18px}.section{padding:21px}.unlock{padding:24px}.code-row{flex-wrap:wrap}.code-row input{flex-basis:100%}.code-row .primary{width:100%}.badge{font-size:10px}footer{flex-direction:column;gap:6px}}
+</style>
+</head>
+<body>
+<div class="shell">
+<header><div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i></span>Note4</div><span class="badge"><span class="dot"></span><span id="connection">LOCAL WI-FI</span></span></header>
+<main>
+<div class="intro"><div><p class="eyebrow">A shelf for your next chapter</p><h1>Your pocket library.</h1><p class="sub">Send books to your Note4, then settle into a quiet page.</p></div><button id="finish" class="outline" hidden>Finish session</button></div>
+<section id="unlock" class="card unlock" aria-labelledby="unlock-title">
+<h2 id="unlock-title">Connect to your reader</h2><p>Enter the access code on your Note4's Send Books screen. In hotspot mode, it is also the Wi-Fi password.</p>
+<form id="code-form"><label for="code" class="code-label">Access code</label><div class="code-row"><input id="code" type="password" required minlength="12" maxlength="16" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="12-character code"><button class="primary" type="submit">Open library</button></div></form>
+<p id="login-notice" class="notice" role="status"></p>
+</section>
+<section id="saved" class="card saved" hidden><p class="eyebrow">Ready to read</p><h2 id="saved-title">Books sent.</h2><p id="saved-detail">Wi-Fi is turning off. Press OK on your Note4 to open Book Reader.</p></section>
+<div id="workspace" class="workspace" hidden>
+<section class="card section" aria-labelledby="upload-title">
+<div class="section-head"><h2 id="upload-title">Add to your shelf</h2><span class="small">TXT · EPUB</span></div>
+<label id="drop" class="drop" for="files"><svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M8 28v6h24v-6M20 6v21m-8-13 8-8 8 8"/></svg><strong>Drop your books here</strong><span class="small">or <span class="choose">choose files</span> from your device</span><input id="files" class="visually-hidden" type="file" accept=".txt,.epub" multiple></label>
+<p class="hint">UTF-8 text and unencrypted EPUB. Filenames can use up to 63 UTF-8 bytes. Existing books are never overwritten.</p>
+<ul id="queue" class="queue" aria-label="Selected books"></ul>
+<div class="actions"><button id="send" class="primary" disabled>Upload &amp; finish</button><button id="clear" class="plain" disabled>Clear</button><button id="cancel" class="plain danger" hidden>Cancel upload</button></div>
+<p id="notice" class="notice" role="status" aria-live="polite"></p>
+</section>
+<section class="card section" aria-labelledby="library-title">
+<div class="section-head"><h2 id="library-title">On your Note4 <span id="count" class="small"></span></h2><button id="refresh" class="plain">Refresh</button></div>
+<div class="capacity"><div class="capacity-line"><span id="space">Reading storage…</span><span>Book storage</span></div><progress id="storage" max="1" value="0" aria-label="Used book storage"></progress></div>
+<ul id="library" class="library" aria-label="Books on your reader"></ul>
+<p class="hint">The reader shows the first 32 books in filename order. This page can manage the whole library.</p>
+</section>
+</div>
+</main>
+<footer><span>Made for a little more reading.</span><span>Wi-Fi switches off after you finish or leave the session idle.</span></footer>
+</div>
+<dialog id="delete-dialog" aria-labelledby="delete-title"><h2 id="delete-title">Delete this book?</h2><p id="delete-name"></p><p class="hint">This removes the file from your Note4. Keep a copy on your computer if you want to read it again.</p><div class="actions"><button id="keep" class="outline">Keep book</button><button id="delete-confirm" class="primary">Delete book</button></div></dialog>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const bytes = value => value < 1024 ? `${value} B` : value < 1048576 ? `${(value / 1024).toFixed(1)} KB` : `${(value / 1048576).toFixed(2)} MB`;
+  let code = '', selected = [], working = false, ended = false, xhr = null, deleting = null;
+  const note = (text, error = false, target = 'notice') => { $(target).textContent = text; $(target).classList.toggle('error', error); };
+  const element = (tag, text, className) => { const el = document.createElement(tag); el.textContent = text; if (className) el.className = className; return el; };
+  function controls() {
+    $('send').disabled = working || ended || !selected.some(item => item.state !== 'Saved');
+    $('clear').disabled = working || !selected.length;
+    $('files').disabled = working || ended;
+    $('finish').disabled = working || ended;
+    $('refresh').disabled = working || ended;
+    document.querySelectorAll('.book button').forEach(button => button.disabled = working || ended);
+    $('cancel').hidden = !xhr;
+  }
+  async function request(path, options = {}) {
+    let response;
+    try { response = await fetch(path, { ...options, headers: { Authorization: `Bearer ${code}` }, cache: 'no-store' }); }
+    catch { throw new Error('Could not reach your reader. Reopen Send Books on Note4 and try again.'); }
+    if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.error || `Request failed (${response.status}).`); }
+    return response;
+  }
+  function renderQueue() {
+    $('queue').replaceChildren(...selected.map(item => {
+      const row = element('li', ''), title = element('div', '', 'queue-title');
+      title.append(element('span', item.file.name, 'filename'), element('span', item.state, 'queue-state'));
+      const bar = document.createElement('progress'); bar.max = 100; bar.value = item.percent; bar.setAttribute('aria-label', `Upload ${item.file.name}`);
+      row.append(title, bar); return row;
+    })); controls();
+  }
+  function choose(files) {
+    if (working || ended) return;
+    const rejected = [];
+    for (const file of files) {
+      if (!/\.(txt|epub)$/i.test(file.name) || /[\x00-\x1f\x7f/\\]/.test(file.name) || new TextEncoder().encode(file.name).length > 63) { rejected.push(file.name); continue; }
+      if (!selected.some(item => item.file.name === file.name)) selected.push({ file, state: bytes(file.size), percent: 0 });
+    }
+    note(rejected.length ? `Choose TXT or EPUB files with shorter names: ${rejected.join(', ')}` : 'Books will be saved in order. Wi-Fi turns off when the batch finishes.', !!rejected.length);
+    renderQueue(); $('files').value = '';
+  }
+  async function refresh() {
+    const books = []; let after = '', page;
+    do {
+      page = await (await request('/api/books' + (after ? `?after=${encodeURIComponent(after)}` : ''))).json();
+      books.push(...page.files);
+      const next = page.files.at(-1)?.name;
+      if (page.more && (!next || next === after)) throw new Error('Could not read the next library page.');
+      after = next;
+    } while (page.more);
+    $('count').textContent = `(${books.length})`;
+    $('space').textContent = `${bytes(page.available)} available`;
+    $('storage').max = page.total; $('storage').value = page.used;
+    $('library').replaceChildren(...books.map(book => {
+      const row = element('li', '', 'book'), details = element('div', '', 'book-details');
+      const actions = element('div', '', 'book-actions');
+      const download = element('button', 'Download', 'plain'); download.setAttribute('aria-label', `Download ${book.name}`);
+      download.onclick = () => operate(async () => {
+        const blob = await (await request(`/api/books/${encodeURIComponent(book.name)}`)).blob();
+        const url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url; link.download = book.name;
+        document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+      });
+      const remove = element('button', 'Delete', 'plain danger'); remove.setAttribute('aria-label', `Delete ${book.name}`);
+      remove.onclick = () => { deleting = book.name; $('delete-name').textContent = book.name; $('delete-dialog').showModal(); };
+      actions.append(download, remove); details.append(element('div', book.name, 'book-title'), element('div', bytes(book.size), 'small'), actions);
+      row.append(element('span', book.name.toLowerCase().endsWith('.epub') ? 'EPUB' : 'TXT', 'book-icon'), details); return row;
+    }));
+    if (!books.length) { const empty = element('li', '', 'empty'); empty.append(element('strong', 'A fresh shelf.'), element('span', 'Add a book to make it yours.')); $('library').append(empty); }
+    controls();
+  }
+  async function operate(action) {
+    if (working || ended) return;
+    working = true; controls(); note('');
+    try { await action(); } catch (error) { note(error.message || 'Connection lost. Reopen Send Books on Note4 and try again.', true); }
+    finally { working = false; controls(); }
+  }
+  async function finish(uploaded = false) {
+    await request('/api/finish', { method: 'POST' });
+    ended = true; $('workspace').hidden = true; $('finish').hidden = true; $('saved').hidden = false;
+    $('connection').textContent = 'SESSION FINISHED';
+    $('saved-title').textContent = uploaded ? 'Books sent. Time to read.' : 'Your library is ready.';
+  }
+  function upload(item) {
+    return new Promise((resolve, reject) => {
+      xhr = new XMLHttpRequest(); xhr.open('PUT', `/api/books/${encodeURIComponent(item.file.name)}`);
+      xhr.setRequestHeader('Authorization', `Bearer ${code}`); xhr.responseType = 'json'; xhr.timeout = 125000;
+      xhr.upload.onprogress = event => { item.percent = event.lengthComputable ? Math.round(event.loaded * 100 / event.total) : 0; item.state = item.percent === 100 ? 'Saving…' : `${item.percent}%`; renderQueue(); };
+      const failed = message => { item.state = 'Not saved'; xhr = null; renderQueue(); reject(new Error(message)); };
+      xhr.onerror = () => failed('Connection lost. Reopen Send Books on Note4 if needed, then retry.');
+      xhr.ontimeout = () => failed('The upload timed out. Please send the book again.');
+      xhr.onabort = () => failed('Upload cancelled. Previously saved books are kept.');
+      xhr.onload = () => {
+        if (xhr.status !== 200) { failed(xhr.response?.error || `Upload failed (${xhr.status}).`); return; }
+        item.state = 'Saved'; item.percent = 100; xhr = null; renderQueue(); resolve();
+      };
+      item.state = 'Sending…'; renderQueue(); xhr.send(item.file);
+    });
+  }
+  $('code-form').onsubmit = async event => {
+    event.preventDefault(); code = $('code').value.replace(/\s/g, '').toUpperCase();
+    const button = event.currentTarget.querySelector('button'); button.disabled = true; note('Opening library…', false, 'login-notice');
+    try { await refresh(); $('unlock').hidden = true; $('workspace').hidden = false; $('finish').hidden = false; $('connection').textContent = 'READER CONNECTED'; $('code').value = ''; }
+    catch (error) { note(error.message || 'Could not connect. Check the Note4 screen.', true, 'login-notice'); }
+    finally { button.disabled = false; }
+  };
+  $('files').onchange = event => choose(event.target.files);
+  for (const name of ['dragenter', 'dragover']) $('drop').addEventListener(name, event => { event.preventDefault(); if (!working) $('drop').classList.add('over'); });
+  $('drop').ondragleave = () => $('drop').classList.remove('over');
+  $('drop').ondrop = event => { event.preventDefault(); $('drop').classList.remove('over'); choose(event.dataTransfer.files); };
+  window.addEventListener('dragover', event => event.preventDefault());
+  window.addEventListener('drop', event => event.preventDefault());
+  $('clear').onclick = () => { selected = []; renderQueue(); note(''); };
+  $('cancel').onclick = () => xhr?.abort();
+  $('send').onclick = () => operate(async () => { for (const item of selected) if (item.state !== 'Saved') await upload(item); await finish(true); });
+  $('finish').onclick = () => operate(() => finish());
+  $('refresh').onclick = () => operate(refresh);
+  $('keep').onclick = () => $('delete-dialog').close();
+  $('delete-confirm').onclick = () => { const name = deleting; $('delete-dialog').close(); operate(async () => { await request(`/api/books/${encodeURIComponent(name)}`, { method: 'DELETE' }); await refresh(); note('Book deleted.'); }); };
+})();
+</script>
+</body>
+</html>

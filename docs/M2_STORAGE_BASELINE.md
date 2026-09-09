@@ -38,3 +38,5 @@ filesystem or change the qualified Wi-Fi self-test behavior.
 L1.2 subsequently adds the independent book partition and read-only file API.
 The NVS behavior above remains the M2 migration record; current reader storage
 and installation are documented in [READER.md](READER.md).
+L1.3 extends that book API with an exclusive transfer lease and streamed writes.
+Current mutation and recovery behavior is described in [BOOK_TRANSFER.md](BOOK_TRANSFER.md).
