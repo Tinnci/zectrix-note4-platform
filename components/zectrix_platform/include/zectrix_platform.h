@@ -1,6 +1,7 @@
 #pragma once
 
 #include "esp_err.h"
+#include "zectrix_service_registry.h"
 
 class ZectrixSelfTest;
 
@@ -25,6 +26,9 @@ public:
 
     esp_err_t Initialize();
     bool IsInitialized() const { return initialized_; }
+    // Optional lookup is valid even before initialization and after shutdown.
+    // Only Platform can register, start or stop providers.
+    const ServiceRegistry& Services() const { return services_; }
     // Application-owner safe points and shutdown admission control.
     void PollMaintenance();
     void StopMaintenance();
@@ -50,6 +54,7 @@ private:
     void ResetServices();
     struct Impl;
     Impl* impl_ = nullptr;
+    ServiceRegistry services_;
     bool initialization_attempted_ = false;
     bool initialized_ = false;
 };

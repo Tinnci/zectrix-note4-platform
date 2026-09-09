@@ -25,6 +25,7 @@ host_tests=(
     test-resource-gateway.sh
     test-scene-manager.sh
     test-sdk-v1.sh
+    test-service-registry.sh
     test-sleep-cover.sh
     test-storage-service.sh
     test-sync-engine.sh

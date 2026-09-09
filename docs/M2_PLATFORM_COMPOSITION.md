@@ -17,29 +17,42 @@ One `Platform` object owns board support and these services:
 The application owns only the `Platform` object. It gets non-owning references
 from `Platform`. It does not create, attach, or delete a service.
 
+S1.1 registers Update, Connectivity, Diagnostics and Maintenance alongside
+these six core services. `Platform::Services()` exposes a read-only typed
+registry; absent or stopped providers return `nullptr`. Ten lifecycle bindings
+live in the existing Platform implementation allocation. Details are in
+[SERVICE_REGISTRY.md](SERVICE_REGISTRY.md).
+
 ## Initialization
 
 `Platform::Initialize()` performs these operations:
 
-1. Initialize board support.
-2. Attach InputService.
-3. Attach PowerService.
-4. Attach TimeService.
-5. Create StorageService.
-6. Attach SystemService.
-7. Create DisplayService.
-8. Create Diagnostics with typed references to the services.
+1. Validate update layout and arm trial-boot protection when required.
+2. Initialize board support and attach the optional NFC adapter.
+3. Attach InputService.
+4. Attach PowerService.
+5. Attach TimeService.
+6. Create and initialize StorageService.
+7. Attach SystemService.
+8. Create DisplayService.
+9. Create Diagnostics with typed references to the services.
+10. Create and initialize Connectivity with Storage/NFC dependencies.
+11. Create the maintenance executor and start the USB CLI.
 
-The order preserves the qualified demo startup behavior. Display initialization
-remains the last service operation before the splash screen.
+The registry runs each provider's `Init()` and `Start()`, publishes its
+interface, then advances to the next provider. This preserves the existing
+order; Display is created after the core board services and before its consumers.
 
 If an operation fails, `Platform` destroys each service that it already created.
-It destroys the services in reverse order. It does not retry board initialization
-on the same object.
+It withdraws interfaces and stops attempted providers in reverse order,
+including a provider whose initialization only partly completed. Power and
+Input handles remain with the owner until final board cleanup. It does not
+retry board initialization on the same object.
 
 Allocation failure returns `ESP_ERR_NO_MEM`. The application calls service
 accessors only after `Initialize()` returns `ESP_OK`. An accessor asserts this
-precondition before it returns a reference.
+precondition before it returns a reference. The optional
+`Services().Get<Interface>()` path is safe before initialization and after stop.
 If allocation fails before board initialization starts, the application can
 retry initialization on the same Platform object.
 
@@ -53,6 +66,10 @@ skips peripheral cleanup. Pending status draws are suppressed on the final
 surface. Platform destroys connectivity before detaching NFC, and
 releases DisplayService before entering the final PowerService transition.
 Normal destruction and initialization failures use the same service cleanup.
+The registry retires each interface before its stop callback releases it, then
+clears all borrowed bindings before Platform destroys its implementation.
+Stopping Update aborts an unfinished writer without confirming a trial image or
+disarming its unconfirmed boot watchdog.
 
 `PowerService::Shutdown()` first calls `ZectrixBoard::ShutdownPeripherals()`.
 The board joins button sampling, closes audio, stops NFC field processing,

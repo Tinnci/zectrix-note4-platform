@@ -70,6 +70,20 @@ IDF FreeRTOS is the kernel and scheduler. It is a mechanism layer below the
 Zectrix runtime. Product architecture does not use task topology as its
 dependency graph. See `docs/adr/0003-freertos-runtime-sdk-boundary.md`.
 
+## Service composition
+
+Platform's internal `ServiceRegistry` holds 16 borrowed, typed provider slots.
+Each provider implements `Init`, `Start` and `Stop`; Platform starts them in
+dependency order and stops them in reverse order. Failed startup unwinds the
+attempted providers. Lookup returns `nullptr` for absent or retired interfaces,
+while existing mandatory accessors keep their initialization assertions.
+
+The registry and lifecycle adapters use fixed member storage and no additional
+heap allocations or tasks. Platform remains the resource owner; applications
+receive a read-only lookup view. S1.1 uses the full service set, with Kconfig
+selection and conditional application composition following in S1.2/S1.3.
+See [SERVICE_REGISTRY.md](SERVICE_REGISTRY.md) for lifecycle and lifetime rules.
+
 ## Update boundary
 
 The partition table is not frozen. The M5.1 layout retains the factory and NVS

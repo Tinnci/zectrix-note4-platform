@@ -120,9 +120,12 @@ Each iteration picks the top unfinished task, implements production code, verifi
 4. **硬件 RTC 绝对时钟长效维持 (Persistent Wall Clock via RTC Circuit)**：深入分析硬件板载 PCF8563 独立 RTC 电路与备用供电机制。确保设备关机/Deep Sleep 期间 RTC 持续低功耗计时，开机时精准同步回系统墙上时钟（Wall Clock）而非单调运行时间（Monotonic/Uptime fallback），并结合 Companion BLE / 网络时间实现自动回写校准。
 
 ### 迭代任务清单 (Backlog Items)
-- [ ] **S1.1: 基础服务抽象与轻量 Service Registry 设计**
+- [x] **S1.1: 基础服务抽象与轻量 Service Registry 设计**
   - 在 `components/zectrix_platform` 或核心库中定义标准化的纯虚服务接口基类与轻量服务注册表 (`zectrix_service_registry.h`)。
   - 规范各子系统的生命周期契约（`Init()`, `Start()`, `Stop()`），支持无堆或静态 slot 注册与解耦查询。
+  - Added pure virtual Service/ServiceProvider interfaces and a 16-slot typed registry with no RTTI, task or registry heap allocation. Missing, unstarted and stopped providers return null; failed startup unwinds attempted providers in reverse order.
+  - Integrated ten embedded lifecycle bindings into production Platform startup, accessors and cleanup. Preserved CLI/NFC cleanup, final Input/Power ownership and trial-boot watchdog behavior; Kconfig selection and application conditionals remain S1.2/S1.3.
+  - Verified all 31 Host targets, focused registry/platform ASan/UBSan checks, ShellCheck, the ESP32-S3 build and connected-device flash/boot smoke. Registry size is 528 bytes on the 64-bit Host and 264 bytes in the ESP32-S3 ELF; registry dispatch allocates no heap. See docs/SERVICE_REGISTRY.md.
 - [ ] **S1.2: 组件级 Kconfig 定义与 CMake 条件依赖绑定**
   - 为 `zectrix_connectivity`、`zectrix_reader`、`zectrix_cli`、`zectrix_update` 编写 `Kconfig.projbuild`。
   - 声明 `CONFIG_ZECTRIX_ENABLE_CONNECTIVITY`、`CONFIG_ZECTRIX_ENABLE_READER`、`CONFIG_ZECTRIX_ENABLE_USB_CLI` 等选项及其依赖拓扑（如 HTTP 依赖 Wi-Fi）。

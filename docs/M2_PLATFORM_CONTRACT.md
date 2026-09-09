@@ -22,21 +22,31 @@ resource driver. Application code does not call either lower layer directly.
 | StorageService | settings, configuration and small persistent state |
 | SystemService | firmware identity, reset reason, capabilities and diagnostics |
 
-`Platform` is the composition root for these six services. It initializes board
-support first. It then creates each service in a documented order. Application
-code gets non-owning service references from `Platform`. Application code does
+`Platform` is the composition root for these six services. Boot protection runs
+first, then board support and the dependent services in a documented order.
+Application code gets non-owning service references from `Platform`. It does
 not call a service factory, call `Attach()`, or delete a service.
 
-`Platform` destroys the services in reverse initialization order. A failed
-initialization destroys each service that was already created. The same
-`Platform` object does not retry initialization after a failure because board
+S1.1 routes these services plus Update, Connectivity, Diagnostics and
+Maintenance through a fixed 16-slot `ServiceRegistry`. Providers implement the
+pure virtual `Init()`, `Start()`, `Stop()` lifecycle through embedded adapters.
+The composition owner starts providers in dependency order and withdraws each
+interface before stopping it. See [SERVICE_REGISTRY.md](SERVICE_REGISTRY.md).
+
+`Platform` stops consumers before their dependencies in reverse registration
+order, retaining Input/Power handles until final board cleanup. A failed
+initialization cleans up every attempted provider, including partial entry.
+The same `Platform` object does not retry initialization after a failure because board
 support can be partially initialized. If allocation fails before board
 initialization starts, the same object can retry safely.
 
 `Platform::Initialize()` reports allocation failure as `ESP_ERR_NO_MEM` and
 cleans up completed service creation. An application must get service
 references only after `Initialize()` returns `ESP_OK`. Access before successful
-initialization is a contract violation and triggers an assertion.
+initialization through a reference accessor is a contract violation and
+triggers an assertion. `Platform::Services().Get<Interface>()` is the optional
+path: it returns `nullptr` for absent, not-yet-ready or stopped providers.
+The registry view permits lookup only; Platform keeps lifecycle ownership.
 
 Application code must not include `driver/gpio.h`, `driver/spi_master.h` or `zectrix_epd.h`.
 Application code must not call `esp_deep_sleep_start()`, access NVS directly, or depend on PCF8563.
