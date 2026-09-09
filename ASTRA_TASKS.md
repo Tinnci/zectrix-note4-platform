@@ -84,3 +84,23 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Implemented a persistent 24px status bar, an eight-entry deferred SceneManager and a four-slot clipped ViewPort scheduler. Gallery/showcase/info/about now share the application runtime, retain menu selection and keep input active between preview frames.
   - Clock now survives RTC read failures with explicit system-time/uptime fallback and recovers on subsequent samples. New installations default to manual launching; existing settings, gray preclear and ordered shutdown are preserved.
   - Verified all 27 Host targets, ESP32-S3 firmware build, rendered UI previews and connected-device flash/boot smoke test. The status-only minute test transfers 44 bytes of panel RAM data; device boot also exercised the RTC voltage-low condition.
+- [ ] **L1.2: CrossPoint 风格轻量文本与电子书阅读引擎 (E-Reader Engine)**
+  - Implement CrossPoint-inspired (https://github.com/crosspoint-reader/crosspoint-reader) streamed plain-text and basic EPUB reader engine.
+  - Support CJK character/word wrapping, line pagination, paragraph indentation, and dual font-size scaling.
+  - Support NVS bookmark persistence, progress tracking, and integration with the C1 durable companion sync engine.
+- [ ] **L1.3: 局域网 Web 传书与内容管理后台 (Direct Wi-Fi Content Ingestion)**
+  - Implement lightweight embedded HTTP file transfer server using existing `zectrix_connectivity` Wi-Fi AP/STA mode.
+  - Allow browser-based drag-and-drop file upload to SPI Flash / LittleFS storage.
+  - Ensure Wi-Fi radio automatically powers down on completion to preserve battery.
+- [ ] **L1.4: 桌面待机画报与锁屏仪表盘 (Ambient Sleep Cover & Dashboard)**
+  - Render ambient sleep screen cover (daily calendar, reading progress, memo/quote art) before deep sleep.
+  - Coordinate with Q1 peripheral power-down and pin hold states for microamp-level standby consumption.
+
+---
+
+## Post-L1 Autonomous Exploration Roadmap (后续自主架构拓展与衍生项目探索)
+
+- [ ] **E1.1: CrossPoint & Flipper Zero 衍生项目调研与风格演进 (Firmware Forks & UI Architecture Study)**
+  - Analyze open-source derivative forks: CrossPoint community forks (Biscuit, CrossMux, CrossInk) and Flipper Zero custom firmwares (Momentum, Unleashed).
+  - Study their desktop layouts, sleep screen overlays, font caching/antialiasing/dithering for e-ink, and practical app launcher UX.
+  - Propose and document architectural evolution for Zectrix Note4 open firmware.

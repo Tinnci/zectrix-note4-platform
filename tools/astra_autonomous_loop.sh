@@ -13,6 +13,13 @@ LOCK_DIR="/tmp/astra_autonomous_loop.lock"
 ITERATION_MAX=100
 ITERATION_COUNT=0
 
+export ALL_PROXY="http://127.0.0.1:7890"
+export HTTP_PROXY="http://127.0.0.1:7890"
+export HTTPS_PROXY="http://127.0.0.1:7890"
+export http_proxy="http://127.0.0.1:7890"
+export https_proxy="http://127.0.0.1:7890"
+export all_proxy="http://127.0.0.1:7890"
+
 # Single instance lock guard
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
     PID=$(cat "$LOCK_DIR/pid" 2>/dev/null || echo "")
@@ -56,11 +63,11 @@ while [ $ITERATION_COUNT -lt $ITERATION_MAX ]; do
 
     PROMPT="请继续执行当前工程的连续迭代任务：
 1. 当前目标任务：${PENDING_TASK}
-2. 阅读 ASTRA_TASKS.md 及相关契约文档，编写并完善该任务对应的生产功能代码与驱动实现。
-3. 遵循'功能优先、避免繁琐 gate 卡点'的原则，写出简洁健壮的实现。
+2. 阅读 ASTRA_TASKS.md 及相关契约文档。重点参考与对标 CrossPoint (crosspoint-reader: https://github.com/crosspoint-reader/crosspoint-reader) 的轻量流式排版、电子书分页阅读、待机画报与局域网传书，以及 Flipper Zero 的 SceneManager / ViewPort 场景状态机设计，将测试演示型 Launcher 升级为真正实用的掌上随身墨水屏终端系统。
+3. 遵循'功能优先、避免繁琐 gate 卡点'的原则，写出简洁健壮的生产代码与驱动。
 4. 代码行间注释使用英文（English comments）。
 5. 编写完毕后在本地运行基础编译/Host 测试（如 bash tools/test-host.sh 或相应测试脚本），确认功能正常。若涉及硬件固件或底层驱动变动，可选择性执行 bash tools/device-smoke-test.sh 在连接的 ESP32-S3 实机上验证引导自检，切勿被硬件阻塞。
-6. 完成后执行 git add 并使用规范的 git commit 提交该功能的改动（例如: feat(connectivity): ... 或 feat(cli): ...）。
+6. 完成后执行 git add 并使用规范的 git commit 提交该功能的改动（例如: feat(launcher): ... 或 feat(reader): ...）。
 7. 更新 ASTRA_TASKS.md 将该条目勾选为 [x]，并简要输出本次迭代实现的总结。"
 
     # Execute with session resumption if available, otherwise new session
