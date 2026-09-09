@@ -587,6 +587,9 @@ void TestUiTraffic() {
     ClearTraffic();
     ++clock.second;
     assert(ui.ShowClock(clock, false) == ESP_OK);
+    assert(packets.empty() && gpio_writes == 0);
+    ++clock.minute;
+    assert(ui.ShowClock(clock, false) == ESP_OK);
     const auto clock_bytes = CheckPartial(before, {0, 0, 400, 300}, ui.canvas().data());
     assert(clock_bytes < 23400);
     const auto count = Inspect(*service).refresh_count;
@@ -604,10 +607,190 @@ void TestUiTraffic() {
     ClearTraffic();
     assert(ui.ShowMenu("OTHER", items, 3, 1, "UP Back", false) == ESP_OK);
     const auto dirty = ReferenceDirty(before, {0, 0, 400, 300}, ui.canvas().data());
-    assert(dirty.y < 36 && dirty.y + dirty.height > 270);
+    assert(dirty.y < 44 && dirty.y + dirty.height > 270);
     CheckPartial(before, {0, 0, 400, 300}, ui.canvas().data());
     std::printf("MEASURE: native RAM payload clock=%zu menu=%zu bytes; previous fixed window=23400 bytes.\n",
                 clock_bytes, menu_bytes);
+}
+
+void SavePreview(const ZectrixCanvas& canvas, const char* name) {
+    const char* directory = std::getenv("ZECTRIX_UI_PREVIEW_DIR");
+    if (!directory) return;
+    char path[1024];
+    std::snprintf(path, sizeof(path), "%s/%s.pbm", directory, name);
+    FILE* output = std::fopen(path, "wb");
+    assert(output);
+    std::fprintf(output, "P4\n400 300\n");
+    for (size_t i = 0; i < canvas.size(); ++i) std::fputc(canvas.data()[i] ^ 0xff, output);
+    assert(std::fclose(output) == 0);
+}
+
+void TestViewPorts() {
+    using zectrix::ui::ViewPortScheduler;
+    ViewPortScheduler ports;
+    ZectrixCanvas canvas;
+    canvas.Clear();
+    int content_draws = 0, status_draws = 0;
+    const auto draw = [](void* context, ZectrixCanvas& target) {
+        ++*static_cast<int*>(context);
+        target.Clear(false);
+        target.Text(0, 0, "OUTSIDE CLIP", 3);
+    };
+    assert(!ports.Configure(4, {{0, 0, 400, 24}, draw, &status_draws}));
+    assert(!ports.Configure(0, {{399, 0, INT_MAX, 24}, draw, &status_draws}));
+    assert(!ports.Invalidate(0));
+    assert(ports.Configure(0, {{0, 24, 400, 276}, draw, &content_draws}));
+    assert(ports.Configure(1, {{0, 0, 400, 24}, draw, &status_draws}));
+    assert(ports.Enable(1, false));
+    const auto saved_clip = ZectrixCanvas::Clip{10, 30, 80, 60};
+    canvas.SetClip(saved_clip);
+    auto update = ports.Compose(canvas);
+    assert(update.pending && update.dirty.y == 24 && update.dirty.height == 276);
+    assert(canvas.clip().x == saved_clip.x && canvas.clip().width == saved_clip.width);
+    assert(content_draws == 1 && status_draws == 0);
+    assert(Bit(canvas.data(), 50, 0, 0) && !Bit(canvas.data(), 50, 0, 24));
+    ports.Complete(true);
+    assert(!ports.Compose(canvas).pending);
+    assert(ports.Enable(1, true));
+    assert(ports.Invalidate(0, true));
+    update = ports.Compose(canvas);
+    assert(update.quality && update.dirty.y == 0 && update.dirty.height == 300);
+    ports.Complete(false);
+    assert(ports.Compose(canvas).quality);
+    ports.Complete(true);
+    assert(ports.Invalidate(1));
+    const int before = content_draws;
+    update = ports.Compose(canvas);
+    assert(update.pending && !update.quality && update.dirty.height == 24);
+    assert(content_draws == before);
+    ports.Complete(true);
+    assert(!ports.Compose(canvas).pending);
+    canvas.SetClip({INT_MAX, INT_MAX, INT_MAX, INT_MAX});
+    assert(canvas.clip().width == 0 && canvas.clip().height == 0);
+    canvas.Clear(false);
+}
+
+void TestStatusAndImageComposition() {
+    Reset();
+    auto service = CreateService();
+    ZectrixDemoUi ui(service.get());
+    zectrix::ui::StatusBarState state;
+    state.time_valid = state.battery_valid = state.charging = true;
+    state.hour = 12;
+    state.minute = 34;
+    state.battery_percent = 65;
+    state.ble = zectrix::ui::RadioIndicator::Connected;
+    ui.UpdateStatus(state);
+    const char* items[] = {"CLOCK", "SETTINGS", "CONNECTIVITY", "AUTO SHOWCASE",
+        "DISPLAY GALLERY", "HARDWARE TESTS", "DEVICE INFO", "ABOUT & LICENSE"};
+    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", items, 8, 0,
+        "UP/DOWN Move  OK Select  Hold DOWN Off", true) == ESP_OK);
+    assert(Inspect(*service).refresh_count == 1);
+    SavePreview(ui.canvas(), "launcher");
+    Frame before;
+    std::memcpy(before.data(), ui.canvas().data(), before.size());
+    ClearTraffic();
+    ui.UpdateStatus(state);
+    assert(ui.RefreshPending() == ESP_OK && packets.empty());
+    ++state.minute;
+    ui.UpdateStatus(state);
+    assert(ui.RefreshPending() == ESP_OK);
+    constexpr size_t content_offset = 24 * 50;
+    assert(std::memcmp(before.data() + content_offset, ui.canvas().data() + content_offset,
+                       before.size() - content_offset) == 0);
+    const auto dirty = ReferenceDirty(before, {0, 0, 400, 300}, ui.canvas().data());
+    assert(dirty.y + dirty.height <= 24);
+    const auto bytes = CheckPartial(before, {0, 0, 400, 300}, ui.canvas().data());
+    assert(bytes <= 2400);
+    std::printf("MEASURE: status-only minute update RAM payload=%zu bytes.\n", bytes);
+
+    std::memcpy(before.data(), ui.canvas().data(), before.size());
+    ClearTraffic();
+    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", items, 8, 7,
+        "UP/DOWN Move  OK Select  Hold DOWN Off", false) == ESP_OK);
+    assert(std::memcmp(before.data(), ui.canvas().data(), content_offset) == 0);
+    SavePreview(ui.canvas(), "launcher-last");
+    const auto count = Inspect(*service).refresh_count;
+    ++state.minute;
+    ui.UpdateStatus(state);
+    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", items, 8, 6,
+        "UP/DOWN Move  OK Select  Hold DOWN Off", false) == ESP_OK);
+    assert(ui.RefreshPending() == ESP_OK && Inspect(*service).refresh_count == count + 1);
+
+    ++state.minute;
+    ui.UpdateStatus(state);
+    fail_command = 0xe9;
+    assert(ui.RefreshPending() == ESP_FAIL);
+    assert(!service->CanUsePartial());
+    ClearTraffic();
+    assert(ui.RefreshPending() == ESP_OK && service->CanUsePartial());
+    Frame recovered;
+    std::memcpy(recovered.data(), ui.canvas().data(), recovered.size());
+    CheckFull(recovered);
+
+    state.time_valid = state.battery_valid = state.charging = false;
+    state.charge_fault = true;
+    state.wifi = zectrix::ui::RadioIndicator::Fault;
+    ui.UpdateStatus(state);
+    assert(ui.ShowClock({0, 0, 0, 0, 25, 42, 0}, true, "UPTIME (HH:MM)", false) == ESP_OK);
+    SavePreview(ui.canvas(), "clock-fallback");
+    auto equivalent = state;
+    equivalent.minute = 59;
+    equivalent.battery_percent = 100;
+    assert(state == equivalent);
+
+    Frame image;
+    image.fill(0x55);
+    assert(ui.ShowImage1Bpp(image.data(), image.size()) == ESP_OK);
+    std::memcpy(before.data(), ui.canvas().data(), before.size());
+    assert(std::memcmp(before.data() + content_offset, image.data() + content_offset,
+                       image.size() - content_offset) == 0);
+    const uint8_t patch[] = {0x00, 0x00, 0x00, 0x00};
+    assert(ui.ShowImagePatch({0, 22, 8, 4}, patch, sizeof(patch)) == ESP_OK);
+    assert(std::memcmp(before.data(), ui.canvas().data(), content_offset) == 0);
+    assert(!Bit(ui.canvas().data(), 50, 0, 24));
+    assert(ui.ShowImagePatch({0, 0, INT_MAX, 1}, patch, sizeof(patch)) == ESP_ERR_INVALID_ARG);
+    assert(ui.ShowImagePatch({399, 299, 1, 1}, patch, 2) == ESP_ERR_INVALID_SIZE);
+
+    std::array<uint8_t, DisplayService::kFrameBytes4Bpp> gray;
+    for (size_t i = 0; i < gray.size(); ++i) gray[i] = static_cast<uint8_t>(i);
+    const auto original = gray;
+    ClearTraffic();
+    assert(ui.ShowImage4Bpp(gray.data(), gray.size()) == ESP_OK);
+    assert(gray == original && Inspect(*service).bits_per_pixel == 4);
+    const auto first_packets = packets;
+    ClearTraffic();
+    assert(ui.RefreshPending() == ESP_OK && packets.empty());
+    state.battery_valid = true;
+    state.battery_percent = 50;
+    ui.UpdateStatus(state);
+    assert(ui.RefreshPending() == ESP_OK && Inspect(*service).bits_per_pixel == 4);
+    assert(packets.size() == first_packets.size());
+    unsigned writes = 0;
+    for (size_t i = 0; i < packets.size(); ++i) {
+        assert(packets[i].command == first_packets[i].command);
+        if (packets[i].command == 0x10) {
+            ++writes;
+            const auto& previous = first_packets[i].data;
+            const auto& current = packets[i].data;
+            assert(previous.size() == 30000 && current.size() == previous.size());
+            assert(std::equal(previous.begin() + 24 * 100, previous.end(), current.begin() + 24 * 100));
+        }
+    }
+    assert(writes > 2);
+    assert(ui.ShowImagePatch({0, 24, 8, 4}, patch, sizeof(patch)) == ESP_ERR_INVALID_STATE);
+    assert(ui.ShowAbout() == ESP_OK && Inspect(*service).bits_per_pixel == 1);
+    SavePreview(ui.canvas(), "about");
+    std::array<ZectrixTestState, static_cast<size_t>(ZectrixTestId::kCount)> tests{};
+    assert(ui.ShowTestMenu(2, tests, true) == ESP_OK);
+    SavePreview(ui.canvas(), "diagnostics");
+    ClearTraffic();
+    assert(ui.ClearDisplay() == ESP_OK);
+    Frame white;
+    white.fill(0xff);
+    CheckFull(white);
+    assert(ui.ShowAbout() == ESP_OK);
+    assert(!Bit(ui.canvas().data(), 50, 0, 23));
 }
 
 }  // namespace
@@ -718,5 +901,7 @@ int main() {
     TestBatchAndGray();
     TestShutdownReleasesSpi();
     TestUiTraffic();
+    TestViewPorts();
+    TestStatusAndImageComposition();
     Reset();
 }

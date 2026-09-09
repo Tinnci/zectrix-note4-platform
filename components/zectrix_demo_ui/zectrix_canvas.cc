@@ -6,11 +6,27 @@
 #include "zectrix_ascii_font_8x16.h"
 
 void ZectrixCanvas::Clear(bool white) {
-    pixels_.fill(white ? 0xff : 0x00);
+    if (clip_.x == 0 && clip_.y == 0 && clip_.width == kWidth &&
+        clip_.height == kHeight) {
+        pixels_.fill(white ? 0xff : 0x00);
+    } else {
+        FillRect(clip_.x, clip_.y, clip_.width, clip_.height, !white);
+    }
+}
+
+void ZectrixCanvas::SetClip(Clip clip) {
+    const int left = std::clamp(clip.x, 0, kWidth);
+    const int top = std::clamp(clip.y, 0, kHeight);
+    const int right = static_cast<int>(std::clamp<int64_t>(
+        static_cast<int64_t>(clip.x) + std::max(0, clip.width), left, kWidth));
+    const int bottom = static_cast<int>(std::clamp<int64_t>(
+        static_cast<int64_t>(clip.y) + std::max(0, clip.height), top, kHeight));
+    clip_ = {left, top, right - left, bottom - top};
 }
 
 void ZectrixCanvas::Pixel(int x, int y, bool black) {
-    if (x < 0 || x >= kWidth || y < 0 || y >= kHeight) {
+    if (x < clip_.x || x >= clip_.x + clip_.width ||
+        y < clip_.y || y >= clip_.y + clip_.height) {
         return;
     }
     uint8_t& byte = pixels_[static_cast<size_t>(y) * kStride + x / 8];

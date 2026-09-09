@@ -31,6 +31,18 @@ int main() {
     assert(result.selected == 0);
     result = launcher.Handle({Button::Up, Action::Click});
     assert(result.selected == LauncherController::kItemCount - 1);
+
+    const LauncherDecision destinations[] = {
+        LauncherDecision::OpenClock, LauncherDecision::OpenSettings,
+        LauncherDecision::OpenConnectivity, LauncherDecision::OpenShowcase,
+        LauncherDecision::OpenGallery, LauncherDecision::OpenDiagnostics,
+        LauncherDecision::OpenDeviceInfo, LauncherDecision::OpenAbout};
+    for (std::size_t selected = 0; selected < LauncherController::kItemCount; ++selected) {
+        LauncherController restored(selected);
+        assert(restored.Handle({Button::Ok, Action::Click}).decision == destinations[selected]);
+    }
+    assert(LauncherController(100).selected() == 0);
+    assert(kAutoShowcaseDefault == 0);
     result = launcher.Handle({Button::Down, Action::LongPress});
     assert(result.decision == LauncherDecision::Shutdown);
     assert(result.selected == LauncherController::kItemCount - 1);

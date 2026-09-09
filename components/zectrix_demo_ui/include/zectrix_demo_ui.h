@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 #include "esp_err.h"
 #include "zectrix_canvas.h"
@@ -12,15 +13,24 @@
 #include "zectrix_self_test.h"
 #include "zectrix_system_service.h"
 #include "zectrix_time_service.h"
+#include "zectrix_status_bar.h"
+#include "zectrix_view_port.h"
 
 class ZectrixDemoUi {
 public:
-    explicit ZectrixDemoUi(zectrix::display::DisplayService* display)
-        : display_(display) {}
+    explicit ZectrixDemoUi(zectrix::display::DisplayService* display);
+    ZectrixDemoUi(const ZectrixDemoUi&) = delete;
+    ZectrixDemoUi& operator=(const ZectrixDemoUi&) = delete;
     void SetDisplay(zectrix::display::DisplayService* display) {
         display_ = display;
     }
     void SetTime(zectrix::time::TimeService* time) { time_ = time; }
+    void UpdateStatus(const zectrix::ui::StatusBarState& state);
+    esp_err_t RefreshPending();
+    esp_err_t ShowImage1Bpp(const uint8_t* pixels, size_t size);
+    esp_err_t ShowImage4Bpp(const uint8_t* pixels, size_t size);
+    esp_err_t ShowImagePatch(zectrix::display::Rect region,
+                             const uint8_t* pixels, size_t size);
 
     esp_err_t ShowSplash();
     esp_err_t ShowMenu(const char* title, const char* const* items,
@@ -28,7 +38,8 @@ public:
                        bool full_refresh);
     esp_err_t ShowSceneInfo(const char* title, const char* mode,
                             const char* format, size_t bytes,
-                            int64_t elapsed_ms, esp_err_t result);
+                            int64_t elapsed_ms, esp_err_t result,
+                            bool full_refresh = true);
     esp_err_t ShowTestMenu(
         size_t selected,
         const std::array<ZectrixTestState,
@@ -43,10 +54,12 @@ public:
         const std::array<ZectrixTestState,
                          static_cast<size_t>(ZectrixTestId::kCount)>& states);
     esp_err_t ShowDeviceInfo(const zectrix::power::PowerSnapshot& power,
-                             const zectrix::system::SystemSnapshot& system);
-    esp_err_t ShowAbout();
+                             const zectrix::system::SystemSnapshot& system,
+                             bool full_refresh = true);
+    esp_err_t ShowAbout(bool full_refresh = true);
     esp_err_t ShowClock(const zectrix::time::DateTime& value,
-                        bool full_refresh);
+                        bool full_refresh, const char* source = "RTC",
+                        bool calendar_valid = true);
     esp_err_t ShowSettings(bool auto_showcase, const char* status,
                            bool full_refresh);
     esp_err_t ShowConnectivity(const char* state, const char* status,
@@ -58,6 +71,8 @@ public:
     esp_err_t RefreshAuto();
 
 private:
+    void BeginContent();
+    void OverlayGrayStatus();
     void DrawFrame(const char* title, const char* footer);
     void DrawTestStrip(
         ZectrixTestId current,
@@ -68,6 +83,9 @@ private:
     zectrix::display::DisplayService* display_ = nullptr;
     zectrix::time::TimeService* time_ = nullptr;
     ZectrixCanvas canvas_;
+    zectrix::ui::ViewPortScheduler viewports_;
+    zectrix::ui::StatusBarState status_;
+    std::unique_ptr<uint8_t[]> gray_frame_;
     int64_t last_update_us_ = 0;
 };
 

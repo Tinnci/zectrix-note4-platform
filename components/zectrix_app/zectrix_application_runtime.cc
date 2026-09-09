@@ -1,5 +1,7 @@
 #include "zectrix/sdk/application.h"
 
+#include "esp_log.h"
+
 namespace zectrix::sdk {
 inline namespace v1 {
 
@@ -103,6 +105,9 @@ Status ApplicationRuntime::SwitchTo(const ApplicationId& id,
     }
 
     last_error_ = enter_result;
+    ESP_LOGE("application", "entry failed for '%s': %s; %s", id.c_str(),
+             StatusName(enter_result),
+             allow_fallback && id != launcher_id_ ? "returning to launcher" : "entering failsafe");
     ExitAndDestroyForeground();
     renders_.Discard();
     commands_ = {};

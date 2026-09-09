@@ -23,6 +23,13 @@ struct RtcTimerStatus {
     bool flag_set = false;
 };
 
+enum class ClockSource : uint8_t { Rtc, System, Uptime };
+
+struct ClockSnapshot {
+    DateTime value{};
+    ClockSource source = ClockSource::Uptime;
+};
+
 class TimeService {
 public:
     static esp_err_t Attach(ZectrixBoard& board, TimeService** out_service);
@@ -32,6 +39,9 @@ public:
     TimeService& operator=(const TimeService&) = delete;
 
     int64_t MonotonicMicroseconds() const;
+    // Return system time when set, otherwise elapsed hours/minutes since boot.
+    // This fallback never invents a calendar date or changes the system clock.
+    ClockSnapshot Now() const;
     bool RtcAvailable() const;
     esp_err_t ReadRtc(DateTime* value);
     esp_err_t WriteRtc(const DateTime& value);
@@ -46,6 +56,7 @@ public:
 private:
     explicit TimeService(ZectrixBoard& board) : board_(&board) {}
     ZectrixBoard* board_;
+    int32_t utc_offset_seconds_ = 0;
 };
 
 }  // namespace zectrix::time

@@ -12,6 +12,11 @@ public:
     static constexpr int kStride = kWidth / 8;
     static constexpr int kFrameBytes = kStride * kHeight;
 
+    struct Clip { int x, y, width, height; };
+    void SetClip(Clip clip);
+    void ResetClip() { clip_ = {0, 0, kWidth, kHeight}; }
+    Clip clip() const { return clip_; }
+
     void Clear(bool white = true);
     void Pixel(int x, int y, bool black);
     void FillRect(int x, int y, int width, int height, bool black);
@@ -29,6 +34,7 @@ public:
 
 private:
     std::array<uint8_t, kFrameBytes> pixels_ = {};
+    Clip clip_{0, 0, kWidth, kHeight};
 };
 
 #endif  // ZECTRIX_CANVAS_H_

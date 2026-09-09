@@ -61,6 +61,22 @@ int64_t TimeService::MonotonicMicroseconds() const {
     return esp_timer_get_time();
 }
 
+ClockSnapshot TimeService::Now() const {
+    const time_t system_time = std::time(nullptr);
+    if (system_time >= 946684800) {
+        const time_t local_time = system_time + utc_offset_seconds_;
+        tm fields{};
+        if (gmtime_r(&local_time, &fields)) {
+            const DateTime value = FromTm(fields);
+            if (IsValid(value)) return {value, ClockSource::System};
+        }
+    }
+    const int64_t seconds = MonotonicMicroseconds() / 1000000;
+    return {{0, 0, 0, 0, static_cast<int>(seconds / 3600),
+             static_cast<int>((seconds / 60) % 60), static_cast<int>(seconds % 60)},
+            ClockSource::Uptime};
+}
+
 bool TimeService::RtcAvailable() const {
     return board_ != nullptr && board_->HasRtc();
 }
@@ -103,7 +119,9 @@ esp_err_t TimeService::SynchronizeSystemClockFromRtc(int32_t utc_offset_seconds)
     timeval clock{};
     clock.tv_sec = static_cast<time_t>(seconds);
     if (static_cast<int64_t>(clock.tv_sec) != seconds) return ESP_ERR_INVALID_ARG;
-    return settimeofday(&clock, nullptr) == 0 ? ESP_OK : ESP_FAIL;
+    if (settimeofday(&clock, nullptr) != 0) return ESP_FAIL;
+    utc_offset_seconds_ = utc_offset_seconds;
+    return ESP_OK;
 }
 
 esp_err_t TimeService::StartRtcCountdown(uint8_t seconds) {

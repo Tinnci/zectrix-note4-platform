@@ -21,6 +21,7 @@ host_tests=(
     test-power-service.sh
     test-resource-client.sh
     test-resource-gateway.sh
+    test-scene-manager.sh
     test-sdk-v1.sh
     test-storage-service.sh
     test-sync-engine.sh

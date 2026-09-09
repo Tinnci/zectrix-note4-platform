@@ -11,6 +11,15 @@ static timeval system_clock{};
 static int clock_writes = 0;
 static int clock_result = 0;
 
+extern "C" time_t time(time_t* value)
+#if defined(__linux__)
+    noexcept
+#endif
+{
+    if (value) *value = system_clock.tv_sec;
+    return system_clock.tv_sec;
+}
+
 // Intercept the platform call so this test never changes the host clock.
 extern "C" int settimeofday(const timeval* value, const struct timezone*)
 #if defined(__linux__)
@@ -30,6 +39,8 @@ int main() {
     assert(service != nullptr);
     assert(service->MonotonicMicroseconds() == monotonic_time);
     assert(service->RtcAvailable());
+    assert(service->Now().source == ClockSource::Uptime);
+    assert(service->Now().value.year == 0);
 
     const DateTime written{2026, 8, 11, 2, 17, 30, 45};
     assert(service->WriteRtc(written) == ESP_OK);
@@ -71,6 +82,10 @@ int main() {
     assert(service->WriteRtc({2024, 2, 29, 4, 12, 0, 0}) == ESP_OK);
     assert(service->SynchronizeSystemClockFromRtc(8 * 3600) == ESP_OK);
     assert(system_clock.tv_sec == 1709179200 && system_clock.tv_usec == 0);
+    auto fallback = service->Now();
+    assert(fallback.source == ClockSource::System);
+    assert(fallback.value.year == 2024 && fallback.value.month == 2 && fallback.value.day == 29);
+    assert(fallback.value.hour == 12);
     assert(service->WriteRtc({2000, 3, 1, 3, 0, 0, 0}) == ESP_OK);
     assert(service->SynchronizeSystemClockFromRtc(-9 * 3600) == ESP_OK);
     assert(system_clock.tv_sec == 951901200);
@@ -108,5 +123,12 @@ int main() {
     assert(service->SynchronizeSystemClockFromRtc(0) == ESP_ERR_NOT_FOUND);
     assert(service->StartRtcCountdown(1) == ESP_ERR_NOT_FOUND);
     assert(service->ReadRtcTimerStatus(&status) == ESP_ERR_NOT_FOUND);
+    fallback = service->Now();
+    assert(fallback.source == ClockSource::System);
+    system_clock.tv_sec = 0;
+    monotonic_time = (25LL * 3600 + 42 * 60 + 9) * 1000000;
+    fallback = service->Now();
+    assert(fallback.source == ClockSource::Uptime && fallback.value.year == 0);
+    assert(fallback.value.hour == 25 && fallback.value.minute == 42 && fallback.value.second == 9);
     delete service;
 }
