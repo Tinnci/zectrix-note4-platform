@@ -1,18 +1,34 @@
-# ZECTRIX NOTE4 Open Firmware Platform
+# Note4 Open Platform
 
 English | [中文](README_zh.md)
 
-This project turns the upstream ZECTRIX NOTE4 ESP-IDF hardware demo into a
-reproducible, low-power application platform. It keeps the original board and
-SSD2683 display support as a qualified hardware baseline, then adds owned
-system services, a static application runtime, a source-stable SDK, companion
-connectivity and bounded maintenance interfaces.
+An independent, modular firmware framework and application platform for
+ESP32-S3 e-paper devices (targeting the Note4 hardware layout), developed and
+maintained by [Tinnci](https://github.com/Tinnci).
+
+It keeps the original board and SSD2683 display support as a qualified hardware
+baseline, then adds owned system services, a static application runtime, an
+e-reader engine, a source-stable SDK, companion connectivity and bounded
+maintenance interfaces.
 
 The goal is to let applications use display, input, power, time, storage and
 connectivity capabilities without directly controlling GPIO, SPI, raw
 partitions, ESP-NimBLE or FreeRTOS objects. The project remains self-contained
 and does not link to the commercial NOTE4 firmware or require LVGL. It is not
 the complete NOTE4 consumer firmware or a cloud service.
+
+---
+
+## Notice and Trademark Disclaimer
+
+> [!NOTE]
+> **NOTE4** and **ZECTRIX** are product names and trademarks of Zectrix Lab /
+> their respective owners. This repository is an independent, community-driven
+> open-source software project. It is **not** an official firmware release, and
+> it is **not** affiliated with, sponsored by, or endorsed by Zectrix Lab.
+>
+> Flashing custom firmware replaces the software on your connected device.
+> Confirm your hardware revision and serial port before flashing.
 
 ## From reference demo to platform
 
@@ -255,9 +271,19 @@ generator instructions.
 
 ## License
 
-Copyright (c) 2026 Zectrix Lab. Released under the [MIT License](LICENSE).
-See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for third-party notices.
+Copyright (c) 2026 Zectrix Lab  
+Copyright (c) 2026 Tinnci  
+Released under the [MIT License](LICENSE). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for third-party notices.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution instructions.
+
+## Acknowledgments
+
+This project builds upon work from the open-source community:
+
+- **[ZECTRIX Lab](https://wiki.zectrix.com/)** — For developing the original Note4 hardware and open-sourcing the initial hardware demonstration baseline (`itopinion/zectrix-note4-epd-demo`).
+- **[CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader)** — For design patterns regarding streamed e-paper typography and local web transfer.
+- **[Flipper Zero](https://github.com/flipperdevices/flipperzero-firmware)** — For inspiration on bounded scene management, viewport scheduling and CDC-ACM terminal sessions.
+- **Heavyweight Type Foundry & GNU Unifont** — For TRMNL16 and Unifont fonts provided under the SIL Open Font License.
 
 ## Official links
 

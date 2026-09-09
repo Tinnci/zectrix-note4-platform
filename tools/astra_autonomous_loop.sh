@@ -83,9 +83,14 @@ while [ $ITERATION_COUNT -lt $ITERATION_MAX ]; do
         git commit -m "feat(auto-iterate): incremental progress on ${PENDING_TASK#*- }" >> "$LOOP_LOG" 2>&1 || true
     fi
 
-    # Brief cooldown between turns to allow network proxy buffers to reset
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Iteration $ITERATION_COUNT finished. Pausing 5 seconds before next loop..." | tee -a "$LOOP_LOG"
-    sleep 5
+    # Adaptive cooldown between turns: brief pause on success, longer pause on error/rate-limit
+    if [ $EXIT_CODE -ne 0 ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Iteration $ITERATION_COUNT encountered exit code $EXIT_CODE. Backing off 20 seconds before retry..." | tee -a "$LOOP_LOG"
+        sleep 20
+    else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Iteration $ITERATION_COUNT finished cleanly. Pausing 5 seconds before next loop..." | tee -a "$LOOP_LOG"
+        sleep 5
+    fi
 done
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Autonomous loop complete." | tee -a "$LOOP_LOG"
