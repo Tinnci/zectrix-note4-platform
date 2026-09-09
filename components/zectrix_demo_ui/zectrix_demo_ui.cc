@@ -3,10 +3,14 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <new>
 
 namespace {
 
-constexpr int kHeaderHeight = 36;
+constexpr int kHeaderHeight = 44;
+constexpr size_t kContentViewPort = 0;
+constexpr size_t kStatusViewPort = 1;
+constexpr int kStatusHeight = zectrix::ui::kStatusBarHeight;
 constexpr int kTestStripHeight = 42;
 constexpr int kTestContentLeft = 16;
 constexpr int kTestContentRight = 384;
@@ -48,22 +52,46 @@ void DrawFittedText(ZectrixCanvas& canvas, int x, int y, const char* text,
 
 }  // namespace
 
-void ZectrixDemoUi::DrawFrame(const char* title, const char* footer) {
+ZectrixDemoUi::ZectrixDemoUi(zectrix::display::DisplayService* display)
+    : display_(display) {
     canvas_.Clear();
-    canvas_.FillRect(0, 0, 400, kHeaderHeight, true);
-    canvas_.Text(10, 10, title, 1, true);
+    viewports_.Configure(kContentViewPort, {{0, kStatusHeight, 400, 300 - kStatusHeight},
+                                          nullptr, nullptr});
+    viewports_.Configure(kStatusViewPort, {{0, 0, 400, kStatusHeight},
+        [](void* context, ZectrixCanvas& canvas) {
+            zectrix::ui::DrawStatusBar(canvas, static_cast<ZectrixDemoUi*>(context)->status_);
+        }, this});
+}
+
+void ZectrixDemoUi::BeginContent() {
+    gray_frame_.reset();
+    viewports_.Invalidate(kStatusViewPort);
+    canvas_.SetClip({0, kStatusHeight, 400, 300 - kStatusHeight});
+    canvas_.Clear();
+}
+
+void ZectrixDemoUi::UpdateStatus(const zectrix::ui::StatusBarState& state) {
+    if (status_ == state) return;
+    status_ = state;
+    viewports_.Invalidate(kStatusViewPort);
+}
+
+void ZectrixDemoUi::DrawFrame(const char* title, const char* footer) {
+    BeginContent();
+    canvas_.FillRect(0, kStatusHeight, 400, kHeaderHeight - kStatusHeight, true);
+    canvas_.Text(10, kStatusHeight + 2, title, 1, true);
     canvas_.Line(0, 269, 399, 269);
     canvas_.Text(8, 277, footer, 1);
 }
 
 esp_err_t ZectrixDemoUi::ShowSplash() {
-    canvas_.Clear();
-    canvas_.FillRect(0, 0, 400, 8, true);
+    BeginContent();
+    canvas_.FillRect(0, kStatusHeight, 400, 4, true);
     canvas_.FillRect(0, 292, 400, 8, true);
     canvas_.TextCentered(58, "ZECTRIX", 2);
     canvas_.Line(72, 98, 327, 98);
-    canvas_.TextCentered(118, "HARDWARE SHOWCASE", 1);
-    canvas_.TextCentered(154, "ESP32-S3 E-PAPER DEV KIT", 1);
+    canvas_.TextCentered(118, "POCKET E-PAPER TERMINAL", 1);
+    canvas_.TextCentered(154, "CLOCK / CONNECT / EXPLORE", 1);
     canvas_.TextCentered(184, "400 x 300  /  16 GRAY", 1);
     canvas_.TextCentered(236, "ZECTRIX LAB", 1);
     return RefreshFull();
@@ -73,22 +101,22 @@ esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
                                   const char* const* items, size_t count,
                                   size_t selected, const char* footer,
                                   bool full_refresh) {
-    if (items == nullptr || count == 0 || selected >= count) {
+    if (items == nullptr || count == 0 || count > 8 || selected >= count) {
         return ESP_ERR_INVALID_ARG;
     }
     DrawFrame(title, footer);
-    const int row_height = std::min(42, 215 / static_cast<int>(count));
+    const int row_height = std::min(42, 208 / static_cast<int>(count));
     const int box_height = std::min(34, row_height - 2);
-    const int start_y = 46;
+    const int start_y = 52;
     for (size_t i = 0; i < count; ++i) {
         const int y = start_y + static_cast<int>(i) * row_height;
         const bool active = i == selected;
         if (active) {
             canvas_.FillRect(16, y, 368, box_height, true);
-            canvas_.Text(28, y + (box_height - 8) / 2, items[i], 1, true);
+            canvas_.Text(28, y + (box_height - 16) / 2, items[i], 1, true);
         } else {
             canvas_.Rect(16, y, 368, box_height);
-            canvas_.Text(28, y + (box_height - 8) / 2, items[i]);
+            canvas_.Text(28, y + (box_height - 16) / 2, items[i]);
         }
     }
     return full_refresh ? RefreshFull()
@@ -96,16 +124,20 @@ esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
 }
 
 esp_err_t ZectrixDemoUi::ShowClock(const zectrix::time::DateTime& value,
-                                   bool full_refresh) {
+                                   bool full_refresh, const char* source,
+                                   bool calendar_valid) {
     DrawFrame("CLOCK", "Hold OK Home   Hold DOWN Off");
     char line[32] = {};
-    std::snprintf(line, sizeof(line), "%04d-%02d-%02d", value.year,
-                  value.month, value.day);
+    if (calendar_valid) {
+        std::snprintf(line, sizeof(line), "%04d-%02d-%02d", value.year,
+                      value.month, value.day);
+    } else {
+        std::snprintf(line, sizeof(line), "TIME NOT SET");
+    }
     canvas_.TextCentered(92, line, 2);
-    std::snprintf(line, sizeof(line), "%02d:%02d:%02d", value.hour,
-                  value.minute, value.second);
+    std::snprintf(line, sizeof(line), "%02d:%02d", value.hour, value.minute);
     canvas_.TextCentered(154, line, 3);
-    canvas_.TextCentered(224, "RTC", 1);
+    canvas_.TextCentered(224, source, 1);
     return full_refresh ? RefreshFull()
                         : RefreshAuto();
 }
@@ -150,7 +182,8 @@ esp_err_t ZectrixDemoUi::ShowConnectivity(const char* state,
 
 esp_err_t ZectrixDemoUi::ShowSceneInfo(const char* title, const char* mode,
                                        const char* format, size_t bytes,
-                                       int64_t elapsed_ms, esp_err_t result) {
+                                       int64_t elapsed_ms, esp_err_t result,
+                                       bool full_refresh) {
     DrawFrame("DISPLAY GALLERY", "OK Return   Hold OK Back");
     canvas_.Text(20, 54, title, 2);
     canvas_.Line(20, 92, 379, 92);
@@ -170,7 +203,7 @@ esp_err_t ZectrixDemoUi::ShowSceneInfo(const char* title, const char* mode,
     std::snprintf(line, sizeof(line), "%s", esp_err_to_name(result));
     canvas_.Text(184, 232, line);
     canvas_.Text(28, 232, "RESULT:");
-    return RefreshFull();
+    return full_refresh ? RefreshFull() : RefreshAuto();
 }
 
 const char* ZectrixDemoUi::StateText(ZectrixTestState state) {
@@ -246,11 +279,11 @@ esp_err_t ZectrixDemoUi::ShowTestUpdate(
     DrawTestStrip(update.id, states);
     canvas_.FillRect(0, kHeaderHeight + kTestStripHeight, 400,
                      269 - kHeaderHeight - kTestStripHeight, false);
-    canvas_.Text(kTestContentLeft, 86, update.title, 1);
-    canvas_.FillRect(308, 82, 76, 25, true);
-    canvas_.Text(314, 87, StateText(update.state), 1, true);
-    canvas_.Line(kTestContentLeft, 112, kTestContentRight, 112);
-    DrawFittedText(canvas_, kTestContentLeft, 122, update.hint,
+    DrawFittedText(canvas_, kTestContentLeft, 94, update.title, 284);
+    canvas_.FillRect(308, 90, 76, 25, true);
+    canvas_.Text(314, 95, StateText(update.state), 1, true);
+    canvas_.Line(kTestContentLeft, 118, kTestContentRight, 118);
+    DrawFittedText(canvas_, kTestContentLeft, 126, update.hint,
                    kTestContentRight - kTestContentLeft);
     for (size_t i = 0; i < update.details.size(); ++i) {
         DrawFittedText(canvas_, kTestContentLeft,
@@ -292,12 +325,12 @@ esp_err_t ZectrixDemoUi::ShowTestSummary(
 
 esp_err_t ZectrixDemoUi::ShowDeviceInfo(
     const zectrix::power::PowerSnapshot& power,
-    const zectrix::system::SystemSnapshot& system) {
+    const zectrix::system::SystemSnapshot& system, bool full_refresh) {
     DrawFrame("DEVICE INFO", "Hold OK Back   Hold DOWN Power Off");
     char line[80];
     const char* labels[] = {"MCU", "DISPLAY", "FLASH / PSRAM", "WI-FI MAC",
                             "RTC / NFC", "BATTERY", "USB / CHARGE"};
-    const int ys[] = {48, 78, 108, 138, 168, 198, 228};
+    const int ys[] = {54, 84, 114, 144, 174, 204, 234};
     for (int i = 0; i < 7; ++i) {
         canvas_.Text(18, ys[i], labels[i]);
     }
@@ -324,37 +357,113 @@ esp_err_t ZectrixDemoUi::ShowDeviceInfo(
                   power.external_power_present ? "IN" : "OUT",
                   power.charging ? "CHARGING" : "IDLE");
     canvas_.Text(176, ys[6], line);
-    return RefreshFull();
+    return full_refresh ? RefreshFull() : RefreshAuto();
 }
 
-esp_err_t ZectrixDemoUi::ShowAbout() {
+esp_err_t ZectrixDemoUi::ShowAbout(bool full_refresh) {
     DrawFrame("ABOUT", "Hold OK Back   Hold DOWN Power Off");
-    canvas_.TextCentered(54, "ZECTRIX HARDWARE SHOWCASE", 1);
-    canvas_.TextCentered(88, "OPEN-SOURCE DEMONSTRATION", 1);
+    canvas_.TextCentered(54, "ZECTRIX POCKET TERMINAL", 1);
+    canvas_.TextCentered(88, "OPEN-SOURCE E-PAPER SYSTEM", 1);
     canvas_.Line(44, 118, 355, 118);
     canvas_.TextCentered(138, "COPYRIGHT (C) 2026", 1);
     canvas_.TextCentered(164, "ZECTRIX LAB", 2);
     canvas_.TextCentered(210, "MIT LICENSE", 1);
     canvas_.TextCentered(238, "www.zectrix.com", 1);
-    return RefreshFull();
+    return full_refresh ? RefreshFull() : RefreshAuto();
 }
 
 esp_err_t ZectrixDemoUi::RefreshFull() {
-    if (display_ == nullptr) {
-        return ESP_ERR_INVALID_STATE;
-    }
-    return display_->Present1Bpp(zectrix::display::DisplayIntent::FullClean,
-                                 canvas_.data(), canvas_.size());
+    viewports_.Invalidate(kContentViewPort, true);
+    return RefreshPending();
 }
 
 esp_err_t ZectrixDemoUi::RefreshAuto() {
+    viewports_.Invalidate(kContentViewPort);
+    return RefreshPending();
+}
+
+esp_err_t ZectrixDemoUi::RefreshPending() {
     if (display_ == nullptr) return ESP_ERR_INVALID_STATE;
-    return display_->Present1Bpp(
-        zectrix::display::DisplayIntent::Auto,
-        canvas_.data(), canvas_.size());
+    const auto update = viewports_.Compose(canvas_);
+    if (!update.pending) return ESP_OK;
+    esp_err_t result;
+    if (gray_frame_) {
+        OverlayGrayStatus();
+        // Preserve the panel's white preclear before every 16-gray refresh.
+        // The gray content remains owned here during status-only updates.
+        canvas_.ResetClip();
+        canvas_.Clear();
+        result = display_->Present1Bpp(zectrix::display::DisplayIntent::FullClean,
+                                      canvas_.data(), canvas_.size());
+        canvas_.SetClip({0, 0, 400, kStatusHeight});
+        zectrix::ui::DrawStatusBar(canvas_, status_);
+        canvas_.SetClip({0, kStatusHeight, 400, 300 - kStatusHeight});
+        if (result == ESP_OK) {
+            result = display_->Present4Bpp(zectrix::display::DisplayIntent::Quality,
+                gray_frame_.get(), zectrix::display::DisplayService::kFrameBytes4Bpp);
+        }
+    } else {
+        result = display_->Present1Bpp(update.quality
+            ? zectrix::display::DisplayIntent::FullClean : zectrix::display::DisplayIntent::Auto,
+            canvas_.data(), canvas_.size());
+    }
+    viewports_.Complete(result == ESP_OK);
+    return result;
+}
+
+esp_err_t ZectrixDemoUi::ShowImage1Bpp(const uint8_t* pixels, size_t size) {
+    if (!pixels || size != canvas_.size()) return ESP_ERR_INVALID_SIZE;
+    BeginContent();
+    const size_t offset = kStatusHeight * ZectrixCanvas::kStride;
+    std::memcpy(canvas_.data() + offset, pixels + offset, size - offset);
+    return RefreshFull();
+}
+
+esp_err_t ZectrixDemoUi::ShowImagePatch(zectrix::display::Rect r,
+                                       const uint8_t* pixels, size_t size) {
+    if (gray_frame_) return ESP_ERR_INVALID_STATE;
+    if (!pixels || r.x < 0 || r.y < 0 || r.width <= 0 || r.height <= 0 ||
+        r.x >= 400 || r.y >= 300 || r.width > 400 - r.x || r.height > 300 - r.y)
+        return ESP_ERR_INVALID_ARG;
+    const size_t stride = (r.width + 7) / 8;
+    if (size != stride * r.height) return ESP_ERR_INVALID_SIZE;
+    canvas_.SetClip({0, kStatusHeight, 400, 300 - kStatusHeight});
+    for (int y = 0; y < r.height; ++y) {
+        for (int x = 0; x < r.width; ++x) {
+            canvas_.Pixel(r.x + x, r.y + y,
+                (pixels[y * stride + x / 8] & (0x80 >> (x & 7))) == 0);
+        }
+    }
+    return RefreshAuto();
+}
+
+esp_err_t ZectrixDemoUi::ShowImage4Bpp(const uint8_t* pixels, size_t size) {
+    if (!pixels || size != zectrix::display::DisplayService::kFrameBytes4Bpp)
+        return ESP_ERR_INVALID_SIZE;
+    if (!gray_frame_) gray_frame_.reset(new (std::nothrow) uint8_t[size]);
+    if (!gray_frame_) return ESP_ERR_NO_MEM;
+    std::memcpy(gray_frame_.get(), pixels, size);
+    viewports_.Invalidate(kStatusViewPort);
+    return RefreshFull();
+}
+
+void ZectrixDemoUi::OverlayGrayStatus() {
+    for (int y = 0; y < kStatusHeight; ++y) {
+        for (int x = 0; x < 400; x += 2) {
+            const uint8_t bits = canvas_.data()[y * ZectrixCanvas::kStride + x / 8];
+            gray_frame_[y * 200 + x / 2] =
+                ((bits & (0x80 >> (x & 7))) ? 0xf0 : 0) |
+                ((bits & (0x80 >> ((x + 1) & 7))) ? 0x0f : 0);
+        }
+    }
 }
 
 esp_err_t ZectrixDemoUi::ClearDisplay() {
+    if (display_ == nullptr) return ESP_ERR_INVALID_STATE;
+    gray_frame_.reset();
+    canvas_.ResetClip();
     canvas_.Clear();
-    return RefreshFull();
+    // Shutdown is deliberately a true white surface, without any overlay.
+    return display_->Present1Bpp(zectrix::display::DisplayIntent::FullClean,
+                                 canvas_.data(), canvas_.size());
 }

@@ -14,7 +14,10 @@ enum class LauncherDecision : uint8_t {
     OpenSettings,
     OpenConnectivity,
     OpenDiagnostics,
-    RunLegacy,
+    OpenShowcase,
+    OpenGallery,
+    OpenDeviceInfo,
+    OpenAbout,
     Shutdown,
 };
 
@@ -26,6 +29,9 @@ struct LauncherResult {
 class LauncherController {
 public:
     static constexpr std::size_t kItemCount = 8;
+
+    explicit LauncherController(std::size_t selected = 0)
+        : selected_(selected < kItemCount ? selected : 0) {}
 
     LauncherResult Handle(const sdk::InputEvent& event);
     std::size_t selected() const { return selected_; }
@@ -70,7 +76,7 @@ enum class SettingsDecision : uint8_t {
 
 struct SettingsResult {
     SettingsDecision decision = SettingsDecision::None;
-    bool auto_showcase = true;
+    bool auto_showcase = false;
 };
 
 class SettingsController {
@@ -85,7 +91,7 @@ private:
     bool auto_showcase_;
 };
 
-constexpr uint32_t kAutoShowcaseDefault = 1;
+constexpr uint32_t kAutoShowcaseDefault = 0;
 constexpr char kAutoShowcaseSettingKey[] = "ui.auto_demo";
 
 bool NormalizeAutoShowcaseSetting(uint32_t stored, bool* value);

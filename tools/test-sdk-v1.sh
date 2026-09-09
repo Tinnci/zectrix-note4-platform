@@ -10,6 +10,7 @@ trap 'rm -f "$test_binary" "$example_object"' EXIT
 "$repo_root/tools/check-sdk-v1.sh"
 
 c++ -std=c++17 -Wall -Wextra -Werror \
+    -I"$repo_root/tools/host_include" \
     -I"$repo_root/components/zectrix_app/include" \
     "$repo_root/components/zectrix_app/zectrix_app_contract.cc" \
     "$repo_root/components/zectrix_app/zectrix_application_runtime.cc" \

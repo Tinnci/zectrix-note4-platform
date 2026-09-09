@@ -2,6 +2,8 @@
 
 Status: Accepted on commit `4dc371a`. This document records the M3 contract.
 M4 replaced its draft public signatures with SDK v1. See `docs/SDK_V1.md`.
+L1.1 updates the first-party shell and internal scene/viewport implementation;
+the SDK v1 application lifecycle and public signatures remain unchanged.
 
 ## Scope
 
@@ -74,12 +76,10 @@ runtime. The runtime owns that pointer immediately.
 The runtime processes a command from that callback only after the callback
 returns.
 
-During M3 migration, `main` can use a private transition adapter for an
-application that is not migrated. This adapter is not an `AppCommand`. The
-Launcher records a value in the adapter and returns from its callback. The
-composition root then ends the current lifecycle before it runs the old flow.
-It creates a new Launcher lifecycle after that flow returns. Remove an adapter
-entry when its application migrates.
+The M3 migration adapter was removed in L1.1. Gallery, Auto Showcase, Device
+Info and About now use the same foreground lifecycle as Clock, Settings,
+Connectivity and Diagnostics. One runtime lives for the application shell;
+opening a gallery never exits that runtime to run a separate input loop.
 
 The Launcher-to-Clock hardware regression passed on 2026-08-12. The test
 covered Launcher navigation, Clock entry and return, the old automatic test
@@ -92,7 +92,12 @@ M3 defines one platform setting:
 
 | Key | Type | Values | Default | Consumer |
 | --- | --- | --- | --- | --- |
-| `ui.auto_demo` | unsigned 32-bit integer | `0` off, `1` on | `1` | Launcher |
+| `ui.auto_demo` | unsigned 32-bit integer | `0` off, `1` on | `0` (L1.1) | Launcher |
+
+M3 used default `1`. L1.1 preserves any existing valid stored value and uses
+`0` for a missing or invalid value. When enabled, the 15-second idle timeout is
+measured from entry or the most recent physical input, not from idle-callback
+count. Launcher selection is retained in owner RAM across application exits.
 
 The Settings application uses `StorageService`. It does not call NVS. A
 missing key creates the default value. A value outside the documented range is
@@ -113,10 +118,24 @@ is active. M3 does not add a worker task, queue, or event bus for this adapter.
 
 ## Clock and power behavior
 
-Clock reads RTC state on entry. The application shell supplies an idle input
-every 15 seconds. Clock reads RTC on that input and requests one `Fast` render
-only when the displayed minute or date changes. The first draw is `Quality`.
+Clock reads RTC state on entry and at most once per second on idle callbacks.
+An absent, unreadable or invalid RTC does not fail application entry. It logs
+a warning on entry or RTC loss and uses `TimeService::Now()`: a valid system
+calendar first, otherwise monotonic uptime with `TIME NOT SET` and `UPTIME`
+labels. A recovered RTC is used on the next sample. System fallback uses UTC
+or the explicit offset from the last successful RTC-to-system synchronization.
+The fallback does not set the system clock or weaken TLS clock requirements.
+
+The shell waits at most 250 ms for input between callbacks. Clock requests a
+`Fast` render only when its displayed minute, date or source changes; seconds
+are intentionally absent from the display. The first draw is `Quality`.
 `DisplayService` can promote subsequent partial draws to a full refresh.
+
+The shell also samples power every five seconds and time every second, and
+copies current BLE/Wi-Fi state on its owner loop. A persistent status viewport
+invalidates only for visible changes. Sampling and display calls remain on the
+application owner; diagnostic progress callbacks and their existing bounded
+waits also service this status display.
 
 M3 does not add light-sleep suspend hooks. Qualified shutdown ends the current
 application lifecycle, clears the display, preserves the established rail
@@ -158,6 +177,44 @@ normal application object.
 reports an error, the runtime records the error, destroys the application once,
 and continues the transition. Repeated Stop or Shutdown calls must not destroy
 an object twice.
+
+Entry failures are logged with the application ID, SDK status and fallback
+destination before cleanup. A failed Clock RTC read uses the Clock fallback
+above, rather than triggering the application-entry failure path.
+
+## L1.1 private scenes and viewports
+
+`SceneManager` uses a static handler table and fixed storage for eight private
+scene IDs, eight stack entries and one `uint32_t` state value per scene. Only
+an event callback can request Push, Replace or Pop. A request validates its
+target and capacity before any exit; the first request wins. The transition
+executes after the callback returns. Enter/exit callbacks and recursive event
+dispatch cannot trigger another transition. An unconsumed Back pops a child;
+at the root it propagates to the foreground application. Stop exits only the
+active scene, because suspended parents already received Exit when pushed.
+
+Gallery uses Menu -> Preview -> Report, with Replace for Preview -> Report so
+Back returns to the menu and its saved selection. Rendering remains in the SDK
+Render callback. Animation advances at most one frame per idle event and
+starts its next deadline after physical display completion. Display errors
+stop image rotation and request a report. Shutdown and
+root Home are SDK commands and keep their existing priority.
+
+`ViewPortScheduler` holds at most four bounded screen regions, with optional
+draw callbacks and dirty/quality flags. The shell uses two: status at
+`(0,0,400,24)` and content at `(0,24,400,276)`. Canvas drawing is clipped to the
+selected region. Composition coalesces invalidations and Quality dominates
+Fast; failed commits retain pending work for recovery. The shared 15,000-byte
+1bpp canvas retains content during status-only refreshes. The normal page
+render and a pending status update share one display commit.
+
+A gray preview temporarily owns one 60,000-byte 4bpp buffer. Its header is
+composed from the status viewport, so a status update cannot replace its image
+with an old monochrome canvas. Gray refreshes retain the established white
+1bpp preclear followed by a full 4bpp refresh. Returning to a normal page or
+shutdown releases this buffer. Shutdown clears a true white surface without
+the status overlay. The DisplayService ghosting, recovery and power policies
+remain authoritative.
 
 ## Command arbitration
 

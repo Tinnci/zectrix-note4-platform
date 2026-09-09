@@ -70,3 +70,17 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Verify durable sync engine cursor semantics under simulated sudden disconnects.
   - Completed bounded terminal rejection/editing, transient USB disconnect recovery and ESP-IDF 5.5.2 RX cleanup; documented Flipper/Pebble reference comparisons.
   - Verified fragment/commit interruption and cursor recovery in C++ and Kotlin, all 26 Host targets, 25 Android JVM tests, Android/ESP32-S3 builds and focused ASan/UBSan checks. Physical USB/BLE qualification remains hardware work.
+
+---
+
+## Milestone L1: Practical Launcher & CrossPoint Reader Core (实用化启动器与电子书阅读引擎)
+
+- [x] **L1.1: 常驻系统状态栏、场景调度器与实机时钟进退 Bug 修复 (Status Bar, Scene Manager & Clock Fallback)**
+  - Fix Clock Scene Entry Bug: In `ClockApplication::Enter`, when hardware RTC (`ReadRtc`) fails (e.g. uninitialized or absent PCF8563 I2C), fall back gracefully to `time_->Now()` (synchronized system time / monotonic fallback) rather than failing `Enter()` and silently bouncing back to Launcher; emit warning logs.
+  - In `ApplicationRuntime::SwitchTo`, add explicit logging (`ESP_LOGW`/`ESP_LOGE`) on application entry failure before triggering `EnterLauncherFallback`.
+  - Implement persistent top status bar: battery percentage & charging icon (ADC sampling), RTC system time, BLE and Wi-Fi state indicators.
+  - Introduce Flipper Zero-inspired `SceneManager` and bounded `ViewPort` scheduler for robust, single-handed physical button navigation.
+  - Decouple existing test demo scenes into structured push/pop application controller hierarchy.
+  - Implemented a persistent 24px status bar, an eight-entry deferred SceneManager and a four-slot clipped ViewPort scheduler. Gallery/showcase/info/about now share the application runtime, retain menu selection and keep input active between preview frames.
+  - Clock now survives RTC read failures with explicit system-time/uptime fallback and recovers on subsequent samples. New installations default to manual launching; existing settings, gray preclear and ordered shutdown are preserved.
+  - Verified all 27 Host targets, ESP32-S3 firmware build, rendered UI previews and connected-device flash/boot smoke test. The status-only minute test transfers 44 bytes of panel RAM data; device boot also exercised the RTC voltage-low condition.

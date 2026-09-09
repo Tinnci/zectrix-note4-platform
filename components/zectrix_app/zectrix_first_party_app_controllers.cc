@@ -19,12 +19,12 @@ LauncherResult LauncherController::Handle(const sdk::InputEvent& event) {
         return {LauncherDecision::RenderFast, selected_};
     }
     if (event.button == sdk::Button::Ok) {
-        LauncherDecision decision = LauncherDecision::RunLegacy;
-        if (selected_ == 0) decision = LauncherDecision::OpenClock;
-        if (selected_ == 1) decision = LauncherDecision::OpenSettings;
-        if (selected_ == 2) decision = LauncherDecision::OpenConnectivity;
-        if (selected_ == 5) decision = LauncherDecision::OpenDiagnostics;
-        return {decision, selected_};
+        constexpr LauncherDecision decisions[] = {
+            LauncherDecision::OpenClock, LauncherDecision::OpenSettings,
+            LauncherDecision::OpenConnectivity, LauncherDecision::OpenShowcase,
+            LauncherDecision::OpenGallery, LauncherDecision::OpenDiagnostics,
+            LauncherDecision::OpenDeviceInfo, LauncherDecision::OpenAbout};
+        return {decisions[selected_], selected_};
     }
     return {LauncherDecision::None, selected_};
 }

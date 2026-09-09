@@ -20,6 +20,8 @@ trap 'rm -f "$test_binary"' EXIT
   "$root_dir/components/zectrix_epd/zectrix_epd.cc" \
   "$root_dir/components/zectrix_demo_ui/zectrix_canvas.cc" \
   "$root_dir/components/zectrix_demo_ui/zectrix_demo_ui.cc" \
+  "$root_dir/components/zectrix_demo_ui/zectrix_view_port.cc" \
+  "$root_dir/components/zectrix_demo_ui/zectrix_status_bar.cc" \
   "$root_dir/tools/display_service_test.cc" -o "$test_binary"
 "$test_binary"
 echo 'PASS: display service, dirty regions, SSD2683 transfers and UI integration tests.'
