@@ -732,6 +732,14 @@ void TestStatusAndImageComposition() {
     std::memcpy(recovered.data(), ui.canvas().data(), recovered.size());
     CheckFull(recovered);
 
+    const char* minimal_items[] = {"CLOCK", "SLEEP COVER", "SETTINGS", "AUTO SHOWCASE",
+        "DISPLAY GALLERY", "HARDWARE TESTS", "DEVICE INFO", "ABOUT & LICENSE"};
+    state.ble = zectrix::ui::RadioIndicator::Off;
+    ui.UpdateStatus(state);
+    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", minimal_items, std::size(minimal_items), 0,
+        "UP/DOWN Move  OK Select  Hold DOWN Off", true) == ESP_OK);
+    SavePreview(ui.canvas(), "launcher-minimal");
+
     state.time_valid = state.battery_valid = state.charging = false;
     state.charge_fault = true;
     state.wifi = zectrix::ui::RadioIndicator::Fault;

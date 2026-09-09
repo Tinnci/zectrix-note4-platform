@@ -45,7 +45,10 @@ menu; at a root screen it returns home. Menu selection survives push/pop.
 Run All returns to its menu after three previews. The rotation and footprint
 animation use idle deadlines rather than separate blocking input loops.
 
-The Launcher scrolls its eight visible rows to reach all eleven items. Reader
+The Launcher scrolls its eight visible rows to reach all eleven items. A narrow
+scrollbar in the right margin shows the visible fraction and position when the
+menu overflows; it disappears when all entries fit, including Minimal's eight
+entries. It moves with the menu in the same refresh. Reader
 uses Library -> Reading -> Options. UP/DOWN turn pages in Reading; OK opens
 font/resume/restart/save options. Long OK returns one scene, and loading remains
 cancellable. Font changes preserve the current source anchor. A successful
@@ -154,6 +157,11 @@ beyond the roughly five-second release wait, USB sleep requires reset or power
 cycling. No timer wake or periodic display update is scheduled.
 
 ## Reference designs and continuation
+
+The [E1.1 fork study](FIRMWARE_UI_STUDY.md) compares Biscuit, CrossMux,
+CrossInk, Momentum and Unleashed with their upstream designs. It documents
+the delivered menu overflow cue and proposed daily Home, font and personal
+cover iterations, including their memory and power implications.
 
 L1 uses independently implemented adaptations of these upstream designs:
 
