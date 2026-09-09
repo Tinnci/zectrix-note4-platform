@@ -10,6 +10,9 @@ L1.3 adds Send Books with private Mode/Session scenes. Connectivity owns its
 temporary web service and Storage lease. See [BOOK_TRANSFER.md](BOOK_TRANSFER.md).
 L1.4 adds Sleep Cover with private Choose/Preview scenes and a retained final
 shutdown surface. See [SLEEP_COVER.md](SLEEP_COVER.md).
+S1.3 separates entry, shell ownership and application modules; a bounded
+catalog supplies both enabled runtime registrations and Launcher navigation.
+Clock adds a private View/Edit scene pair and TimeService-owned calibration.
 
 ## Scope
 
@@ -52,6 +55,17 @@ registry. `Services().Get<Interface>()` returns a borrowed interface or null;
 it cannot navigate or create an application. Platform owns service lifecycle,
 and foreground applications exit before service stop. SDK v1 is unchanged.
 See [SERVICE_REGISTRY.md](SERVICE_REGISTRY.md).
+
+S1.3's `main/app_main.cc` only calls the terminal entry. `main/terminal.cc`
+owns startup, foreground dispatch, system status and shutdown;
+`main/application_modules.cc` binds the selected applications after service
+lookup. Concrete applications live in separate source files. Reader,
+Connectivity and Send Books sources are compiled only when selected. Missing
+optional services omit their destinations. One fixed 16-entry catalog stores
+the descriptors and the shell owns their factories for the runtime's lifetime.
+Launcher uses those same descriptors for labels and Open IDs, with no parallel
+enum-to-destination table. This retains CrossPoint-style bounded reader work
+and Flipper-style deferred SceneManager/ViewPort ownership.
 
 M3 builds an application runtime and firmware framework on ESP-IDF and IDF
 FreeRTOS. It does not build a new operating system. M4 can stabilize the
@@ -138,13 +152,19 @@ is active. M3 does not add a worker task, queue, or event bus for this adapter.
 
 ## Clock and power behavior
 
-Clock reads RTC state on entry and at most once per second on idle callbacks.
-An absent, unreadable or invalid RTC does not fail application entry. It logs
-a warning on entry or RTC loss and uses `TimeService::Now()`: a valid system
-calendar first, otherwise monotonic uptime with `TIME NOT SET` and `UPTIME`
-labels. A recovered RTC is used on the next sample. System fallback uses UTC
-or the explicit offset from the last successful RTC-to-system synchronization.
-The fallback does not set the system clock or weaken TLS clock requirements.
+Clock, system status and sleep covers use `TimeService::Now()` without I2C
+reads in rendering. Platform restores RTC time before networking and polls
+failed restoration/persistence at most once per minute. An absent, unreadable
+or invalid RTC cannot fail Clock entry. A valid local RTC without a saved
+offset can be displayed, but does not establish UTC for TLS. Without any valid
+calendar the view labels `TIME NOT SET` and `UPTIME` explicitly.
+
+OK opens the Clock editor through a deferred scene push. UP/DOWN changes the
+draft, OK advances and the final Save calibrates TimeService. Long OK cancels
+the edit and pops to Clock, then returns home from the root. A pending RTC
+save is visible and does not prevent navigation or shutdown. An authorized
+Companion Hello can also calibrate through the foreground platform owner.
+See [TIME.md](TIME.md) for offset, failure and retention semantics.
 
 The shell waits at most 250 ms for input between callbacks. Clock requests a
 `Fast` render only when its displayed minute, date or source changes; seconds

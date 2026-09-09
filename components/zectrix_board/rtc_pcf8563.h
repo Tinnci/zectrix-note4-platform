@@ -15,6 +15,7 @@ public:
     RtcPcf8563(i2c_master_bus_handle_t i2c_bus, uint8_t addr);
 
     bool Init(gpio_num_t int_gpio);
+    bool StopClock();
     bool SetTime(const tm& local_tm);
     bool GetTime(tm& out_local_tm);
 

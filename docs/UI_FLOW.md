@@ -18,7 +18,7 @@ The home menu contains:
 
 1. **BOOK READER** — TXT/EPUB library, paginated reading, font size and saved progress.
 2. **SEND BOOKS** — local Wi-Fi upload, download and book management.
-3. **CLOCK** — calendar time, with system time or explicit uptime fallback when RTC fails.
+3. **CLOCK** — retained calendar time, offline date/UTC-offset setup and explicit unset/uptime fallback.
 4. **SLEEP COVER** — choose a daily dashboard, landscape or blank privacy screen.
 5. **SETTINGS** — persist the automatic showcase preference.
 6. **CONNECTIVITY** — phone pairing, resource fetch and trusted-phone management.
@@ -29,8 +29,9 @@ The home menu contains:
 11. **ABOUT & LICENSE** — project ownership and license.
 
 Kconfig removes BOOK READER, SEND BOOKS and CONNECTIVITY when their modules
-are disabled. Menu selection, scrolling and navigation use the same selected
-item table. See [MODULAR_BUILD.md](MODULAR_BUILD.md).
+are disabled. Available services determine which selected factories are bound;
+menu labels, scrolling and navigation come from that same application catalog.
+See [MODULAR_BUILD.md](MODULAR_BUILD.md).
 
 Returning home restores the previous selection. Auto Showcase is off by
 default for new installations; valid existing preferences are retained. If
@@ -61,6 +62,12 @@ under Connectivity ownership. Progress renders are limited to one per second
 and 10-percent steps or saved-book count changes. See
 [BOOK_TRANSFER.md](BOOK_TRANSFER.md) for browser controls and timeouts.
 
+Clock uses View -> Edit. OK opens date/time setup, UP/DOWN changes a field,
+and OK advances to a final Save. Hold OK cancels the draft and returns to View,
+then home. Save sets system time and attempts RTC persistence; failures show
+`SAVE PENDING` while the platform retries. An authorized Companion reconnect
+also calibrates automatically. See [TIME.md](TIME.md).
+
 Sleep Cover uses Choose -> Preview. UP/DOWN selects the style; OK saves and
 previews it, then OK in Preview sleeps. Hold OK returns one scene. The active
 style also applies to global hold-DOWN shutdown. The dashboard shows the last
@@ -75,7 +82,7 @@ the next 20 pixels; content and footer stay below the status viewport.
 
 | Indicator | Source and behavior |
 | --- | --- |
-| `HH:MM` | RTC, or valid system time if RTC fails; `--:--` if neither is set. Seconds do not cause refreshes. |
+| `HH:MM` | The shared TimeService snapshot, restored from RTC or calibrated by the user/phone; `--:--` if unset. Seconds do not cause refreshes. |
 | Battery and percentage | Existing calibrated, averaged ADC power snapshot, sampled every five seconds. An unavailable/absent battery shows `--%`. |
 | Lightning / `+` / `!` | Charging, external power without charging, or charger fault respectively. |
 | Bluetooth symbol | `OFF`, `ON` (idle/advertising), `...` (pairing/securing), `LINK` (transport connected), or `ERR`. LINK does not assert peer authorization or sync convergence. |

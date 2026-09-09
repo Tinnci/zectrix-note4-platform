@@ -80,13 +80,24 @@ public:
     ZectrixNfc* nfc() const { return nfc_device; }
     inline static ZectrixNfc* nfc_device = nullptr;
     bool ReadRtc(tm* value) {
-        if (!rtc_available || !rtc_io_ok || value == nullptr) return false;
+        ++rtc_reads;
+        if (!rtc_available || !rtc_io_ok || rtc_stopped || rtc_voltage_low || value == nullptr) return false;
         *value = rtc_value;
         return true;
     }
     bool WriteRtc(const tm& value) {
-        if (!rtc_available || !rtc_io_ok) return false;
+        ++rtc_writes;
+        if (!rtc_available || !rtc_io_ok || !rtc_write_ok) return false;
         rtc_value = value;
+        rtc_voltage_low = false;
+        if (!rtc_resume_ok) return false;
+        rtc_stopped = false;
+        return true;
+    }
+    bool StopRtcClock() {
+        ++rtc_stops;
+        if (!rtc_available || !rtc_io_ok || !rtc_stop_ok) return false;
+        rtc_stopped = true;
         return true;
     }
     bool StartRtcCountdown(std::uint8_t seconds) {
@@ -121,6 +132,9 @@ public:
     esp_err_t init_result = ESP_OK;
     esp_err_t peripheral_shutdown_result = ESP_OK;
     bool rtc_io_ok = true;
+    bool rtc_stopped = false, rtc_voltage_low = false;
+    bool rtc_stop_ok = true, rtc_write_ok = true, rtc_resume_ok = true;
+    unsigned rtc_reads = 0, rtc_writes = 0, rtc_stops = 0;
     bool timer_flag = false;
     bool rtc_interrupt_active = false;
     std::uint8_t countdown_seconds = 0;

@@ -47,6 +47,13 @@ Host tests verify the driver calls and cleanup order. Current consumption and
 physical BLE/Wi-Fi coexistence still require board measurement with both
 battery and USB power configurations.
 
+The external PCF8563 is restored by TimeService before networking starts.
+Initialization disables unused CLKOUT without resetting the calendar, and
+ordinary shutdown does not stop its clock. Its single VDD supply must remain
+powered by the board's backup path for retention after latch release. The
+available GPIO map does not establish that path or its retention duration;
+see [TIME.md](TIME.md) for datasheet evidence and measurement limits.
+
 Battery voltage is read through the board ADC path and displayed as both
 millivolts and an estimated percentage. The charging test combines charger
 status pins with the battery measurement to reject a false pass when no
@@ -55,7 +62,7 @@ battery is fitted.
 ## Porting to another revision
 
 1. Update `components/zectrix_board/include/zectrix_board_config.h`.
-2. Override the EPD configuration in `main/app_main.cc` if its SPI wiring
-   changed.
+2. Update `zectrix_epd_get_default_config()` in `components/zectrix_epd/zectrix_epd.cc`
+   if the EPD SPI wiring changed.
 3. Confirm flash size, PSRAM mode and partition layout in `sdkconfig.defaults`.
 4. Re-run every item in `docs/TEST_CRITERIA.md` on real hardware.

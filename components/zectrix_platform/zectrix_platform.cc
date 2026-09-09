@@ -131,7 +131,14 @@ struct Platform::Impl {
         *this, power, [](Impl& self) { return power::PowerService::Attach(self.board, &self.power); },
         nullptr, KeepForPowerTransition};
     ServiceBinding<time::TimeService, Impl> time_binding{
-        *this, time, [](Impl& self) { return time::TimeService::Attach(self.board, &self.time); }};
+        *this, time, [](Impl& self) { return time::TimeService::Attach(self.board, &self.time); },
+        [](Impl& self) {
+            const esp_err_t restored = self.time->Initialize(*self.storage);
+            if (restored == ESP_OK) ESP_LOGI("time", "wall clock restored from RTC");
+            else ESP_LOGW("time", "RTC restoration unavailable: %s; clock setup remains available",
+                          esp_err_to_name(restored));
+            return ESP_OK;
+        }};
     ServiceBinding<storage::StorageService, Impl> storage_binding{
         *this, storage, [](Impl& self) { return storage::StorageService::Create(&self.storage); },
         [](Impl& self) { return self.storage->Initialize(); }};
@@ -185,8 +192,8 @@ struct Platform::Impl {
 #endif
         if (err == ESP_OK) err = registry.Register(input_binding);
         if (err == ESP_OK) err = registry.Register(power_binding);
-        if (err == ESP_OK) err = registry.Register(time_binding);
         if (err == ESP_OK) err = registry.Register(storage_binding);
+        if (err == ESP_OK) err = registry.Register(time_binding);
         if (err == ESP_OK) err = registry.Register(system_binding);
         if (err == ESP_OK) err = registry.Register(display_binding);
         if (err == ESP_OK) err = registry.Register(diagnostics_binding);
@@ -238,6 +245,20 @@ ZECTRIX_PLATFORM_ACCESSOR(update::UpdateService, Update)
 ZECTRIX_PLATFORM_ACCESSOR(ZectrixSelfTest, Diagnostics)
 
 #undef ZECTRIX_PLATFORM_ACCESSOR
+
+void Platform::Poll() {
+    if (!initialized_) return;
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+    companion::ClockSample sample;
+    if (impl_->connectivity && impl_->connectivity->TakeClockSample(&sample)) {
+        const esp_err_t calibrated = impl_->time->SetUnixTime(sample.unix_milliseconds, sample.utc_offset_seconds);
+        if (calibrated != ESP_OK) ESP_LOGW("time", "companion clock rejected: %s", esp_err_to_name(calibrated));
+        else ESP_LOGI("time", "companion clock applied; RTC saved=%d", impl_->time->Status().rtc_persisted);
+    }
+#endif
+    impl_->time->Poll();
+    PollMaintenance();
+}
 
 void Platform::PollMaintenance() {
 #if CONFIG_ZECTRIX_ENABLE_USB_CLI

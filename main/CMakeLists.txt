@@ -1,13 +1,21 @@
 include("${CMAKE_CURRENT_LIST_DIR}/../cmake/zectrix_features.cmake")
 
+set(sources "app_main.cc" "terminal.cc" "application_modules.cc"
+    "app_launcher.cc" "app_clock.cc" "app_settings.cc" "app_sleep_cover.cc"
+    "app_diagnostics.cc" "app_gallery.cc" "app_device_info.cc")
 set(requires zectrix_demo_ui zectrix_app zectrix_display zectrix_input
     zectrix_power zectrix_platform zectrix_self_test zectrix_storage
     zectrix_system zectrix_time esp_psram)
 if(CONFIG_ZECTRIX_ENABLE_CONNECTIVITY)
+    list(APPEND sources "app_connectivity.cc")
     list(APPEND requires zectrix_connectivity)
 endif()
 if(CONFIG_ZECTRIX_ENABLE_READER)
+    list(APPEND sources "app_reader.cc")
     list(APPEND requires zectrix_reader)
+endif()
+if(CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER)
+    list(APPEND sources "app_book_transfer.cc")
 endif()
 if(CONFIG_ZECTRIX_ENABLE_USB_CLI)
     list(APPEND requires zectrix_cli)
@@ -16,7 +24,7 @@ if(CONFIG_ZECTRIX_ENABLE_UPDATE)
     list(APPEND requires zectrix_update)
 endif()
 
-idf_component_register(SRCS "app_main.cc"
+idf_component_register(SRCS ${sources}
                        REQUIRES ${requires}
                        EMBED_FILES
                        "assets/lighthouse_400x300_1bpp.bin"

@@ -1,61 +1,80 @@
 #include "zectrix_first_party_app_controllers.h"
+#include "zectrix_clock_editor.h"
 
 #include <algorithm>
 #include <array>
 #include <cassert>
 
+void TestClockDraft() {
+    using zectrix::app::ClockEditor;
+    ClockEditor editor;
+    const zectrix::time::DateTime leap_day{2024, 2, 29, 4, 23, 59, 52};
+    editor.Begin(leap_day, 5 * 3600 + 45 * 60);
+    assert(editor.value().second == 0 && editor.offset_seconds() == 20700);
+    editor.Adjust(1);
+    assert(editor.value().year == 2025 && editor.value().day == 28);
+    editor.Next();
+    editor.Adjust(-1);
+    assert(editor.value().month == 1);
+    editor.Next();
+    for (int i = 0; i < 4; ++i) editor.Adjust(1);
+    assert(editor.value().day == 1);
+    editor.Next();
+    editor.Adjust(1);
+    assert(editor.value().hour == 0);
+    editor.Next();
+    editor.Adjust(1);
+    assert(editor.value().minute == 0);
+    editor.Next();
+    editor.Adjust(-1);
+    assert(editor.offset_seconds() == 19800);
+    editor.Next();
+    assert(editor.field() == ClockEditor::Save && zectrix::time::IsValid(editor.value()));
+    editor.Adjust(1);
+    assert(editor.field() == ClockEditor::UtcOffset);
+    editor.Next();
+    editor.Adjust(-1);
+    assert(editor.field() == ClockEditor::Year);
+    // Cancelling is just dropping the draft; reopening starts from the sample.
+    editor.Begin(leap_day, 50400);
+    assert(editor.value().day == 29 && leap_day.second == 52);
+    for (int i = 0; i < 5; ++i) editor.Next();
+    editor.Adjust(1);
+    assert(editor.offset_seconds() == -50400);
+    editor.Adjust(-1);
+    assert(editor.offset_seconds() == 50400);
+    editor.Begin({0, 0, 0, 0, 26, 0, 0}, 100000);
+    assert(editor.value().year == 2000 && editor.value().hour == 0 && editor.offset_seconds() == 0);
+    editor.Adjust(-1);
+    assert(editor.value().year == 2099);
+    editor.Adjust(1);
+    assert(editor.value().year == 2000);
+}
+
 int main() {
+    TestClockDraft();
     using namespace zectrix::app;
     using Action = zectrix::sdk::InputAction;
     using zectrix::sdk::Button;
     using zectrix::sdk::InputEvent;
 
-    LauncherController launcher;
-    LauncherResult result = launcher.Handle({Button::Ok, Action::Click});
-#if CONFIG_ZECTRIX_ENABLE_READER
-    assert(result.decision == LauncherDecision::OpenReader);
-#elif CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
-    assert(result.decision == LauncherDecision::OpenBookTransfer);
-#else
-    assert(result.decision == LauncherDecision::OpenClock);
-#endif
-    assert(result.selected == 0);
-
-    std::array<LauncherDecision, LauncherController::kItemCount> visited{};
-    for (std::size_t selected = 0; selected < visited.size(); ++selected) {
-        result = launcher.Handle({Button::Ok, Action::Click});
-        assert(result.selected == selected);
-        visited[selected] = result.decision;
-        LauncherController restored(selected);
-        assert(restored.Handle({Button::Ok, Action::Click}).decision == result.decision);
-        result = launcher.Handle({Button::Down, Action::Click});
-        assert(result.decision == LauncherDecision::RenderFast);
-        assert(result.selected == (selected + 1) % visited.size());
+    for (const std::size_t count : {0u, 1u, 8u, 11u}) {
+        LauncherController launcher(count);
+        for (std::size_t selected = 0; selected < count; ++selected) {
+            const auto opened = launcher.Handle({Button::Ok, Action::Click});
+            assert(opened.decision == LauncherDecision::OpenSelected && opened.selected == selected);
+            LauncherController restored(count, selected);
+            assert(restored.selected() == selected);
+            const auto moved = launcher.Handle({Button::Down, Action::Click});
+            assert(moved.decision == LauncherDecision::RenderFast && moved.selected == (selected + 1) % count);
+        }
+        if (count) assert(launcher.Handle({Button::Up, Action::Click}).selected == count - 1);
+        else assert(launcher.Handle({Button::Ok, Action::Click}).decision == LauncherDecision::None);
+        assert(LauncherController(count, 100).selected() == 0);
+        assert(launcher.Handle({Button::Down, Action::LongPress}).decision == LauncherDecision::Shutdown);
+        assert(launcher.Handle({Button::Ok, Action::LongPress}).decision == LauncherDecision::None);
     }
-    const auto count = [&](LauncherDecision decision) {
-        return std::count(visited.begin(), visited.end(), decision);
-    };
-    const LauncherDecision core_destinations[] = {
-        LauncherDecision::OpenClock, LauncherDecision::OpenSleepCover, LauncherDecision::OpenSettings,
-        LauncherDecision::OpenShowcase,
-        LauncherDecision::OpenGallery, LauncherDecision::OpenDiagnostics,
-        LauncherDecision::OpenDeviceInfo, LauncherDecision::OpenAbout};
-    for (const auto destination : core_destinations) assert(count(destination) == 1);
-    assert(count(LauncherDecision::OpenReader) == CONFIG_ZECTRIX_ENABLE_READER);
-    assert(count(LauncherDecision::OpenBookTransfer) == CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER);
-    assert(count(LauncherDecision::OpenConnectivity) == CONFIG_ZECTRIX_ENABLE_CONNECTIVITY);
-    assert(visited.size() == std::size(core_destinations) + CONFIG_ZECTRIX_ENABLE_READER +
-           CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER + CONFIG_ZECTRIX_ENABLE_CONNECTIVITY);
-    result = launcher.Handle({Button::Up, Action::Click});
-    assert(result.selected == LauncherController::kItemCount - 1);
-    assert(LauncherController(100).selected() == 0);
     assert(kAutoShowcaseDefault == 0);
-    result = launcher.Handle({Button::Down, Action::LongPress});
-    assert(result.decision == LauncherDecision::Shutdown);
-    assert(result.selected == LauncherController::kItemCount - 1);
-
-    result = launcher.Handle({Button::Ok, Action::LongPress});
-    assert(result.decision == LauncherDecision::None);
     assert(HandleClockInput({Button::Ok, Action::LongPress}) ==
            ClockDecision::Home);
     assert(HandleClockInput({Button::Down, Action::LongPress}) ==

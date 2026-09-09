@@ -19,6 +19,7 @@ import android.util.Log
 import java.io.File
 import java.util.ArrayDeque
 import java.util.UUID
+import java.util.TimeZone
 import java.util.concurrent.atomic.AtomicInteger
 
 enum class GattState {
@@ -402,8 +403,10 @@ class BleGattClient(
                 value = CompanionProtocol.encodeCompanionIdentity(companionIdentity),
             )
         }
+        val now = System.currentTimeMillis()
         val payload = identityPayload + CompanionProtocol.encodeTlv(SyncWire.HELLO_CURSORS, true,
-            SyncWire.encodeCursors(requireNotNull(durableQueue).cursors()))
+            SyncWire.encodeCursors(requireNotNull(durableQueue).cursors())) +
+            CompanionProtocol.optionalClockSample(now, TimeZone.getDefault().getOffset(now) / 1000)
         val hello = CompanionProtocol.encode(
             CompanionProtocol.Header(
                 messageClass = CompanionProtocol.MessageClass.CONTROL,

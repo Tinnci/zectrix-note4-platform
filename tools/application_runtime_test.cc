@@ -1,4 +1,5 @@
 #include "zectrix/sdk/application.h"
+#include "zectrix_application_catalog.h"
 
 #include <cassert>
 #include <new>
@@ -162,6 +163,26 @@ int main() {
         {"broken", "Broken", &broken_factory},
     };
     const sdk::InputEvent input{sdk::Button::Ok, sdk::InputAction::Click};
+
+    {
+        zectrix::app::ApplicationCatalog catalog;
+        assert(catalog.size() == 0 && catalog.menu_size() == 0 && !catalog.MenuAt(0));
+        assert(catalog.Add("launcher", "Launcher", launcher_factory));
+        assert(catalog.Add("clock", "Clock", clock_factory));
+        assert(catalog.menu_size() == 1 && !catalog.MenuAt(1));
+        Delegate delegate;
+        sdk::ApplicationRuntime runtime(catalog.data(), catalog.size(), "launcher", delegate);
+        assert(runtime.Start() == sdk::Status::Ok);
+        // The exact same descriptor supplies the menu label and open target.
+        assert(std::string(catalog.MenuAt(0)->display_name) == "Clock");
+        launcher.event_open = catalog.MenuAt(0)->id;
+        assert(runtime.Step(&input) == sdk::Status::Ok && IsForeground(runtime, "clock"));
+        sdk::ApplicationId missing;
+        assert(sdk::ApplicationId::Copy("reader", &missing));
+        assert(!runtime.registry().Find(missing));
+        assert(runtime.Stop() == sdk::Status::Ok);
+    }
+    Reset(launcher, clock, broken);
 
     {
         sdk::ApplicationId launcher_id;

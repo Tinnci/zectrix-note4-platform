@@ -19,6 +19,7 @@ object CompanionProtocol {
     const val HELLO_ENROLLMENT_PROOF_TYPE = 1
     const val HELLO_COMPANION_IDENTITY_TYPE = 2
     const val HELLO_ACK_STATUS_TYPE = 3
+    const val HELLO_CLOCK_SAMPLE_TYPE = 5
     const val HELLO_ENROLLMENT_PROOF_SIZE = 36
     const val HELLO_ACK_STATUS_OK = 0
     const val HELLO_ACK_STATUS_REJECTED = 1
@@ -140,6 +141,21 @@ object CompanionProtocol {
         if (value.size != 16) return null
         return value.copyOf()
     }
+
+    fun encodeClockSample(unixMilliseconds: Long, utcOffsetSeconds: Int): ByteArray {
+        require(unixMilliseconds >= 0 && utcOffsetSeconds in -50_400..50_400)
+        return ByteArray(12).also { value ->
+            put32(value, 0, unixMilliseconds and 0xffff_ffffL)
+            put32(value, 4, unixMilliseconds ushr 32)
+            put32(value, 8, utcOffsetSeconds.toLong())
+        }
+    }
+
+    // A broken phone clock must not prevent enrollment or ordinary sync.
+    fun optionalClockSample(unixMilliseconds: Long, utcOffsetSeconds: Int): ByteArray =
+        if (unixMilliseconds >= 0 && utcOffsetSeconds in -50_400..50_400)
+            encodeTlv(HELLO_CLOCK_SAMPLE_TYPE, false, encodeClockSample(unixMilliseconds, utcOffsetSeconds))
+        else byteArrayOf()
 
     fun encodeHelloAckStatus(status: Int, peerAuthorized: Boolean, errorReason: Int): ByteArray {
         require(status in 0..255 && errorReason in 0..0xffff)

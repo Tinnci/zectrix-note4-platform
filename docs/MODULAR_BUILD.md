@@ -87,8 +87,8 @@ coexistence support. Disabling Connectivity removes the entire BT/Wi-Fi branch.
 
 Platform registers eight core providers and up to three optional providers:
 Connectivity, USB maintenance and the firmware writer. Typed lookup returns
-null for an excluded provider. The Launcher uses the selected item table,
-and optional application classes, controllers and renderers are excluded.
+null for an excluded provider. The Launcher uses the composed application
+descriptors, and optional application sources, controllers and renderers are excluded.
 Transfer completion returns home when the reader is absent.
 With Wi-Fi disabled, RF diagnostics retain SKIP through the summary and do
 not count the omitted test as a failure or an executed test.
@@ -114,8 +114,15 @@ frame succeed. Failed startup and service teardown never disarm an unconfirmed
 trial watchdog. Native partition, rollback, image validation and shutdown
 safety remain in place. See [ADR-0005](adr/0005-ab-ota-boot-confirmation.md).
 
-This iteration adds the source guards needed for usable selected builds.
-S1.3 continues the broader application composition and persistent RTC work;
+S1.3 reduces `main/app_main.cc` to the terminal entry. The shell, application
+composition and individual applications are separate source files.
+`application_modules.cc` binds selected factories only when their required
+services are available. A fixed 16-entry `ApplicationCatalog` supplies both
+runtime registration and Launcher labels/Open targets. The shell owns factories
+and descriptors for the entire runtime lifetime. No menu index is persisted.
+Clock remains in Core, including its offline editor; the platform restores its
+RTC before Connectivity starts. See [TIME.md](TIME.md).
+
 S1.4 covers a reusable minimal-profile firmware/device regression workflow.
 
 ## Verification
@@ -133,8 +140,10 @@ Module tests use `uv` to provision the same `esp-idf-kconfig` 2.5.4 library as
 the qualified IDF environment. They exercise a fresh full config, contradictory
 parent/child requests, independent Web/reader/HTTPS choices, empty defaults,
 defaults versus saved settings, and repeated off/on/off changes. The resolver
-leaves input files intact. Launcher tests navigate full, core, offline, Web
-and BLE menus, checking omitted destinations, selection restoration and wrap.
+leaves input files intact. Launcher controllers receive the actual catalog
+count and are tested with empty, single-item and reduced/full menus, selection
+restoration and wrap. Runtime tests open the same descriptor exposed by the
+menu and verify omitted destinations cannot be found.
 Platform tests compile the production composition with optional dependencies
 absent, individually present and fully enabled, including trial-boot failures
 and shutdown. Reader tests run with and without connectivity sources and

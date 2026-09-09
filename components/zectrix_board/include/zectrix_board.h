@@ -59,6 +59,7 @@ public:
 
     bool HasRtc() const;
     bool ReadRtc(tm* value);
+    bool StopRtcClock();
     bool WriteRtc(const tm& value);
     bool StartRtcCountdown(uint8_t seconds);
     bool StopRtcCountdown();

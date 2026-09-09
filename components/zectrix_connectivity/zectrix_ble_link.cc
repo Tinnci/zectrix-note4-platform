@@ -6,6 +6,7 @@
 #include <new>
 
 #include "esp_random.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "host/ble_gap.h"
@@ -87,6 +88,7 @@ struct BleLink::Impl {
         std::array<uint8_t, companion::kMaximumFrameSize> data{};
         std::size_t size = 0;
         uint32_t session_id = 0;
+        uint64_t received_at_ms = 0;
         bool occupied = false;
     };
 
@@ -237,6 +239,7 @@ struct BleLink::Impl {
                     instance->received[instance->received_write];
                 destination.size = instance->reassembler.Size();
                 destination.session_id = instance->session_id;
+                destination.received_at_ms = static_cast<uint64_t>(esp_timer_get_time() / 1000);
                 std::memcpy(destination.data.data(),
                             instance->reassembler.Data(), destination.size);
                 destination.occupied = true;
@@ -940,6 +943,7 @@ bool BleLink::TakeReceivedFrame(ReceivedFrame* frame) {
     frame->data = source.data.data();
     frame->size = source.size;
     frame->session_id = source.session_id;
+    frame->received_at_ms = source.received_at_ms;
     impl_->received_borrowed = true;
     xSemaphoreGive(impl_->lock);
     return true;

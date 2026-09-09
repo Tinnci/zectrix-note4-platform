@@ -79,6 +79,9 @@ public:
     ConnectivityState State() const;
     ConnectivitySnapshot Snapshot() const;
     bool TakePairingPasskey(uint32_t* passkey);
+    // The foreground owner takes an authorized, current-session clock hint.
+    // The copy includes queue delay; this service never writes RTC/system time.
+    bool TakeClockSample(companion::ClockSample* sample);
     // Publish a copied power sample from the application owner before a
     // request. Radio policy treats an invalid battery sample conservatively.
     void UpdatePower(const power::PowerSnapshot& power,

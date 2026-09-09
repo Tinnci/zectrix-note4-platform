@@ -61,6 +61,31 @@ uint32_t Crc32(const uint8_t* data, std::size_t size, uint32_t previous) {
     return crc ^ 0xffffffffU;
 }
 
+ProtocolStatus EncodeClockSampleValue(const ClockSample& sample, uint8_t* output,
+                                      std::size_t capacity, std::size_t* size) {
+    if (!output || !size || sample.unix_milliseconds < 0 ||
+        sample.utc_offset_seconds < -50400 || sample.utc_offset_seconds > 50400)
+        return ProtocolStatus::kInvalidArgument;
+    *size = 0;
+    if (capacity < kClockSampleValueSize) return ProtocolStatus::kBufferTooSmall;
+    const auto unix_ms = static_cast<uint64_t>(sample.unix_milliseconds);
+    PutUInt32(output, static_cast<uint32_t>(unix_ms));
+    PutUInt32(output + 4, static_cast<uint32_t>(unix_ms >> 32));
+    PutUInt32(output + 8, static_cast<uint32_t>(sample.utc_offset_seconds));
+    *size = kClockSampleValueSize;
+    return ProtocolStatus::kOk;
+}
+
+ProtocolStatus DecodeClockSampleValue(const uint8_t* value, std::size_t size, ClockSample* sample) {
+    if (!value || !sample || size != kClockSampleValueSize) return ProtocolStatus::kInvalidArgument;
+    const uint64_t unix_ms = GetUInt32(value) | (static_cast<uint64_t>(GetUInt32(value + 4)) << 32);
+    const uint32_t raw_offset = GetUInt32(value + 8);
+    const int64_t offset = raw_offset <= INT32_MAX ? raw_offset : static_cast<int64_t>(raw_offset) - 0x100000000LL;
+    if (unix_ms > INT64_MAX || offset < -50400 || offset > 50400) return ProtocolStatus::kInvalidArgument;
+    *sample = {static_cast<int64_t>(unix_ms), static_cast<int32_t>(offset)};
+    return ProtocolStatus::kOk;
+}
+
 ProtocolStatus EncodeFrame(const FrameHeader& header, const uint8_t* payload,
                            std::size_t payload_size, uint8_t* output,
                            std::size_t output_capacity,

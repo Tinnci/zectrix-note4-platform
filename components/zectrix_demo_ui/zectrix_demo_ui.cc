@@ -130,7 +130,7 @@ esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
 esp_err_t ZectrixDemoUi::ShowClock(const zectrix::time::DateTime& value,
                                    bool full_refresh, const char* source,
                                    bool calendar_valid) {
-    DrawFrame("CLOCK", "Hold OK Home   Hold DOWN Off");
+    DrawFrame("CLOCK", "OK Set   Hold OK Home   Hold DOWN Off");
     char line[32] = {};
     if (calendar_valid) {
         std::snprintf(line, sizeof(line), "%04d-%02d-%02d", value.year,

@@ -20,6 +20,7 @@
 #include "zectrix_ble_link.h"
 #include "zectrix_companion_identity.h"
 #include "zectrix_companion_protocol.h"
+#include "zectrix_clock_sync.h"
 #include "zectrix_nfc_service.h"
 #include "zectrix_pairing_bootstrap.h"
 #include "zectrix_power_service.h"
@@ -53,6 +54,7 @@ constexpr uint16_t kEnrollmentErrorDuplicateField = 8;
 constexpr uint16_t kEnrollmentErrorStore = 9;
 constexpr uint16_t kEnrollmentErrorSyncRequired = 10;
 constexpr uint16_t kEnrollmentErrorSyncCursors = 11;
+constexpr uint16_t kEnrollmentErrorClockSample = 12;
 constexpr char kSyncStateKey[] = "comp_sync";
 
 ConnectivityResult Map(companion::LinkResult result) {
@@ -197,6 +199,7 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
     std::array<uint8_t, companion::kMaximumFrameSize> resource_frame{};
     companion::SyncEngine sync_engine;
     companion::SyncSession sync_session{sync_engine};
+    companion::ClockMailbox clock_mailbox;
 
     companion::StoreReadStatus Load(uint8_t* output, std::size_t capacity,
                                     std::size_t* output_size) override {
@@ -251,6 +254,7 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
             peer_authorized.store(false, std::memory_order_release);
             peer_authorized_session_id.store(0, std::memory_order_release);
             xSemaphoreTake(resource_mutex, portMAX_DELAY);
+            clock_mailbox.Clear();
             sync_session.Disconnect();
             if (storage_service != nullptr &&
                 storage_service->IsInitialized()) {
@@ -366,6 +370,8 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
         uint8_t status = companion::kHelloAckStatusOk;
         bool peer_authorized = false;
         uint16_t error_reason = kEnrollmentErrorNone;
+        bool has_clock = false;
+        companion::ClockSample clock{};
     };
 
     HelloAckDecision ProcessHelloPayload(uint32_t session_id,
@@ -375,6 +381,7 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
         bool has_proof = false;
         bool has_identity = false;
         bool has_cursors = false;
+        bool clock_seen = false;
         companion::SyncCursors peer_cursors{};
         uint32_t proof_generation = 0;
         uint8_t proof_token[16] = {};
@@ -438,6 +445,16 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
                     return decision;
                 }
                 has_cursors = true;
+            } else if (field.type == companion::kHelloClockSampleType) {
+                decision.has_clock = !clock_seen && companion::DecodeClockSampleValue(
+                    field.value, field.value_size, &decision.clock) == companion::ProtocolStatus::kOk;
+                clock_seen = true;
+                // An optional bad clock hint must not prevent ordinary sync.
+                if (!decision.has_clock && field.required) {
+                    decision.status = companion::kHelloAckStatusRejected;
+                    decision.error_reason = kEnrollmentErrorClockSample;
+                    return decision;
+                }
             } else if (field.required) {
                 LogEnrollmentRejection("unknown_required_field", session_id);
                 decision.status = companion::kHelloAckStatusRejected;
@@ -615,6 +632,7 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
     void ResourceSessionChanged() {
         if (resource_mutex == nullptr) return;
         xSemaphoreTake(resource_mutex, portMAX_DELAY);
+        clock_mailbox.Clear();
         next_outbound_sequence = 1;
         sync_session.Disconnect();
         resource_phone_session = 0;
@@ -891,6 +909,14 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
                                          response_size) ==
                     companion::LinkResult::kOk) {
                 self->protocol_negotiated_local.store(decision.status == companion::kHelloAckStatusOk);
+                if (decision.status == companion::kHelloAckStatusOk && decision.peer_authorized && decision.has_clock) {
+                    xSemaphoreTake(self->resource_mutex, portMAX_DELAY);
+                    self->ble.WithCurrentTransportSession(received_session_id, [&]() {
+                        if (self->peer_authorized.load() && self->peer_authorized_session_id.load() == received_session_id)
+                            self->clock_mailbox.Offer(decision.clock, received_session_id, received.received_at_ms);
+                    });
+                    xSemaphoreGive(self->resource_mutex);
+                }
                 ESP_LOGI(kTag,
                          "event=protocol_negotiated_local session=%lu request=%lu authorized=%d",
                          static_cast<unsigned long>(link.session_id),
@@ -1299,6 +1325,22 @@ ConnectivityResult ConnectivityService::RequestResource(
     xSemaphoreGive(impl_->resource_mutex);
     impl_->ble.WakeSessionWaiter();
     return accepted ? ConnectivityResult::kOk : ConnectivityResult::kBusy;
+}
+
+bool ConnectivityService::TakeClockSample(companion::ClockSample* sample) {
+    if (!sample || !impl_ || !impl_->initialized.load() || impl_->stop_session_task.load() ||
+        !impl_->resource_mutex || xSemaphoreTake(impl_->resource_mutex, 0) != pdTRUE) return false;
+    bool received = false;
+    const auto link = impl_->ble.Snapshot();
+    const bool current = impl_->ble.WithCurrentTransportSession(link.session_id, [&]() {
+        const bool authorized = impl_->IsSessionPeerAuthorized(link) &&
+            impl_->protocol_negotiated_local.load() && impl_->protocol_session_id.load() == link.session_id;
+        received = impl_->clock_mailbox.Take(authorized ? link.session_id : 0,
+            static_cast<uint64_t>(esp_timer_get_time() / 1000), sample);
+    });
+    if (!current) impl_->clock_mailbox.Clear();
+    xSemaphoreGive(impl_->resource_mutex);
+    return received;
 }
 
 bool ConnectivityService::TakeResourceResponse(ResourceResponse* response) {

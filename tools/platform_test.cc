@@ -43,6 +43,11 @@ int fail_nothrow_allocation = 0;
 zectrix::cli::CliExecutor* cli_executor = nullptr;
 #endif
 unsigned inspections = 0;
+unsigned time_polls = 0;
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+bool pending_clock_sample = false;
+#endif
+int64_t applied_clock_ms = 0;
 bool boot_watchdog_armed = false;
 bool pending_boot = false;
 bool boot_confirmed = false;
@@ -83,6 +88,8 @@ void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
 void operator delete(void* pointer, const std::nothrow_t&) noexcept {
     ::operator delete(pointer);
 }
+
+const char* esp_err_to_name(esp_err_t) { return "host-error"; }
 
 esp_err_t ZectrixBoard::Init() {
     assert(boot_probe_count != 0);
@@ -156,6 +163,17 @@ esp_err_t TimeService::Attach(ZectrixBoard& board, TimeService** output) {
     return result;
 }
 TimeService::~TimeService() { AssertWithdrawn<TimeService>(); events.emplace_back("delete:time"); }
+esp_err_t TimeService::Initialize(storage::StorageService& storage) {
+    if (inspected_registry) assert(inspected_registry->Get<storage::StorageService>() == &storage);
+    events.emplace_back("init:time");
+    return fail_at == "rtc-restore" ? ESP_FAIL : ESP_OK;
+}
+void TimeService::Poll() { ++time_polls; }
+esp_err_t TimeService::SetUnixTime(int64_t milliseconds, int32_t offset) {
+    assert(host_current_task == reinterpret_cast<void*>(1) && offset == 28800);
+    applied_clock_ms = milliseconds;
+    return ESP_OK;
+}
 int64_t TimeService::MonotonicMicroseconds() const { ++inspections; return 1234000; }
 }
 namespace zectrix::storage {
@@ -229,10 +247,17 @@ ConnectivityResult ConnectivityService::Create(ConnectivityService** output) {
     return ConnectivityResult::kOk;
 }
 ConnectivityResult ConnectivityService::Initialize() {
+    assert(std::find(events.begin(), events.end(), "init:time") != events.end());
     events.emplace_back("create:connectivity-init");
     return fail_at == "connectivity-init"
                ? ConnectivityResult::kTransportError
                : ConnectivityResult::kOk;
+}
+bool ConnectivityService::TakeClockSample(companion::ClockSample* sample) {
+    if (!pending_clock_sample) return false;
+    pending_clock_sample = false;
+    *sample = {1709179200123, 28800};
+    return true;
 }
 ConnectivityService::~ConnectivityService() {
     AssertWithdrawn<ConnectivityService>();
@@ -259,9 +284,23 @@ LogBuffer& MaintenanceLogs() { static LogBuffer logs; return logs; }
 
 #endif
 
+void TestUnsetClockDoesNotBlockStartup() {
+    fail_at = "rtc-restore";
+    {
+        zectrix::Platform platform;
+        assert(platform.Initialize() == ESP_OK);
+        assert(platform.Services().Get<zectrix::time::TimeService>());
+        platform.Poll();
+    }
+    fail_at.clear();
+    events.clear();
+    time_polls = 0;
+}
+
 #if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY && CONFIG_ZECTRIX_ENABLE_USB_CLI && CONFIG_ZECTRIX_ENABLE_UPDATE
 int main() {
     host_current_task = reinterpret_cast<void*>(1);
+    TestUnsetClockDoesNotBlockStartup();
     {
         zectrix::Platform platform;
         inspected_registry = &platform.Services();
@@ -296,8 +335,8 @@ int main() {
         assert(!registry.Get<zectrix::nfc::NfcService>());
         assert(!boot_watchdog_armed);
         assert((events == std::vector<std::string>{
-            "init:board", "create:input", "create:power", "create:time",
-            "create:storage", "create:storage-init", "create:system",
+            "init:board", "create:input", "create:power",
+            "create:storage", "create:storage-init", "create:time", "init:time", "create:system",
             "create:display", "create:connectivity",
             "create:connectivity-init", "create:cli"}));
         zectrix::cli::Invocation invocation;
@@ -313,17 +352,20 @@ int main() {
         assert(cli_executor->Poll(&output) == zectrix::cli::ExecuteStatus::kOk);
         assert(inspections == 1);
         assert(std::string(output.data()).find("1234 ms") != std::string::npos);
+        pending_clock_sample = true;
+        platform.Poll();
+        assert(time_polls == 1 && applied_clock_ms == 1709179200123 && !pending_clock_sample);
         platform.StopMaintenance();
         output.Clear();
         assert(cli_executor->Execute(invocation, &output) == zectrix::cli::ExecuteStatus::kUnavailable);
     }
     inspected_registry = nullptr;
     assert((events == std::vector<std::string>{
-        "init:board", "create:input", "create:power", "create:time",
-        "create:storage", "create:storage-init", "create:system",
+        "init:board", "create:input", "create:power",
+        "create:storage", "create:storage-init", "create:time", "init:time", "create:system",
         "create:display", "create:connectivity", "create:connectivity-init",
         "create:cli", "delete:cli", "delete:connectivity", "delete:display",
-        "delete:system", "delete:storage", "delete:time",
+        "delete:system", "delete:time", "delete:storage",
         "delete:power", "delete:input"}));
 
     events.clear();
@@ -341,7 +383,7 @@ int main() {
         AssertNoServices(platform);
         assert((events == std::vector<std::string>{
             "delete:cli", "delete:connectivity", "delete:nfc", "delete:display",
-            "delete:system", "delete:storage", "delete:time", "shutdown:power"}));
+            "delete:system", "delete:time", "delete:storage", "shutdown:power"}));
         assert(platform.Initialize() == ESP_ERR_INVALID_STATE);
         ZectrixBoard::nfc_device = nullptr;
     }
@@ -387,9 +429,9 @@ int main() {
     assert(failed.Services().size() == 0);
     assert(failed.Initialize() == ESP_ERR_INVALID_STATE);
     assert((events == std::vector<std::string>{
-        "init:board", "create:input", "create:power", "create:time",
-        "create:storage", "create:storage-init", "create:system",
-        "delete:storage", "delete:time",
+        "init:board", "create:input", "create:power",
+        "create:storage", "create:storage-init", "create:time", "init:time", "create:system",
+        "delete:time", "delete:storage",
         "delete:power", "delete:input"}));
 
     events.clear();
@@ -412,10 +454,10 @@ int main() {
     assert(!no_diagnostics_memory.IsInitialized());
     AssertNoServices(no_diagnostics_memory);
     assert((events == std::vector<std::string>{
-        "init:board", "create:input", "create:power", "create:time",
-        "create:storage", "create:storage-init", "create:system",
+        "init:board", "create:input", "create:power",
+        "create:storage", "create:storage-init", "create:time", "init:time", "create:system",
         "create:display",
-        "delete:display", "delete:system", "delete:storage", "delete:time",
+        "delete:display", "delete:system", "delete:time", "delete:storage",
         "delete:power", "delete:input"}));
 
     events.clear();
@@ -425,9 +467,9 @@ int main() {
     assert(!failed_storage_init.IsInitialized());
     AssertNoServices(failed_storage_init);
     assert((events == std::vector<std::string>{
-        "init:board", "create:input", "create:power", "create:time",
+        "init:board", "create:input", "create:power",
         "create:storage", "create:storage-init", "delete:storage",
-        "delete:time", "delete:power", "delete:input"}));
+        "delete:power", "delete:input"}));
 
     events.clear();
     fail_at = "cli";
@@ -436,11 +478,11 @@ int main() {
     assert(!failed_cli.IsInitialized());
     AssertNoServices(failed_cli);
     assert((events == std::vector<std::string>{
-        "init:board", "create:input", "create:power", "create:time",
-        "create:storage", "create:storage-init", "create:system",
+        "init:board", "create:input", "create:power",
+        "create:storage", "create:storage-init", "create:time", "init:time", "create:system",
         "create:display", "create:connectivity", "create:connectivity-init",
         "create:cli", "delete:cli", "delete:connectivity",
-        "delete:display", "delete:system", "delete:storage", "delete:time",
+        "delete:display", "delete:system", "delete:time", "delete:storage",
         "delete:power", "delete:input"}));
 
     // Exercise every adapter failure with NFC already attached by the board.
@@ -477,6 +519,7 @@ int main() {
 #else
 int main() {
     host_current_task = reinterpret_cast<void*>(1);
+    TestUnsetClockDoesNotBlockStartup();
     ZectrixNfc nfc;
     ZectrixBoard::nfc_device = &nfc;
     {
@@ -496,7 +539,7 @@ int main() {
                (CONFIG_ZECTRIX_ENABLE_UPDATE != 0));
         assert(!boot_watchdog_armed);
         assert(std::count(events.begin(), events.end(), "create:nfc") == CONFIG_ZECTRIX_ENABLE_CONNECTIVITY);
-        platform.PollMaintenance();
+        platform.Poll();
         platform.StopMaintenance();
         events.clear();
         try { platform.Shutdown(); } catch (const SleepEntered&) {}

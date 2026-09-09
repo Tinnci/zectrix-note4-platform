@@ -24,6 +24,7 @@ struct ReceivedFrame {
     const uint8_t* data = nullptr;
     std::size_t size = 0;
     uint32_t session_id = 0;
+    uint64_t received_at_ms = 0;
 };
 
 struct BleSnapshot {

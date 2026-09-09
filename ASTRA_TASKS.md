@@ -133,10 +133,14 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Added four component Kconfig definitions with selectable connectivity, Wi-Fi, HTTPS, Web transfer, reader, USB CLI and firmware writing. Native Kconfig resolution runs before IDF dependency expansion, preserving defaults and saved settings while removing excluded components, sources, fonts and book storage.
   - Integrated selected services and Launcher destinations, independent Web transfer, offline bookmark persistence and RF SKIP reporting. Moved existing boot validation, rollback confirmation and watchdog protection into the mandatory System component so disabling firmware writing preserves recovery safety.
   - Verified all 32 Host targets, five Launcher profiles and five Platform compositions, six ESP32-S3 firmware profiles, a fresh core build, saved-config off/on/off changes, ShellCheck and connected-device flash/boot smoke. Full firmware is 2,990,112 bytes; Core is 545,216 bytes (81.8% smaller). See docs/MODULAR_BUILD.md; broader application/RTC work remains S1.3 and reusable minimal-profile qualification remains S1.4.
-- [ ] **S1.3: app_main 解耦与条件装配 (Conditional Wiring) & 硬件 RTC 深度集成**
+- [x] **S1.3: app_main 解耦与条件装配 (Conditional Wiring) & 硬件 RTC 深度集成**
   - 将 `main/app_main.cc` 中的具体业务类实例化改造为基于配置宏/服务注册表的装配逻辑。
   - Launcher / Menu 系统自动根据已启用的模块动态生成菜单项与场景导航，未启用的功能完全剥离。
   - 完善硬件板载 RTC（PCF8563）的初始化与绝对时钟恢复：关机与微安级休眠期间持续走时，开机自动复原真实世界墙上时间（绝对日期/时间戳），避免时钟归零或仅作为开机计时器。
+  - Split the terminal entry, shell, composition and concrete applications. A fixed catalog supplies both Launcher labels and runtime targets; Kconfig excludes optional source files and absent services omit their destinations.
+  - Moved RTC restoration before Connectivity startup and unified Clock/status/sleep time snapshots. Added an offline View/Edit clock scene and authorized Companion Hello calibration, with current-session/age checks and foreground RTC ownership.
+  - Hardened PCF8563 reads and STOP-protected calendar/offset saves, retained valid time during persistence failures, and added bounded retries. Initialization disables unused CLKOUT; normal shutdown preserves the running calendar. Documented the external backup-supply requirement without claiming unmeasured board current or retention.
+  - Verified all 32 Host targets, 29 Android JVM tests and the debug build, five ESP32-S3 firmware profiles and connected-device flash/boot smoke. Full is 2,995,520 bytes and Core is 548,784 bytes. Host tests cover restart restoration and interrupted calibration; the device smoke exercised invalid retained-clock fallback. Physical backup retention, standby current and phone calibration remain hardware qualification work. See docs/TIME.md.
 - [ ] **S1.4: 极限轻量化配置档验证 (Minimal Profile Regression)**
   - 在 `tools/` 中新增最小化构建验证脚本（如纯离线 Minimal Profile 测试），验证禁用网络和阅读器后固件体积与片内 RAM 占用的削减效果（目标减少 30%+ 固件体积）。
   - 确保全套 Host 测试与实机烧录冒烟测试在全量（Full）与最小化（Minimal）两种配置模式下均 100% 正常工作。
