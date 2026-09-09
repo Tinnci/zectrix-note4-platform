@@ -61,6 +61,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private var snapshot by mutableStateOf(CompanionConnectionManager.snapshot())
+    private var readingProgress by mutableStateOf<ReaderProgress?>(null)
+    private var readerNotice by mutableStateOf<String?>(null)
+    private val readerHandler = Handler(Looper.getMainLooper())
+    private val readerTick = object : Runnable {
+        override fun run() {
+            readingProgress = CompanionConnectionManager.readingProgress()
+            readerHandler.postDelayed(this, 1000)
+        }
+    }
     private var nfcAdapter: NfcAdapter? = null
     private var nfcPendingIntent: PendingIntent? = null
     private var nfcTechLists: Array<Array<String>> = arrayOf(arrayOf("android.nfc.tech.Ndef"))
@@ -102,6 +111,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         CompanionConnectionManager.observe(connectionObserver)
+        readerTick.run()
     }
 
     override fun onResume() {
@@ -127,6 +137,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         CompanionConnectionManager.removeObserver(connectionObserver)
+        readerHandler.removeCallbacks(readerTick)
         super.onStop()
     }
 
@@ -283,6 +294,10 @@ class MainActivity : ComponentActivity() {
                     ConnectionHero(snapshot)
                     Spacer(Modifier.height(32.dp))
                     PrimaryAction()
+                    readingProgress?.let { progress ->
+                        Spacer(Modifier.height(24.dp))
+                        ReadingProgressCard(progress)
+                    }
                     Spacer(Modifier.height(36.dp))
                     Diagnostics(snapshot, associationCount)
                 }
@@ -369,6 +384,30 @@ class MainActivity : ComponentActivity() {
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
             ) { Text(if (busy) "Connecting…" else "Connect") }
+        }
+    }
+
+    @androidx.compose.runtime.Composable
+    private fun ReadingProgressCard(progress: ReaderProgress) {
+        androidx.compose.material3.ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(20.dp)) {
+                Text("Reading progress", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                Text(progress.bookId, style = MaterialTheme.typography.bodyLarge)
+                Text("${progress.perMille / 10}.${progress.perMille % 10}% · ${if (progress.largeFont) 24 else 16} px")
+                Spacer(Modifier.height(12.dp))
+                FilledTonalButton(
+                    enabled = snapshot.state == GattState.READY,
+                    onClick = {
+                        readerNotice = if (CompanionConnectionManager.sendReadingProgress(progress)) {
+                            "Position queued. On Note4, choose Use phone position."
+                        } else {
+                            "Could not save the position. Connect and try again."
+                        }
+                    },
+                ) { Text("Resume this position") }
+                readerNotice?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
         }
     }
 

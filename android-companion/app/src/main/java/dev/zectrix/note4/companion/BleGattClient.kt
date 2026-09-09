@@ -502,6 +502,14 @@ class BleGattClient(
     @Synchronized
     fun readDurableState(key: Int): DurableEntry? = durableQueue?.incoming(key)
 
+    @Synchronized
+    fun sendReadingProgress(progress: ReaderProgress): Boolean {
+        val queue = durableQueue ?: return false
+        if (!ReaderProgressCodec.enqueue(queue, progress)) return false
+        pollSync()
+        return true
+    }
+
     private fun failSession(detail: String) {
         closeInternal(report = false)
         report(GattState.FAULT, detail)

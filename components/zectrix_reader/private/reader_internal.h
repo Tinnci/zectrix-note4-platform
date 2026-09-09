@@ -25,17 +25,23 @@ struct Entry {
 class Zip {
 public:
     Result Open(Source& source);
-    Result Find(const char* path, Entry* entry);
+    Result Find(const char* path);
+    Result Poll(Entry* entry, std::size_t* budget);
 private:
     Source* source_ = nullptr;
     uint32_t directory_ = 0;
     uint32_t directory_end_ = 0;
     uint16_t entries_ = 0;
+    std::array<char, kPathCapacity> path_{};
+    uint32_t offset_ = 0;
+    uint16_t index_ = 0;
+    Entry found_entry_{};
+    bool found_ = false;
 };
 
 class Stream {
 public:
-    Result Open(Source& source, const Entry& entry, bool zipped);
+    Result Open(Source& source, const Entry& entry, bool zipped, uint32_t text_offset = 0);
     Result Byte(uint8_t* output);
     uint32_t offset() const { return consumed_; }
 private:
@@ -70,6 +76,7 @@ struct XmlEvent {
 class Xml {
 public:
     Result Feed(uint8_t byte, uint32_t offset, XmlEvent* event);
+    void Reset();
     bool complete() const;
     const char* tag() const { return buffer_.data(); }
 private:
@@ -96,7 +103,8 @@ struct Chapter {
 class Book {
 public:
     Result Open(Source& source, Format format);
-    Result Start(uint16_t chapter);
+    Result PollOpen(std::size_t budget);
+    Result Start(uint16_t chapter, uint32_t text_offset = 0);
     Source* source = nullptr;
     Format format = Format::Text;
     std::array<Chapter, kChapterCapacity> sections{};
@@ -104,7 +112,19 @@ public:
     uint64_t total = 0;
     Stream stream;
 private:
-    Result Package(Zip& zip, const Entry& package, const char* path);
+    enum class Phase : uint8_t { MimeLookup, Mime, EncryptionLookup, ContainerLookup, Container,
+        PackageLookup, Spine, Manifest, ChapterLookup, Ready };
+    Result Tag(const char* tag);
+    Result EndMetadata();
+    Zip zip_;
+    Xml xml_;
+    Entry package_{};
+    std::array<char, kPathCapacity> package_path_{};
+    Phase phase_ = Phase::Ready;
+    uint16_t resolving_ = 0;
+    uint8_t mime_offset_ = 0;
+    bool in_spine_ = false;
+    bool in_manifest_ = false;
 };
 
 struct Token {

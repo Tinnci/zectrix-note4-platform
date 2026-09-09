@@ -16,6 +16,8 @@
 #include "zectrix_status_bar.h"
 #include "zectrix_view_port.h"
 
+namespace zectrix::app { class ReaderController; }
+
 class ZectrixDemoUi {
 public:
     explicit ZectrixDemoUi(zectrix::display::DisplayService* display);
@@ -64,6 +66,7 @@ public:
                            bool full_refresh);
     esp_err_t ShowConnectivity(const char* state, const char* status,
                                const char* passkey, bool full_refresh);
+    esp_err_t ShowReader(const zectrix::app::ReaderController& reader, bool full_refresh);
     esp_err_t ClearDisplay();
 
     ZectrixCanvas& canvas() { return canvas_; }

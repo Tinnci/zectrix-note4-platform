@@ -25,6 +25,23 @@ bool BreakBetween(uint32_t left, uint32_t right) {
     if (Opening(left) || Closing(right) || left == 0xa0 || right == 0xa0) return false;
     return left == ' ' || right == ' ' || left == '-' || IsCjk(left) || IsCjk(right);
 }
+
+std::size_t PreviousScalar(const uint8_t* bytes, std::size_t size, uint32_t* cp) {
+    std::size_t first = size - 1;
+    while (first && (bytes[first] & 0xc0) == 0x80 && size - first < 4) --first;
+    const auto lead = bytes[first];
+    const unsigned length = lead < 0x80 ? 1 : lead >= 0xc2 && lead <= 0xdf ? 2 :
+        lead >= 0xe0 && lead <= 0xef ? 3 : lead >= 0xf0 && lead <= 0xf4 ? 4 : 0;
+    *cp = lead & (length == 1 ? 127 : length == 2 ? 31 : length == 3 ? 15 : 7);
+    if (length != size - first) { *cp = 0xfffd; return size - 1; }
+    for (std::size_t i = first + 1; i < size; ++i) {
+        if ((bytes[i] & 0xc0) != 0x80) { *cp = 0xfffd; return size - 1; }
+        *cp = (*cp << 6) | (bytes[i] & 63);
+    }
+    if ((length > 1 && *cp < (length == 2 ? 0x80U : length == 3 ? 0x800U : 0x10000U)) ||
+        *cp > 0x10ffff || (*cp >= 0xd800 && *cp <= 0xdfff)) *cp = 0xfffd;
+    return first;
+}
 }  // namespace
 
 const char* ResultName(Result result) {
@@ -66,10 +83,30 @@ struct Engine::Impl {
     Job job = Job::Seek;
     bool active = false;
     bool opened = false;
+    bool opening = false;
     bool visible = false;
     bool stream_live = false;
     bool chapter_end = false;
     bool seeking = false;
+    bool text_context_pending = false;
+    uint32_t text_cursor = 0;
+
+    Result TextContext() {
+        if (text_cursor) {
+            std::array<uint8_t, 4> bytes{};
+            const auto size = std::min<uint32_t>(text_cursor, bytes.size());
+            if (!book.source->Read(text_cursor - size, bytes.data(), size)) return Result::IoError;
+            uint32_t cp = 0;
+            text_cursor = text_cursor - size + PreviousScalar(bytes.data(), size, &cp);
+            const bool ignored = cp == ' ' || (cp < 0x20 && cp != '\r' && cp != '\n') ||
+                cp == 0x7f || cp == 0xfeff || cp == 0xad || cp == 0x200b;
+            if (ignored && text_cursor) return Result::Pending;
+        }
+        text_context_pending = false;
+        // Replay just the preceding visible scalar or paragraph break to
+        // recover indentation and CRLF state without reading the book prefix.
+        return book.Start(0, text_cursor);
+    }
 
     void ResetPage(Position start, FontSize font, bool keep_line) {
         work.count = 0;
@@ -86,10 +123,27 @@ struct Engine::Impl {
         anchor = position;
         seeking = !forward;
         active = false;
+        text_context_pending = false;
         if (!forward) {
-            const auto result = book.Start(position.chapter);
             stream_live = false;
-            if (result != Result::Ok) return result;
+            if (book.format == Format::Text && position.offset) {
+                text_cursor = position.offset;
+                if (text_cursor < book.source->Size()) {
+                    std::array<uint8_t, 4> bytes{};
+                    const uint32_t begin = text_cursor - std::min<uint32_t>(text_cursor, 3);
+                    const auto size = text_cursor - begin + 1;
+                    if (!book.source->Read(begin, bytes.data(), size)) return Result::IoError;
+                    if ((bytes[size - 1] & 0xc0) == 0x80) {
+                        std::size_t i = size - 1;
+                        while (i && (bytes[i] & 0xc0) == 0x80) --i;
+                        if (bytes[i] >= 0xc2 && bytes[i] <= 0xf4) text_cursor = begin + i;
+                    }
+                }
+                text_context_pending = true;
+            } else {
+                const auto result = book.Start(position.chapter);
+                if (result != Result::Ok) return result;
+            }
             chapter = position.chapter;
             decoder.Reset(chapter, book.format);
             chapter_end = false;
@@ -195,12 +249,14 @@ Result Engine::Open(Source& source, Format format) {
     if (format != Format::Text && format != Format::Epub) return Result::Invalid;
     const auto result = impl_->book.Open(source, format);
     impl_->opened = result == Result::Ok;
+    impl_->opening = result == Result::Pending;
     return result;
 }
 
 void Engine::Close() {
     if (!impl_) return;
     impl_->active = impl_->visible = impl_->opened = impl_->stream_live = false;
+    impl_->opening = false;
     impl_->history_size = 0;
     impl_->book.source = nullptr;
 }
@@ -237,8 +293,22 @@ Result Engine::SetFont(FontSize font) {
 Result Engine::Poll(std::size_t byte_budget) {
     if (!impl_) return Result::NoMemory;
     auto& state = *impl_;
+    if (state.opening) {
+        const auto result = state.book.PollOpen(byte_budget);
+        if (result != Result::Pending) {
+            state.opening = false;
+            state.opened = result == Result::Ok;
+        }
+        return result;
+    }
     if (!state.active) return Result::Ok;
     while (byte_budget--) {
+        if (state.text_context_pending) {
+            const auto context = state.TextContext();
+            if (context == Result::Pending || context == Result::Ok) continue;
+            Cancel();
+            return context;
+        }
         if (state.chapter_end) {
             if (state.chapter + 1 >= state.book.count) return state.Complete();
             ++state.chapter;
@@ -262,6 +332,7 @@ Result Engine::Poll(std::size_t byte_budget) {
                 if (complete != Result::Pending) return complete;
             }
         } else if (result != Result::Ok) {
+            if (result == Result::Pending) return result;
             Cancel();
             return result;
         } else if (emitted) {
@@ -279,8 +350,8 @@ Result Engine::Poll(std::size_t byte_budget) {
     return Result::Pending;
 }
 
-void Engine::Cancel() { if (impl_) impl_->active = impl_->stream_live = false; }
-bool Engine::busy() const { return impl_ && impl_->active; }
+void Engine::Cancel() { if (impl_) impl_->opening = impl_->active = impl_->stream_live = false; }
+bool Engine::busy() const { return impl_ && (impl_->opening || impl_->active); }
 bool Engine::has_page() const { return impl_ && impl_->visible; }
 const Page& Engine::page() const {
     static const Page empty;

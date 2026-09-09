@@ -91,7 +91,7 @@ esp_err_t ZectrixDemoUi::ShowSplash() {
     canvas_.TextCentered(58, "ZECTRIX", 2);
     canvas_.Line(72, 98, 327, 98);
     canvas_.TextCentered(118, "POCKET E-PAPER TERMINAL", 1);
-    canvas_.TextCentered(154, "CLOCK / CONNECT / EXPLORE", 1);
+    canvas_.TextCentered(154, "READ / CLOCK / CONNECT", 1);
     canvas_.TextCentered(184, "400 x 300  /  16 GRAY", 1);
     canvas_.TextCentered(236, "ZECTRIX LAB", 1);
     return RefreshFull();
@@ -101,15 +101,18 @@ esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
                                   const char* const* items, size_t count,
                                   size_t selected, const char* footer,
                                   bool full_refresh) {
-    if (items == nullptr || count == 0 || count > 8 || selected >= count) {
+    if (items == nullptr || count == 0 || selected >= count) {
         return ESP_ERR_INVALID_ARG;
     }
     DrawFrame(title, footer);
-    const int row_height = std::min(42, 208 / static_cast<int>(count));
+    const size_t visible = std::min<size_t>(count, 8);
+    const size_t first = selected >= visible ? selected - visible + 1 : 0;
+    const int row_height = std::min(42, 208 / static_cast<int>(visible));
     const int box_height = std::min(34, row_height - 2);
     const int start_y = 52;
-    for (size_t i = 0; i < count; ++i) {
-        const int y = start_y + static_cast<int>(i) * row_height;
+    for (size_t row = 0; row < visible; ++row) {
+        const size_t i = first + row;
+        const int y = start_y + static_cast<int>(row) * row_height;
         const bool active = i == selected;
         if (active) {
             canvas_.FillRect(16, y, 368, box_height, true);

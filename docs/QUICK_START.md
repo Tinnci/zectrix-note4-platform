@@ -21,8 +21,8 @@ tools/build-firmware.sh --clean
 
 The build helper fixes the target to `esp32s3`, enables ccache and checks the
 configured target after the build. The supplied defaults select 16 MB flash,
-octal PSRAM, a 3 MiB factory app partition, two 3 MiB OTA application slots and
-bootloader rollback. If you invoke `idf.py` directly,
+octal PSRAM, a 3 MiB factory app partition, two 3 MiB OTA application slots,
+a separate 4 MiB book partition and bootloader rollback. If you invoke `idf.py` directly,
 run `idf.py set-target esp32s3` first. Delete a generated `sdkconfig` before
 you change targets or apply revised defaults to a configured copy.
 
@@ -45,9 +45,15 @@ Exit the monitor with `Ctrl+]`.
 ## 4. First run
 
 After the splash screen, use UP/DOWN to move and OK to select. If no key is
-pressed for 15 seconds, Auto Showcase begins. Hold OK for 1.5 seconds to
+pressed for 15 seconds, Auto Showcase begins only when enabled in Settings
+(off by default). Hold OK for 1.5 seconds to
 return. Hold DOWN for 3 seconds from any normal screen to clear the e-paper and
 shut down.
+
+**Book Reader** opens TXT/EPUB books from the independent content partition.
+Use the explicit `books-flash` target to install the bundled guide or your own
+book directory; normal firmware flash preserves that partition. See
+[READER.md](READER.md) for installation, controls and format limits.
 
 For a full hardware check, open **Hardware Tests**, select **Run All Tests**,
 and do the on-screen steps. Have the following ready:

@@ -3,6 +3,11 @@ CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
 
+# L1.2 permits UTF-8 book names up to 63 bytes plus the SPIFFS path prefix.
+CONFIG_SPIFFS_OBJ_NAME_LEN=96
+# Measured parser and bookmark call chains need headroom above the 3584-byte default.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
 # M5 keeps reset protection active until a trial boot confirms its first frame.
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 CONFIG_BOOTLOADER_WDT_ENABLE=y

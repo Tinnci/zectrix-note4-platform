@@ -22,24 +22,6 @@ uint32_t ZipCrc(const uint8_t* bytes, std::size_t size, uint32_t previous) {
     return ~crc;
 }
 
-template <typename Callback>
-Result Tags(Stream& stream, Callback callback) {
-    Xml xml;
-    uint8_t byte = 0;
-    for (;;) {
-        const uint32_t offset = stream.offset();
-        const auto read = stream.Byte(&byte);
-        if (read == Result::End) return xml.complete() ? Result::Ok : Result::Invalid;
-        if (read != Result::Ok) return read;
-        XmlEvent event;
-        const auto parsed = xml.Feed(byte, offset, &event);
-        if (parsed != Result::Ok) return parsed;
-        if (event.kind == XmlEvent::Kind::Tag) {
-            const auto result = callback(xml.tag());
-            if (result != Result::Ok) return result;
-        }
-    }
-}
 }  // namespace
 
 Result Zip::Open(Source& source) {
@@ -73,44 +55,58 @@ Result Zip::Open(Source& source) {
     return Result::Invalid;
 }
 
-Result Zip::Find(const char* path, Entry* entry) {
-    if (!source_ || !path || !entry) return Result::Invalid;
-    const auto path_size = std::strlen(path);
-    bool found = false;
-    uint32_t offset = directory_;
+Result Zip::Find(const char* path) {
+    if (!source_ || !path || !*path || std::strlen(path) >= path_.size()) return Result::Invalid;
+    std::strcpy(path_.data(), path);
+    found_ = false;
+    index_ = 0;
+    offset_ = directory_;
+    return Result::Pending;
+}
+
+Result Zip::Poll(Entry* entry, std::size_t* budget) {
+    if (!source_ || !entry || !budget) return Result::Invalid;
+    const auto path_size = std::strlen(path_.data());
     std::array<uint8_t, 46> header{};
     std::array<char, kPathCapacity> name{};
-    for (uint16_t i = 0; i < entries_; ++i) {
-        if (offset > directory_end_ || directory_end_ - offset < header.size()) return Result::Invalid;
-        if (!source_->Read(offset, header.data(), header.size())) return Result::IoError;
+    while (*budget && index_ < entries_) {
+        if (offset_ > directory_end_ || directory_end_ - offset_ < header.size()) return Result::Invalid;
+        if (!source_->Read(offset_, header.data(), header.size())) return Result::IoError;
         const auto* p = header.data();
         if (Le32(p) != 0x02014b50) return Result::Invalid;
         const uint32_t name_size = Le16(p + 28);
         const uint32_t length = 46 + name_size + Le16(p + 30) + Le16(p + 32);
-        if (length > directory_end_ - offset) return Result::Invalid;
+        if (length > directory_end_ - offset_) return Result::Invalid;
+        const std::size_t cost = header.size() + (name_size == path_size ? name_size : 0);
+        *budget -= std::min(*budget, cost);
         if (name_size == path_size && name_size < name.size()) {
-            if (!source_->Read(offset + 46, name.data(), name_size)) return Result::IoError;
-            if (std::memcmp(name.data(), path, path_size) == 0) {
-                if (found) return Result::Invalid;
-                *entry = {Le32(p + 42), Le32(p + 20), Le32(p + 24),
+            if (!source_->Read(offset_ + 46, name.data(), name_size)) return Result::IoError;
+            if (std::memcmp(name.data(), path_.data(), path_size) == 0) {
+                if (found_) return Result::Invalid;
+                found_entry_ = {Le32(p + 42), Le32(p + 20), Le32(p + 24),
                           Le32(p + 16), Le16(p + 10), Le16(p + 8)};
-                if (Le16(p + 34) || entry->local == UINT32_MAX ||
-                    entry->size == UINT32_MAX || entry->compressed == UINT32_MAX)
+                if (Le16(p + 34) || found_entry_.local == UINT32_MAX ||
+                    found_entry_.size == UINT32_MAX || found_entry_.compressed == UINT32_MAX)
                     return Result::Unsupported;
-                found = true;
+                found_ = true;
             }
         }
-        offset += length;
+        offset_ += length;
+        ++index_;
     }
-    if (offset != directory_end_) return Result::Invalid;
-    return found ? Result::Ok : Result::End;
+    if (index_ != entries_) return Result::Pending;
+    if (offset_ != directory_end_) return Result::Invalid;
+    if (found_) *entry = found_entry_;
+    return found_ ? Result::Ok : Result::End;
 }
 
-Result Stream::Open(Source& source, const Entry& entry, bool zipped) {
+Result Stream::Open(Source& source, const Entry& entry, bool zipped, uint32_t text_offset) {
+    if (text_offset > entry.size || (zipped && text_offset)) return Result::Invalid;
     source_ = &source;
     entry_ = entry;
     zipped_ = zipped;
     input_loaded_ = produced_ = consumed_ = crc_ = 0;
+    if (!zipped) produced_ = consumed_ = text_offset;
     input_pos_ = input_size_ = output_pos_ = output_end_ = 0;
     done_ = false;
     data_offset_ = 0;
@@ -149,7 +145,7 @@ Result Stream::Fill() {
     } else {
         output_pos_ = output_end_ % dictionary_.size();
         output_end_ = output_pos_;
-        do {
+        {
             if (input_pos_ == input_size_) {
                 input_size_ = std::min<std::size_t>(input_.size(), entry_.compressed - input_loaded_);
                 input_pos_ = 0;
@@ -171,10 +167,10 @@ Result Stream::Fill() {
             if (done_ && (produced_ != entry_.size || input_loaded_ - input_size_ + input_pos_ != entry_.compressed))
                 return Result::Invalid;
             if (!done_ && !input_bytes && !output_bytes) return Result::Invalid;
-        } while (output_pos_ == output_end_ && !done_);
+        }
     }
     if (done_ && zipped_ && crc_ != entry_.crc) return Result::Invalid;
-    return output_pos_ != output_end_ ? Result::Ok : Result::End;
+    return output_pos_ != output_end_ ? Result::Ok : done_ ? Result::End : Result::Pending;
 }
 
 Result Stream::Byte(uint8_t* output) {
@@ -193,57 +189,35 @@ Result Book::Open(Source& input, Format input_format) {
     count = 0;
     total = 0;
     sections.fill({});
+    package_path_.fill(0);
+    xml_.Reset();
+    in_spine_ = in_manifest_ = false;
+    mime_offset_ = 0;
+    phase_ = Phase::Ready;
     if (format == Format::Text) {
         sections[0].entry = {0, input.Size(), input.Size(), 0, 0, 0};
         count = 1;
         total = input.Size();
         return Result::Ok;
     }
-    Zip zip;
-    auto result = zip.Open(input);
+    const auto result = zip_.Open(input);
     if (result != Result::Ok) return result;
-    Entry entry;
-    result = zip.Find("mimetype", &entry);
-    if (result != Result::Ok || entry.size != 20) return Result::Invalid;
-    result = stream.Open(input, entry, true);
-    if (result != Result::Ok) return result;
-    constexpr char mime[] = "application/epub+zip";
-    for (unsigned i = 0; i < 20; ++i) {
-        uint8_t c;
-        result = stream.Byte(&c);
-        if (result != Result::Ok || c != static_cast<uint8_t>(mime[i])) return Result::Invalid;
-    }
-    result = zip.Find("META-INF/container.xml", &entry);
-    if (result != Result::Ok) return Result::Invalid;
-    if (entry.size > kMetadataLimit) return Result::TooLarge;
-    result = stream.Open(input, entry, true);
-    if (result != Result::Ok) return result;
-    char package_path[kPathCapacity]{};
-    result = Tags(stream, [&](const char* tag) {
-        if (TagIs(tag, "rootfile") && !package_path[0]) {
-            char href[kPathCapacity]{};
-            char type[64]{};
-            if (!Attribute(tag, "media-type", type, sizeof(type)) ||
-                std::strcmp(type, "application/oebps-package+xml") != 0) return Result::Ok;
-            if (!Attribute(tag, "full-path", href, sizeof(href)) ||
-                !ResolvePath("", href, package_path, sizeof(package_path))) return Result::Invalid;
-        }
-        return Result::Ok;
-    });
-    if (result != Result::Ok) return result;
-    if (!package_path[0] || zip.Find(package_path, &entry) != Result::Ok) return Result::Invalid;
-    return Package(zip, entry, package_path);
+    phase_ = Phase::MimeLookup;
+    return zip_.Find("mimetype");
 }
 
-Result Book::Package(Zip& zip, const Entry& package, const char* path) {
-    if (package.size > kMetadataLimit) return Result::TooLarge;
-    auto result = stream.Open(*source, package, true);
-    if (result != Result::Ok) return result;
-    bool spine = false;
-    result = Tags(stream, [&](const char* tag) {
-        if (TagIs(tag, "spine")) spine = true;
-        if (TagIs(tag, "spine", true)) spine = false;
-        if (spine && TagIs(tag, "itemref")) {
+Result Book::Tag(const char* tag) {
+    if (phase_ == Phase::Container) {
+        if (!TagIs(tag, "rootfile") || package_path_[0]) return Result::Ok;
+        char href[kPathCapacity]{}, type[64]{};
+        if (!Attribute(tag, "media-type", type, sizeof(type)) ||
+            std::strcmp(type, "application/oebps-package+xml") != 0) return Result::Ok;
+        if (!Attribute(tag, "full-path", href, sizeof(href)) ||
+            !ResolvePath("", href, package_path_.data(), package_path_.size())) return Result::Invalid;
+    } else if (phase_ == Phase::Spine) {
+        if (TagIs(tag, "spine")) in_spine_ = true;
+        if (TagIs(tag, "spine", true)) in_spine_ = false;
+        if (in_spine_ && TagIs(tag, "itemref")) {
             char linear[8]{};
             if (Attribute(tag, "linear", linear, sizeof(linear)) && std::strcmp(linear, "no") == 0)
                 return Result::Ok;
@@ -252,17 +226,10 @@ Result Book::Package(Zip& zip, const Entry& package, const char* path) {
                 !sections[count].id[0]) return Result::Invalid;
             ++count;
         }
-        return Result::Ok;
-    });
-    if (result != Result::Ok) return result;
-    if (!count) return Result::Invalid;
-    result = stream.Open(*source, package, true);
-    if (result != Result::Ok) return result;
-    bool manifest = false;
-    result = Tags(stream, [&](const char* tag) {
-        if (TagIs(tag, "manifest")) manifest = true;
-        if (TagIs(tag, "manifest", true)) manifest = false;
-        if (!manifest || !TagIs(tag, "item")) return Result::Ok;
+    } else if (phase_ == Phase::Manifest) {
+        if (TagIs(tag, "manifest")) in_manifest_ = true;
+        if (TagIs(tag, "manifest", true)) in_manifest_ = false;
+        if (!in_manifest_ || !TagIs(tag, "item")) return Result::Ok;
         char id[64]{};
         if (!Attribute(tag, "id", id, sizeof(id))) return Result::Invalid;
         for (uint16_t i = 0; i < count; ++i) {
@@ -272,23 +239,105 @@ Result Book::Package(Zip& zip, const Entry& package, const char* path) {
             if (!Attribute(tag, "media-type", type, sizeof(type)) ||
                 std::strcmp(type, "application/xhtml+xml") != 0) return Result::Unsupported;
             if (!Attribute(tag, "href", href, sizeof(href)) ||
-                !ResolvePath(path, href, resolved, sizeof(resolved))) return Result::Invalid;
-            const auto found = zip.Find(resolved, &sections[i].entry);
-            if (found != Result::Ok) return found == Result::End ? Result::Invalid : found;
-            if (sections[i].entry.size > kChapterLimit) return Result::TooLarge;
-            sections[i].found = true;
-            total += sections[i].entry.size;
+                !ResolvePath(package_path_.data(), href, resolved, sizeof(resolved))) return Result::Invalid;
+            resolving_ = i;
+            phase_ = Phase::ChapterLookup;
+            return zip_.Find(resolved);
         }
-        return Result::Ok;
-    });
-    if (result != Result::Ok) return result;
-    for (uint16_t i = 0; i < count; ++i) if (!sections[i].found) return Result::Invalid;
+    }
     return Result::Ok;
 }
 
-Result Book::Start(uint16_t chapter) {
+Result Book::EndMetadata() {
+    if (!xml_.complete()) return Result::Invalid;
+    xml_.Reset();
+    if (phase_ == Phase::Container) {
+        if (!package_path_[0]) return Result::Invalid;
+        phase_ = Phase::PackageLookup;
+        return zip_.Find(package_path_.data());
+    }
+    if (phase_ == Phase::Spine) {
+        if (!count) return Result::Invalid;
+        phase_ = Phase::Manifest;
+        return stream.Open(*source, package_, true);
+    }
+    for (uint16_t i = 0; i < count; ++i) if (!sections[i].found) return Result::Invalid;
+    phase_ = Phase::Ready;
+    return Result::Ok;
+}
+
+Result Book::PollOpen(std::size_t budget) {
+    while (budget && phase_ != Phase::Ready) {
+        if (phase_ == Phase::EncryptionLookup) {
+            Entry entry;
+            const auto found = zip_.Poll(&entry, &budget);
+            if (found == Result::Ok) return Result::Unsupported;
+            if (found != Result::End) return found;
+            phase_ = Phase::ContainerLookup;
+            const auto lookup = zip_.Find("META-INF/container.xml");
+            if (lookup != Result::Pending) return lookup;
+            continue;
+        }
+        if (phase_ == Phase::MimeLookup || phase_ == Phase::ContainerLookup ||
+            phase_ == Phase::PackageLookup || phase_ == Phase::ChapterLookup) {
+            Entry entry;
+            const auto found = zip_.Poll(&entry, &budget);
+            if (found != Result::Ok) return found == Result::End ? Result::Invalid : found;
+            if (phase_ == Phase::ChapterLookup) {
+                if (entry.size > kChapterLimit) return Result::TooLarge;
+                for (uint16_t i = 0; i < count; ++i) {
+                    if (sections[i].id != sections[resolving_].id) continue;
+                    sections[i].entry = entry;
+                    sections[i].found = true;
+                    total += entry.size;
+                }
+                phase_ = Phase::Manifest;
+                continue;
+            }
+            if (phase_ == Phase::MimeLookup && entry.size != 20) return Result::Invalid;
+            if (entry.size > kMetadataLimit) return Result::TooLarge;
+            const auto opened = stream.Open(*source, entry, true);
+            if (opened != Result::Ok) return opened;
+            if (phase_ == Phase::MimeLookup) phase_ = Phase::Mime;
+            else if (phase_ == Phase::ContainerLookup) phase_ = Phase::Container;
+            else { package_ = entry; phase_ = Phase::Spine; }
+            continue;
+        }
+        --budget;
+        uint8_t byte = 0;
+        const auto offset = stream.offset();
+        const auto read = stream.Byte(&byte);
+        if (phase_ == Phase::Mime) {
+            constexpr char mime[] = "application/epub+zip";
+            if (read != Result::Ok) return read == Result::End ? Result::Invalid : read;
+            if (byte != static_cast<uint8_t>(mime[mime_offset_++])) return Result::Invalid;
+            if (mime_offset_ == 20) {
+                phase_ = Phase::EncryptionLookup;
+                const auto lookup = zip_.Find("META-INF/encryption.xml");
+                if (lookup != Result::Pending) return lookup;
+            }
+            continue;
+        }
+        if (read == Result::End) {
+            const auto ended = EndMetadata();
+            if (ended != Result::Ok && ended != Result::Pending) return ended;
+            continue;
+        }
+        if (read != Result::Ok) return read;
+        XmlEvent event;
+        const auto parsed = xml_.Feed(byte, offset, &event);
+        if (parsed != Result::Ok) return parsed;
+        if (event.kind == XmlEvent::Kind::Tag) {
+            const auto tag = Tag(xml_.tag());
+            if (tag != Result::Ok && tag != Result::Pending) return tag;
+        }
+    }
+    return phase_ == Phase::Ready ? Result::Ok : Result::Pending;
+}
+
+Result Book::Start(uint16_t chapter, uint32_t text_offset) {
     if (!source || chapter >= count) return Result::Invalid;
-    return stream.Open(*source, sections[chapter].entry, format == Format::Epub);
+    return stream.Open(*source, sections[chapter].entry, format == Format::Epub, text_offset);
 }
 
 }  // namespace zectrix::reader::detail

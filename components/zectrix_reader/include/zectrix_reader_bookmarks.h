@@ -41,6 +41,8 @@ public:
     const Bookmark* remote() const { return remote_revision_ ? &remote_ : nullptr; }
     // Applying phone progress is explicit. Incoming traffic never moves a page.
     Result ApplyRemote();
+    // Reset after local peer removal, preserving book positions for the new phone.
+    Result ResetPeer();
     bool pending_sync() const { return state_.outbound_revision > queued_revision_; }
 
 private:

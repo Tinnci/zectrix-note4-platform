@@ -23,8 +23,9 @@ Persistent data stays in the existing 24 KiB NVS partition. The companion sync
 record has a declared maximum of 5,376 bytes, alongside settings, identity and
 BLE bond records. NVS also needs metadata and garbage-collection space. This
 change does not claim additional NVS capacity or move existing data. Flash
-from `0x912000` through `0xffffff` remains unallocated for future measured
-storage requirements.
+from `0x912000` through `0xffffff` was unallocated by M5. L1.2 uses the first
+4 MiB of that space for the book filesystem; `0xd12000` through `0xffffff`
+remains unallocated. See [the reader storage notes](../READER.md).
 
 ## Partition decision
 
@@ -38,6 +39,7 @@ Use the native ESP-IDF OTA scheme on the 16 MiB Note4:
 | `ota_0` | `0x310000` | `0x300000` | Application slot A |
 | `ota_1` | `0x610000` | `0x300000` | Application slot B |
 | `otadata` | `0x910000` | `0x2000` | Native redundant OTA selection records |
+| `books` | `0x912000` | `0x400000` | L1.2 SPIFFS book library; explicit content flash only |
 
 `UpdateService` belongs to Platform and runs on the application owner. Its ESP
 adapter copies at most 32 partition descriptors. Validation checks flash bounds,

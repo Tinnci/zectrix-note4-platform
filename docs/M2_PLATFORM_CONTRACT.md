@@ -167,6 +167,9 @@ on demand so the migration does not add an NVS erase path during normal boot.
 The behavior baseline is in
 [`M2_STORAGE_BASELINE.md`](M2_STORAGE_BASELINE.md). M2.5 does not select a
 filesystem or application package format.
+L1.2 adds a separate Storage-owned, on-demand SPIFFS book mount with bounded
+listing and exact file reads. It does not format on mount failure. Readers close
+their file before Platform releases Storage. See [READER.md](READER.md).
 
 `SystemService` owns firmware identity, reset reason, chip capabilities, memory
 diagnostics, flash size, and the hardware MAC address. Device Info and

@@ -20,6 +20,7 @@ LauncherResult LauncherController::Handle(const sdk::InputEvent& event) {
     }
     if (event.button == sdk::Button::Ok) {
         constexpr LauncherDecision decisions[] = {
+            LauncherDecision::OpenReader,
             LauncherDecision::OpenClock, LauncherDecision::OpenSettings,
             LauncherDecision::OpenConnectivity, LauncherDecision::OpenShowcase,
             LauncherDecision::OpenGallery, LauncherDecision::OpenDiagnostics,

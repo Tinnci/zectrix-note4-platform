@@ -11,6 +11,22 @@ TRMNL16 Regular by Heavyweight Digital Type Foundry. The font is licensed under
 the SIL Open Font License, Version 1.1, included at
 `licenses/TRMNL_FONT_LICENSE.txt`.
 
+## Reader CJK bitmap font
+
+`components/zectrix_reader/font/reader_font.bin` is a subset of GNU Unifont
+15.1.05, distributed under SIL Open Font License 1.1. The full copyright notice,
+source and regeneration instructions are in
+[the font README](components/zectrix_reader/font/README.md); the license is in
+[OFL-1.1.txt](components/zectrix_reader/font/OFL-1.1.txt).
+
+## miniz inflate
+
+The reader includes the miniz `tinfl` decompressor under its
+[MIT license](components/zectrix_reader/third_party/miniz/LICENSE).
+Copyright 2013-2014 RAD Game Tools and Valve Software; copyright 2010-2014
+Rich Geldreich and Tenacious Software LLC. ZIP and EPUB handling are implemented
+in this repository.
+
 ## Espressif ESP-IDF
 
 ESP-IDF is provided by Espressif Systems under its respective open-source

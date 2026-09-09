@@ -84,10 +84,13 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Implemented a persistent 24px status bar, an eight-entry deferred SceneManager and a four-slot clipped ViewPort scheduler. Gallery/showcase/info/about now share the application runtime, retain menu selection and keep input active between preview frames.
   - Clock now survives RTC read failures with explicit system-time/uptime fallback and recovers on subsequent samples. New installations default to manual launching; existing settings, gray preclear and ordered shutdown are preserved.
   - Verified all 27 Host targets, ESP32-S3 firmware build, rendered UI previews and connected-device flash/boot smoke test. The status-only minute test transfers 44 bytes of panel RAM data; device boot also exercised the RTC voltage-low condition.
-- [ ] **L1.2: CrossPoint 风格轻量文本与电子书阅读引擎 (E-Reader Engine)**
+- [x] **L1.2: CrossPoint 风格轻量文本与电子书阅读引擎 (E-Reader Engine)**
   - Implement CrossPoint-inspired (https://github.com/crosspoint-reader/crosspoint-reader) streamed plain-text and basic EPUB reader engine.
   - Support CJK character/word wrapping, line pagination, paragraph indentation, and dual font-size scaling.
   - Support NVS bookmark persistence, progress tracking, and integration with the C1 durable companion sync engine.
+  - Integrated a Storage-owned SPIFFS library with Launcher and Library -> Reading -> Options scenes, cancellable TXT/EPUB parsing, CJK pagination and 16px/24px fonts. Content installation is explicit; normal firmware flash preserves books.
+  - Persisted eight recent bookmarks after successful display, including display recovery, and connected the latest reading position to C1 durable sync and Android's explicit resume action.
+  - Verified all 28 Host targets with reader ASan/UBSan checks, 28 Android JVM tests and the debug build, the ESP32-S3 firmware build and connected-device flash/boot smoke. A 2 MiB TXT tail resume reads 63 source bytes. Physical reading controls and BLE progress exchange remain hardware qualification work.
 - [ ] **L1.3: 局域网 Web 传书与内容管理后台 (Direct Wi-Fi Content Ingestion)**
   - Implement lightweight embedded HTTP file transfer server using existing `zectrix_connectivity` Wi-Fi AP/STA mode.
   - Allow browser-based drag-and-drop file upload to SPI Flash / LittleFS storage.
