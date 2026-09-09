@@ -17,6 +17,7 @@
 #include "zectrix_view_port.h"
 
 namespace zectrix::app { class ReaderController; }
+namespace zectrix::app { struct SleepCoverSnapshot; enum class SleepCoverStyle : uint8_t; }
 namespace zectrix::connectivity { struct BookTransferSnapshot; }
 
 class ZectrixDemoUi {
@@ -71,6 +72,12 @@ public:
     esp_err_t ShowBookTransfer(const zectrix::connectivity::BookTransferSnapshot& status,
                                bool choosing_mode, bool station_selected, bool full_refresh);
     esp_err_t ClearDisplay();
+    esp_err_t ShowSleepCoverMenu(zectrix::app::SleepCoverStyle selected,
+                                  zectrix::app::SleepCoverStyle active,
+                                  const char* status, bool full_refresh);
+    esp_err_t ShowSleepCover(const zectrix::app::SleepCoverSnapshot& snapshot,
+                              zectrix::app::SleepCoverStyle style, bool preview = false,
+                              bool preference_saved = true);
 
     ZectrixCanvas& canvas() { return canvas_; }
     esp_err_t RefreshFull();
@@ -93,6 +100,7 @@ private:
     zectrix::ui::StatusBarState status_;
     std::unique_ptr<uint8_t[]> gray_frame_;
     int64_t last_update_us_ = 0;
+    bool sleep_surface_ = false;
 };
 
 #endif  // ZECTRIX_DEMO_UI_H_

@@ -152,4 +152,5 @@ radio shutdown. Flipper Zero's
 [SceneManager](https://github.com/flipperdevices/flipperzero-firmware/blob/dev/applications/services/gui/scene_manager.c)
 informs the mode/session hierarchy and Back propagation. The implementation
 uses existing Note4 service boundaries. No upstream application code is copied.
-The ambient sleep cover remains L1.4.
+L1.4 adds the [ambient sleep cover](SLEEP_COVER.md). Global shutdown stops the
+transfer and radio before capturing and rendering the final cover.

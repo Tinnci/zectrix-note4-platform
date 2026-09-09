@@ -1,6 +1,7 @@
 #include "zectrix_display_service.h"
 #include "zectrix_demo_ui.h"
 #include "zectrix_book_transfer_controller.h"
+#include "zectrix_sleep_cover.h"
 #include "zectrix_reader_controller.h"
 #include "zectrix_epd.h"
 
@@ -684,9 +685,9 @@ void TestStatusAndImageComposition() {
     state.battery_percent = 65;
     state.ble = zectrix::ui::RadioIndicator::Connected;
     ui.UpdateStatus(state);
-    const char* items[] = {"BOOK READER", "CLOCK", "SETTINGS", "CONNECTIVITY", "AUTO SHOWCASE",
+    const char* items[] = {"BOOK READER", "SEND BOOKS", "CLOCK", "SLEEP COVER", "SETTINGS", "CONNECTIVITY", "AUTO SHOWCASE",
         "DISPLAY GALLERY", "HARDWARE TESTS", "DEVICE INFO", "ABOUT & LICENSE"};
-    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", items, 9, 0,
+    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", items, std::size(items), 0,
         "UP/DOWN Move  OK Select  Hold DOWN Off", true) == ESP_OK);
     assert(Inspect(*service).refresh_count == 1);
     SavePreview(ui.canvas(), "launcher");
@@ -709,14 +710,14 @@ void TestStatusAndImageComposition() {
 
     std::memcpy(before.data(), ui.canvas().data(), before.size());
     ClearTraffic();
-    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", items, 9, 8,
+    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", items, std::size(items), 10,
         "UP/DOWN Move  OK Select  Hold DOWN Off", false) == ESP_OK);
     assert(std::memcmp(before.data(), ui.canvas().data(), content_offset) == 0);
     SavePreview(ui.canvas(), "launcher-last");
     const auto count = Inspect(*service).refresh_count;
     ++state.minute;
     ui.UpdateStatus(state);
-    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", items, 9, 7,
+    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", items, std::size(items), 9,
         "UP/DOWN Move  OK Select  Hold DOWN Off", false) == ESP_OK);
     assert(ui.RefreshPending() == ESP_OK && Inspect(*service).refresh_count == count + 1);
 
@@ -951,6 +952,97 @@ void TestBookTransferComposition() {
     SavePreview(ui.canvas(), "books-power-error");
 }
 
+void TestSleepCoverComposition() {
+    using namespace zectrix::app;
+    Reset();
+    auto service = CreateService();
+    ZectrixDemoUi ui(service.get());
+    zectrix::ui::StatusBarState status;
+    status.hour = 20; status.minute = 27; status.battery_percent = 82;
+    status.time_valid = status.battery_valid = true;
+    status.ble = status.wifi = zectrix::ui::RadioIndicator::Connected;
+    ui.UpdateStatus(status);
+    SleepCoverSnapshot snapshot;
+    snapshot.clock = {{2026, 9, 9, 0, 20, 27, 0}, zectrix::time::ClockSource::Rtc};
+    snapshot.power.battery_valid = true; snapshot.power.battery_percent = 82;
+    snapshot.has_reading = true;
+    std::strcpy(snapshot.reading.book_id.data(), "风从海上来——旅途中的阅读笔记.epub");
+    snapshot.reading.progress_per_mille = 425;
+
+    assert(ui.ShowSleepCoverMenu(SleepCoverStyle::Dashboard, SleepCoverStyle::Dashboard, nullptr, true) == ESP_OK);
+    SavePreview(ui.canvas(), "sleep-menu");
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard, true) == ESP_OK);
+    SavePreview(ui.canvas(), "sleep-preview");
+    Frame preview;
+    std::memcpy(preview.data(), ui.canvas().data(), preview.size());
+    ++status.minute;
+    ui.UpdateStatus(status);
+    assert(ui.RefreshPending() == ESP_OK);
+    assert(std::memcmp(preview.data() + 1200, ui.canvas().data() + 1200, preview.size() - 1200) == 0);
+
+    std::vector<uint8_t> gray(60000, 0x73);
+    assert(ui.ShowImage4Bpp(gray.data(), gray.size()) == ESP_OK);
+    ClearTraffic();
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard) == ESP_OK);
+    Frame cover;
+    std::memcpy(cover.data(), ui.canvas().data(), cover.size());
+    CheckFull(cover);
+    assert(Inspect(*service).bits_per_pixel == 1 && !service->IsPowered());
+    SavePreview(ui.canvas(), "sleep-dashboard");
+    ClearTraffic();
+    ++status.minute; status.wifi = zectrix::ui::RadioIndicator::Off;
+    ui.UpdateStatus(status);
+    assert(ui.RefreshPending() == ESP_OK && ui.RefreshFull() == ESP_OK);
+    assert(packets.empty() && gpio_writes == 0);
+    assert(std::memcmp(cover.data(), ui.canvas().data(), cover.size()) == 0);
+
+    snapshot.clock.value = {2025, 3, 31, 0, 8, 4, 0};
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard) == ESP_OK);
+    SavePreview(ui.canvas(), "sleep-six-week-month");
+    snapshot.clock.source = zectrix::time::ClockSource::Uptime;
+    snapshot.has_reading = snapshot.power.battery_valid = false;
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard) == ESP_OK);
+    SavePreview(ui.canvas(), "sleep-empty");
+    snapshot.clock = {{2026, 9, 9, 0, 20, 27, 0}, zectrix::time::ClockSource::System};
+    snapshot.power.battery_valid = true;
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Quote) == ESP_OK);
+    SavePreview(ui.canvas(), "sleep-landscape");
+    std::memcpy(cover.data(), ui.canvas().data(), cover.size());
+    snapshot.has_reading = true;
+    std::strcpy(snapshot.reading.book_id.data(), "Private reading.txt");
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Quote) == ESP_OK);
+    assert(std::memcmp(cover.data(), ui.canvas().data(), cover.size()) == 0);
+
+    snapshot.reading.progress_per_mille = UINT16_MAX;
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard) == ESP_OK);
+    assert(!Bit(ui.canvas().data(), 50, 382, 231));
+    snapshot.reading.progress_per_mille = 0;
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard) == ESP_OK);
+    assert(Bit(ui.canvas().data(), 50, 17, 231));
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Blank, true, false) == ESP_OK);
+    SavePreview(ui.canvas(), "sleep-blank-preview");
+    ClearTraffic();
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Blank) == ESP_OK);
+    Frame white;
+    white.fill(0xff);
+    CheckFull(white);
+    SavePreview(ui.canvas(), "sleep-blank");
+
+    assert(ui.ShowAbout() == ESP_OK);
+    fail_command = 0xe9;
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard) == ESP_FAIL);
+    ClearTraffic();
+    assert(ui.ClearDisplay() == ESP_OK);
+    CheckFull(white);
+    assert(!service->IsPowered());
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard) == ESP_OK);
+    std::memcpy(cover.data(), ui.canvas().data(), cover.size());
+    ClearTraffic();
+    service.reset();
+    assert(packets.empty() && !bus_active && devices == 0 && mutexes == 0 && allocations.empty());
+    assert(std::memcmp(ui.canvas().data(), cover.data(), cover.size()) == 0);
+}
+
 }  // namespace
 
 void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
@@ -1063,5 +1155,6 @@ int main() {
     TestStatusAndImageComposition();
     TestReaderComposition();
     TestBookTransferComposition();
+    TestSleepCoverComposition();
     Reset();
 }

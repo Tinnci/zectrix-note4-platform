@@ -18,6 +18,7 @@
 #include "zectrix_gallery_controller.h"
 #include "zectrix_reader_controller.h"
 #include "zectrix_book_transfer_controller.h"
+#include "zectrix_sleep_cover.h"
 #include "zectrix_reader_platform.h"
 #include "zectrix_display_service.h"
 #include "zectrix_input_service.h"
@@ -109,6 +110,13 @@ public:
         system_ = &platform_.System();
         connectivity_ = &platform_.Connectivity();
         connectivity_->UpdatePower(power_->ReadSnapshot());
+        uint32_t sleep_style = static_cast<uint32_t>(zectrix::app::kSleepCoverDefault);
+        const esp_err_t sleep_setting = storage_->GetUInt32(zectrix::app::kSleepCoverSettingKey, &sleep_style);
+        if (sleep_setting != ESP_OK) sleep_style = static_cast<uint32_t>(zectrix::app::kSleepCoverDefault);
+        sleep_cover_style_ = zectrix::app::SleepCoverSetting(sleep_style);
+        sleep_cover_saved_ = sleep_setting == ESP_ERR_NOT_FOUND ||
+            (sleep_setting == ESP_OK && sleep_style == static_cast<uint32_t>(sleep_cover_style_));
+        if (!sleep_cover_saved_) ESP_LOGW(kTag, "sleep cover preference unavailable; using dashboard");
         int32_t rtc_utc_offset = 0;
         if (storage_->GetInt32("rtc_utc_offset", &rtc_utc_offset) == ESP_OK &&
             time_->SynchronizeSystemClockFromRtc(rtc_utc_offset) != ESP_OK) {
@@ -184,6 +192,7 @@ private:
                 case Decision::OpenReader: target = "reader"; break;
                 case Decision::OpenBookTransfer: target = "book-transfer"; break;
                 case Decision::OpenClock: target = "clock"; break;
+                case Decision::OpenSleepCover: target = "sleep-cover"; break;
                 case Decision::OpenSettings: target = "settings"; break;
                 case Decision::OpenConnectivity: target = "connectivity"; break;
                 case Decision::OpenDiagnostics: target = "diagnostics"; break;
@@ -214,7 +223,7 @@ private:
         }
         sdk::Status Render(const sdk::RenderRequest& request) override {
             static constexpr const char* kItems[] = {
-                "BOOK READER", "SEND BOOKS", "CLOCK", "SETTINGS", "CONNECTIVITY", "AUTO SHOWCASE",
+                "BOOK READER", "SEND BOOKS", "CLOCK", "SLEEP COVER", "SETTINGS", "CONNECTIVITY", "AUTO SHOWCASE",
                 "DISPLAY GALLERY", "HARDWARE TESTS", "DEVICE INFO",
                 "ABOUT & LICENSE"};
             return ToSdkStatus(owner_->ui_.ShowMenu(
@@ -353,6 +362,52 @@ private:
         }
         TerminalApp& owner_;
         zectrix::app::BookTransferController controller_;
+    };
+
+    class SleepCoverApplication final : public sdk::Application {
+    public:
+        explicit SleepCoverApplication(TerminalApp& owner) : owner_(owner) {}
+        sdk::Status Enter(sdk::ApplicationContext& context) override {
+            const auto result = controller_.Start(owner_.sleep_cover_style_);
+            return sdk::IsOk(result) ? Apply(zectrix::app::SleepCoverDecision::RenderQuality, context) : result;
+        }
+        sdk::Status HandleEvent(const sdk::InputEvent& event, sdk::ApplicationContext& context) override {
+            return Apply(controller_.Handle(event), context);
+        }
+        sdk::Status HandleIdle(sdk::ApplicationContext& context) override { return Apply(controller_.Tick(), context); }
+        sdk::Status Render(const sdk::RenderRequest& request) override {
+            const auto result = controller_.scene() == zectrix::app::SleepCoverScene::Choose
+                ? owner_.ui_.ShowSleepCoverMenu(controller_.selected(), owner_.sleep_cover_style_,
+                    owner_.sleep_cover_saved_ ? nullptr : "NOT SAVED - OK RETRIES THE SETTING",
+                    request.intent == sdk::RenderIntent::Quality)
+                : owner_.ui_.ShowSleepCover(snapshot_, controller_.selected(), true, owner_.sleep_cover_saved_);
+            controller_.Presented(result == ESP_OK);
+            return ToSdkStatus(result);
+        }
+        sdk::Status Exit() override { return sdk::Status::Ok; }
+
+    private:
+        sdk::Status Apply(zectrix::app::SleepCoverDecision decision, sdk::ApplicationContext& context) {
+            using Decision = zectrix::app::SleepCoverDecision;
+            if (decision == Decision::Choose) {
+                if (controller_.selected() != owner_.sleep_cover_style_ || !owner_.sleep_cover_saved_) {
+                    owner_.sleep_cover_style_ = controller_.selected();
+                    owner_.sleep_cover_saved_ = owner_.storage_->SetUInt32(zectrix::app::kSleepCoverSettingKey,
+                        static_cast<uint32_t>(owner_.sleep_cover_style_)) == ESP_OK;
+                }
+                snapshot_ = owner_.ReadSleepCover();
+                decision = Decision::RenderQuality;
+            }
+            if (decision == Decision::RenderFast || decision == Decision::RenderQuality)
+                context.RequestRender({0, 24, 400, 276}, decision == Decision::RenderQuality
+                    ? sdk::RenderIntent::Quality : sdk::RenderIntent::Fast);
+            else if (decision == Decision::Home) context.RequestCommand(sdk::AppCommand::Home());
+            else if (decision == Decision::Shutdown) context.RequestCommand(sdk::AppCommand::Shutdown());
+            return sdk::Status::Ok;
+        }
+        TerminalApp& owner_;
+        zectrix::app::SleepCoverController controller_;
+        zectrix::app::SleepCoverSnapshot snapshot_{};
     };
 
     class ClockApplication final : public sdk::Application {
@@ -1075,6 +1130,7 @@ private:
         OwnedFactory<ReaderApplication> reader_factory(*this);
         OwnedFactory<BookTransferApplication> book_transfer_factory(*this);
         OwnedFactory<ClockApplication> clock_factory(*this);
+        OwnedFactory<SleepCoverApplication> sleep_cover_factory(*this);
         OwnedFactory<SettingsApplication> settings_factory(*this);
         OwnedFactory<ConnectivityApplication> connectivity_factory(*this);
         OwnedFactory<DiagnosticsApplication> diagnostics_factory(*this);
@@ -1087,6 +1143,7 @@ private:
             {"reader", "Book Reader", &reader_factory},
             {"book-transfer", "Send Books", &book_transfer_factory},
             {"clock", "Clock", &clock_factory},
+            {"sleep-cover", "Sleep Cover", &sleep_cover_factory},
             {"settings", "Settings", &settings_factory},
             {"connectivity", "Connectivity", &connectivity_factory},
             {"diagnostics", "Diagnostics", &diagnostics_factory},
@@ -1176,16 +1233,32 @@ private:
         return ControlResult::kContinue;
     }
 
+    zectrix::app::SleepCoverSnapshot ReadSleepCover() {
+        zectrix::app::SleepCoverSnapshot snapshot;
+        if (time_->ReadRtc(&snapshot.clock.value) == ESP_OK) snapshot.clock.source = zectrix::time::ClockSource::Rtc;
+        else snapshot.clock = time_->Now();
+        snapshot.power = power_->ReadSnapshot();
+        zectrix::reader::PlatformBookmarkStore store(*storage_, *connectivity_);
+        zectrix::reader::Bookmarks bookmarks(store);
+        if (bookmarks.Load() == zectrix::reader::Result::Ok && bookmarks.Latest()) {
+            snapshot.reading = *bookmarks.Latest();
+            snapshot.has_reading = true;
+        }
+        return snapshot;
+    }
+
     [[noreturn]] void PowerOff() {
         platform_.StopMaintenance();
         const auto stopped = connectivity_->Stop();
         if (stopped != zectrix::connectivity::ConnectivityResult::kOk) {
             ESP_LOGW(kTag, "connectivity stop incomplete before shutdown");
         }
-        ESP_LOGI(kTag, "clearing display before shutdown");
-        const esp_err_t clear = ui_.ClearDisplay();
-        if (clear != ESP_OK) {
-            ESP_LOGW(kTag, "display clear failed: %s", esp_err_to_name(clear));
+        ESP_LOGI(kTag, "presenting sleep cover before shutdown");
+        const esp_err_t cover = ui_.ShowSleepCover(ReadSleepCover(), sleep_cover_style_);
+        if (cover != ESP_OK) {
+            ESP_LOGW(kTag, "sleep cover failed: %s; attempting blank fallback", esp_err_to_name(cover));
+            const auto clear = ui_.ClearDisplay();
+            if (clear != ESP_OK) ESP_LOGW(kTag, "blank fallback failed: %s", esp_err_to_name(clear));
         }
         ESP_LOGI(kTag, "releasing platform peripherals before shutdown");
         platform_.Shutdown();
@@ -1207,6 +1280,8 @@ private:
     uint32_t gallery_selection_ = 0;
     uint32_t reader_selection_ = 0;
     bool reader_busy_ = false;
+    zectrix::app::SleepCoverStyle sleep_cover_style_ = zectrix::app::kSleepCoverDefault;
+    bool sleep_cover_saved_ = true;
     zectrix::power::PowerSnapshot power_snapshot_{};
     zectrix::ui::StatusBarState status_{};
     int64_t next_power_sample_us_ = 0;

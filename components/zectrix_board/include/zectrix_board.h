@@ -74,6 +74,8 @@ public:
     void SetPowerLed(bool on);
     void SetAudioPower(bool on);
     void CutBatteryPower();
+    // Arm the released DOWN button for the USB-powered deep-sleep fallback.
+    esp_err_t PreparePowerButtonWake();
 
 private:
     struct ButtonState {

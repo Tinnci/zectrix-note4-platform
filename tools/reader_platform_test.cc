@@ -133,6 +133,7 @@ void TestReaderPlatform(const char* directory) {
     PlatformBookmarkStore adapter(*storage_service, *connectivity_service);
     Bookmarks bookmarks(adapter);
     assert(bookmarks.Load() == Result::Ok);
+    assert(!bookmarks.Latest());
     Bookmark mark;
     mark.book_id = library.Get(0).id;
     mark.source_bytes = library.Get(0).bytes;
@@ -148,6 +149,7 @@ void TestReaderPlatform(const char* directory) {
     sync = &recovered_sync;
     Bookmarks reboot(adapter);
     assert(reboot.Load() == Result::Ok);
+    assert(reboot.Latest() && *reboot.Latest() == mark);
     assert(reboot.Sync() == Result::Ok && !reboot.pending_sync());
     companion::DurableStateView pending;
     assert(sync->NextDurableState(&pending) == companion::SyncStatus::kOk);
@@ -169,6 +171,7 @@ void TestReaderPlatform(const char* directory) {
     assert(after_ack.Find("alpha.txt", mark.source_bytes)->position.offset == 12);
     fail_local_save = true;
     assert(after_ack.ApplyRemote() == Result::IoError && after_ack.remote());
+    assert(after_ack.Latest() && after_ack.Latest()->position.offset == 12);
     fail_local_save = false;
     assert(after_ack.ApplyRemote() == Result::Ok && after_ack.Sync() == Result::Ok);
     assert(sync->NextDurableState(&pending) == companion::SyncStatus::kOk && pending.revision == 2);

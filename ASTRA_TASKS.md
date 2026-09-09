@@ -98,9 +98,12 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Added SEND BOOKS with Mode -> Session scenes, WPA2 hotspot or saved-network access, and a self-contained browser library for drag-and-drop TXT/EPUB upload, download and deletion.
   - Reused the Storage-owned SPIFFS library with exclusive management, 1 KiB streaming writes, staged installation, duplicate-name protection and interrupted-upload cleanup. Sessions use screen access codes and stop on completion, cancellation, idle timeout or power/policy changes.
   - Verified all 29 Host targets, transfer ASan/UBSan checks, real HTTP and desktop/mobile browser flows, rendered device UI, ShellCheck, the ESP32-S3 build and connected-device flash/boot smoke. AP/STA transfer, physical controls, radio current and BLE/Wi-Fi coexistence remain hardware qualification work.
-- [ ] **L1.4: 桌面待机画报与锁屏仪表盘 (Ambient Sleep Cover & Dashboard)**
+- [x] **L1.4: 桌面待机画报与锁屏仪表盘 (Ambient Sleep Cover & Dashboard)**
   - Render ambient sleep screen cover (daily calendar, reading progress, memo/quote art) before deep sleep.
   - Coordinate with Q1 peripheral power-down and pin hold states for microamp-level standby consumption.
+  - Added SLEEP COVER with Choose -> Preview scenes, a saved dashboard/landscape/blank preference, daily calendar and original quotes, and the latest committed reading position. Unset clocks and failed preference writes remain explicit.
+  - Shutdown presents a static full 1bpp cover with a white fallback and suppresses later status redraws. Existing peripheral cleanup and rail holds remain; bounded released-button detection arms GPIO18 EXT1 wake for USB deep sleep, with no periodic wake or refresh.
+  - Verified all 30 Host targets, focused sleep/reader ASan/UBSan checks, rendered UI previews, ShellCheck, the ESP32-S3 firmware build and connected-device flash/boot smoke. Physical sleep/wake behavior and microamp standby current remain hardware measurements. See docs/SLEEP_COVER.md.
 
 ---
 

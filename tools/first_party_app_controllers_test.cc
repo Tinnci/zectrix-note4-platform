@@ -35,7 +35,7 @@ int main() {
     const LauncherDecision destinations[] = {
         LauncherDecision::OpenReader,
         LauncherDecision::OpenBookTransfer,
-        LauncherDecision::OpenClock, LauncherDecision::OpenSettings,
+        LauncherDecision::OpenClock, LauncherDecision::OpenSleepCover, LauncherDecision::OpenSettings,
         LauncherDecision::OpenConnectivity, LauncherDecision::OpenShowcase,
         LauncherDecision::OpenGallery, LauncherDecision::OpenDiagnostics,
         LauncherDecision::OpenDeviceInfo, LauncherDecision::OpenAbout};

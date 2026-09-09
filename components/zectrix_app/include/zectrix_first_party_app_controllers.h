@@ -13,6 +13,7 @@ enum class LauncherDecision : uint8_t {
     OpenReader,
     OpenBookTransfer,
     OpenClock,
+    OpenSleepCover,
     OpenSettings,
     OpenConnectivity,
     OpenDiagnostics,
@@ -30,7 +31,7 @@ struct LauncherResult {
 
 class LauncherController {
 public:
-    static constexpr std::size_t kItemCount = 10;
+    static constexpr std::size_t kItemCount = 11;
 
     explicit LauncherController(std::size_t selected = 0)
         : selected_(selected < kItemCount ? selected : 0) {}

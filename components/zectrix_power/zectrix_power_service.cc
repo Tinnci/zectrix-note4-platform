@@ -4,6 +4,7 @@
 #include <new>
 
 #include "esp_sleep.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "zectrix_board.h"
@@ -52,6 +53,8 @@ WakeReason PowerService::GetWakeReason() const {
         board_->SetPowerLed(false);
         board_->SetAudioPower(false);
         vTaskDelay(pdMS_TO_TICKS(100));
+        const auto wake = board_->PreparePowerButtonWake();
+        if (wake != ESP_OK) ESP_LOGW("zectrix_power", "power-button wake unavailable: %s", esp_err_to_name(wake));
         board_->CutBatteryPower();
         vTaskDelay(pdMS_TO_TICKS(100));
     }
