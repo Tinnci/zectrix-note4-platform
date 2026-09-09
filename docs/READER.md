@@ -51,8 +51,10 @@ L1.3 adds **SEND BOOKS** for browser upload, download and deletion over local
 Wi-Fi. Initialize a new content partition with the explicit installation above,
 then add individual files without replacing the library. The reader closes its
 file before the transfer session takes Storage ownership. See
-[BOOK_TRANSFER.md](BOOK_TRANSFER.md). Sleep artwork remains L1.4. Normal shutdown
-still clears the panel and uses the established peripheral cleanup sequence.
+[BOOK_TRANSFER.md](BOOK_TRANSFER.md). L1.4 adds the
+[sleep dashboard](SLEEP_COVER.md), which reads the latest committed bookmark
+after Reader exit. Shutdown presents the chosen cover, with a white fallback
+on display failure, before the established peripheral cleanup sequence.
 
 ## Reading controls
 
@@ -149,7 +151,7 @@ informs chapter/page loading and position preservation. Its
 [web server](https://github.com/crosspoint-reader/crosspoint-reader/blob/develop/src/network/CrossPointWebServer.cpp)
 informs L1.3 file transfer. Its
 [sleep activity](https://github.com/crosspoint-reader/crosspoint-reader/blob/develop/src/activities/boot_sleep/SleepActivity.cpp)
-informs the subsequent ambient-cover task. Flipper Zero's
+informs the L1.4 ambient cover. Flipper Zero's
 [SceneManager](https://github.com/flipperdevices/flipperzero-firmware/blob/dev/applications/services/gui/scene_manager.c)
 informs the Library → Reading → Options hierarchy and Back propagation. These
 are independently implemented adaptations on the existing single owner and

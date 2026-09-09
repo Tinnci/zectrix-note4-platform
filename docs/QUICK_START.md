@@ -47,8 +47,8 @@ Exit the monitor with `Ctrl+]`.
 After the splash screen, use UP/DOWN to move and OK to select. If no key is
 pressed for 15 seconds, Auto Showcase begins only when enabled in Settings
 (off by default). Hold OK for 1.5 seconds to
-return. Hold DOWN for 3 seconds from any normal screen to clear the e-paper and
-shut down.
+return. Hold DOWN for 3 seconds from any normal screen to show the selected
+sleep cover and shut down. Release DOWN, then press it again to wake.
 
 **Book Reader** opens TXT/EPUB books from the independent content partition.
 Use the explicit `books-flash` target to install the bundled guide or your own
@@ -60,6 +60,13 @@ hotspot or a saved home network. Connect your phone or computer to that network.
 Open the HTTP address shown on Note4. Enter the displayed access code and select
 TXT/EPUB files. **Upload & finish** saves the files and turns Wi-Fi off. Press
 OK on Note4 to read them. See [BOOK_TRANSFER.md](BOOK_TRANSFER.md) for details.
+
+Open **Sleep Cover** to select a daily dashboard, a landscape with a daily line
+or a blank privacy screen. OK saves the choice and previews it; another OK
+sleeps. Hold OK returns. The dashboard shows the last saved reading position
+and the date/time **AS OF** shutdown. It stays static during sleep and shows
+**TIME NOT SET** when no valid clock is available. See
+[SLEEP_COVER.md](SLEEP_COVER.md) for controls and settings.
 
 For a full hardware check, open **Hardware Tests**, select **Run All Tests**,
 and do the on-screen steps. Have the following ready:
@@ -99,5 +106,8 @@ before a successful full 1bpp base refresh.
 
 ### The board does not power off while connected to USB
 
-This is expected. USB keeps the rail powered. The demo clears the panel and
-enters deep sleep. Disconnect USB to validate battery-latch shutdown.
+This is expected. USB keeps the rail powered. The terminal presents its sleep
+cover and enters deep sleep. Release DOWN after shutdown, then press it again
+to wake. If DOWN stays held beyond the roughly five-second release wait, button
+wake is left disabled; reset or power-cycle the board. Disconnect USB to
+validate battery-latch shutdown.

@@ -8,6 +8,7 @@
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_codec_dev_defaults.h"
 #include "esp_sleep.h"
+#include "driver/rtc_io.h"
 
 #include <algorithm>
 #include <array>
@@ -68,6 +69,10 @@ std::vector<std::unique_ptr<BoardHostTask>> tasks;
 std::array<std::atomic<int>, 49> levels{};
 std::array<bool, 49> held{};
 std::array<int, 49> modes{}, pullups{};
+std::array<bool, 49> rtc_mode{}, rtc_pullup{}, rtc_pulldown{};
+uint64_t wake_pins = 0;
+bool fail_wake = false;
+int release_after_polls = -1;
 std::mutex isr_mutex;
 void (*field_isr)(void*) = nullptr;
 void* field_context = nullptr;
@@ -110,6 +115,10 @@ void Reset() {
     held = {};
     modes = {};
     pullups = {};
+    rtc_mode = rtc_pullup = rtc_pulldown = {};
+    wake_pins = 0;
+    fail_wake = false;
+    release_after_polls = -1;
     failure = Failure::None;
     semaphore_calls = 0;
     deep_sleep_hold = fail_bus_delete = interleave_stop = false;
@@ -156,6 +165,8 @@ void TestPowerTransition() {
         try { power->Shutdown(); } catch (const SleepEntered&) {}
         AssertReleased();
         assert(deep_sleep_hold);
+        assert(wake_pins == (1ULL << ZECTRIX_BUTTON_DOWN));
+        assert(rtc_mode[ZECTRIX_BUTTON_DOWN] && rtc_pullup[ZECTRIX_BUTTON_DOWN]);
         for (const int pin : {ZECTRIX_AUDIO_POWER, ZECTRIX_NFC_POWER, ZECTRIX_VBAT_LATCH}) {
             assert(levels[pin] == 0 && held[pin]);
         }
@@ -169,6 +180,28 @@ void TestPowerTransition() {
         }
         assert(board.ShutdownPeripherals() == ESP_OK);
         assert(board.PrepareAudio() == nullptr && !board.HasRtc() && !board.HasNfc());
+        delete power;
+    }
+    Reset();
+}
+
+void TestPowerButtonWake() {
+    for (unsigned scenario = 0; scenario < 4; ++scenario) {
+        Reset();
+        ZectrixBoard board;
+        rtc_mode[ZECTRIX_BUTTON_DOWN] = held[ZECTRIX_BUTTON_DOWN] = true;
+        assert(board.Init() == ESP_OK);
+        assert(!rtc_mode[ZECTRIX_BUTTON_DOWN] && !held[ZECTRIX_BUTTON_DOWN]);
+        assert(board.ShutdownPeripherals() == ESP_OK);
+        if (scenario == 1) { levels[ZECTRIX_BUTTON_DOWN] = 0; release_after_polls = 4; }
+        if (scenario == 2) levels[ZECTRIX_BUTTON_DOWN] = 0;
+        if (scenario == 3) fail_wake = true;
+        zectrix::power::PowerService* power = nullptr;
+        assert(zectrix::power::PowerService::Attach(board, &power) == ESP_OK);
+        try { power->Shutdown(); } catch (const SleepEntered&) {}
+        assert(wake_pins == (scenario < 2 ? 1ULL << ZECTRIX_BUTTON_DOWN : 0));
+        assert(deep_sleep_hold && levels[ZECTRIX_VBAT_LATCH] == 0 && held[ZECTRIX_VBAT_LATCH]);
+        AssertReleased();
         delete power;
     }
     Reset();
@@ -415,7 +448,20 @@ esp_err_t gpio_set_level(gpio_num_t pin, uint32_t level) {
     levels[pin] = level;
     return ESP_OK;
 }
-int gpio_get_level(gpio_num_t pin) { return levels[pin]; }
+int gpio_get_level(gpio_num_t pin) {
+    if (pin == ZECTRIX_BUTTON_DOWN && release_after_polls >= 0) {
+        if (release_after_polls-- == 0) levels[pin] = 1;
+    }
+    return levels[pin];
+}
+esp_err_t rtc_gpio_init(gpio_num_t pin) { rtc_mode[pin] = true; return ESP_OK; }
+esp_err_t rtc_gpio_deinit(gpio_num_t pin) { rtc_mode[pin] = false; return ESP_OK; }
+esp_err_t rtc_gpio_hold_dis(gpio_num_t pin) { held[pin] = false; return ESP_OK; }
+esp_err_t rtc_gpio_set_direction(gpio_num_t pin, rtc_gpio_mode_t mode) {
+    assert(rtc_mode[pin] && mode == RTC_GPIO_MODE_INPUT_ONLY); return ESP_OK;
+}
+esp_err_t rtc_gpio_pullup_en(gpio_num_t pin) { rtc_pullup[pin] = true; return ESP_OK; }
+esp_err_t rtc_gpio_pulldown_dis(gpio_num_t pin) { rtc_pulldown[pin] = false; return ESP_OK; }
 esp_err_t gpio_hold_dis(gpio_num_t pin) { held[pin] = false; return ESP_OK; }
 esp_err_t gpio_hold_en(gpio_num_t pin) { held[pin] = true; return ESP_OK; }
 void gpio_deep_sleep_hold_en() { deep_sleep_hold = true; }
@@ -563,10 +609,17 @@ const char* esp_err_to_name(esp_err_t error) { return error == ESP_OK ? "ESP_OK"
 int64_t esp_timer_get_time() { return static_cast<int64_t>(xTaskGetTickCount()) * 1000; }
 void esp_rom_delay_us(uint32_t) {}
 esp_sleep_wakeup_cause_t esp_sleep_get_wakeup_cause() { return ESP_SLEEP_WAKEUP_UNDEFINED; }
+esp_err_t esp_sleep_enable_ext1_wakeup_io(uint64_t mask, esp_sleep_ext1_wakeup_mode_t mode) {
+    assert(mode == ESP_EXT1_WAKEUP_ANY_LOW && mask == (1ULL << ZECTRIX_BUTTON_DOWN));
+    assert(rtc_mode[ZECTRIX_BUTTON_DOWN] && rtc_pullup[ZECTRIX_BUTTON_DOWN] && !rtc_pulldown[ZECTRIX_BUTTON_DOWN]);
+    if (fail_wake) return ESP_FAIL;
+    wake_pins = mask; return ESP_OK;
+}
 [[noreturn]] void esp_deep_sleep_start() { AssertReleased(); throw SleepEntered{}; }
 
 int main() {
     TestPowerTransition();
+    TestPowerButtonWake();
     TestPartialInitialization();
     TestCallbackRemovalWaits();
     TestServiceDetachAndFieldTaskExit();

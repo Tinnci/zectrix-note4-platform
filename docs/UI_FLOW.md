@@ -19,13 +19,14 @@ The home menu contains:
 1. **BOOK READER** — TXT/EPUB library, paginated reading, font size and saved progress.
 2. **SEND BOOKS** — local Wi-Fi upload, download and book management.
 3. **CLOCK** — calendar time, with system time or explicit uptime fallback when RTC fails.
-4. **SETTINGS** — persist the automatic showcase preference.
-5. **CONNECTIVITY** — phone pairing, resource fetch and trusted-phone management.
-6. **AUTO SHOWCASE** — unattended rotation of all three display modes.
-7. **DISPLAY GALLERY** — individual display previews and measurements.
-8. **HARDWARE TESTS** — run all tests or choose one test.
-9. **DEVICE INFO** — board information and live power measurements.
-10. **ABOUT & LICENSE** — project ownership and license.
+4. **SLEEP COVER** — choose a daily dashboard, landscape or blank privacy screen.
+5. **SETTINGS** — persist the automatic showcase preference.
+6. **CONNECTIVITY** — phone pairing, resource fetch and trusted-phone management.
+7. **AUTO SHOWCASE** — unattended rotation of all three display modes.
+8. **DISPLAY GALLERY** — individual display previews and measurements.
+9. **HARDWARE TESTS** — run all tests or choose one test.
+10. **DEVICE INFO** — board information and live power measurements.
+11. **ABOUT & LICENSE** — project ownership and license.
 
 Returning home restores the previous selection. Auto Showcase is off by
 default for new installations; valid existing preferences are retained. If
@@ -39,7 +40,7 @@ menu; at a root screen it returns home. Menu selection survives push/pop.
 Run All returns to its menu after three previews. The rotation and footprint
 animation use idle deadlines rather than separate blocking input loops.
 
-The Launcher scrolls its eight visible rows to reach all ten items. Reader
+The Launcher scrolls its eight visible rows to reach all eleven items. Reader
 uses Library -> Reading -> Options. UP/DOWN turn pages in Reading; OK opens
 font/resume/restart/save options. Long OK returns one scene, and loading remains
 cancellable. Font changes preserve the current source anchor. A successful
@@ -54,6 +55,13 @@ reader. Hold OK stops and returns to Mode, then home. HTTP and radio work run
 under Connectivity ownership. Progress renders are limited to one per second
 and 10-percent steps or saved-book count changes. See
 [BOOK_TRANSFER.md](BOOK_TRANSFER.md) for browser controls and timeouts.
+
+Sleep Cover uses Choose -> Preview. UP/DOWN selects the style; OK saves and
+previews it, then OK in Preview sleeps. Hold OK returns one scene. The active
+style also applies to global hold-DOWN shutdown. The dashboard shows the last
+committed reader position and calendar; landscape shows a daily line; blank
+clears the full panel. See [SLEEP_COVER.md](SLEEP_COVER.md) for persistence and
+sleep/wake behavior.
 
 ## Persistent status bar
 
@@ -115,15 +123,25 @@ test. Long DOWN retains its global shutdown meaning.
 
 ## Shutdown sequence
 
-1. Do a white full 1bpp refresh and wait for completion.
-2. Power off the display through the driver.
-3. Turn off the indicator LED and audio rail.
-4. Release the battery power latch.
-5. Enter deep sleep as a USB-powered fallback.
+1. Exit the foreground application, then stop maintenance and connectivity.
+2. Capture time, power and saved reading. Present the selected cover with a
+   full 1bpp refresh and wait for completion; failure attempts one white clear.
+3. Stop status composition on the final surface and release DisplayService
+   and the other service consumers.
+4. Release board peripherals, then turn off the indicator LED and audio rail.
+5. Wait for DOWN release, arm GPIO18 button wake, then release the battery latch.
+6. Enter deep sleep if USB keeps the board powered. Release and press DOWN to
+   wake into a fresh boot.
+
+The final cover replaces live status icons with a static battery snapshot.
+Its **AS OF** timestamp does not advance during sleep. Blank clears all pixels.
+Shutdown proceeds even if display or wake setup fails. If DOWN stays held
+beyond the roughly five-second release wait, USB sleep requires reset or power
+cycling. No timer wake or periodic display update is scheduled.
 
 ## Reference designs and continuation
 
-L1.1 uses independently implemented adaptations of these upstream designs:
+L1 uses independently implemented adaptations of these upstream designs:
 
 - Flipper Zero [SceneManager](https://github.com/flipperdevices/flipperzero-firmware/blob/dev/applications/services/gui/scene_manager.c)
   provides the enter/event/exit handler pattern, retained scene state and Back
@@ -145,12 +163,14 @@ L1.1 uses independently implemented adaptations of these upstream designs:
   [CrossPointWebServer](https://github.com/crosspoint-reader/crosspoint-reader/blob/develop/src/network/CrossPointWebServer.cpp)
   streams upload chunks through a bounded write buffer and detects short writes.
   L1.3 applies the web-transfer lifecycle through Connectivity and Storage.
-  The separate ambient-cover task remains L1.4.
+  L1.4 composes its static dashboard/landscape/blank surface before the existing
+  power transition, using the same private scene and viewport ownership.
 
 Local verification includes scene-stack bounds and callback order, gallery
 back/rotation/error paths, invalid RTC/system/uptime behavior, clipped canvas
 composition, status-only dirty regions, gray-content preservation, display
-failure recovery and the final white shutdown surface. For optional visual
+failure recovery, final cover retention, privacy clearing and button-wake
+preparation. For optional visual
 inspection, set `ZECTRIX_UI_PREVIEW_DIR` to an existing directory when running
 `tools/test-display-service.sh`; it writes PBM previews without a golden-image
 comparison or release gate.

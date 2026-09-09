@@ -9,7 +9,7 @@ target the current Zectrix 4.2-inch ESP32-S3 e-paper board.
 | --- | --- | --- |
 | OK button | GPIO0 | Active low |
 | UP button | GPIO39 | Active low |
-| DOWN / power button | GPIO18 | Active low. Hold for 3 seconds to shut down. |
+| DOWN / power button | GPIO18 | Active low. Hold for 3 seconds to shut down; release and press to wake. EXT1 ANY_LOW during USB-powered deep sleep. |
 | Battery power latch | GPIO17 | High keeps battery rail on |
 | Power LED | GPIO3 | Active low |
 | Audio rail | GPIO42 | Active high |
@@ -31,9 +31,18 @@ At boot, the demo asserts the battery latch before peripheral initialization.
 The display has a separate controlled rail and remains off until a refresh.
 The board initializes audio when the audio test first runs.
 
-Shutdown releases service and board peripherals before cutting the audio rail
+Shutdown presents the selected [sleep cover](SLEEP_COVER.md), then releases
+service and board peripherals before cutting the audio rail
 and battery latch. I2C, I2S and owned EPD signal pins are disconnected, and
 ESP32-S3 deep-sleep GPIO holds retain rail-off levels while USB supplies power.
+Before latch release, board support waits up to about five seconds for three
+released DOWN samples at 20 ms intervals. It configures RTC-capable GPIO18 as
+input with a pull-up, disables its pull-down and arms EXT1 ANY_LOW without
+forcing the RTC peripheral power domain on. Boot releases RTC hold/mode before
+normal button initialization. If release or wake setup fails, shutdown still
+cuts the rails; USB sleep then requires reset or power cycling. No timer wake
+is configured.
+
 Host tests verify the driver calls and cleanup order. Current consumption and
 physical BLE/Wi-Fi coexistence still require board measurement with both
 battery and USB power configurations.

@@ -8,6 +8,8 @@ L1.2 adds the Reader application and its private Library/Reading/Options scenes.
 Its streamed execution and persistence are described in [READER.md](READER.md).
 L1.3 adds Send Books with private Mode/Session scenes. Connectivity owns its
 temporary web service and Storage lease. See [BOOK_TRANSFER.md](BOOK_TRANSFER.md).
+L1.4 adds Sleep Cover with private Choose/Preview scenes and a retained final
+shutdown surface. See [SLEEP_COVER.md](SLEEP_COVER.md).
 
 ## Scope
 
@@ -92,13 +94,14 @@ reset, panic, or display failure during this test.
 
 ## M3 platform settings
 
-M3 defines one platform setting:
+The first-party shell defines these platform settings:
 
 | Key | Type | Values | Default | Consumer |
 | --- | --- | --- | --- | --- |
 | `ui.auto_demo` | unsigned 32-bit integer | `0` off, `1` on | `0` (L1.1) | Launcher |
+| `ui.sleep_cover` | unsigned 32-bit integer | `0` dashboard, `1` landscape, `2` blank | `0` (L1.4) | Sleep Cover / shutdown |
 
-M3 used default `1`. L1.1 preserves any existing valid stored value and uses
+M3 used default `1` for `ui.auto_demo`. L1.1 preserves any existing valid stored value and uses
 `0` for a missing or invalid value. When enabled, the 15-second idle timeout is
 measured from entry or the most recent physical input, not from idle-callback
 count. Launcher selection is retained in owner RAM across application exits.
@@ -109,6 +112,13 @@ invalid. Settings uses the default and attempts to replace the invalid value.
 If a read or write fails, Settings remains active and shows the failure. It
 does not abort or restart the device. Settings pages are private application
 state and are not registry entries.
+
+Sleep Cover loads `ui.sleep_cover` once after platform initialization. Missing
+or invalid values use the dashboard; a missing value needs no write. OK on a
+style saves it and opens Preview. A save failure shows `NOT SAVED`, applies the
+choice for the current boot and permits shutdown. Selecting it again retries
+the write. Its private controller uses deferred scene transitions and retries
+failed preview rendering with Quality on idle callbacks.
 
 ## Diagnostics adapter
 
@@ -141,10 +151,14 @@ invalidates only for visible changes. Sampling and display calls remain on the
 application owner; diagnostic progress callbacks and their existing bounded
 waits also service this status display.
 
-M3 does not add light-sleep suspend hooks. Qualified shutdown ends the current
-application lifecycle, clears the display, preserves the established rail
-timing, and enters deep sleep through `PowerService`. Wake starts a fresh boot
-and a fresh application lifecycle. This is the M3 suspend/resume boundary.
+M3 does not add light-sleep suspend hooks. Shutdown ends the current application
+lifecycle, so Reader saves/closes before L1.4 captures the latest committed
+position. The owner stops maintenance/connectivity, draws the selected cover
+and uses `Platform::Shutdown()` for cleanup and the final power transition.
+Display failure attempts one white clear and cannot veto shutdown. L1.4 retains
+the existing rail delays and adds a bounded released-button wait before GPIO18
+wake setup and latch release. Wake starts a fresh boot and application lifecycle.
+The static cover schedules no automatic idle sleep, timer wake or refresh.
 
 ## Lifecycle
 
@@ -216,9 +230,12 @@ A gray preview temporarily owns one 60,000-byte 4bpp buffer. Its header is
 composed from the status viewport, so a status update cannot replace its image
 with an old monochrome canvas. Gray refreshes retain the established white
 1bpp preclear followed by a full 4bpp refresh. Returning to a normal page or
-shutdown releases this buffer. Shutdown clears a true white surface without
-the status overlay. The DisplayService ghosting, recovery and power policies
-remain authoritative.
+shutdown releases this buffer. L1.4 shutdown replaces the live status viewport
+with a static cover header, or a true white surface for Blank. The cover uses
+the shared 1bpp canvas and a final FullClean commit; pending viewport work stays
+dormant until normal content rendering resumes. Its clock and battery values
+are snapshots, with `AS OF` marking the capture time. DisplayService ghosting,
+recovery and power policies remain authoritative.
 
 ## Command arbitration
 

@@ -69,6 +69,11 @@ public:
         power_events[power_event_count++] = on ? 3 : 4;
     }
     void CutBatteryPower() { power_events[power_event_count++] = 5; }
+    esp_err_t PreparePowerButtonWake() {
+        power_events[power_event_count++] = 7;
+        return power_wake_result;
+    }
+    esp_err_t power_wake_result = ESP_OK;
 
     bool HasRtc() const { return rtc_available; }
     bool HasNfc() const { return nfc_available; }

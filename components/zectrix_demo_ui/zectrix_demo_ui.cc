@@ -64,6 +64,7 @@ ZectrixDemoUi::ZectrixDemoUi(zectrix::display::DisplayService* display)
 }
 
 void ZectrixDemoUi::BeginContent() {
+    sleep_surface_ = false;
     gray_frame_.reset();
     viewports_.Invalidate(kStatusViewPort);
     canvas_.SetClip({0, kStatusHeight, 400, 300 - kStatusHeight});
@@ -387,6 +388,7 @@ esp_err_t ZectrixDemoUi::RefreshAuto() {
 
 esp_err_t ZectrixDemoUi::RefreshPending() {
     if (display_ == nullptr) return ESP_ERR_INVALID_STATE;
+    if (sleep_surface_) return ESP_OK;
     const auto update = viewports_.Compose(canvas_);
     if (!update.pending) return ESP_OK;
     esp_err_t result;
@@ -446,6 +448,7 @@ esp_err_t ZectrixDemoUi::ShowImage4Bpp(const uint8_t* pixels, size_t size) {
     if (!gray_frame_) gray_frame_.reset(new (std::nothrow) uint8_t[size]);
     if (!gray_frame_) return ESP_ERR_NO_MEM;
     std::memcpy(gray_frame_.get(), pixels, size);
+    sleep_surface_ = false;
     viewports_.Invalidate(kStatusViewPort);
     return RefreshFull();
 }
@@ -466,7 +469,8 @@ esp_err_t ZectrixDemoUi::ClearDisplay() {
     gray_frame_.reset();
     canvas_.ResetClip();
     canvas_.Clear();
-    // Shutdown is deliberately a true white surface, without any overlay.
+    // Blank sleep and failed-cover recovery must not receive status overlays.
+    sleep_surface_ = true;
     return display_->Present1Bpp(zectrix::display::DisplayIntent::FullClean,
                                  canvas_.data(), canvas_.size());
 }

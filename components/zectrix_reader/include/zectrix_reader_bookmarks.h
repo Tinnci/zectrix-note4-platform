@@ -36,6 +36,8 @@ public:
     explicit Bookmarks(BookmarkStore& store) : store_(store) {}
     Result Load();
     const Bookmark* Find(const char* book_id, uint32_t source_bytes) const;
+    // The sleep dashboard displays the latest committed local position.
+    const Bookmark* Latest() const { return loaded_ && state_.count ? &state_.entries[0] : nullptr; }
     Result Save(const Bookmark& bookmark);
     Result Sync();
     const Bookmark* remote() const { return remote_revision_ ? &remote_ : nullptr; }

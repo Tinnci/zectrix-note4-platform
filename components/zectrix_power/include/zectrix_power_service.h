@@ -42,7 +42,7 @@ public:
     WakeReason GetWakeReason() const;
 
     // Platform stops peripheral consumers before calling this final transition.
-    // Releases board devices, turns off rails and enters deep sleep.
+    // Releases devices, arms a released power button, turns off rails and sleeps.
     [[noreturn]] void Shutdown();
 
 private:

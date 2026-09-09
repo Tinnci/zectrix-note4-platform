@@ -150,6 +150,11 @@ rail sequence and the deep-sleep call. The application owner enters shutdown
 through `Platform::Shutdown()` after its final display update. Platform first
 releases service consumers; PowerService then releases board peripherals
 before cutting rails. Board GPIO and rail control remain inside board support.
+L1.4 presents the selected ambient cover, or a white fallback on failure,
+before this release sequence. The final surface remains static through service
+destruction. Board support prepares released-DOWN GPIO18 EXT1 wake after
+peripheral cleanup, with a bounded release wait; a wake setup failure does not
+skip rail-off. No timer wake or periodic redraw is added.
 See [`M2_PLATFORM_COMPOSITION.md`](M2_PLATFORM_COMPOSITION.md) for the cleanup
 order and Host coverage.
 

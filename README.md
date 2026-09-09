@@ -44,7 +44,7 @@ Development follows dependency-aware stage gates defined in
 | D1 | In progress | USB sessions, platform diagnostics, log streaming and host simulator implemented; input observation and hardware qualification remain open |
 | M5 | In progress | A/B partition validation, streamed firmware verification and boot confirmation watchdog implemented; update delivery and hardware qualification remain open |
 | R1 | In progress | Minimal dirty-region updates, unchanged-frame suppression and adaptive full-refresh policy implemented; hardware qualification remains open |
-| L1 | In progress | Persistent status bar, scene navigation, streamed TXT/EPUB reader and local Wi-Fi book management; ambient sleep cover remains next |
+| L1 | Implemented | Status bar, scene navigation, streamed TXT/EPUB reader, local Wi-Fi book management and ambient sleep covers; physical sleep/wake and standby-current measurements remain open |
 
 > [!CAUTION]
 > This project targets the black-and-white ZECTRIX NOTE4 hardware. It is not
@@ -69,7 +69,9 @@ Development follows dependency-aware stage gates defined in
   NVS bookmarks and durable phone progress synchronization.
 - Browser upload, download and deletion over a temporary Wi-Fi hotspot or
   saved home network, with automatic radio shutdown.
-- Long-press DOWN for 3 seconds to clear the panel and shut down
+- Saved daily dashboard, landscape or blank sleep cover, with calendar and
+  reading progress. See [docs/SLEEP_COVER.md](docs/SLEEP_COVER.md).
+- Long-press DOWN for 3 seconds to present the sleep cover and shut down
 - MIT licensed by ZECTRIX Lab
 
 ## Quick start
@@ -158,12 +160,15 @@ model and limits.
 | DOWN press | Next item |
 | OK click | Select or confirm |
 | OK hold (1.5 s) | Return or cancel |
-| DOWN hold (3 s) | Clear display, power down peripherals and shut down |
+| DOWN hold (3 s) | Present sleep cover, power down peripherals and shut down |
 
 When enabled in Settings, the home screen starts Auto Showcase after 15 seconds
 of inactivity. New installations leave it off. On
 battery power, shutdown releases the hardware power latch. While powered over
-USB, the board enters deep sleep after clearing the display.
+USB, the board enters deep sleep after presenting the selected cover. Release
+DOWN, then press it again to wake. In **SLEEP COVER**, OK saves a style and opens
+its preview; another OK sleeps. Blank clears the whole panel. The dashboard
+shows an **AS OF** snapshot and does not update during sleep.
 
 ## UI map
 
@@ -172,7 +177,12 @@ Splash
   -> Home
      |-- Book Reader
      |    `-- Library -> Reading -> Font / Phone Position / Restart / Save
-     |-- Clock / Settings / Connectivity
+     |-- Send Books
+     |    `-- Hotspot / Home Network -> Transfer Session
+     |-- Clock
+     |-- Sleep Cover
+     |    `-- Dashboard / Landscape / Blank -> Preview -> Sleep
+     |-- Settings / Connectivity
      |-- Auto Showcase
      |    `-- 1bpp Full -> 1bpp Partial -> 4bpp Full
      |-- Display Gallery

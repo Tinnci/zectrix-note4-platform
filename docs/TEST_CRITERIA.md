@@ -16,8 +16,30 @@ tests time out after 60 seconds unless stated otherwise.
 ## Controls during tests
 
 - Hold OK for 1.5 seconds to cancel the current test and return.
-- Hold DOWN for 3 seconds to request clear-and-shutdown.
+- Hold DOWN for 3 seconds to present the selected sleep cover and shut down.
 - Run All records PASS/FAIL for each test and ends on a seven-item summary.
+
+## Sleep cover and wake check
+
+1. Read a page, return home and open **SLEEP COVER**. Select the dashboard and
+   check its month grid, last saved title and progress. An unset clock must show
+   **TIME NOT SET**. Check landscape and blank previews, then return with hold OK.
+2. Use OK in Preview or hold DOWN for three seconds to sleep. Release DOWN.
+   Confirm that the selected surface remains, with no live radio/status overlay;
+   Blank must be entirely white. Check shutdown from a gray gallery page too.
+3. With USB power, press DOWN again. Confirm a fresh boot, working buttons and
+   the saved cover choice. On battery, confirm latch shutdown and power-button
+   startup separately. Check that reader progress resumes correctly.
+4. Keep DOWN held beyond the roughly five-second release wait. Confirm shutdown
+   still completes without repeated restart. USB recovery in this case requires
+   reset or power cycling because button wake was not armed.
+5. Measure settled standby current in battery and USB configurations with the
+   appropriate fixture. Record the supply, peripherals and measured current;
+   boot smoke and Host tests do not establish microamp consumption.
+
+These are manual hardware checks. The L1.4 boot smoke test verifies flashing
+and startup only. Implementation and Host coverage are in
+[SLEEP_COVER.md](SLEEP_COVER.md).
 
 ## Production recommendations
 

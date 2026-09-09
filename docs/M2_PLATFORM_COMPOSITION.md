@@ -45,9 +45,12 @@ retry initialization on the same Platform object.
 
 ## Product shutdown
 
-The application owner stops maintenance and connectivity, attempts its final
-display clear, then calls `Platform::Shutdown()`. A failed clear does not skip
-peripheral cleanup. Platform destroys connectivity before detaching NFC, and
+The runtime exits its foreground application before the application owner
+stops maintenance and connectivity. L1.4 captures time, power and the latest
+committed reader bookmark, presents the selected sleep cover, then calls
+`Platform::Shutdown()`. A failed cover attempts one white clear; neither failure
+skips peripheral cleanup. Pending status draws are suppressed on the final
+surface. Platform destroys connectivity before detaching NFC, and
 releases DisplayService before entering the final PowerService transition.
 Normal destruction and initialization failures use the same service cleanup.
 
@@ -55,10 +58,19 @@ Normal destruction and initialization failures use the same service cleanup.
 The board joins button sampling, closes audio, stops NFC field processing,
 removes the RTC/NFC/codec I2C devices, deletes their bus and releases ADC and
 button queue storage. Cleanup also disconnects I2C and audio signal pins.
-The power owner then turns off the LED and audio rail, releases the battery
-latch and enters deep sleep. Digital GPIO holds preserve the disabled rails
+The power owner then turns off the LED and audio rail, waits the existing
+100 ms, prepares button wake, releases the battery latch, waits the existing
+100 ms and enters deep sleep. Digital GPIO holds preserve the disabled rails
 when USB keeps the ESP32-S3 powered. Cleanup errors are logged; they do not
 replace the final rail-off/deep-sleep fallback.
+
+Board wake preparation waits for three released DOWN samples at 20 ms
+intervals, bounded to 250 polls (about five seconds). It then configures GPIO18
+as RTC input with pull-up and EXT1 ANY_LOW wake. This avoids immediately waking
+from a held shutdown button without forcing the RTC peripheral power domain
+on. A stuck button or setup error still reaches rail-off; USB sleep then needs
+reset/power cycling. Boot releases GPIO18's RTC hold and mode before normal
+button setup. L1.4 adds no timer wake. See [SLEEP_COVER.md](SLEEP_COVER.md).
 
 NFC callback removal waits for any copied callback to return. The field task
 exits only after receiving its stop notification, and remains event-driven
@@ -70,9 +82,11 @@ timeout, so shutdown cannot delete a borrowed codec under the playback task.
 `tools/test-power-service.sh` also compiles production board, audio, NFC and
 self-test code with SDK fakes. It covers partial initialization, active and
 closed audio, callback removal during execution, field-task stop interleaving,
-delayed playback, repeated cleanup and driver resource counts at rail-off.
-`tools/test-display-service.sh` verifies SPI/DMA release after failed clears
-and unfinished batches, including preservation of an externally owned bus.
+delayed playback, repeated cleanup, button release/wake failures and driver
+resource counts at rail-off. `tools/test-display-service.sh` verifies final
+cover retention through SPI/DMA release, privacy clearing, failed-cover
+fallback and unfinished batches, including preservation of an externally
+owned bus. Physical sleep/wake and current remain hardware measurements.
 
 ## Application boundary
 

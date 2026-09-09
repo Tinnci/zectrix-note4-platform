@@ -6,9 +6,11 @@
 
 #include "audio_codec.h"
 #include "driver/gpio.h"
+#include "driver/rtc_io.h"
 #include "es8311_audio_codec.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_log.h"
+#include "esp_sleep.h"
 #include "esp_timer.h"
 #include "freertos/task.h"
 #include "rtc_pcf8563.h"
@@ -123,6 +125,9 @@ esp_err_t ZectrixBoard::ShutdownPeripherals() {
 
 esp_err_t ZectrixBoard::InitPowerAndGpio() {
     gpio_deep_sleep_hold_dis();
+    // EXT1 leaves its wake pin in RTC mode after deep sleep.
+    rtc_gpio_hold_dis(ZECTRIX_BUTTON_DOWN);
+    rtc_gpio_deinit(ZECTRIX_BUTTON_DOWN);
     gpio_hold_dis(ZECTRIX_VBAT_LATCH);
     gpio_set_level(ZECTRIX_VBAT_LATCH, 1);
 
@@ -451,4 +456,22 @@ void ZectrixBoard::CutBatteryPower() {
     gpio_hold_en(ZECTRIX_VBAT_LATCH);
     // USB can keep the MCU powered after the battery latch is released.
     gpio_deep_sleep_hold_en();
+}
+
+esp_err_t ZectrixBoard::PreparePowerButtonWake() {
+    // A held shutdown button must not trigger an immediate reboot. Give the
+    // user up to five seconds to release it, then keep rail-off as the fallback.
+    unsigned released = 0;
+    for (unsigned poll = 0; poll < 250; ++poll) {
+        released = gpio_get_level(ZECTRIX_BUTTON_DOWN) ? released + 1 : 0;
+        if (released == 3) break;
+        vTaskDelay(kButtonPoll);
+    }
+    if (released < 3) return ESP_ERR_TIMEOUT;
+    esp_err_t result = rtc_gpio_init(ZECTRIX_BUTTON_DOWN);
+    if (result == ESP_OK) result = rtc_gpio_set_direction(ZECTRIX_BUTTON_DOWN, RTC_GPIO_MODE_INPUT_ONLY);
+    if (result == ESP_OK) result = rtc_gpio_pullup_en(ZECTRIX_BUTTON_DOWN);
+    if (result == ESP_OK) result = rtc_gpio_pulldown_dis(ZECTRIX_BUTTON_DOWN);
+    if (result == ESP_OK) result = esp_sleep_enable_ext1_wakeup_io(1ULL << ZECTRIX_BUTTON_DOWN, ESP_EXT1_WAKEUP_ANY_LOW);
+    return result;
 }
