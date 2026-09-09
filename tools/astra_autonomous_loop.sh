@@ -13,12 +13,8 @@ LOCK_DIR="/tmp/astra_autonomous_loop.lock"
 ITERATION_MAX=100
 ITERATION_COUNT=0
 
-export ALL_PROXY="http://127.0.0.1:7890"
-export HTTP_PROXY="http://127.0.0.1:7890"
-export HTTPS_PROXY="http://127.0.0.1:7890"
-export http_proxy="http://127.0.0.1:7890"
-export https_proxy="http://127.0.0.1:7890"
-export all_proxy="http://127.0.0.1:7890"
+unset ALL_PROXY HTTP_PROXY HTTPS_PROXY http_proxy https_proxy all_proxy
+
 
 # Single instance lock guard
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
