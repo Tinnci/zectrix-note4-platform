@@ -6,7 +6,7 @@ trap 'rm -rf "$work_dir"' EXIT
 reader_dir="$root_dir/components/zectrix_reader"
 flags=(-Wall -Wextra -Werror)
 if [ "${ZECTRIX_READER_SANITIZE:-0}" = 1 ]; then
-    flags+=(-g -fsanitize=address,undefined -fno-omit-frame-pointer)
+    flags+=(-g "-fsanitize=address,undefined" -fno-omit-frame-pointer)
 fi
 uv run --no-project "$root_dir/tools/generate-reader-fixtures.py" "$work_dir"
 "${CC:-cc}" -std=c99 "${flags[@]}" -I"$reader_dir/third_party/miniz" \

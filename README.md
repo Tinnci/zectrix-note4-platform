@@ -44,7 +44,7 @@ Development follows dependency-aware stage gates defined in
 | D1 | In progress | USB sessions, platform diagnostics, log streaming and host simulator implemented; input observation and hardware qualification remain open |
 | M5 | In progress | A/B partition validation, streamed firmware verification and boot confirmation watchdog implemented; update delivery and hardware qualification remain open |
 | R1 | In progress | Minimal dirty-region updates, unchanged-frame suppression and adaptive full-refresh policy implemented; hardware qualification remains open |
-| L1 | In progress | Persistent status bar, scene navigation and streamed TXT/EPUB reader; LAN upload and ambient sleep cover remain next |
+| L1 | In progress | Persistent status bar, scene navigation, streamed TXT/EPUB reader and local Wi-Fi book management; ambient sleep cover remains next |
 
 > [!CAUTION]
 > This project targets the black-and-white ZECTRIX NOTE4 hardware. It is not
@@ -67,6 +67,8 @@ Development follows dependency-aware stage gates defined in
 - Embedded TRMNL16 UI font and Unifont CJK reader bitmaps at 16px/24px.
 - Streamed TXT/EPUB reading from a Storage-owned SPIFFS book partition, with
   NVS bookmarks and durable phone progress synchronization.
+- Browser upload, download and deletion over a temporary Wi-Fi hotspot or
+  saved home network, with automatic radio shutdown.
 - Long-press DOWN for 3 seconds to clear the panel and shut down
 - MIT licensed by ZECTRIX Lab
 
@@ -114,6 +116,13 @@ The build creates `build/books.bin` from `books/`. Install it separately with
 flash preserves books. You can select your own source directory through
 `-D "ZECTRIX_BOOKS_DIR=/absolute/path/to/books"`. See
 [docs/READER.md](docs/READER.md) for installation and format limits.
+
+After the initial library installation, open **SEND BOOKS** to add books over
+Wi-Fi. Create a Note4 hotspot or use a saved home network. Open the address
+on the device screen and enter its access code. Drag TXT/EPUB files into the
+browser and select **Upload & finish**. The same page supports download and
+deletion. Wi-Fi turns off when the session ends. See
+[docs/BOOK_TRANSFER.md](docs/BOOK_TRANSFER.md) for controls and session limits.
 
 ## Host maintenance CLI
 

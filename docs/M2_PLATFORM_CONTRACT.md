@@ -170,6 +170,10 @@ filesystem or application package format.
 L1.2 adds a separate Storage-owned, on-demand SPIFFS book mount with bounded
 listing and exact file reads. It does not format on mount failure. Readers close
 their file before Platform releases Storage. See [READER.md](READER.md).
+L1.3 adds an exclusive management lease for streamed upload, download and
+deletion. Reader handles exclude that lease. Uploads sync a staging file before
+renaming it into the library and never replace an existing filename. Connectivity
+joins HTTP handlers before releasing the lease. See [BOOK_TRANSFER.md](BOOK_TRANSFER.md).
 
 `SystemService` owns firmware identity, reset reason, chip capabilities, memory
 diagnostics, flash size, and the hardware MAC address. Device Info and

@@ -5,8 +5,9 @@ idf_component_register(
          "zectrix_scene_manager.cc"
          "zectrix_gallery_controller.cc"
          "zectrix_reader_controller.cc"
+         "zectrix_book_transfer_controller.cc"
     INCLUDE_DIRS "include"
-    REQUIRES zectrix_reader
+    REQUIRES zectrix_reader zectrix_connectivity
 )
 
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_17)

@@ -17,14 +17,15 @@ each menu.
 The home menu contains:
 
 1. **BOOK READER** — TXT/EPUB library, paginated reading, font size and saved progress.
-2. **CLOCK** — calendar time, with system time or explicit uptime fallback when RTC fails.
-3. **SETTINGS** — persist the automatic showcase preference.
-4. **CONNECTIVITY** — phone pairing, resource fetch and trusted-phone management.
-5. **AUTO SHOWCASE** — unattended rotation of all three display modes.
-6. **DISPLAY GALLERY** — individual display previews and measurements.
-7. **HARDWARE TESTS** — run all tests or choose one test.
-8. **DEVICE INFO** — board information and live power measurements.
-9. **ABOUT & LICENSE** — project ownership and license.
+2. **SEND BOOKS** — local Wi-Fi upload, download and book management.
+3. **CLOCK** — calendar time, with system time or explicit uptime fallback when RTC fails.
+4. **SETTINGS** — persist the automatic showcase preference.
+5. **CONNECTIVITY** — phone pairing, resource fetch and trusted-phone management.
+6. **AUTO SHOWCASE** — unattended rotation of all three display modes.
+7. **DISPLAY GALLERY** — individual display previews and measurements.
+8. **HARDWARE TESTS** — run all tests or choose one test.
+9. **DEVICE INFO** — board information and live power measurements.
+10. **ABOUT & LICENSE** — project ownership and license.
 
 Returning home restores the previous selection. Auto Showcase is off by
 default for new installations; valid existing preferences are retained. If
@@ -38,13 +39,21 @@ menu; at a root screen it returns home. Menu selection survives push/pop.
 Run All returns to its menu after three previews. The rotation and footprint
 animation use idle deadlines rather than separate blocking input loops.
 
-The Launcher scrolls its eight visible rows to reach the ninth item. Reader
+The Launcher scrolls its eight visible rows to reach all ten items. Reader
 uses Library -> Reading -> Options. UP/DOWN turn pages in Reading; OK opens
 font/resume/restart/save options. Long OK returns one scene, and loading remains
 cancellable. Font changes preserve the current source anchor. A successful
 display saves progress to NVS and the C1 outbox. Phone progress is offered for
 explicit application, never used to move an active page automatically.
 See [READER.md](READER.md) for supported books and content installation.
+
+Send Books uses Mode -> Session. UP/DOWN selects a temporary hotspot or a saved
+home network. OK starts the session, which shows SSID, access code, HTTP address
+and upload progress. OK during transfer finishes it. Completion OK opens the
+reader. Hold OK stops and returns to Mode, then home. HTTP and radio work run
+under Connectivity ownership. Progress renders are limited to one per second
+and 10-percent steps or saved-book count changes. See
+[BOOK_TRANSFER.md](BOOK_TRANSFER.md) for browser controls and timeouts.
 
 ## Persistent status bar
 
@@ -57,7 +66,7 @@ the next 20 pixels; content and footer stay below the status viewport.
 | Battery and percentage | Existing calibrated, averaged ADC power snapshot, sampled every five seconds. An unavailable/absent battery shows `--%`. |
 | Lightning / `+` / `!` | Charging, external power without charging, or charger fault respectively. |
 | Bluetooth symbol | `OFF`, `ON` (idle/advertising), `...` (pairing/securing), `LINK` (transport connected), or `ERR`. LINK does not assert peer authorization or sync convergence. |
-| Wi-Fi symbol | `OFF` until station startup, `...` while connecting/stopping, `LINK` after IP acquisition, or `ERR` if radio shutdown fails. Stored credentials alone do not indicate an active radio. |
+| Wi-Fi symbol | `OFF` until station/hotspot startup, `...` while connecting/stopping, `LINK` after IP acquisition or while the book server is available, or `ERR` if radio shutdown fails. Stored credentials alone do not indicate an active radio. |
 
 One owner loop samples state between application callbacks with a 250 ms input
 wait. Only visible changes invalidate the status viewport; an application
@@ -135,7 +144,8 @@ L1.1 uses independently implemented adaptations of these upstream designs:
   handles cover placement and sleep composition, and
   [CrossPointWebServer](https://github.com/crosspoint-reader/crosspoint-reader/blob/develop/src/network/CrossPointWebServer.cpp)
   streams upload chunks through a bounded write buffer and detects short writes.
-  These inform the separate L1.4 ambient-cover and L1.3 LAN-ingestion tasks.
+  L1.3 applies the web-transfer lifecycle through Connectivity and Storage.
+  The separate ambient-cover task remains L1.4.
 
 Local verification includes scene-stack bounds and callback order, gallery
 back/rotation/error paths, invalid RTC/system/uptime behavior, clipped canvas

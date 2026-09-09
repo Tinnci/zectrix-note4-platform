@@ -6,6 +6,7 @@
 
 #include "zectrix_resource_client.h"
 #include "zectrix_sync_engine.h"
+#include "zectrix_book_transfer.h"
 
 namespace zectrix::nfc { class NfcService; }
 namespace zectrix::storage { class StorageService; }
@@ -54,6 +55,7 @@ struct ConnectivitySnapshot {
     std::size_t pending_durable_states = 0;
     bool wifi_credentials_available = false;
     bool resource_busy = false;
+    bool book_transfer_active = false;
     WifiBackendState wifi_state = WifiBackendState::kStopped;
     companion::ConnectivityDecision resource_decision{};
 };
@@ -87,6 +89,10 @@ public:
     ConnectivityResult RequestResource(
         const companion::ResourceRequestMessage& request);
     bool TakeResourceResponse(ResourceResponse* response);
+    // A foreground local action starts a temporary authenticated book session.
+    ConnectivityResult StartBookTransfer(BookTransferMode mode);
+    ConnectivityResult StopBookTransfer();
+    BookTransferSnapshot BookTransferStatus() const;
     companion::SyncStatus PutDurableState(uint16_t key, uint32_t revision,
                                           const uint8_t* value, std::size_t size);
     // Copies the last durably accepted value; callers apply revisioned state

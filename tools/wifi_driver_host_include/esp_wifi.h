@@ -6,8 +6,8 @@
 constexpr esp_err_t ESP_ERR_WIFI_NOT_STARTED = 0x3002;
 enum { WIFI_REASON_AUTH_FAIL, WIFI_REASON_AUTH_EXPIRE, WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT,
        WIFI_REASON_HANDSHAKE_TIMEOUT, WIFI_REASON_802_1X_AUTH_FAILED };
-enum { WIFI_STORAGE_RAM, WIFI_MODE_STA, WIFI_ALL_CHANNEL_SCAN, WIFI_AUTH_OPEN,
-       WIFI_AUTH_WPA2_PSK, WPA3_SAE_PWE_BOTH, WIFI_IF_STA, WIFI_SCAN_TYPE_ACTIVE };
+enum { WIFI_STORAGE_RAM, WIFI_MODE_STA, WIFI_MODE_AP, WIFI_ALL_CHANNEL_SCAN, WIFI_AUTH_OPEN,
+       WIFI_AUTH_WPA2_PSK, WPA3_SAE_PWE_BOTH, WIFI_IF_STA, WIFI_IF_AP, WIFI_SCAN_TYPE_ACTIVE };
 struct wifi_event_sta_disconnected_t { uint8_t reason; };
 struct wifi_init_config_t {};
 #define WIFI_INIT_CONFIG_DEFAULT() wifi_init_config_t{}
@@ -19,6 +19,10 @@ struct wifi_config_t {
         struct { bool capable; } pmf_cfg;
         int sae_pwe_h2e;
     } sta;
+    struct {
+        uint8_t ssid[32], password[64], ssid_len, channel, max_connection;
+        int authmode;
+    } ap;
 };
 struct wifi_scan_config_t { bool show_hidden; int scan_type; uint8_t* ssid; };
 struct wifi_ap_record_t { uint8_t ssid[33]; int8_t rssi; };

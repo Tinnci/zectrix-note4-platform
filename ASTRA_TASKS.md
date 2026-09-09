@@ -91,10 +91,13 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Integrated a Storage-owned SPIFFS library with Launcher and Library -> Reading -> Options scenes, cancellable TXT/EPUB parsing, CJK pagination and 16px/24px fonts. Content installation is explicit; normal firmware flash preserves books.
   - Persisted eight recent bookmarks after successful display, including display recovery, and connected the latest reading position to C1 durable sync and Android's explicit resume action.
   - Verified all 28 Host targets with reader ASan/UBSan checks, 28 Android JVM tests and the debug build, the ESP32-S3 firmware build and connected-device flash/boot smoke. A 2 MiB TXT tail resume reads 63 source bytes. Physical reading controls and BLE progress exchange remain hardware qualification work.
-- [ ] **L1.3: 局域网 Web 传书与内容管理后台 (Direct Wi-Fi Content Ingestion)**
+- [x] **L1.3: 局域网 Web 传书与内容管理后台 (Direct Wi-Fi Content Ingestion)**
   - Implement lightweight embedded HTTP file transfer server using existing `zectrix_connectivity` Wi-Fi AP/STA mode.
   - Allow browser-based drag-and-drop file upload to SPI Flash / LittleFS storage.
   - Ensure Wi-Fi radio automatically powers down on completion to preserve battery.
+  - Added SEND BOOKS with Mode -> Session scenes, WPA2 hotspot or saved-network access, and a self-contained browser library for drag-and-drop TXT/EPUB upload, download and deletion.
+  - Reused the Storage-owned SPIFFS library with exclusive management, 1 KiB streaming writes, staged installation, duplicate-name protection and interrupted-upload cleanup. Sessions use screen access codes and stop on completion, cancellation, idle timeout or power/policy changes.
+  - Verified all 29 Host targets, transfer ASan/UBSan checks, real HTTP and desktop/mobile browser flows, rendered device UI, ShellCheck, the ESP32-S3 build and connected-device flash/boot smoke. AP/STA transfer, physical controls, radio current and BLE/Wi-Fi coexistence remain hardware qualification work.
 - [ ] **L1.4: 桌面待机画报与锁屏仪表盘 (Ambient Sleep Cover & Dashboard)**
   - Render ambient sleep screen cover (daily calendar, reading progress, memo/quote art) before deep sleep.
   - Coordinate with Q1 peripheral power-down and pin hold states for microamp-level standby consumption.

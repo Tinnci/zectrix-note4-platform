@@ -17,13 +17,13 @@ int main() {
     assert(result.decision == LauncherDecision::RenderFast);
     assert(result.selected == 1);
     result = launcher.Handle({Button::Ok, Action::Click});
-    assert(result.decision == LauncherDecision::OpenClock);
+    assert(result.decision == LauncherDecision::OpenBookTransfer);
     assert(result.selected == 1);
 
     result = launcher.Handle({Button::Down, Action::Click});
     assert(result.selected == 2);
     result = launcher.Handle({Button::Ok, Action::Click});
-    assert(result.decision == LauncherDecision::OpenSettings);
+    assert(result.decision == LauncherDecision::OpenClock);
 
     result = launcher.Handle({Button::Up, Action::Click});
     assert(result.selected == 1);
@@ -34,6 +34,7 @@ int main() {
 
     const LauncherDecision destinations[] = {
         LauncherDecision::OpenReader,
+        LauncherDecision::OpenBookTransfer,
         LauncherDecision::OpenClock, LauncherDecision::OpenSettings,
         LauncherDecision::OpenConnectivity, LauncherDecision::OpenShowcase,
         LauncherDecision::OpenGallery, LauncherDecision::OpenDiagnostics,

@@ -163,4 +163,14 @@ esp_err_t StorageService::OpenBook(const char* name, BookFile* file) {
     return result == ESP_OK ? impl_->books->Open(name, file) : result;
 }
 
+esp_err_t StorageService::BeginBookManagement(BookStorage** books) {
+    if (!books) return ESP_ERR_INVALID_ARG;
+    *books = nullptr;
+    const auto result = InitializeBooks();
+    if (result != ESP_OK) return result;
+    const auto acquired = impl_->books->BeginManagement();
+    if (acquired == ESP_OK) *books = impl_->books.get();
+    return acquired;
+}
+
 }  // namespace zectrix::storage

@@ -127,6 +127,7 @@ struct EspWifiBackendDriver::Impl : WifiHttpStream {
     bool wifi_started = false;
     bool connect_requested = false;
     bool scan_mode = false;
+    bool ap_mode = false;
     bool scan_requested = false;
     bool http_started = false;
     std::array<char, kMaximumWifiSsidBytes + 1> scan_target{};
@@ -147,6 +148,11 @@ struct EspWifiBackendDriver::Impl : WifiHttpStream {
         if (self->stopping.load(std::memory_order_acquire)) return;
         if (base == WIFI_EVENT) {
             switch (id) {
+                case WIFI_EVENT_AP_START:
+                    self->station_ready.store(true); break;
+                case WIFI_EVENT_AP_STOP:
+                    self->station_ready.store(false);
+                    self->link_error.store(WifiDriverResult::kUnavailable); break;
                 case WIFI_EVENT_STA_START:
                     self->station_ready.store(true); break;
                 case WIFI_EVENT_STA_CONNECTED:
@@ -175,7 +181,7 @@ struct EspWifiBackendDriver::Impl : WifiHttpStream {
         }
     }
 
-    WifiDriverResult Start(const WifiCredentials* credentials) {
+    WifiDriverResult Start(const WifiCredentials* credentials, bool access_point = false) {
         bool expected = false;
         if (claimed || !radio_claimed.compare_exchange_strong(expected, true)) {
             return WifiDriverResult::kUnavailable;
@@ -188,18 +194,21 @@ struct EspWifiBackendDriver::Impl : WifiHttpStream {
         scan_done.store(false);
         link_error.store(WifiDriverResult::kPending);
         scan_mode = credentials == nullptr;
+        ap_mode = access_point;
         esp_err_t error = esp_netif_init();
         if (error == ESP_OK || error == ESP_ERR_INVALID_STATE) {
             error = esp_event_loop_create_default();
         }
         if (error == ESP_ERR_INVALID_STATE) error = ESP_OK;
         if (error == ESP_OK) {
-            const esp_netif_config_t config = ESP_NETIF_DEFAULT_WIFI_STA();
+            const esp_netif_config_t ap_config = ESP_NETIF_DEFAULT_WIFI_AP();
+            const esp_netif_config_t sta_config = ESP_NETIF_DEFAULT_WIFI_STA();
+            const auto& config = ap_mode ? ap_config : sta_config;
             netif = esp_netif_new(&config);
             error = netif == nullptr ? ESP_ERR_NO_MEM : ESP_OK;
         }
-        if (error == ESP_OK) error = esp_netif_attach_wifi_station(netif);
-        if (error == ESP_OK) error = esp_wifi_set_default_wifi_sta_handlers();
+        if (error == ESP_OK) error = ap_mode ? esp_netif_attach_wifi_ap(netif) : esp_netif_attach_wifi_station(netif);
+        if (error == ESP_OK) error = ap_mode ? esp_wifi_set_default_wifi_ap_handlers() : esp_wifi_set_default_wifi_sta_handlers();
         if (error == ESP_OK) {
             wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
             error = esp_wifi_init(&config);
@@ -214,19 +223,28 @@ struct EspWifiBackendDriver::Impl : WifiHttpStream {
                 IP_EVENT, ESP_EVENT_ANY_ID, &OnEvent, this, &ip_handler);
         }
         if (error == ESP_OK) error = esp_wifi_set_storage(WIFI_STORAGE_RAM);
-        if (error == ESP_OK) error = esp_wifi_set_mode(WIFI_MODE_STA);
+        if (error == ESP_OK) error = esp_wifi_set_mode(ap_mode ? WIFI_MODE_AP : WIFI_MODE_STA);
         if (error == ESP_OK && credentials != nullptr) {
             wifi_config_t config{};
-            std::memcpy(config.sta.ssid, credentials->ssid.data(),
-                        std::strlen(credentials->ssid.data()));
-            std::memcpy(config.sta.password, credentials->passphrase.data(),
-                        std::strlen(credentials->passphrase.data()));
-            config.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
-            config.sta.threshold.authmode = credentials->passphrase[0] == '\0'
-                ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;
-            config.sta.pmf_cfg.capable = true;
-            config.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
-            error = esp_wifi_set_config(WIFI_IF_STA, &config);
+            if (ap_mode) {
+                config.ap.ssid_len = std::strlen(credentials->ssid.data());
+                std::memcpy(config.ap.ssid, credentials->ssid.data(), config.ap.ssid_len);
+                std::memcpy(config.ap.password, credentials->passphrase.data(), std::strlen(credentials->passphrase.data()));
+                config.ap.channel = 1;
+                config.ap.max_connection = 2;
+                config.ap.authmode = WIFI_AUTH_WPA2_PSK;
+            } else {
+                std::memcpy(config.sta.ssid, credentials->ssid.data(),
+                            std::strlen(credentials->ssid.data()));
+                std::memcpy(config.sta.password, credentials->passphrase.data(),
+                            std::strlen(credentials->passphrase.data()));
+                config.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+                config.sta.threshold.authmode = credentials->passphrase[0] == '\0'
+                    ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;
+                config.sta.pmf_cfg.capable = true;
+                config.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
+            }
+            error = esp_wifi_set_config(ap_mode ? WIFI_IF_AP : WIFI_IF_STA, &config);
             volatile uint8_t* bytes = reinterpret_cast<volatile uint8_t*>(&config);
             for (std::size_t index = 0; index < sizeof(config); ++index) bytes[index] = 0;
         }
@@ -317,6 +335,26 @@ WifiDriverResult EspWifiBackendDriver::StartStation(
         return WifiDriverResult::kUnavailable;
     }
     return impl_->Start(&credentials);
+}
+
+WifiDriverResult EspWifiBackendDriver::StartAccessPoint(const WifiCredentials& credentials) {
+    if (!impl_ || !ValidateWifiCredentials(credentials) ||
+        std::strlen(credentials.passphrase.data()) < 8) return WifiDriverResult::kUnavailable;
+    return impl_->Start(&credentials, true);
+}
+
+WifiDriverResult EspWifiBackendDriver::PollAccessPoint() {
+    if (!impl_ || !impl_->ap_mode) return WifiDriverResult::kUnavailable;
+    const auto result = impl_->LinkResult();
+    if (result != WifiDriverResult::kPending) return result;
+    return impl_->station_ready.load() ? WifiDriverResult::kReady : WifiDriverResult::kPending;
+}
+
+bool EspWifiBackendDriver::LocalAddress(char* output, std::size_t capacity) const {
+    if (!impl_ || !impl_->netif || !output || capacity < 16) return false;
+    esp_netif_ip_info_t info{};
+    if (esp_netif_get_ip_info(impl_->netif, &info) != ESP_OK || !info.ip.addr) return false;
+    return esp_ip4addr_ntoa(&info.ip, output, capacity) != nullptr;
 }
 
 WifiDriverResult EspWifiBackendDriver::PollAssociation() {

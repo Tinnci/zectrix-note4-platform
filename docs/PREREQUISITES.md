@@ -9,11 +9,13 @@ The supported development hosts are Linux and macOS. Required commands are:
 
 ```text
 gcc git make flex bison gperf python3 cmake ninja ccache
-github-cli jq rg curl uv
+github-cli jq rg curl uv bun
 ```
 
 The host CLI simulator needs a C++17 compiler. Its integration tests use Python
 3 through `uv` and require no third-party Python packages.
+The book-transfer integration tests use Bun 1.3.14 and local TCP sockets.
+They require no JavaScript package installation or connected device.
 
 Install ESP-IDF v5.5.2 with the official installer and the `esp32s3` target.
 The qualified CMake version is 3.30.5. Install JDK 21 and Android SDK platform
@@ -66,6 +68,7 @@ https://api.github.com
 https://components.espressif.com
 https://dl.google.com/android/repository/repository2-1.xml
 https://services.gradle.org
+https://bun.sh
 ```
 
 GitHub API `EOF` failures are transport failures. Retry the request and record
