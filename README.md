@@ -61,6 +61,11 @@ Development follows dependency-aware stage gates defined in
 | M5 | In progress | A/B partition validation, streamed firmware verification and boot confirmation watchdog implemented; update delivery and hardware qualification remain open |
 | R1 | In progress | Minimal dirty-region updates, unchanged-frame suppression and adaptive full-refresh policy implemented; hardware qualification remains open |
 | L1 | Implemented | Status bar, scene navigation, streamed TXT/EPUB reader, local Wi-Fi book management and ambient sleep covers; physical sleep/wake and standby-current measurements remain open |
+| S1 | In progress | Typed service registry and lifecycle adapters integrated; Kconfig selection and conditional application composition follow in S1.2/S1.3 |
+
+The [service registry](docs/SERVICE_REGISTRY.md) provides optional typed lookup,
+ordered startup and failure cleanup with 16 fixed slots and no registry heap
+allocation. Existing Platform accessors use the same service instances.
 
 > [!CAUTION]
 > This project targets the black-and-white ZECTRIX NOTE4 hardware. It is not

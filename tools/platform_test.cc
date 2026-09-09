@@ -1,6 +1,7 @@
 #include "zectrix_platform.h"
 #include "zectrix_board.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdlib>
 #include <new>
@@ -35,6 +36,26 @@ bool boot_watchdog_armed = false;
 bool pending_boot = false;
 bool boot_confirmed = false;
 unsigned boot_probe_count = 0;
+const zectrix::ServiceRegistry* inspected_registry = nullptr;
+
+template <typename Interface>
+void AssertWithdrawn() {
+    if (inspected_registry) assert(!inspected_registry->Get<Interface>());
+}
+
+void AssertNoServices(const zectrix::Platform& platform) {
+    const auto& registry = platform.Services();
+    assert(!registry.Get<zectrix::display::DisplayService>());
+    assert(!registry.Get<zectrix::input::InputService>());
+    assert(!registry.Get<zectrix::power::PowerService>());
+    assert(!registry.Get<zectrix::time::TimeService>());
+    assert(!registry.Get<zectrix::storage::StorageService>());
+    assert(!registry.Get<zectrix::system::SystemService>());
+    assert(!registry.Get<zectrix::connectivity::ConnectivityService>());
+    assert(!registry.Get<zectrix::update::UpdateService>());
+    assert(!registry.Get<zectrix::cli::CliUsbService>());
+    assert(!registry.Get<ZectrixSelfTest>());
+}
 esp_err_t Result(const char* name) {
     events.emplace_back(std::string("create:") + name);
     return fail_at == name ? ESP_FAIL : ESP_OK;
@@ -44,15 +65,16 @@ esp_err_t Result(const char* name) {
 void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
     ++nothrow_allocation_count;
     if (nothrow_allocation_count == fail_nothrow_allocation) return nullptr;
-    return std::malloc(size);
+    try { return ::operator new(size); } catch (const std::bad_alloc&) { return nullptr; }
 }
 
 void operator delete(void* pointer, const std::nothrow_t&) noexcept {
-    std::free(pointer);
+    ::operator delete(pointer);
 }
 
 esp_err_t ZectrixBoard::Init() {
     assert(boot_probe_count != 0);
+    if (inspected_registry) assert(inspected_registry->Get<zectrix::update::UpdateService>());
     events.emplace_back("init:board");
     return init_result;
 }
@@ -91,7 +113,7 @@ esp_err_t InputService::Attach(ZectrixBoard& board, InputService** output) {
     if (result == ESP_OK) *output = new InputService(board);
     return result;
 }
-InputService::~InputService() { events.emplace_back("delete:input"); }
+InputService::~InputService() { AssertWithdrawn<InputService>(); events.emplace_back("delete:input"); }
 void InputService::SetWaitHook(WaitHook hook, void* context) {
     wait_hook_ = hook;
     wait_context_ = context;
@@ -104,8 +126,9 @@ esp_err_t PowerService::Attach(ZectrixBoard& board, PowerService** output) {
     if (result == ESP_OK) *output = new PowerService(board);
     return result;
 }
-PowerService::~PowerService() { events.emplace_back("delete:power"); }
+PowerService::~PowerService() { AssertWithdrawn<PowerService>(); events.emplace_back("delete:power"); }
 [[noreturn]] void PowerService::Shutdown() {
+    AssertWithdrawn<PowerService>();
     events.emplace_back("shutdown:power");
     throw SleepEntered{};
 }
@@ -116,7 +139,7 @@ esp_err_t TimeService::Attach(ZectrixBoard& board, TimeService** output) {
     if (result == ESP_OK) *output = new TimeService(board);
     return result;
 }
-TimeService::~TimeService() { events.emplace_back("delete:time"); }
+TimeService::~TimeService() { AssertWithdrawn<TimeService>(); events.emplace_back("delete:time"); }
 int64_t TimeService::MonotonicMicroseconds() const { ++inspections; return 1234000; }
 }
 namespace zectrix::storage {
@@ -128,6 +151,7 @@ esp_err_t StorageService::Create(StorageService** output) {
 }
 esp_err_t StorageService::Initialize() { return Result("storage-init"); }
 StorageService::~StorageService() {
+    AssertWithdrawn<StorageService>();
     delete impl_;
     events.emplace_back("delete:storage");
 }
@@ -138,7 +162,7 @@ esp_err_t SystemService::Attach(ZectrixBoard& board, SystemService** output) {
     if (result == ESP_OK) *output = new SystemService(board);
     return result;
 }
-SystemService::~SystemService() { events.emplace_back("delete:system"); }
+SystemService::~SystemService() { AssertWithdrawn<SystemService>(); events.emplace_back("delete:system"); }
 esp_err_t SystemService::ReadSnapshot(SystemSnapshot* result) const {
     ++inspections;
     *result = {};
@@ -161,7 +185,7 @@ esp_err_t DisplayService::Create(DisplayService** output) {
     if (result == ESP_OK) *output = new DisplayService(nullptr);
     return result;
 }
-DisplayService::~DisplayService() { events.emplace_back("delete:display"); }
+DisplayService::~DisplayService() { AssertWithdrawn<DisplayService>(); events.emplace_back("delete:display"); }
 esp_err_t DisplayService::ReadInspection(DisplayInspection* result) const {
     ++inspections;
     *result = {};
@@ -194,6 +218,7 @@ ConnectivityResult ConnectivityService::Initialize() {
                : ConnectivityResult::kOk;
 }
 ConnectivityService::~ConnectivityService() {
+    AssertWithdrawn<ConnectivityService>();
     delete impl_;
     events.emplace_back("delete:connectivity");
 }
@@ -201,7 +226,7 @@ ConnectivityService::~ConnectivityService() {
 
 namespace zectrix::cli {
 CliUsbService::CliUsbService() = default;
-CliUsbService::~CliUsbService() { events.emplace_back("delete:cli"); }
+CliUsbService::~CliUsbService() { AssertWithdrawn<CliUsbService>(); events.emplace_back("delete:cli"); }
 esp_err_t CliUsbService::Start(CliExecutor* executor) {
     assert(executor != nullptr);
     cli_executor = executor;
@@ -216,7 +241,9 @@ int main() {
     host_current_task = reinterpret_cast<void*>(1);
     {
         zectrix::Platform platform;
+        inspected_registry = &platform.Services();
         assert(!platform.IsInitialized());
+        AssertNoServices(platform);
         assert(platform.Initialize() == ESP_OK);
         assert(platform.IsInitialized());
         assert(platform.Initialize() == ESP_OK);
@@ -228,6 +255,20 @@ int main() {
         (void)platform.System();
         (void)platform.Connectivity();
         (void)platform.Update();
+        const auto& registry = platform.Services();
+        assert(&registry == inspected_registry && registry.size() == 10);
+        // These lookups compile in another translation unit than registration.
+        assert(registry.Get<zectrix::display::DisplayService>() == &platform.Display());
+        assert(registry.Get<zectrix::input::InputService>() == &platform.Input());
+        assert(registry.Get<zectrix::power::PowerService>() == &platform.Power());
+        assert(registry.Get<zectrix::time::TimeService>() == &platform.Time());
+        assert(registry.Get<zectrix::storage::StorageService>() == &platform.Storage());
+        assert(registry.Get<zectrix::system::SystemService>() == &platform.System());
+        assert(registry.Get<zectrix::connectivity::ConnectivityService>() == &platform.Connectivity());
+        assert(registry.Get<zectrix::update::UpdateService>() == &platform.Update());
+        assert(registry.Get<ZectrixSelfTest>() == &platform.Diagnostics());
+        assert(registry.Get<zectrix::cli::CliUsbService>());
+        assert(!registry.Get<zectrix::nfc::NfcService>());
         assert(!boot_watchdog_armed);
         assert((events == std::vector<std::string>{
             "init:board", "create:input", "create:power", "create:time",
@@ -251,6 +292,7 @@ int main() {
         output.Clear();
         assert(cli_executor->Execute(invocation, &output) == zectrix::cli::ExecuteStatus::kUnavailable);
     }
+    inspected_registry = nullptr;
     assert((events == std::vector<std::string>{
         "init:board", "create:input", "create:power", "create:time",
         "create:storage", "create:storage-init", "create:system",
@@ -264,18 +306,21 @@ int main() {
         ZectrixNfc nfc;
         ZectrixBoard::nfc_device = &nfc;
         zectrix::Platform platform;
+        inspected_registry = &platform.Services();
         assert(platform.Initialize() == ESP_OK);
         events.clear();
         try {
             platform.Shutdown();
         } catch (const SleepEntered&) {}
         assert(!platform.IsInitialized());
+        AssertNoServices(platform);
         assert((events == std::vector<std::string>{
             "delete:cli", "delete:connectivity", "delete:nfc", "delete:display",
             "delete:system", "delete:storage", "delete:time", "shutdown:power"}));
         assert(platform.Initialize() == ESP_ERR_INVALID_STATE);
         ZectrixBoard::nfc_device = nullptr;
     }
+    inspected_registry = nullptr;
     assert(events[events.size() - 2] == "delete:power" && events.back() == "delete:input");
 
     events.clear();
@@ -313,6 +358,8 @@ int main() {
     zectrix::Platform failed;
     assert(failed.Initialize() == ESP_FAIL);
     assert(!failed.IsInitialized());
+    AssertNoServices(failed);
+    assert(failed.Services().size() == 0);
     assert(failed.Initialize() == ESP_ERR_INVALID_STATE);
     assert((events == std::vector<std::string>{
         "init:board", "create:input", "create:power", "create:time",
@@ -327,6 +374,7 @@ int main() {
     zectrix::Platform no_impl_memory;
     assert(no_impl_memory.Initialize() == ESP_ERR_NO_MEM);
     assert(!no_impl_memory.IsInitialized());
+    AssertNoServices(no_impl_memory);
     assert(events.empty());
     fail_nothrow_allocation = 0;
     assert(no_impl_memory.Initialize() == ESP_OK);
@@ -337,6 +385,7 @@ int main() {
     zectrix::Platform no_diagnostics_memory;
     assert(no_diagnostics_memory.Initialize() == ESP_ERR_NO_MEM);
     assert(!no_diagnostics_memory.IsInitialized());
+    AssertNoServices(no_diagnostics_memory);
     assert((events == std::vector<std::string>{
         "init:board", "create:input", "create:power", "create:time",
         "create:storage", "create:storage-init", "create:system",
@@ -349,6 +398,7 @@ int main() {
     zectrix::Platform failed_storage_init;
     assert(failed_storage_init.Initialize() == ESP_FAIL);
     assert(!failed_storage_init.IsInitialized());
+    AssertNoServices(failed_storage_init);
     assert((events == std::vector<std::string>{
         "init:board", "create:input", "create:power", "create:time",
         "create:storage", "create:storage-init", "delete:storage",
@@ -359,6 +409,7 @@ int main() {
     zectrix::Platform failed_cli;
     assert(failed_cli.Initialize() == ESP_FAIL);
     assert(!failed_cli.IsInitialized());
+    AssertNoServices(failed_cli);
     assert((events == std::vector<std::string>{
         "init:board", "create:input", "create:power", "create:time",
         "create:storage", "create:storage-init", "create:system",
@@ -366,4 +417,35 @@ int main() {
         "create:cli", "delete:cli", "delete:connectivity",
         "delete:display", "delete:system", "delete:storage", "delete:time",
         "delete:power", "delete:input"}));
+
+    // Exercise every adapter failure with NFC already attached by the board.
+    ZectrixNfc nfc;
+    ZectrixBoard::nfc_device = &nfc;
+    for (const char* failure : {"input", "power", "time", "storage", "storage-init",
+                               "system", "display", "connectivity", "connectivity-init", "cli"}) {
+        events.clear();
+        fail_at = failure;
+        zectrix::Platform partial;
+        inspected_registry = &partial.Services();
+        assert(partial.Initialize() != ESP_OK);
+        AssertNoServices(partial);
+        assert(partial.Services().size() == 0);
+        assert(partial.Initialize() == ESP_ERR_INVALID_STATE);
+        assert(std::count(events.begin(), events.end(), "create:nfc") == 1);
+        assert(std::count(events.begin(), events.end(), "delete:nfc") == 1);
+    }
+    fail_at.clear();
+    for (int allocation : {2, 3, 4}) {
+        events.clear();
+        nothrow_allocation_count = 0;
+        fail_nothrow_allocation = allocation;
+        zectrix::Platform partial;
+        inspected_registry = &partial.Services();
+        assert(partial.Initialize() == ESP_ERR_NO_MEM);
+        AssertNoServices(partial);
+        assert(std::count(events.begin(), events.end(), "delete:nfc") == 1);
+        fail_nothrow_allocation = 0;
+    }
+    inspected_registry = nullptr;
+    ZectrixBoard::nfc_device = nullptr;
 }

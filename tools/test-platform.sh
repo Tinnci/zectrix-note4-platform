@@ -3,7 +3,11 @@ set -euo pipefail
 root_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 test_binary=$(mktemp)
 trap 'rm -f "$test_binary"' EXIT
-c++ -std=c++17 -Wall -Wextra -Werror -pthread \
+flags=(-Wall -Wextra -Werror -pthread)
+if [ "${ZECTRIX_PLATFORM_SANITIZE:-0}" = 1 ]; then
+    flags+=(-g "-fsanitize=address,undefined" -fno-omit-frame-pointer)
+fi
+"${CXX:-c++}" -std=c++17 "${flags[@]}" \
   -I"$root_dir/tools/host_include" \
   -I"$root_dir/components/zectrix_app/include" \
   -I"$root_dir/components/zectrix_platform/include" \
@@ -20,6 +24,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -pthread \
   -I"$root_dir/components/zectrix_time/include" \
   -I"$root_dir/components/zectrix_update/include" \
   "$root_dir/components/zectrix_platform/zectrix_platform.cc" \
+  "$root_dir/components/zectrix_platform/zectrix_service_registry.cc" \
   "$root_dir/components/zectrix_platform/zectrix_platform_diagnostics.cc" \
   "$root_dir/components/zectrix_cli/zectrix_cli_core.cc" \
   "$root_dir/components/zectrix_cli/zectrix_cli_control.cc" \

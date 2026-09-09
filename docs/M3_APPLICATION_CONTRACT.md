@@ -47,6 +47,12 @@ power transitions. An implementation can use a task, queue, notification,
 mutex, or no separate RTOS object after measurement justifies that mechanism.
 Task topology must not define the product dependency graph.
 
+S1.1 adds an internal Platform service registry alongside the application
+registry. `Services().Get<Interface>()` returns a borrowed interface or null;
+it cannot navigate or create an application. Platform owns service lifecycle,
+and foreground applications exit before service stop. SDK v1 is unchanged.
+See [SERVICE_REGISTRY.md](SERVICE_REGISTRY.md).
+
 M3 builds an application runtime and firmware framework on ESP-IDF and IDF
 FreeRTOS. It does not build a new operating system. M4 can stabilize the
 application-facing source API after real applications exercise these bounds.

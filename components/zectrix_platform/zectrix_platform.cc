@@ -21,6 +21,33 @@
 
 namespace zectrix {
 
+namespace {
+// Keep legacy factories and hardware ownership in the composition root. The
+// bindings are members of Impl, so lifecycle adaptation adds no allocations.
+template <typename Interface, typename Owner>
+class ServiceBinding final : public ServiceProvider<Interface> {
+public:
+    using Operation = esp_err_t (*)(Owner&);
+    ServiceBinding(Owner& owner, Interface*& instance, Operation init,
+                   Operation start = nullptr, Operation stop = nullptr)
+        : owner_(owner), instance_(instance), init_(init), start_(start), stop_(stop) {}
+
+    esp_err_t Init() override { return init_ ? init_(owner_) : ESP_OK; }
+    esp_err_t Start() override { return start_ ? start_(owner_) : ESP_OK; }
+    esp_err_t Stop() override {
+        if (stop_) return stop_(owner_);
+        delete std::exchange(instance_, nullptr);
+        return ESP_OK;
+    }
+    Interface* GetInterface() override { return instance_; }
+
+private:
+    Owner& owner_;
+    Interface*& instance_;
+    Operation init_, start_, stop_;
+};
+}  // namespace
+
 struct Platform::Impl {
     update::EspUpdateBackend update_backend;
     update::UpdateService update{update_backend};
@@ -36,6 +63,103 @@ struct Platform::Impl {
     connectivity::ConnectivityService* connectivity = nullptr;
     cli::CliUsbService* cli_usb = nullptr;
     PlatformDiagnostics* maintenance = nullptr;
+
+    void StopMaintenance() {
+        if (maintenance != nullptr) maintenance->Shutdown();
+        if (cli_usb != nullptr) cli_usb->Stop();
+    }
+
+    static esp_err_t KeepForPowerTransition(Impl&) { return ESP_OK; }
+    update::UpdateService* update_facade = &update;
+    ServiceBinding<update::UpdateService, Impl> update_binding{
+        *this, update_facade, [](Impl& self) {
+            const auto result = self.update.BeginBoot();
+            if (result != update::Result::kOk) {
+                ESP_LOGE("update", "boot protection failed: %s", update::ResultName(result));
+                return ESP_FAIL;
+            }
+            const auto boot = self.update.ReadBootStatus();
+            ESP_LOGI("update", "running=0x%08lx selected=0x%08lx update=0x%08lx state=%u layout=%s",
+                     static_cast<unsigned long>(boot.running.address),
+                     static_cast<unsigned long>(boot.boot.address),
+                     static_cast<unsigned long>(boot.next_update.address),
+                     static_cast<unsigned>(boot.image_state), update::ResultName(boot.layout_result));
+            if (boot.confirmation_pending && !boot.rollback_available)
+                ESP_LOGW("update", "trial boot has no verified fallback image");
+            return ESP_OK;
+        }, nullptr, [](Impl& self) {
+            // Stopping a provider must never confirm a trial image or disarm its watchdog.
+            self.update.AbortFirmware();
+            return ESP_OK;
+        }};
+    ServiceBinding<input::InputService, Impl> input_binding{
+        *this, input, [](Impl& self) {
+            esp_err_t err = self.board.Init();
+            if (err == ESP_OK && self.board.HasNfc() && self.board.nfc() != nullptr)
+                err = nfc::NfcService::Attach(*self.board.nfc(), &self.nfc_service);
+            if (err == ESP_OK) err = input::InputService::Attach(self.board, &self.input);
+            return err;
+        }, nullptr, KeepForPowerTransition};
+    ServiceBinding<power::PowerService, Impl> power_binding{
+        *this, power, [](Impl& self) { return power::PowerService::Attach(self.board, &self.power); },
+        nullptr, KeepForPowerTransition};
+    ServiceBinding<time::TimeService, Impl> time_binding{
+        *this, time, [](Impl& self) { return time::TimeService::Attach(self.board, &self.time); }};
+    ServiceBinding<storage::StorageService, Impl> storage_binding{
+        *this, storage, [](Impl& self) { return storage::StorageService::Create(&self.storage); },
+        [](Impl& self) { return self.storage->Initialize(); }};
+    ServiceBinding<system::SystemService, Impl> system_binding{
+        *this, system, [](Impl& self) { return system::SystemService::Attach(self.board, &self.system); }};
+    ServiceBinding<display::DisplayService, Impl> display_binding{
+        *this, display, [](Impl& self) { return display::DisplayService::Create(&self.display); }};
+    ServiceBinding<ZectrixSelfTest, Impl> diagnostics_binding{
+        *this, diagnostics, [](Impl& self) {
+            self.diagnostics = new (std::nothrow) ZectrixSelfTest(
+                self.board, *self.input, *self.power, *self.time, *self.storage, *self.system);
+            return self.diagnostics ? ESP_OK : ESP_ERR_NO_MEM;
+        }};
+    ServiceBinding<connectivity::ConnectivityService, Impl> connectivity_binding{
+        *this, connectivity, [](Impl& self) {
+            const auto result = connectivity::ConnectivityService::Create(&self.connectivity);
+            if (result != connectivity::ConnectivityResult::kOk) return ESP_ERR_NO_MEM;
+            self.connectivity->SetNfcService(self.nfc_service);
+            self.connectivity->SetStorageService(self.storage);
+            return ESP_OK;
+        }, [](Impl& self) {
+            return self.connectivity->Initialize() == connectivity::ConnectivityResult::kOk ? ESP_OK : ESP_FAIL;
+        }, [](Impl& self) {
+            delete std::exchange(self.connectivity, nullptr);
+            delete std::exchange(self.nfc_service, nullptr);
+            return ESP_OK;
+        }};
+    ServiceBinding<cli::CliUsbService, Impl> maintenance_binding{
+        *this, cli_usb, [](Impl& self) {
+            self.maintenance = new (std::nothrow) PlatformDiagnostics(
+                *self.system, *self.display, *self.input, *self.time);
+            if (self.maintenance == nullptr) return ESP_ERR_NO_MEM;
+            self.cli_usb = new (std::nothrow) cli::CliUsbService;
+            return self.cli_usb ? ESP_OK : ESP_ERR_NO_MEM;
+        }, [](Impl& self) { return self.cli_usb->Start(&self.maintenance->executor()); },
+        [](Impl& self) {
+            self.StopMaintenance();
+            delete std::exchange(self.cli_usb, nullptr);
+            delete std::exchange(self.maintenance, nullptr);
+            return ESP_OK;
+        }};
+
+    esp_err_t RegisterServices(ServiceRegistry& registry) {
+        esp_err_t err = registry.Register(update_binding);
+        if (err == ESP_OK) err = registry.Register(input_binding);
+        if (err == ESP_OK) err = registry.Register(power_binding);
+        if (err == ESP_OK) err = registry.Register(time_binding);
+        if (err == ESP_OK) err = registry.Register(storage_binding);
+        if (err == ESP_OK) err = registry.Register(system_binding);
+        if (err == ESP_OK) err = registry.Register(display_binding);
+        if (err == ESP_OK) err = registry.Register(diagnostics_binding);
+        if (err == ESP_OK) err = registry.Register(connectivity_binding);
+        if (err == ESP_OK) err = registry.Register(maintenance_binding);
+        return err;
+    }
 };
 
 Platform::~Platform() { ResetServices(); }
@@ -47,64 +171,8 @@ esp_err_t Platform::Initialize() {
     if (impl_ == nullptr) return ESP_ERR_NO_MEM;
     initialization_attempted_ = true;
 
-    const auto boot_result = impl_->update.BeginBoot();
-    if (boot_result != update::Result::kOk) {
-        ESP_LOGE("update", "boot protection failed: %s", update::ResultName(boot_result));
-        ResetServices();
-        return ESP_FAIL;
-    }
-    const auto boot = impl_->update.ReadBootStatus();
-    ESP_LOGI("update", "running=0x%08lx selected=0x%08lx update=0x%08lx state=%u layout=%s",
-             static_cast<unsigned long>(boot.running.address),
-             static_cast<unsigned long>(boot.boot.address),
-             static_cast<unsigned long>(boot.next_update.address),
-             static_cast<unsigned>(boot.image_state), update::ResultName(boot.layout_result));
-    if (boot.confirmation_pending && !boot.rollback_available) {
-        ESP_LOGW("update", "trial boot has no verified fallback image");
-    }
-    esp_err_t err = impl_->board.Init();
-    if (err == ESP_OK && impl_->board.HasNfc() &&
-        impl_->board.nfc() != nullptr) {
-        err = nfc::NfcService::Attach(*impl_->board.nfc(),
-                                      &impl_->nfc_service);
-    }
-    if (err == ESP_OK) err = input::InputService::Attach(impl_->board, &impl_->input);
-    if (err == ESP_OK) err = power::PowerService::Attach(impl_->board, &impl_->power);
-    if (err == ESP_OK) err = time::TimeService::Attach(impl_->board, &impl_->time);
-    if (err == ESP_OK) err = storage::StorageService::Create(&impl_->storage);
-    if (err == ESP_OK) err = impl_->storage->Initialize();
-    if (err == ESP_OK) err = system::SystemService::Attach(impl_->board, &impl_->system);
-    if (err == ESP_OK) err = display::DisplayService::Create(&impl_->display);
-    if (err == ESP_OK) {
-        impl_->diagnostics = new (std::nothrow) ZectrixSelfTest(
-            impl_->board, *impl_->input, *impl_->power, *impl_->time,
-            *impl_->storage, *impl_->system);
-        if (impl_->diagnostics == nullptr) err = ESP_ERR_NO_MEM;
-    }
-    if (err == ESP_OK) {
-        const auto result = connectivity::ConnectivityService::Create(
-            &impl_->connectivity);
-        if (result != connectivity::ConnectivityResult::kOk) err = ESP_ERR_NO_MEM;
-    }
-    if (err == ESP_OK) {
-        impl_->connectivity->SetNfcService(impl_->nfc_service);
-        impl_->connectivity->SetStorageService(impl_->storage);
-    }
-    if (err == ESP_OK &&
-        impl_->connectivity->Initialize() !=
-            connectivity::ConnectivityResult::kOk) {
-        err = ESP_FAIL;
-    }
-    if (err == ESP_OK) {
-        impl_->maintenance = new (std::nothrow) PlatformDiagnostics(
-            *impl_->system, *impl_->display, *impl_->input, *impl_->time);
-        if (impl_->maintenance == nullptr) err = ESP_ERR_NO_MEM;
-    }
-    if (err == ESP_OK) {
-        impl_->cli_usb = new (std::nothrow) cli::CliUsbService;
-        if (impl_->cli_usb == nullptr) err = ESP_ERR_NO_MEM;
-    }
-    if (err == ESP_OK) err = impl_->cli_usb->Start(&impl_->maintenance->executor());
+    esp_err_t err = impl_->RegisterServices(services_);
+    if (err == ESP_OK) err = services_.StartAll();
     if (err != ESP_OK) {
         ResetServices();
         return err;
@@ -113,64 +181,53 @@ esp_err_t Platform::Initialize() {
     return ESP_OK;
 }
 
-#define ZECTRIX_PLATFORM_ACCESSOR(Type, Name, Member) \
+#define ZECTRIX_PLATFORM_ACCESSOR(Type, Name)         \
     Type& Platform::Name() const {                    \
-        assert(initialized_ && impl_ != nullptr && impl_->Member != nullptr); \
-        return *impl_->Member;                        \
+        auto* service = services_.Get<Type>();         \
+        assert(initialized_ && service != nullptr);   \
+        return *service;                             \
     }
 
-ZECTRIX_PLATFORM_ACCESSOR(display::DisplayService, Display, display)
-ZECTRIX_PLATFORM_ACCESSOR(input::InputService, Input, input)
-ZECTRIX_PLATFORM_ACCESSOR(power::PowerService, Power, power)
-ZECTRIX_PLATFORM_ACCESSOR(time::TimeService, Time, time)
-ZECTRIX_PLATFORM_ACCESSOR(storage::StorageService, Storage, storage)
-ZECTRIX_PLATFORM_ACCESSOR(system::SystemService, System, system)
-ZECTRIX_PLATFORM_ACCESSOR(connectivity::ConnectivityService, Connectivity,
-                          connectivity)
-ZECTRIX_PLATFORM_ACCESSOR(ZectrixSelfTest, Diagnostics, diagnostics)
+ZECTRIX_PLATFORM_ACCESSOR(display::DisplayService, Display)
+ZECTRIX_PLATFORM_ACCESSOR(input::InputService, Input)
+ZECTRIX_PLATFORM_ACCESSOR(power::PowerService, Power)
+ZECTRIX_PLATFORM_ACCESSOR(time::TimeService, Time)
+ZECTRIX_PLATFORM_ACCESSOR(storage::StorageService, Storage)
+ZECTRIX_PLATFORM_ACCESSOR(system::SystemService, System)
+ZECTRIX_PLATFORM_ACCESSOR(connectivity::ConnectivityService, Connectivity)
+ZECTRIX_PLATFORM_ACCESSOR(update::UpdateService, Update)
+ZECTRIX_PLATFORM_ACCESSOR(ZectrixSelfTest, Diagnostics)
 
 #undef ZECTRIX_PLATFORM_ACCESSOR
-
-update::UpdateService& Platform::Update() const {
-    assert(initialized_ && impl_ != nullptr);
-    return impl_->update;
-}
 
 void Platform::PollMaintenance() {
     if (impl_ != nullptr && impl_->maintenance != nullptr) impl_->maintenance->Poll();
 }
 
 void Platform::StopMaintenance() {
-    if (impl_ == nullptr) return;
-    if (impl_->maintenance != nullptr) impl_->maintenance->Shutdown();
-    if (impl_->cli_usb != nullptr) impl_->cli_usb->Stop();
+    if (impl_ != nullptr) impl_->StopMaintenance();
 }
 
 [[noreturn]] void Platform::Shutdown() {
     assert(initialized_ && impl_ != nullptr && impl_->power != nullptr);
     ReleaseServices();
     initialized_ = false;
+    // Lookup has been withdrawn, but this owner retains the final power handle.
     impl_->power->Shutdown();
 }
 
 void Platform::ReleaseServices() {
     if (impl_ == nullptr) return;
-    // Stop producers before releasing the services and board devices they use.
-    StopMaintenance();
-    delete std::exchange(impl_->cli_usb, nullptr);
-    delete std::exchange(impl_->maintenance, nullptr);
-    delete std::exchange(impl_->connectivity, nullptr);
+    const auto stopped = services_.StopAll();
+    if (stopped != ESP_OK) ESP_LOGW("platform", "service stop failed: %d", stopped);
+    // Board initialization can attach NFC before the connectivity provider runs.
     delete std::exchange(impl_->nfc_service, nullptr);
-    delete std::exchange(impl_->diagnostics, nullptr);
-    delete std::exchange(impl_->display, nullptr);
-    delete std::exchange(impl_->system, nullptr);
-    delete std::exchange(impl_->storage, nullptr);
-    delete std::exchange(impl_->time, nullptr);
 }
 
 void Platform::ResetServices() {
     if (impl_ == nullptr) return;
     ReleaseServices();
+    services_.Clear();
     delete impl_->power;
     delete impl_->input;
     delete impl_;

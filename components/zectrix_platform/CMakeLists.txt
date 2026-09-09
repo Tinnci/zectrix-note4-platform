@@ -1,5 +1,6 @@
 idf_component_register(
     SRCS "zectrix_platform.cc" "zectrix_platform_diagnostics.cc"
+         "zectrix_service_registry.cc"
     INCLUDE_DIRS "include"
     REQUIRES
         zectrix_board
