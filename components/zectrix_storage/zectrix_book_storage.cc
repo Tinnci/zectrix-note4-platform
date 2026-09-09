@@ -211,7 +211,7 @@ esp_err_t BookStorage::ReadSpace(BookSpace* space) {
     DIR* directory = opendir(root_.data());
     if (!directory) return ESP_FAIL;
     while (const auto* entry = readdir(directory)) {
-        char path[256];
+        char path[512];
         std::snprintf(path, sizeof(path), "%s/%s", root_.data(), entry->d_name);
         struct stat info{};
         if (FileInfo(path, &info) && S_ISREG(info.st_mode) && info.st_size > 0)
