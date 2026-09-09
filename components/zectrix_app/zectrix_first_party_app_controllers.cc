@@ -7,19 +7,19 @@ LauncherResult LauncherController::Handle(const sdk::InputEvent& event) {
         event.action == sdk::InputAction::LongPress) {
         return {LauncherDecision::Shutdown, selected_};
     }
-    if (event.action != sdk::InputAction::Click) {
+    if (item_count_ == 0 || event.action != sdk::InputAction::Click) {
         return {LauncherDecision::None, selected_};
     }
     if (event.button == sdk::Button::Up) {
-        selected_ = (selected_ + kItemCount - 1) % kItemCount;
+        selected_ = (selected_ + item_count_ - 1) % item_count_;
         return {LauncherDecision::RenderFast, selected_};
     }
     if (event.button == sdk::Button::Down) {
-        selected_ = (selected_ + 1) % kItemCount;
+        selected_ = (selected_ + 1) % item_count_;
         return {LauncherDecision::RenderFast, selected_};
     }
     if (event.button == sdk::Button::Ok) {
-        return {kLauncherItems[selected_].decision, selected_};
+        return {LauncherDecision::OpenSelected, selected_};
     }
     return {LauncherDecision::None, selected_};
 }

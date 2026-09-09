@@ -6,6 +6,19 @@ import java.io.File
 import kotlin.io.path.createTempDirectory
 
 class CompanionCoreTest {
+    @Test fun helloClockHintMatchesFirmwareAndRemainsOptional() {
+        assertEquals("7be204f38d010000a8b2ffff", CompanionProtocol.hex(
+            CompanionProtocol.encodeClockSample(1709179200123, -19800)))
+        val field = CompanionProtocol.decodeTlvs(CompanionProtocol.optionalClockSample(1709179200123, 28800)).single()
+        assertEquals(CompanionProtocol.HELLO_CLOCK_SAMPLE_TYPE, field.type)
+        assertFalse(field.required)
+        assertEquals(12, field.value.size)
+        assertEquals("80700000", CompanionProtocol.hex(field.value.copyOfRange(8, 12)))
+        assertTrue(CompanionProtocol.optionalClockSample(-1, 0).isEmpty())
+        assertTrue(CompanionProtocol.optionalClockSample(1709179200123, 50401).isEmpty())
+        assertTrue(CompanionProtocol.optionalClockSample(1709179200123, -50401).isEmpty())
+    }
+
     @Test
     fun fragmentsMatchTheCppGoldenVectorAndReassemble() {
         val frame = CompanionProtocol.unhex(

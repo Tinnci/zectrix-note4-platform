@@ -22,6 +22,13 @@ constexpr uint16_t kRequiredFieldBit = 0x8000;
 constexpr uint16_t kHelloEnrollmentProofType = 1;
 constexpr uint16_t kHelloCompanionIdentityType = 2;
 constexpr uint16_t kHelloAckStatusType = 3;
+constexpr uint16_t kHelloClockSampleType = 5;
+constexpr std::size_t kClockSampleValueSize = 12;
+
+struct ClockSample {
+    int64_t unix_milliseconds = 0;
+    int32_t utc_offset_seconds = 0;
+};
 
 constexpr uint8_t kHelloAckStatusOk = 0;
 constexpr uint8_t kHelloAckStatusRejected = 1;
@@ -143,6 +150,12 @@ ProtocolStatus EncodeCompanionIdentityValue(const uint8_t companion_id[16],
 ProtocolStatus DecodeCompanionIdentityValue(const uint8_t* value,
                                             std::size_t value_size,
                                             uint8_t* companion_id);
+
+// Optional Hello hint: uint64 LE Unix milliseconds, then signed int32 LE
+// seconds east of UTC. Accept it only after current-session authorization.
+ProtocolStatus EncodeClockSampleValue(const ClockSample& sample, uint8_t* output,
+                                      std::size_t capacity, std::size_t* size);
+ProtocolStatus DecodeClockSampleValue(const uint8_t* value, std::size_t size, ClockSample* sample);
 
 // Encodes/decodes the HelloAck status TLV value: status byte, flags byte,
 // and uint16 LE error reason.

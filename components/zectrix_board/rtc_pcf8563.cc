@@ -5,6 +5,8 @@
 
 #include <cstdio>
 
+#include "i2c_bus_lock.h"
+
 namespace {
 constexpr uint8_t kRegCtrl1 = 0x00;
 constexpr uint8_t kRegCtrl2 = 0x01;
@@ -19,6 +21,7 @@ constexpr uint8_t kRegAlarmMinute = 0x09;
 constexpr uint8_t kRegAlarmHour = 0x0A;
 constexpr uint8_t kRegAlarmDay = 0x0B;
 constexpr uint8_t kRegAlarmWeekday = 0x0C;
+constexpr uint8_t kRegClockOut = 0x0D;
 constexpr uint8_t kRegTimerControl = 0x0E;
 constexpr uint8_t kRegTimerValue = 0x0F;
 
@@ -29,6 +32,8 @@ constexpr uint8_t kCtrl2TimerIntEnable = 1 << 0; // TIE
 constexpr uint8_t kAlarmDisableBit = 1 << 7;
 constexpr uint8_t kTimerEnable = 1 << 7;
 constexpr uint8_t kTimerFreq1Hz = 0x02;
+constexpr uint8_t kCtrl1Stop = 1 << 5;
+constexpr uint8_t kCtrl1Test = (1 << 7) | (1 << 3);
 
 static constexpr uint8_t kCtrl2WritableMask = 0x1F; // bits[4:0]
 
@@ -64,10 +69,28 @@ bool RtcPcf8563::Init(gpio_num_t int_gpio) {
         }
     }
 
-    return ClearAlarmFlag();
+    // The firmware does not use CLKOUT. Disable it for standby; never
+    // clear STOP or overwrite the retained calendar during initialization.
+    return WriteRegChecked(kRegClockOut, 0) == ESP_OK && ClearAlarmFlag();
+}
+
+bool RtcPcf8563::StopClock() {
+    // Reserved bits and both test-mode bits must be zero in normal operation.
+    return WriteRegChecked(kRegCtrl1, kCtrl1Stop) == ESP_OK;
 }
 
 bool RtcPcf8563::SetTime(const tm& local_tm) {
+    constexpr int days[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (local_tm.tm_year < 100 || local_tm.tm_year > 199 ||
+        local_tm.tm_mon < 0 || local_tm.tm_mon > 11 ||
+        local_tm.tm_mday < 1 || local_tm.tm_mday >
+            days[local_tm.tm_mon] + (local_tm.tm_mon == 1 && local_tm.tm_year % 4 == 0) ||
+        local_tm.tm_wday < 0 || local_tm.tm_wday > 6 ||
+        local_tm.tm_hour < 0 || local_tm.tm_hour > 23 ||
+        local_tm.tm_min < 0 || local_tm.tm_min > 59 ||
+        local_tm.tm_sec < 0 || local_tm.tm_sec > 59) return false;
+    ScopedI2cBusLock bus_lock("RtcPcf8563::SetTime");
+    if (!bus_lock.locked() || !StopClock()) return false;
     const uint8_t values[] = {
         static_cast<uint8_t>(ToBcd(local_tm.tm_sec) & 0x7F),
         static_cast<uint8_t>(ToBcd(local_tm.tm_min) & 0x7F),
@@ -77,16 +100,26 @@ bool RtcPcf8563::SetTime(const tm& local_tm) {
         static_cast<uint8_t>(ToBcd(local_tm.tm_mon + 1) & 0x1F),
         ToBcd(local_tm.tm_year % 100),
     };
-    return WriteRegsChecked(kRegSeconds, values, sizeof(values)) == ESP_OK;
+    // A failed write leaves STOP set so a reboot cannot trust a torn calendar.
+    // Clearing STOP resumes counting and removes no timer/alarm configuration.
+    return WriteRegsChecked(kRegSeconds, values, sizeof(values)) == ESP_OK &&
+           WriteRegChecked(kRegCtrl1, 0) == ESP_OK;
 }
 
 bool RtcPcf8563::GetTime(tm& out_local_tm) {
-    uint8_t buf[7] = {};
-    const esp_err_t ret = ReadRegsChecked(kRegSeconds, buf, sizeof(buf));
+    uint8_t registers[9] = {};
+    // One read latches the entire calendar, including its validity state.
+    const esp_err_t ret = ReadRegsChecked(kRegCtrl1, registers, sizeof(registers));
     if (ret != ESP_OK) {
         ESP_LOGW(kTag, "GetTime failed: %s", esp_err_to_name(ret));
         return false;
     }
+    if ((registers[kRegCtrl1] & (kCtrl1Stop | kCtrl1Test)) != 0 ||
+        (registers[kRegMonths] & 0x80) != 0) {
+        ESP_LOGW(kTag, "GetTime failed: stopped/test clock or unsupported century");
+        return false;
+    }
+    const uint8_t* buf = registers + kRegSeconds;
     if ((buf[0] & 0x80) != 0) {
         ESP_LOGW(kTag, "GetTime failed: voltage-low flag set");
         return false;

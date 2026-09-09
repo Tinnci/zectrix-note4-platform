@@ -306,10 +306,15 @@ separately. Product shutdown stops connectivity before the power transition.
 
 TLS requires a configured UTC system clock. `TimeService` can initialize it from
 a valid RTC reading and an explicit UTC offset; RTC calendar fields retain their
-local-time meaning. At boot the application uses the Storage setting
-`rtc_utc_offset` (signed seconds east of UTC) when present. Provisioning must set
-the correct RTC and offset, or synchronize the UTC clock through the time owner,
-before a direct fetch. Certificate validation is never bypassed to accommodate
+local-time meaning. S1.3 restores it during Platform startup, before Connectivity,
+using the Storage setting `rtc_utc_offset` (signed seconds east of UTC). Clock's
+offline editor or an authorized Companion Hello supplies real calibration.
+Hello's optional TLV `5` carries uint64 LE Unix milliseconds and signed int32 LE
+offset seconds. Successful authorization and HelloAck submission queue a copied
+hint; the foreground owner applies it only for the current authorized session
+within 30 seconds, accounting for queue delay. A missing/bad optional hint
+does not prevent ordinary synchronization. See [TIME.md](TIME.md) for persistence
+and failure behavior. Certificate validation is never bypassed to accommodate
 an unset clock. Firmware defaults enable the certificate bundle and date checks.
 
 `tools/test-resource-client.sh` exercises selection, escalation, retry,

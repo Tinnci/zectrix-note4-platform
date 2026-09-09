@@ -87,6 +87,9 @@ std::atomic<bool> playback_timed_out{false}, playback_join_retry{false};
 unsigned field_waits_before_stop = 0;
 BoardHostTask* field_task = nullptr;
 const auto epoch = std::chrono::steady_clock::now();
+std::array<uint8_t, 16> rtc_registers{};
+unsigned rtc_calendar_writes = 0, rtc_control_writes = 0;
+bool rtc_fail_stop = false, rtc_fail_calendar = false, rtc_fail_resume = false;
 
 template <typename Predicate>
 void WaitFor(Predicate ready) {
@@ -111,6 +114,11 @@ void Reset() {
     }
     tasks.clear();
     AssertReleased();
+    rtc_registers = {};
+    rtc_registers[0x02] = 0x80;
+    rtc_registers[0x0d] = 0x80;
+    rtc_calendar_writes = rtc_control_writes = 0;
+    rtc_fail_stop = rtc_fail_calendar = rtc_fail_resume = false;
     for (auto& level : levels) level = 1;
     held = {};
     modes = {};
@@ -147,6 +155,7 @@ void TestPowerTransition() {
         ZectrixBoard board;
         assert(board.Init() == ESP_OK);
         assert(board.HasRtc() && board.HasNfc());
+        assert(rtc_registers[0x0d] == 0);
         zectrix::nfc::NfcService* nfc = nullptr;
         assert(zectrix::nfc::NfcService::Attach(*board.nfc(), &nfc) == ESP_OK);
         if (audio_mode != 0) {
@@ -164,6 +173,8 @@ void TestPowerTransition() {
         assert(zectrix::power::PowerService::Attach(board, &power) == ESP_OK);
         try { power->Shutdown(); } catch (const SleepEntered&) {}
         AssertReleased();
+        assert(rtc_control_writes == 0 && rtc_calendar_writes == 0);
+        assert(rtc_registers[0x02] == 0x80);
         assert(deep_sleep_hold);
         assert(wake_pins == (1ULL << ZECTRIX_BUTTON_DOWN));
         assert(rtc_mode[ZECTRIX_BUTTON_DOWN] && rtc_pullup[ZECTRIX_BUTTON_DOWN]);
@@ -183,6 +194,95 @@ void TestPowerTransition() {
         delete power;
     }
     Reset();
+}
+
+void TestRtcCalendar() {
+    Reset();
+    {
+        ZectrixBoard board;
+        assert(board.Init() == ESP_OK);
+        tm value{};
+        assert(!board.ReadRtc(&value));
+        value.tm_year = 124;
+        value.tm_mon = 1;
+        value.tm_mday = 29;
+        value.tm_wday = 4;
+        value.tm_hour = 23;
+        value.tm_min = 59;
+        value.tm_sec = 58;
+        assert(board.WriteRtc(value));
+        assert(rtc_control_writes == 2 && rtc_calendar_writes == 1);
+        assert(rtc_registers[0] == 0 && rtc_registers[2] == 0x58 && rtc_registers[8] == 0x24);
+        tm read{};
+        assert(board.ReadRtc(&read));
+        assert(read.tm_year == 124 && read.tm_mon == 1 && read.tm_mday == 29 && read.tm_sec == 58);
+        const auto saved = rtc_registers;
+        for (const uint8_t invalid : {0x20, 0x80, 0x08}) {
+            rtc_registers[0] = invalid;
+            assert(!board.ReadRtc(&read));
+        }
+        rtc_registers = saved;
+        for (const unsigned reg : {2u, 7u}) {
+            rtc_registers[reg] |= 0x80;
+            assert(!board.ReadRtc(&read));
+            rtc_registers = saved;
+        }
+        rtc_registers[3] = 0x6a;
+        assert(!board.ReadRtc(&read));
+        rtc_registers = saved;
+        const unsigned writes = rtc_calendar_writes, control = rtc_control_writes;
+        value.tm_mday = 30;
+        assert(!board.WriteRtc(value));
+        value.tm_mday = 29;
+        value.tm_year = 126;
+        assert(!board.WriteRtc(value));
+        assert(rtc_calendar_writes == writes && rtc_control_writes == control);
+        assert(board.ShutdownPeripherals() == ESP_OK);
+        assert(rtc_registers == saved);
+    }
+    {
+        // Peripheral teardown and a fresh board owner leave the RTC running.
+        ZectrixBoard rebooted;
+        assert(rebooted.Init() == ESP_OK);
+        tm read{};
+        assert(rebooted.ReadRtc(&read) && read.tm_year == 124 && read.tm_mday == 29);
+        assert(rtc_control_writes == 2 && rtc_calendar_writes == 1);
+    }
+    Reset();
+    for (unsigned stage = 0; stage < 3; ++stage) {
+        {
+            ZectrixBoard board;
+            assert(board.Init() == ESP_OK);
+            tm value{};
+            value.tm_year = 126;
+            value.tm_mon = 0;
+            value.tm_mday = 1;
+            value.tm_wday = 4;
+            assert(board.WriteRtc(value));
+            rtc_fail_stop = stage == 0;
+            rtc_fail_calendar = stage == 1;
+            rtc_fail_resume = stage == 2;
+            value.tm_hour = 9;
+            assert(!board.WriteRtc(value));
+            assert((rtc_registers[0] & 0x20) == (stage == 0 ? 0 : 0x20));
+        }
+        {
+            ZectrixBoard rebooted;
+            assert(rebooted.Init() == ESP_OK);
+            tm read{};
+            assert(rebooted.ReadRtc(&read) == (stage == 0));
+            rtc_fail_stop = rtc_fail_calendar = rtc_fail_resume = false;
+            tm corrected{};
+            corrected.tm_year = 126;
+            corrected.tm_mon = 8;
+            corrected.tm_mday = 10;
+            corrected.tm_wday = 4;
+            assert(rebooted.WriteRtc(corrected));
+            assert(rebooted.ReadRtc(&read) && read.tm_mon == 8);
+            assert(rtc_registers[0] == 0);
+        }
+        Reset();
+    }
 }
 
 void TestPowerButtonWake() {
@@ -517,8 +617,24 @@ esp_err_t i2c_master_probe(i2c_master_bus_handle_t bus, uint16_t address, int) {
     assert(bus != nullptr && levels[ZECTRIX_AUDIO_POWER] == 1);
     return failure == Failure::NfcProbe && address == ZECTRIX_NFC_ADDR ? ESP_FAIL : ESP_OK;
 }
-esp_err_t i2c_master_transmit(i2c_master_dev_handle_t device, const uint8_t*, std::size_t, int) {
+esp_err_t i2c_master_transmit(i2c_master_dev_handle_t device, const uint8_t* data, std::size_t size, int) {
     assert(device->bus->devices != 0 && levels[ZECTRIX_AUDIO_POWER] == 1);
+    if (device->address == ZECTRIX_RTC_ADDR) {
+        assert(size >= 2 && data[0] + size - 1 <= rtc_registers.size());
+        if (data[0] == 0) {
+            ++rtc_control_writes;
+            if ((data[1] == 0x20 && rtc_fail_stop) || (data[1] == 0 && rtc_fail_resume)) return ESP_FAIL;
+        }
+        if (data[0] == 2) {
+            assert(size == 8 && (rtc_registers[0] & 0x20) != 0);
+            ++rtc_calendar_writes;
+            if (rtc_fail_calendar) {
+                std::memcpy(rtc_registers.data() + 2, data + 1, 3);
+                return ESP_FAIL;
+            }
+        }
+        std::memcpy(rtc_registers.data() + data[0], data + 1, size - 1);
+    }
     return ESP_OK;
 }
 esp_err_t i2c_master_receive(i2c_master_dev_handle_t device, uint8_t* data, std::size_t size, int) {
@@ -526,8 +642,14 @@ esp_err_t i2c_master_receive(i2c_master_dev_handle_t device, uint8_t* data, std:
     std::memset(data, 0, size);
     return ESP_OK;
 }
-esp_err_t i2c_master_transmit_receive(i2c_master_dev_handle_t device, const uint8_t*, std::size_t,
+esp_err_t i2c_master_transmit_receive(i2c_master_dev_handle_t device, const uint8_t* address, std::size_t address_size,
                                      uint8_t* data, std::size_t size, int timeout) {
+    if (device->address == ZECTRIX_RTC_ADDR) {
+        assert(address_size == 1 && address[0] + size <= rtc_registers.size());
+        if (size > 1) assert(address[0] == 0 && size == 9);
+        std::memcpy(data, rtc_registers.data() + address[0], size);
+        return ESP_OK;
+    }
     return i2c_master_receive(device, data, size, timeout);
 }
 esp_err_t adc_oneshot_new_unit(const adc_oneshot_unit_init_cfg_t*, adc_oneshot_unit_handle_t* output) {
@@ -618,6 +740,7 @@ esp_err_t esp_sleep_enable_ext1_wakeup_io(uint64_t mask, esp_sleep_ext1_wakeup_m
 [[noreturn]] void esp_deep_sleep_start() { AssertReleased(); throw SleepEntered{}; }
 
 int main() {
+    TestRtcCalendar();
     TestPowerTransition();
     TestPowerButtonWake();
     TestPartialInitialization();

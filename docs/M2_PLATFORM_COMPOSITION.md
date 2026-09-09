@@ -32,8 +32,8 @@ existing Platform implementation allocation. Details are in
 2. Initialize board support and attach the NFC enrollment adapter when Connectivity is selected.
 3. Attach InputService.
 4. Attach PowerService.
-5. Attach TimeService.
-6. Create and initialize StorageService.
+5. Create and initialize StorageService.
+6. Attach TimeService and restore RTC wall time using the stored offset; an unset/failed RTC is nonfatal.
 7. Attach SystemService.
 8. Create DisplayService.
 9. Create Diagnostics with typed references to the services.
@@ -41,8 +41,9 @@ existing Platform implementation allocation. Details are in
 11. Create the maintenance executor and start the USB CLI when selected.
 
 The registry runs each provider's `Init()` and `Start()`, publishes its
-interface, then advances to the next provider. This preserves the existing
-order; Display is created after the core board services and before its consumers.
+interface, then advances to the next provider. S1.3 starts Storage before Time
+so UTC is restored before networking. Display remains after core board services
+and before its consumers. Time is released before its borrowed Storage handle.
 
 If an operation fails, `Platform` destroys each service that it already created.
 It withdraws interfaces and stops attempted providers in reverse order,

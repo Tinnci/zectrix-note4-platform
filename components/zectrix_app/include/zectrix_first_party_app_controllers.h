@@ -2,54 +2,12 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
 
-#include "sdkconfig.h"
 #include "zectrix/sdk/input.h"
 
 namespace zectrix::app {
 
-enum class LauncherDecision : uint8_t {
-    None,
-    RenderFast,
-    OpenReader,
-    OpenBookTransfer,
-    OpenClock,
-    OpenSleepCover,
-    OpenSettings,
-    OpenConnectivity,
-    OpenDiagnostics,
-    OpenShowcase,
-    OpenGallery,
-    OpenDeviceInfo,
-    OpenAbout,
-    Shutdown,
-};
-
-struct LauncherItem {
-    const char* label;
-    LauncherDecision decision;
-};
-
-inline constexpr LauncherItem kLauncherItems[] = {
-#if CONFIG_ZECTRIX_ENABLE_READER
-    {"BOOK READER", LauncherDecision::OpenReader},
-#endif
-#if CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
-    {"SEND BOOKS", LauncherDecision::OpenBookTransfer},
-#endif
-    {"CLOCK", LauncherDecision::OpenClock},
-    {"SLEEP COVER", LauncherDecision::OpenSleepCover},
-    {"SETTINGS", LauncherDecision::OpenSettings},
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
-    {"CONNECTIVITY", LauncherDecision::OpenConnectivity},
-#endif
-    {"AUTO SHOWCASE", LauncherDecision::OpenShowcase},
-    {"DISPLAY GALLERY", LauncherDecision::OpenGallery},
-    {"HARDWARE TESTS", LauncherDecision::OpenDiagnostics},
-    {"DEVICE INFO", LauncherDecision::OpenDeviceInfo},
-    {"ABOUT & LICENSE", LauncherDecision::OpenAbout},
-};
+enum class LauncherDecision : uint8_t { None, RenderFast, OpenSelected, Shutdown };
 
 struct LauncherResult {
     LauncherDecision decision = LauncherDecision::None;
@@ -58,15 +16,14 @@ struct LauncherResult {
 
 class LauncherController {
 public:
-    static constexpr std::size_t kItemCount = std::size(kLauncherItems);
-
-    explicit LauncherController(std::size_t selected = 0)
-        : selected_(selected < kItemCount ? selected : 0) {}
+    explicit LauncherController(std::size_t item_count, std::size_t selected = 0)
+        : item_count_(item_count), selected_(selected < item_count ? selected : 0) {}
 
     LauncherResult Handle(const sdk::InputEvent& event);
     std::size_t selected() const { return selected_; }
 
 private:
+    std::size_t item_count_ = 0;
     std::size_t selected_ = 0;
 };
 

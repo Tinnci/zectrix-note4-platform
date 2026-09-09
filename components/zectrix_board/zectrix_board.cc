@@ -414,6 +414,10 @@ bool ZectrixBoard::WriteRtc(const tm& value) {
     return rtc_ != nullptr && rtc_->SetTime(value);
 }
 
+bool ZectrixBoard::StopRtcClock() {
+    return rtc_ != nullptr && rtc_->StopClock();
+}
+
 bool ZectrixBoard::StartRtcCountdown(uint8_t seconds) {
     return rtc_ != nullptr && rtc_->StartCountdownTimer(seconds);
 }

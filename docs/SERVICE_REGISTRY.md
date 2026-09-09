@@ -99,8 +99,8 @@ registry is embedded in Platform itself. Operation order remains explicit:
 | Update (optional) | Expose firmware writer sharing BootGuard | Ready | Abort unfinished writer |
 | Input | Initialize board, attach optional NFC adapter and Input | Ready | Withdraw Input; retain owner's handle for final board shutdown |
 | Power | Attach Power | Ready | Withdraw Power; retain owner's final power handle |
-| Time | Attach Time | Ready | Release facade |
 | Storage | Create Storage | Initialize NVS | Release Storage and owned library resources |
+| Time | Attach Time | Restore RTC wall time with Storage; an unset/failed RTC is nonfatal | Release facade without stopping RTC |
 | System | Attach System | Ready | Release facade |
 | Display | Create Display | Ready | Release SPI/DMA and display resources |
 | Diagnostics | Construct with typed service dependencies | Ready | Destroy diagnostic consumer |

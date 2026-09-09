@@ -29,6 +29,8 @@ public:
     // Optional lookup is valid even before initialization and after shutdown.
     // Only Platform can register, start or stop providers.
     const ServiceRegistry& Services() const { return services_; }
+    // Foreground safe point for copied service events and time persistence.
+    void Poll();
     // Application-owner safe points and shutdown admission control.
     void PollMaintenance();
     void StopMaintenance();

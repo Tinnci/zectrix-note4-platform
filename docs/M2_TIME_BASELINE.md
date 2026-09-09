@@ -2,6 +2,9 @@
 
 Status: Draft.
 
+This is the historical M2.4 behavior. S1.3's current boot restoration,
+calibration and retention behavior is described in [TIME.md](TIME.md).
+
 This document records the qualified time behavior before the M2.4 ownership
 migration. The migration changes the dependency boundary. It does not change
 the time behavior.

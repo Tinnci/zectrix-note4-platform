@@ -173,9 +173,11 @@ order and Host coverage.
 `TimeService` attaches to board support with a typed reference. It owns the
 application monotonic-clock boundary, RTC calendar operations, and RTC
 countdown status. Board support owns the RTC implementation, I2C operations,
-and interrupt GPIO. The migration preserves the behavior in
-[`M2_TIME_BASELINE.md`](M2_TIME_BASELINE.md). It does not add timezone policy or
-RTC-to-system-clock synchronization.
+and interrupt GPIO. S1.3 initializes Time after Storage and before Connectivity,
+restores UTC from the retained RTC and saved offset, and owns local/Companion
+calibration with bounded foreground retries. RTC faults remain nonfatal.
+The historical M2 behavior is in [`M2_TIME_BASELINE.md`](M2_TIME_BASELINE.md);
+current time and persistence behavior is in [TIME.md](TIME.md).
 
 `StorageService` owns default NVS initialization, recovery policy, and the
 platform key-value namespace. Application and self-test code do not call NVS

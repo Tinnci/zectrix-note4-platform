@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "zectrix_companion_protocol.h"
+#include "zectrix_clock_sync.h"
 
 using zectrix::companion::DecodeCompanionIdentityValue;
 using zectrix::companion::DecodeEnrollmentProofValue;
@@ -27,6 +28,63 @@ using zectrix::companion::TlvReader;
 using zectrix::companion::TlvWriter;
 
 namespace {
+
+void TestClockHint() {
+    using namespace zectrix::companion;
+    const ClockSample source{1709179200123, -19800};
+    const std::array<uint8_t, 12> expected{0x7b, 0xe2, 0x04, 0xf3, 0x8d, 0x01, 0, 0, 0xa8, 0xb2, 0xff, 0xff};
+    std::array<uint8_t, kClockSampleValueSize> encoded{};
+    std::size_t size = 0;
+    assert(EncodeClockSampleValue(source, encoded.data(), encoded.size(), &size) == ProtocolStatus::kOk);
+    assert(size == expected.size() && encoded == expected);
+    ClockSample decoded;
+    assert(DecodeClockSampleValue(encoded.data(), encoded.size(), &decoded) == ProtocolStatus::kOk);
+    assert(decoded.unix_milliseconds == source.unix_milliseconds && decoded.utc_offset_seconds == -19800);
+    for (std::size_t truncated = 0; truncated < encoded.size(); ++truncated)
+        assert(DecodeClockSampleValue(encoded.data(), truncated, &decoded) != ProtocolStatus::kOk);
+    encoded[7] = 0x80;
+    assert(DecodeClockSampleValue(encoded.data(), encoded.size(), &decoded) != ProtocolStatus::kOk);
+    encoded = expected;
+    encoded[8] = 0xff; encoded[9] = 0x7f; encoded[10] = 1; encoded[11] = 0;
+    assert(DecodeClockSampleValue(encoded.data(), encoded.size(), &decoded) != ProtocolStatus::kOk);
+    assert(EncodeClockSampleValue({-1, 0}, encoded.data(), encoded.size(), &size) != ProtocolStatus::kOk);
+    assert(EncodeClockSampleValue({0, 50401}, encoded.data(), encoded.size(), &size) != ProtocolStatus::kOk);
+
+    // Existing peers can skip the optional hint without changing Hello v1.
+    std::array<uint8_t, 16> tlv{};
+    TlvWriter writer(tlv.data(), tlv.size());
+    assert(writer.Add(kHelloClockSampleType, expected.data(), expected.size()) == ProtocolStatus::kOk);
+    TlvReader reader(tlv.data(), writer.Size());
+    TlvField field;
+    bool present = false;
+    assert(reader.Next(&field, &present) == ProtocolStatus::kOk && present);
+    assert(field.type == kHelloClockSampleType && !field.required);
+
+    ClockMailbox mailbox;
+    ClockSample sample{-1, 0};
+    assert(!mailbox.Take(7, 0, &sample));
+    mailbox.Offer(source, 7, 1000);
+    assert(!mailbox.Take(0, 2000, &sample));  // No current authorization.
+    assert(sample.unix_milliseconds == -1);
+    mailbox.Offer(source, 7, 1000);
+    assert(!mailbox.Take(8, 2000, &sample));  // Replaced session.
+    mailbox.Offer(source, 7, 1000);
+    assert(!mailbox.Take(7, 31001, &sample));
+    mailbox.Offer(source, 7, 1000);
+    assert(!mailbox.Take(7, 999, &sample));
+    mailbox.Offer(source, 7, 1000);
+    mailbox.Clear();
+    assert(!mailbox.Take(7, 1500, &sample));
+    mailbox.Offer(source, 7, 1000);
+    assert(mailbox.Take(7, 31000, &sample));
+    assert(sample.unix_milliseconds == source.unix_milliseconds + 30000 && sample.utc_offset_seconds == -19800);
+    assert(!mailbox.Take(7, 31000, &sample));
+    mailbox.Offer({INT64_MAX, 0}, 7, 1000);
+    assert(!mailbox.Take(7, 1001, &sample));
+    mailbox.Offer(source, 7, UINT32_MAX - 1000ULL);
+    assert(mailbox.Take(7, UINT32_MAX + 1000ULL, &sample));
+    assert(sample.unix_milliseconds == source.unix_milliseconds + 2000);
+}
 
 std::vector<uint8_t> MakeFrame() {
     std::array<uint8_t, 32> payload{};
@@ -254,5 +312,6 @@ int main() {
     TestEnrollmentProof();
     TestCompanionIdentityAndHelloAckStatus();
     TestFragmentation();
+    TestClockHint();
     return 0;
 }
