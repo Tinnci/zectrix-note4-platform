@@ -1,4 +1,4 @@
-"""Exercise the Kconfig resolver used before ESP-IDF dependency expansion."""
+"""Exercise Kconfig resolution and safe, reproducible firmware profiles."""
 
 import re
 import subprocess
@@ -40,6 +40,33 @@ class ModuleConfigTest(unittest.TestCase):
                                         "READER", "BOOK_STORAGE", "USB_CLI", "UPDATE"})
         self.assertTrue(all(options.values()))
         self.assertFalse(self.config.exists())
+
+    def test_committed_full_and_minimal_profiles(self):
+        base = (ROOT / "sdkconfig.defaults").read_text()
+        for profile, enabled in (("full", True), ("minimal", False)):
+            with self.subTest(profile=profile):
+                overlay = (ROOT / f"tools/profiles/{profile}.defaults").read_text()
+                options = self.resolve(defaults=(base, overlay))
+                self.assertTrue(all(value == enabled for value in options.values()))
+
+    def test_profile_clean_does_not_follow_a_symlink(self):
+        scripts = self.root / "tools"
+        scripts.mkdir()
+        script = scripts / "build-firmware.sh"
+        script.write_text((ROOT / "tools/build-firmware.sh").read_text())
+        developer = self.root / "developer build"
+        developer.mkdir()
+        saved = developer / "sdkconfig"
+        saved.write_text("CONFIG_ZECTRIX_ENABLE_READER=y\n")
+        # A cached build must also be rejected before idf.py fullclean runs.
+        (developer / "CMakeCache.txt").write_text("existing developer cache\n")
+        (self.root / "build-minimal").symlink_to(developer, target_is_directory=True)
+        result = subprocess.run(["bash", str(script), "--profile", "minimal", "--clean"],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("symlinked profile directory", result.stderr)
+        self.assertEqual(saved.read_text(), "CONFIG_ZECTRIX_ENABLE_READER=y\n")
+        self.assertTrue((developer / "CMakeCache.txt").exists())
 
     def test_parent_disables_requested_network_children(self):
         options = self.resolve("CONFIG_ZECTRIX_ENABLE_CONNECTIVITY=n\n"
