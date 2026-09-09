@@ -1,6 +1,11 @@
 #include "zectrix_unicode_text.h"
+#include "sdkconfig.h"
+#if CONFIG_ZECTRIX_ENABLE_READER
+#include "zectrix_reader.h"
+#endif
 
 namespace zectrix::ui {
+#if CONFIG_ZECTRIX_ENABLE_READER
 using namespace zectrix::reader;
 
 void DrawGlyph(ZectrixCanvas& canvas, int x, int y, uint32_t cp, FontSize font, bool inverted) {
@@ -15,6 +20,7 @@ void DrawGlyph(ZectrixCanvas& canvas, int x, int y, uint32_t cp, FontSize font, 
             if (bits & (0x8000 >> (col * 16 / height))) canvas.Pixel(x + col, y + row, !inverted);
     }
 }
+#endif
 
 namespace {
 uint32_t NextScalar(const char** text) {
@@ -39,12 +45,22 @@ void DrawUtf8Line(ZectrixCanvas& canvas, int x, int y, const char* text, int wid
     const int right = x + width;
     while (*text) {
         const auto cp = NextScalar(&text);
+#if CONFIG_ZECTRIX_ENABLE_READER
         const auto glyph_width = GlyphWidth(cp, FontSize::Small);
         if (x + glyph_width + (*text ? 16 : 0) > right) {
             DrawGlyph(canvas, x, y, 0x2026, FontSize::Small, inverted);
             break;
         }
         DrawGlyph(canvas, x, y, cp, FontSize::Small, inverted);
+#else
+        const char glyph[] = {cp >= 32 && cp < 127 ? static_cast<char>(cp) : '?', 0};
+        const int glyph_width = canvas.TextWidth(glyph);
+        if (x + glyph_width + (*text ? canvas.TextWidth("...") : 0) > right) {
+            if (x + canvas.TextWidth("...") <= right) canvas.Text(x, y, "...", 1, inverted);
+            break;
+        }
+        canvas.Text(x, y, glyph, 1, inverted);
+#endif
         x += glyph_width;
     }
 }

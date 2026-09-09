@@ -12,7 +12,7 @@ namespace zectrix::power { class PowerService; }
 namespace zectrix::storage { class StorageService; }
 namespace zectrix::system { class SystemService; }
 namespace zectrix::time { class TimeService; }
-namespace zectrix::update { class UpdateService; }
+namespace zectrix::update { class BootGuard; class UpdateService; }
 
 namespace zectrix {
 
@@ -45,6 +45,8 @@ public:
     time::TimeService& Time() const;
     storage::StorageService& Storage() const;
     system::SystemService& System() const;
+    update::BootGuard& Boot() const;
+    // Optional service accessors also require the corresponding module enabled.
     connectivity::ConnectivityService& Connectivity() const;
     update::UpdateService& Update() const;
     ZectrixSelfTest& Diagnostics() const;

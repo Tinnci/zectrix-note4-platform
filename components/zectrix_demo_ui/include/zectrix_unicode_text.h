@@ -1,7 +1,8 @@
 #pragma once
 
 #include "zectrix_canvas.h"
-#include "zectrix_reader.h"
+
+namespace zectrix::reader { enum class FontSize : uint8_t; }
 
 namespace zectrix::ui {
 void DrawGlyph(ZectrixCanvas& canvas, int x, int y, uint32_t codepoint,

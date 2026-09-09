@@ -78,8 +78,8 @@ Result UpdateService::CommitFirmware() {
     if (result != Result::kOk) return FailFirmware(result);
     image_open_ = false;
     firmware_.phase = FirmwarePhase::kCommitted;
-    status_.boot = firmware_.target;
-    status_.layout_result = Result::kBootMismatch;
+    boot_.status_.boot = firmware_.target;
+    boot_.status_.layout_result = Result::kBootMismatch;
     return Result::kOk;
 }
 

@@ -1,0 +1,2 @@
+# Module options are sourced once by main/Kconfig.projbuild, including modules
+# excluded from the build. This override avoids duplicate menu entries.

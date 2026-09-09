@@ -22,7 +22,10 @@
 #include "zectrix_storage_service.h"
 #include "zectrix_system_service.h"
 #include "zectrix_time_service.h"
+#include "sdkconfig.h"
+#if CONFIG_ZECTRIX_ENABLE_WIFI
 #include "zectrix_wifi_esp_driver.h"
+#endif
 
 namespace {
 
@@ -145,6 +148,7 @@ ZectrixTestResult ZectrixSelfTest::Run(
 }
 
 ZectrixTestResult ZectrixSelfTest::RunRf(const UpdateCallback& callback) {
+#if CONFIG_ZECTRIX_ENABLE_WIFI
     auto update = MakeUpdate(ZectrixTestId::kRf, ZectrixTestState::kRunning,
                              "Scanning 2.4 GHz access points...");
     Publish(callback, update);
@@ -217,6 +221,11 @@ ZectrixTestResult ZectrixSelfTest::RunRf(const UpdateCallback& callback) {
     SetText(update.hint, sizeof(update.hint), "RF test timed out");
     Publish(callback, update);
     return ZectrixTestResult::kFail;
+#else
+    Publish(callback, MakeUpdate(ZectrixTestId::kRf, ZectrixTestState::kSkipped,
+                                 "Wi-Fi is disabled in this firmware"));
+    return ZectrixTestResult::kSkipped;
+#endif
 }
 
 ZectrixTestResult ZectrixSelfTest::RunAudio(const UpdateCallback& callback) {

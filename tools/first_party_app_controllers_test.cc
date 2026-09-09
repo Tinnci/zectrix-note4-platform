@@ -1,5 +1,7 @@
 #include "zectrix_first_party_app_controllers.h"
 
+#include <algorithm>
+#include <array>
 #include <cassert>
 
 int main() {
@@ -10,39 +12,42 @@ int main() {
 
     LauncherController launcher;
     LauncherResult result = launcher.Handle({Button::Ok, Action::Click});
+#if CONFIG_ZECTRIX_ENABLE_READER
     assert(result.decision == LauncherDecision::OpenReader);
-    assert(result.selected == 0);
-
-    result = launcher.Handle({Button::Down, Action::Click});
-    assert(result.decision == LauncherDecision::RenderFast);
-    assert(result.selected == 1);
-    result = launcher.Handle({Button::Ok, Action::Click});
+#elif CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
     assert(result.decision == LauncherDecision::OpenBookTransfer);
-    assert(result.selected == 1);
-
-    result = launcher.Handle({Button::Down, Action::Click});
-    assert(result.selected == 2);
-    result = launcher.Handle({Button::Ok, Action::Click});
+#else
     assert(result.decision == LauncherDecision::OpenClock);
-
-    result = launcher.Handle({Button::Up, Action::Click});
-    assert(result.selected == 1);
-    result = launcher.Handle({Button::Up, Action::Click});
+#endif
     assert(result.selected == 0);
-    result = launcher.Handle({Button::Up, Action::Click});
-    assert(result.selected == LauncherController::kItemCount - 1);
 
-    const LauncherDecision destinations[] = {
-        LauncherDecision::OpenReader,
-        LauncherDecision::OpenBookTransfer,
+    std::array<LauncherDecision, LauncherController::kItemCount> visited{};
+    for (std::size_t selected = 0; selected < visited.size(); ++selected) {
+        result = launcher.Handle({Button::Ok, Action::Click});
+        assert(result.selected == selected);
+        visited[selected] = result.decision;
+        LauncherController restored(selected);
+        assert(restored.Handle({Button::Ok, Action::Click}).decision == result.decision);
+        result = launcher.Handle({Button::Down, Action::Click});
+        assert(result.decision == LauncherDecision::RenderFast);
+        assert(result.selected == (selected + 1) % visited.size());
+    }
+    const auto count = [&](LauncherDecision decision) {
+        return std::count(visited.begin(), visited.end(), decision);
+    };
+    const LauncherDecision core_destinations[] = {
         LauncherDecision::OpenClock, LauncherDecision::OpenSleepCover, LauncherDecision::OpenSettings,
-        LauncherDecision::OpenConnectivity, LauncherDecision::OpenShowcase,
+        LauncherDecision::OpenShowcase,
         LauncherDecision::OpenGallery, LauncherDecision::OpenDiagnostics,
         LauncherDecision::OpenDeviceInfo, LauncherDecision::OpenAbout};
-    for (std::size_t selected = 0; selected < LauncherController::kItemCount; ++selected) {
-        LauncherController restored(selected);
-        assert(restored.Handle({Button::Ok, Action::Click}).decision == destinations[selected]);
-    }
+    for (const auto destination : core_destinations) assert(count(destination) == 1);
+    assert(count(LauncherDecision::OpenReader) == CONFIG_ZECTRIX_ENABLE_READER);
+    assert(count(LauncherDecision::OpenBookTransfer) == CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER);
+    assert(count(LauncherDecision::OpenConnectivity) == CONFIG_ZECTRIX_ENABLE_CONNECTIVITY);
+    assert(visited.size() == std::size(core_destinations) + CONFIG_ZECTRIX_ENABLE_READER +
+           CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER + CONFIG_ZECTRIX_ENABLE_CONNECTIVITY);
+    result = launcher.Handle({Button::Up, Action::Click});
+    assert(result.selected == LauncherController::kItemCount - 1);
     assert(LauncherController(100).selected() == 0);
     assert(kAutoShowcaseDefault == 0);
     result = launcher.Handle({Button::Down, Action::LongPress});

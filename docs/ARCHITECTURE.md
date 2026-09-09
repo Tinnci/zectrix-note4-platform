@@ -80,16 +80,19 @@ while existing mandatory accessors keep their initialization assertions.
 
 The registry and lifecycle adapters use fixed member storage and no additional
 heap allocations or tasks. Platform remains the resource owner; applications
-receive a read-only lookup view. S1.1 uses the full service set, with Kconfig
-selection and conditional application composition following in S1.2/S1.3.
+receive a read-only lookup view. S1.2 selects optional services, applications
+and component dependencies through [Kconfig](MODULAR_BUILD.md). Core boot
+protection remains enabled in every profile. Broader application composition
+and persistent RTC work continue in S1.3.
 See [SERVICE_REGISTRY.md](SERVICE_REGISTRY.md) for lifecycle and lifetime rules.
 
 ## Update boundary
 
 The partition table is not frozen. The M5.1 layout retains the factory and NVS
 locations and adds two OTA application slots and native OTA metadata.
-`UpdateService` validates the inactive destination, receives firmware chunks
-and owns trial-boot confirmation. It validates chunk and image CRC-32 values,
+Core `BootGuard` owns boot validation and trial-boot confirmation. The optional
+`UpdateService` shares that guard, validates the inactive destination and
+receives firmware chunks. It validates chunk and image CRC-32 values,
 the image header, native image bounds and flash readback before selecting the
 next boot slot. A retained RTC watchdog resets an unconfirmed boot even if the
 application cannot make progress. Update delivery remains a separate consumer

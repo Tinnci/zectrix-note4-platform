@@ -215,6 +215,7 @@ const char* ZectrixDemoUi::StateText(ZectrixTestState state) {
         case ZectrixTestState::kRunning: return "RUN";
         case ZectrixTestState::kPass: return "PASS";
         case ZectrixTestState::kFail: return "FAIL";
+        case ZectrixTestState::kSkipped: return "SKIP";
         default: return "WAIT";
     }
 }
@@ -273,7 +274,8 @@ esp_err_t ZectrixDemoUi::ShowTestUpdate(
     if (time_ == nullptr) return ESP_ERR_INVALID_STATE;
     const int64_t now = time_->MonotonicMicroseconds();
     const bool terminal = update.state == ZectrixTestState::kPass ||
-                          update.state == ZectrixTestState::kFail;
+                          update.state == ZectrixTestState::kFail ||
+                          update.state == ZectrixTestState::kSkipped;
     if (!force && !terminal && now - last_update_us_ < kUpdateThrottleUs) {
         return ESP_OK;
     }
@@ -304,14 +306,18 @@ esp_err_t ZectrixDemoUi::ShowTestSummary(
     DrawFrame("TEST SUMMARY", "Any Key Return   Hold DOWN Power Off");
     int passed = 0;
     int failed = 0;
+    int skipped = 0;
     for (ZectrixTestState state : states) {
         passed += state == ZectrixTestState::kPass ? 1 : 0;
         failed += state == ZectrixTestState::kFail ? 1 : 0;
+        skipped += state == ZectrixTestState::kSkipped ? 1 : 0;
     }
     char line[64];
-    std::snprintf(line, sizeof(line), "%d / 7 PASSED", passed);
+    std::snprintf(line, sizeof(line), "%d / %d PASSED", passed,
+                  static_cast<int>(states.size()) - skipped);
     canvas_.TextCentered(52, line, 2);
-    std::snprintf(line, sizeof(line), "%d FAILED", failed);
+    if (skipped) std::snprintf(line, sizeof(line), "%d FAILED   %d SKIPPED", failed, skipped);
+    else std::snprintf(line, sizeof(line), "%d FAILED", failed);
     canvas_.TextCentered(94, line, 1);
     for (size_t i = 0; i < kTestOrder.size(); ++i) {
         const int column = i < 4 ? 0 : 1;

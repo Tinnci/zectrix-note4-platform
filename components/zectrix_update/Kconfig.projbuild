@@ -1,0 +1,7 @@
+config ZECTRIX_ENABLE_UPDATE
+    bool "Streamed firmware updates"
+    default y
+    help
+        Enable inactive-slot firmware writing, CRC/header validation and commit.
+        Boot partition validation, trial-boot watchdog and rollback confirmation
+        remain part of the core system in every configuration.

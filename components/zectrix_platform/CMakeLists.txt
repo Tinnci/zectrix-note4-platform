@@ -1,20 +1,17 @@
-idf_component_register(
-    SRCS "zectrix_platform.cc" "zectrix_platform_diagnostics.cc"
-         "zectrix_service_registry.cc"
-    INCLUDE_DIRS "include"
-    REQUIRES
-        zectrix_board
-        zectrix_cli
-        zectrix_connectivity
-        zectrix_display
-        zectrix_input
-        zectrix_nfc_service
-        zectrix_power
-        zectrix_self_test
-        zectrix_storage
-        zectrix_system
-        zectrix_time
-        zectrix_update
-)
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/zectrix_features.cmake")
+set(sources "zectrix_platform.cc" "zectrix_service_registry.cc")
+set(requires zectrix_board zectrix_display zectrix_input zectrix_power
+    zectrix_self_test zectrix_storage zectrix_system zectrix_time)
+if(CONFIG_ZECTRIX_ENABLE_CONNECTIVITY)
+    list(APPEND requires zectrix_connectivity zectrix_nfc_service)
+endif()
+if(CONFIG_ZECTRIX_ENABLE_USB_CLI)
+    list(APPEND requires zectrix_cli)
+    list(APPEND sources "zectrix_platform_diagnostics.cc")
+endif()
+if(CONFIG_ZECTRIX_ENABLE_UPDATE)
+    list(APPEND requires zectrix_update)
+endif()
+idf_component_register(SRCS ${sources} INCLUDE_DIRS "include" REQUIRES ${requires})
 
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_17)

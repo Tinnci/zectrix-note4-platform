@@ -1,0 +1,32 @@
+menuconfig ZECTRIX_ENABLE_CONNECTIVITY
+    bool "Companion connectivity"
+    default y
+    help
+        Enable BLE pairing, durable companion sync and phone resource requests.
+        Uses the NimBLE peripheral configuration in sdkconfig.defaults.
+        Disable to remove the connectivity, companion and NFC enrollment services.
+
+config ZECTRIX_ENABLE_WIFI
+    bool "Direct Wi-Fi"
+    depends on ZECTRIX_ENABLE_CONNECTIVITY
+    default y
+    help
+        Enable the shared AP/STA radio driver and RF scan diagnostics.
+        BLE companion sync remains available when this option is disabled.
+
+config ZECTRIX_ENABLE_WIFI_HTTP
+    bool "Direct HTTPS resource client"
+    depends on ZECTRIX_ENABLE_WIFI
+    default y
+    help
+        Fetch resources directly over Wi-Fi with certificate and date validation.
+        Disabling this option removes the HTTPS client and its TLS transport.
+        Phone resource requests and local Web book transfer remain independent.
+
+config ZECTRIX_ENABLE_BOOK_TRANSFER
+    bool "Web book transfer"
+    depends on ZECTRIX_ENABLE_WIFI
+    default y
+    help
+        Enable the temporary authenticated AP/STA Web library and SEND BOOKS scene.
+        Does not require the reader or the HTTPS resource client.

@@ -1,7 +1,8 @@
 #pragma once
 
+#include <array>
+
 #include "zectrix_power_service.h"
-#include "zectrix_reader_bookmarks.h"
 #include "zectrix_scene_manager.h"
 #include "zectrix_time_service.h"
 
@@ -15,7 +16,11 @@ SleepCoverStyle SleepCoverSetting(uint32_t value);
 struct SleepCoverSnapshot {
     time::ClockSnapshot clock{};
     power::PowerSnapshot power{};
-    reader::Bookmark reading{};
+    // The dashboard needs only a copied title and progress, not a reader engine.
+    struct Reading {
+        std::array<char, 64> book_id{};
+        uint16_t progress_per_mille = 0;
+    } reading;
     bool has_reading = false;
 };
 

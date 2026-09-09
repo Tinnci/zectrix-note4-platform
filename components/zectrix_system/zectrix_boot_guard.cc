@@ -1,4 +1,4 @@
-#include "zectrix_update_service.h"
+#include "zectrix_boot_guard.h"
 
 namespace zectrix::update {
 namespace {
@@ -93,7 +93,7 @@ Result VerifyPartitions(const BootInfo& info, Partition* target) {
     return Result::kOk;
 }
 
-Result UpdateService::BeginBoot() {
+Result BootGuard::BeginBoot() {
     if (phase_ != Phase::kInitial) {
         return phase_ == Phase::kFailed ? Result::kInvalidState : Result::kOk;
     }
@@ -123,7 +123,7 @@ Result UpdateService::BeginBoot() {
     return Result::kOk;
 }
 
-Result UpdateService::ConfirmBoot() {
+Result BootGuard::ConfirmBoot() {
     if (phase_ == Phase::kReady) return Result::kOk;
     if (phase_ != Phase::kPending) return Result::kInvalidState;
     if (backend_.Milliseconds() - started_ms_ >= kBootConfirmationTimeoutMs) {
@@ -151,7 +151,7 @@ Result UpdateService::ConfirmBoot() {
     return Result::kOk;
 }
 
-Result UpdateService::SelectUpdateTarget(uint32_t image_bytes, Partition* target) {
+Result BootGuard::SelectUpdateTarget(uint32_t image_bytes, Partition* target) {
     if (target == nullptr) return Result::kInvalidArgument;
     *target = {};
     if (image_bytes == 0) return Result::kInvalidArgument;

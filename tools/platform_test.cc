@@ -1,4 +1,6 @@
 #include "zectrix_platform.h"
+#include "sdkconfig.h"
+#include "zectrix_boot_esp.h"
 #include "zectrix_board.h"
 
 #include <algorithm>
@@ -9,17 +11,24 @@
 #include <vector>
 
 #include "zectrix_display_service.h"
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
 #include "zectrix_cli_usb.h"
 #include "zectrix_cli_diagnostics.h"
+#endif
+namespace zectrix::cli { class CliUsbService; }
 #include "freertos/task.h"
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
 #include "zectrix_connectivity_service.h"
 #include "zectrix_nfc_service.h"
+#endif
 #include "zectrix_input_service.h"
 #include "zectrix_power_service.h"
 #include "zectrix_storage_service.h"
 #include "zectrix_system_service.h"
 #include "zectrix_time_service.h"
+#if CONFIG_ZECTRIX_ENABLE_UPDATE
 #include "zectrix_update_esp.h"
+#endif
 #include "update_test_fixture.h"
 
 class ZectrixNfc {};
@@ -30,7 +39,9 @@ std::vector<std::string> events;
 std::string fail_at;
 int nothrow_allocation_count = 0;
 int fail_nothrow_allocation = 0;
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
 zectrix::cli::CliExecutor* cli_executor = nullptr;
+#endif
 unsigned inspections = 0;
 bool boot_watchdog_armed = false;
 bool pending_boot = false;
@@ -53,6 +64,7 @@ void AssertNoServices(const zectrix::Platform& platform) {
     assert(!registry.Get<zectrix::system::SystemService>());
     assert(!registry.Get<zectrix::connectivity::ConnectivityService>());
     assert(!registry.Get<zectrix::update::UpdateService>());
+    assert(!registry.Get<zectrix::update::BootGuard>());
     assert(!registry.Get<zectrix::cli::CliUsbService>());
     assert(!registry.Get<ZectrixSelfTest>());
 }
@@ -74,37 +86,41 @@ void operator delete(void* pointer, const std::nothrow_t&) noexcept {
 
 esp_err_t ZectrixBoard::Init() {
     assert(boot_probe_count != 0);
-    if (inspected_registry) assert(inspected_registry->Get<zectrix::update::UpdateService>());
+    if (inspected_registry) assert(inspected_registry->Get<zectrix::update::BootGuard>());
     events.emplace_back("init:board");
     return init_result;
 }
 
 namespace zectrix::update {
+#if CONFIG_ZECTRIX_ENABLE_UPDATE
 EspUpdateBackend::~EspUpdateBackend() { AbortImage(); }
-Result EspUpdateBackend::ReadBootInfo(BootInfo* info) {
+#endif
+Result EspBootBackend::ReadBootInfo(BootInfo* info) {
     ++boot_probe_count;
     if (fail_at == "boot") return Result::kIoError;
     *info = UpdateBootFixture(pending_boot ? PartitionKind::kOtaA : PartitionKind::kFactory);
     if (pending_boot && !boot_confirmed) info->image_state = ImageState::kPendingVerify;
     return Result::kOk;
 }
-uint64_t EspUpdateBackend::Milliseconds() const { return 0; }
-Result EspUpdateBackend::ArmBootWatchdog(uint32_t timeout_ms) {
+uint64_t EspBootBackend::Milliseconds() const { return 0; }
+Result EspBootBackend::ArmBootWatchdog(uint32_t timeout_ms) {
     assert(timeout_ms == kBootConfirmationTimeoutMs);
     boot_watchdog_armed = true;
     return Result::kOk;
 }
-void EspUpdateBackend::DisarmBootWatchdog() { boot_watchdog_armed = false; }
-Result EspUpdateBackend::ConfirmRunningImage(const Partition&) {
+void EspBootBackend::DisarmBootWatchdog() { boot_watchdog_armed = false; }
+Result EspBootBackend::ConfirmRunningImage(const Partition&) {
     boot_confirmed = true;
     return Result::kOk;
 }
+#if CONFIG_ZECTRIX_ENABLE_UPDATE
 Result EspUpdateBackend::BeginImage(const Partition&, uint32_t, const uint8_t*, std::size_t) {
     return Result::kInvalidState;
 }
 Result EspUpdateBackend::WriteImage(const uint8_t*, std::size_t) { return Result::kInvalidState; }
 Result EspUpdateBackend::CommitImage(uint32_t) { return Result::kInvalidState; }
 void EspUpdateBackend::AbortImage() {}
+#endif
 }
 
 namespace zectrix::input {
@@ -192,6 +208,7 @@ esp_err_t DisplayService::ReadInspection(DisplayInspection* result) const {
     return ESP_OK;
 }
 }
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
 namespace zectrix::nfc {
 esp_err_t NfcService::Attach(ZectrixNfc& nfc, NfcService** output) {
     events.emplace_back("create:nfc");
@@ -224,6 +241,9 @@ ConnectivityService::~ConnectivityService() {
 }
 }
 
+#endif
+
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
 namespace zectrix::cli {
 CliUsbService::CliUsbService() = default;
 CliUsbService::~CliUsbService() { AssertWithdrawn<CliUsbService>(); events.emplace_back("delete:cli"); }
@@ -237,6 +257,9 @@ bool CliUsbService::running() const { return true; }
 LogBuffer& MaintenanceLogs() { static LogBuffer logs; return logs; }
 }
 
+#endif
+
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY && CONFIG_ZECTRIX_ENABLE_USB_CLI && CONFIG_ZECTRIX_ENABLE_UPDATE
 int main() {
     host_current_task = reinterpret_cast<void*>(1);
     {
@@ -256,7 +279,7 @@ int main() {
         (void)platform.Connectivity();
         (void)platform.Update();
         const auto& registry = platform.Services();
-        assert(&registry == inspected_registry && registry.size() == 10);
+        assert(&registry == inspected_registry && registry.size() == 11);
         // These lookups compile in another translation unit than registration.
         assert(registry.Get<zectrix::display::DisplayService>() == &platform.Display());
         assert(registry.Get<zectrix::input::InputService>() == &platform.Input());
@@ -266,6 +289,8 @@ int main() {
         assert(registry.Get<zectrix::system::SystemService>() == &platform.System());
         assert(registry.Get<zectrix::connectivity::ConnectivityService>() == &platform.Connectivity());
         assert(registry.Get<zectrix::update::UpdateService>() == &platform.Update());
+        assert(registry.Get<zectrix::update::BootGuard>() == &platform.Boot());
+        assert(&platform.Boot() == &platform.Update().Boot());
         assert(registry.Get<ZectrixSelfTest>() == &platform.Diagnostics());
         assert(registry.Get<zectrix::cli::CliUsbService>());
         assert(!registry.Get<zectrix::nfc::NfcService>());
@@ -347,7 +372,7 @@ int main() {
         assert(trial.Initialize() == ESP_OK);
         assert(boot_watchdog_armed);
         assert(!boot_confirmed);
-        assert(trial.Update().ConfirmBoot() == zectrix::update::Result::kOk);
+        assert(trial.Boot().ConfirmBoot() == zectrix::update::Result::kOk);
         assert(boot_confirmed);
         assert(!boot_watchdog_armed);
     }
@@ -449,3 +474,75 @@ int main() {
     inspected_registry = nullptr;
     ZectrixBoard::nfc_device = nullptr;
 }
+#else
+int main() {
+    host_current_task = reinterpret_cast<void*>(1);
+    ZectrixNfc nfc;
+    ZectrixBoard::nfc_device = &nfc;
+    {
+        zectrix::Platform platform;
+        inspected_registry = &platform.Services();
+        AssertNoServices(platform);
+        assert(platform.Initialize() == ESP_OK);
+        const auto& registry = platform.Services();
+        assert(registry.Get<zectrix::update::BootGuard>() == &platform.Boot());
+        assert(registry.Get<zectrix::time::TimeService>() == &platform.Time());
+        assert(registry.Get<zectrix::display::DisplayService>() == &platform.Display());
+        assert((registry.Get<zectrix::connectivity::ConnectivityService>() != nullptr) ==
+               (CONFIG_ZECTRIX_ENABLE_CONNECTIVITY != 0));
+        assert((registry.Get<zectrix::cli::CliUsbService>() != nullptr) ==
+               (CONFIG_ZECTRIX_ENABLE_USB_CLI != 0));
+        assert((registry.Get<zectrix::update::UpdateService>() != nullptr) ==
+               (CONFIG_ZECTRIX_ENABLE_UPDATE != 0));
+        assert(!boot_watchdog_armed);
+        assert(std::count(events.begin(), events.end(), "create:nfc") == CONFIG_ZECTRIX_ENABLE_CONNECTIVITY);
+        platform.PollMaintenance();
+        platform.StopMaintenance();
+        events.clear();
+        try { platform.Shutdown(); } catch (const SleepEntered&) {}
+        assert(!platform.IsInitialized());
+        AssertNoServices(platform);
+        assert(events.back() == "shutdown:power");
+        assert(std::count(events.begin(), events.end(), "delete:cli") == CONFIG_ZECTRIX_ENABLE_USB_CLI);
+        assert(std::count(events.begin(), events.end(), "delete:connectivity") == CONFIG_ZECTRIX_ENABLE_CONNECTIVITY);
+        assert(std::count(events.begin(), events.end(), "delete:nfc") == CONFIG_ZECTRIX_ENABLE_CONNECTIVITY);
+        assert(platform.Initialize() == ESP_ERR_INVALID_STATE);
+    }
+    inspected_registry = nullptr;
+    assert(events[events.size() - 2] == "delete:power" && events.back() == "delete:input");
+    ZectrixBoard::nfc_device = nullptr;
+
+    // Removing the update writer must not remove trial-boot protection.
+    pending_boot = true;
+    {
+        zectrix::Platform unconfirmed;
+        assert(unconfirmed.Initialize() == ESP_OK);
+        assert(boot_watchdog_armed && !boot_confirmed);
+    }
+    assert(boot_watchdog_armed && !boot_confirmed);
+    events.clear();
+    fail_at = "storage-init";
+    {
+        zectrix::Platform failed;
+        assert(failed.Initialize() == ESP_FAIL);
+        AssertNoServices(failed);
+        assert(!boot_confirmed && boot_watchdog_armed);
+    }
+    fail_at.clear();
+    {
+        zectrix::Platform trial;
+        assert(trial.Initialize() == ESP_OK);
+        assert(boot_watchdog_armed && !boot_confirmed);
+        assert(trial.Boot().ConfirmBoot() == zectrix::update::Result::kOk);
+        assert(boot_confirmed && !boot_watchdog_armed);
+    }
+    events.clear();
+    fail_at = "boot";
+    {
+        zectrix::Platform failed;
+        assert(failed.Initialize() == ESP_FAIL);
+        assert(events.empty() && boot_watchdog_armed);
+        AssertNoServices(failed);
+    }
+}
+#endif
