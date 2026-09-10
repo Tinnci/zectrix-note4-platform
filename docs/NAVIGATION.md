@@ -62,6 +62,7 @@ HTTP session. Builds without Reader return Home from the finished transfer.
 | --- | --- |
 | Reader | Library -> Reading -> Options. Back from Options keeps the book open; Back from Reading cancels work and closes it before Library refresh. Only successfully displayed pages advance saved progress. |
 | Send Books | Mode -> Session. Back stops transfer and returns to Mode with the selected mode retained. Exit also requests service stop; Connectivity retains ownership while a failed stop retries. |
+| USB Manager | One dashboard. OK cancels the host session or retries unavailable storage. Back returns to Tools. Exit closes managed files, aborts staging and releases the library lease before another application enters. |
 | Sleep Cover | Choose -> Preview. Back returns to Choose; its already saved preference remains applied. Preview OK or global shutdown uses the normal final-cover sequence. |
 | Clock | View -> Edit. Back discards the draft. Save returns to View. Scene changes and failed-frame retries request Quality. |
 | Connectivity | Actions -> Forget. Back cancels removal and restores the action row. Exit stops private scenes and clears the displayed passkey; Platform continues to own BLE and resource work. |

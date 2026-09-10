@@ -23,12 +23,13 @@ common=(
   "$root_dir/components/zectrix_system/zectrix_boot_guard.cc" \
   "$root_dir/tools/platform_test.cc"
 )
-for profile in full minimal connectivity cli update; do
-    connectivity=0 cli=0 update=0 reader=0
+for profile in full minimal connectivity cli usb-host update; do
+    connectivity=0 cli=0 update=0 reader=0 usb_host=0
     case "$profile" in
-        full) connectivity=1 cli=1 update=1 reader=1 ;;
+        full) connectivity=1 cli=1 update=1 reader=1 usb_host=1 ;;
         connectivity) connectivity=1 ;;
         cli) cli=1 ;;
+        usb-host) cli=1 usb_host=1 ;;
         update) update=1 ;;
     esac
     optional=()
@@ -49,10 +50,16 @@ for profile in full minimal connectivity cli update; do
         optional+=(-I"$root_dir/components/zectrix_update/include"
             "$root_dir/components/zectrix_update/zectrix_update_stream.cc")
     fi
+    if [ "$usb_host" = 1 ]; then
+        optional+=(-I"$root_dir/components/zectrix_host/include"
+            "$root_dir/components/zectrix_host/zectrix_host_channel.cc"
+            "$root_dir/components/zectrix_host/zectrix_host_protocol.cc")
+    fi
     "${CXX:-c++}" -std=c++17 "${flags[@]}" \
         -DCONFIG_ZECTRIX_ENABLE_CONNECTIVITY="$connectivity" \
         -DCONFIG_ZECTRIX_ENABLE_READER="$reader" \
         -DCONFIG_ZECTRIX_ENABLE_USB_CLI="$cli" -DCONFIG_ZECTRIX_ENABLE_UPDATE="$update" \
+        -DCONFIG_ZECTRIX_ENABLE_USB_HOST="$usb_host" \
         "${common[@]}" "${optional[@]}" -o "$test_binary"
     "$test_binary"
     printf 'PASS: platform composition profile=%s.\n' "$profile"

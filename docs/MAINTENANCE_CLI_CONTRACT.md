@@ -2,8 +2,9 @@
 
 Status: D1.1 USB transport/session, D1.2 read-only platform diagnostics and
 log observation, and D1.3 interactive host simulation are implemented. Input
-tracing and mutating commands remain future slices. Real USB qualification
-remains open.
+tracing and confirmed maintenance mutations remain future slices. E1.8 adds
+`host start 1` and the separate foreground-owned book/settings session described
+in [USB_HOST.md](USB_HOST.md). Real USB transfer qualification remains open.
 
 ## Purpose
 
@@ -154,6 +155,16 @@ Implemented commands are `help [command]`, `version`, `system info`,
 `sysinfo`, `heap`, `tasks`, `uptime`, `epd-inspect` and `log-stream`.
 Other commands in the list above are future work. `app open` is not in D1
 because runtime switching must use the existing deferred lifecycle path.
+
+E1.8's `host start 1` lends transport ownership to a bounded binary handler
+when the user has opened USB Manager. It changes the transport mode only;
+book/settings requests execute on that application's foreground owner. It
+does not navigate from the CLI task or add generic maintenance mutations.
+Logs remain captured while binary traffic owns the connection. Ctrl+C is an
+ordinary byte in this mode; the host tool sends a typed Close on interruption.
+Only a valid Close restores text mode. Framing errors, timeouts, local cancel
+and TX failure retain binary input isolation until Close or physical reconnect.
+USB polls once per RTOS tick in binary mode and keeps its 20 ms text cadence.
 
 ## D1.2 implementation
 

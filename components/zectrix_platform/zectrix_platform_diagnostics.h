@@ -15,7 +15,8 @@ class PlatformDiagnostics final : public cli::ControlOwner {
 public:
     PlatformDiagnostics(system::SystemService& system,
                         display::DisplayService& display,
-                        input::InputService& input, time::TimeService& time);
+                        input::InputService& input, time::TimeService& time,
+                        cli::CliBinarySession* binary = nullptr);
     ~PlatformDiagnostics();
     void Poll();
     void Shutdown();

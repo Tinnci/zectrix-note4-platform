@@ -3,6 +3,7 @@
 #include "zectrix_first_party_app_controllers.h"
 #include "zectrix_locale.h"
 #include "zectrix_book_transfer_controller.h"
+#include "zectrix_host_books.h"
 #include "zectrix_sleep_cover.h"
 #include "zectrix_reader_controller.h"
 #include "zectrix_launcher_controller.h"
@@ -782,6 +783,38 @@ void SavePreview(const ZectrixCanvas& canvas, const char* name) {
     std::fprintf(output, "P4\n400 300\n");
     for (size_t i = 0; i < canvas.size(); ++i) std::fputc(canvas.data()[i] ^ 0xff, output);
     assert(std::fclose(output) == 0);
+}
+
+void TestUsbManagerComposition() {
+    Reset();
+    auto service = CreateService();
+    ZectrixDemoUi ui(service.get());
+    zectrix::host::Snapshot snapshot;
+    assert(ui.ShowUsbManager(snapshot, false, true) == ESP_OK);
+    SavePreview(ui.canvas(), "usb-unavailable");
+    assert(ui.ShowUsbManager(snapshot, true, true) == ESP_OK);
+    SavePreview(ui.canvas(), "usb-waiting");
+    snapshot.state = zectrix::host::TransferState::Uploading;
+    std::strcpy(snapshot.name.data(), "月光下的山路与远方的灯塔.epub");
+    snapshot.expected = 102400;
+    snapshot.transferred = 51200;
+    assert(ui.ShowUsbManager(snapshot, true, true) == ESP_OK);
+    SavePreview(ui.canvas(), "usb-upload");
+    Frame before;
+    std::memcpy(before.data(), ui.canvas().data(), before.size());
+    snapshot.transferred = 61440;
+    ClearTraffic();
+    assert(ui.ShowUsbManager(snapshot, true, false) == ESP_OK);
+    CheckPartial(before, {0, 0, 400, 300}, ui.canvas().data());
+    ClearTraffic();
+    assert(ui.ShowUsbManager(snapshot, true, false) == ESP_OK && packets.empty());
+    snapshot.error = zectrix::host::Status::NotSaved;
+    assert(ui.ShowUsbManager(snapshot, true, false) == ESP_OK);
+    SavePreview(ui.canvas(), "usb-setting-not-saved");
+    snapshot.state = zectrix::host::TransferState::Cancelled;
+    snapshot.error = zectrix::host::Status::Cancelled;
+    assert(ui.ShowUsbManager(snapshot, true, true) == ESP_OK);
+    SavePreview(ui.canvas(), "usb-cancelled");
 }
 
 void TestLauncherComposition() {
@@ -1584,6 +1617,7 @@ int main() {
     TestSettingsComposition();
     TestReaderComposition();
     TestBookTransferComposition();
+    TestUsbManagerComposition();
     TestSleepCoverComposition();
     Reset();
 }

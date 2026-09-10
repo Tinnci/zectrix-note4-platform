@@ -141,7 +141,7 @@ struct CliUsbService::Impl {
                 if (transport.TakeDisconnect() && session->connected()) session->Reset();
                 session->Poll();
                 transport.Flush();
-                vTaskDelay(kPollTicks);
+                vTaskDelay(session->binary_active() ? TickType_t{1} : kPollTicks);
             }
             session->Reset();
             StopMaintenanceLogCapture();

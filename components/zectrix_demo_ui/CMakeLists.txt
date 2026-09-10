@@ -5,6 +5,10 @@ set(sources "zectrix_canvas.cc" "zectrix_demo_ui.cc" "zectrix_view_port.cc"
     "zectrix_launcher_ui.cc")
 set(requires zectrix_display zectrix_power zectrix_self_test zectrix_system
     zectrix_time zectrix_app)
+if(CONFIG_ZECTRIX_ENABLE_USB_HOST)
+    list(APPEND sources "zectrix_usb_manager_ui.cc")
+    list(APPEND requires zectrix_host)
+endif()
 if(CONFIG_ZECTRIX_ENABLE_READER)
     list(APPEND sources "zectrix_reader_ui.cc")
     list(APPEND requires zectrix_reader)

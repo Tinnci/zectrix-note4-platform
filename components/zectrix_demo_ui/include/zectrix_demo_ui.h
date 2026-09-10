@@ -21,6 +21,7 @@ namespace zectrix::app { class SettingsController; }
 namespace zectrix::app { class LauncherController; struct ReadingOverview; }
 namespace zectrix::app { struct SleepCoverSnapshot; enum class SleepCoverStyle : uint8_t; }
 namespace zectrix::connectivity { struct BookTransferSnapshot; }
+namespace zectrix::host { struct Snapshot; }
 
 class ZectrixDemoUi {
 public:
@@ -76,6 +77,7 @@ public:
     esp_err_t ShowReader(const zectrix::app::ReaderController& reader, bool full_refresh);
     esp_err_t ShowBookTransfer(const zectrix::connectivity::BookTransferSnapshot& status,
                                bool choosing_mode, bool station_selected, bool full_refresh);
+    esp_err_t ShowUsbManager(const zectrix::host::Snapshot& status, bool storage_ready, bool full_refresh);
     esp_err_t ClearDisplay();
     esp_err_t ShowSleepCoverMenu(zectrix::app::SleepCoverStyle selected,
                                   zectrix::app::SleepCoverStyle active,

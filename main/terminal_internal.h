@@ -11,6 +11,9 @@
 #include "zectrix_demo_ui.h"
 #include "zectrix_platform.h"
 #include "zectrix_sleep_cover.h"
+#if CONFIG_ZECTRIX_ENABLE_USB_HOST
+#include "zectrix_host_channel.h"
+#endif
 
 namespace zectrix::terminal {
 
@@ -47,6 +50,8 @@ private:
     static sdk::Status CreateReader(TerminalApp&, sdk::Application**);
     class BookTransferApplication;
     static sdk::Status CreateBookTransfer(TerminalApp&, sdk::Application**);
+    class UsbManagerApplication;
+    static sdk::Status CreateUsbManager(TerminalApp&, sdk::Application**);
     class SleepCoverApplication;
     static sdk::Status CreateSleepCover(TerminalApp&, sdk::Application**);
     class ClockApplication;
@@ -89,6 +94,9 @@ private:
     zectrix::time::TimeService* time_ = nullptr;
     zectrix::storage::StorageService* storage_ = nullptr;
     zectrix::system::SystemService* system_ = nullptr;
+#if CONFIG_ZECTRIX_ENABLE_USB_HOST
+    host::Channel* usb_host_ = nullptr;
+#endif
 #if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY || CONFIG_ZECTRIX_ENABLE_READER
     zectrix::connectivity::ConnectivityService* connectivity_ = nullptr;
 #endif

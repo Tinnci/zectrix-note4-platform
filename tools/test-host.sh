@@ -35,6 +35,7 @@ host_tests=(
     test-system-service.sh
     test-time-service.sh
     test-update-service.sh
+    test-usb-manager.sh
     test-wifi-backend.sh
     test-wifi-http.sh
 )

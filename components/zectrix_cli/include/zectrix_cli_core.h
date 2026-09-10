@@ -18,7 +18,7 @@ enum class Execution : uint8_t { kImmediate, kOwnerRequest, kStream };
 enum class Origin : uint8_t { kUsbLocal, kAuthorizedCompanion };
 enum class Handler : uint8_t {
     kNone, kHelp, kVersion, kSystemInfo, kHeap, kTasks, kUptime,
-    kDisplayInspect, kLogFollow, kLogStats,
+    kDisplayInspect, kLogFollow, kLogStats, kHostStart,
 };
 
 enum class ParseStatus : uint8_t {

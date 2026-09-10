@@ -14,16 +14,18 @@ an `sdkconfig.defaults` overlay for a separate build.
 | `ZECTRIX_ENABLE_READER` | None | Removes TXT/EPUB parsing, pagination, reader scenes and the broad CJK reader font |
 | `ZECTRIX_ENABLE_UI_CHINESE` | None | Removes the Chinese UI strings and its small font subset when Reader is also off |
 | `ZECTRIX_ENABLE_USB_CLI` | None | Removes the maintenance component, executor and USB session task; normal ESP-IDF console logs remain |
+| `ZECTRIX_ENABLE_USB_HOST` | USB CLI | Removes the binary book/settings session, USB Manager application and host channel provider |
 | `ZECTRIX_ENABLE_UPDATE` | None | Removes streamed firmware writing and commit; core boot protection remains |
 
-`ZECTRIX_ENABLE_BOOK_STORAGE` is derived automatically from Reader or Web book
-transfer. When both are disabled, SPIFFS and the book storage implementation
+`ZECTRIX_ENABLE_BOOK_STORAGE` is derived automatically from Reader, Web book
+transfer or USB management. When all three are disabled, SPIFFS and the book storage implementation
 leave the build and no library mount is attempted. The partition table and
 stored books remain intact. The explicit `books-flash` target is available
 when book storage is enabled; normal firmware flash still preserves books.
 
 Disabling a parent disables its dependent options, even if an overlay requests
 them. Web book transfer does not depend on the reader or the HTTPS client.
+USB management works without Reader, Connectivity or Wi-Fi; see [USB_HOST.md](USB_HOST.md).
 BLE pairing, durable sync and phone resource requests work without direct
 Wi-Fi. Keep the existing NimBLE peripheral and HTTPS validation settings from
 `sdkconfig.defaults` when using those modules.
@@ -88,8 +90,8 @@ coexistence support. Disabling Connectivity removes the entire BT/Wi-Fi branch.
 
 ## Runtime behavior and boot safety
 
-Platform registers eight core providers and up to three optional providers:
-Connectivity, USB maintenance and the firmware writer. Typed lookup returns
+Platform registers eight core providers and up to four optional providers:
+Connectivity, USB maintenance, the USB host channel and the firmware writer. Typed lookup returns
 null for an excluded provider. The Launcher uses the composed application
 descriptors, and optional application sources, controllers and renderers are excluded.
 Transfer completion returns home when the reader is absent.

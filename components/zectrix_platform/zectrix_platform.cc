@@ -8,6 +8,9 @@
 #include "sdkconfig.h"
 #include "zectrix_board.h"
 #include "zectrix_boot_esp.h"
+#if CONFIG_ZECTRIX_ENABLE_USB_HOST
+#include "zectrix_host_protocol.h"
+#endif
 #if CONFIG_ZECTRIX_ENABLE_USB_CLI
 #include "zectrix_platform_diagnostics.h"
 #include "zectrix_cli_usb.h"
@@ -78,12 +81,25 @@ struct Platform::Impl {
     system::SystemService* system = nullptr;
     display::DisplayService* display = nullptr;
     ZectrixSelfTest* diagnostics = nullptr;
+#if CONFIG_ZECTRIX_ENABLE_USB_HOST
+    host::Channel host_channel;
+    host::Protocol host_protocol{host_channel};
+    host::Channel* host_facade = &host_channel;
+    ServiceBinding<host::Channel, Impl> host_binding{
+        *this, host_facade, nullptr, nullptr, [](Impl& self) {
+            self.host_channel.Disable();
+            return ESP_OK;
+        }};
+#endif
 #if CONFIG_ZECTRIX_ENABLE_USB_CLI
     cli::CliUsbService* cli_usb = nullptr;
     PlatformDiagnostics* maintenance = nullptr;
 #endif
 
     void StopMaintenance() {
+#if CONFIG_ZECTRIX_ENABLE_USB_HOST
+        host_channel.Disable();
+#endif
 #if CONFIG_ZECTRIX_ENABLE_USB_CLI
         if (maintenance != nullptr) maintenance->Shutdown();
         if (cli_usb != nullptr) cli_usb->Stop();
@@ -172,7 +188,11 @@ struct Platform::Impl {
     ServiceBinding<cli::CliUsbService, Impl> maintenance_binding{
         *this, cli_usb, [](Impl& self) {
             self.maintenance = new (std::nothrow) PlatformDiagnostics(
-                *self.system, *self.display, *self.input, *self.time);
+                *self.system, *self.display, *self.input, *self.time
+#if CONFIG_ZECTRIX_ENABLE_USB_HOST
+                , &self.host_protocol
+#endif
+            );
             if (self.maintenance == nullptr) return ESP_ERR_NO_MEM;
             self.cli_usb = new (std::nothrow) cli::CliUsbService;
             return self.cli_usb ? ESP_OK : ESP_ERR_NO_MEM;
@@ -201,6 +221,9 @@ struct Platform::Impl {
         if (err == ESP_OK) err = registry.Register(connectivity_binding);
 #endif
 #if CONFIG_ZECTRIX_ENABLE_USB_CLI
+#if CONFIG_ZECTRIX_ENABLE_USB_HOST
+        if (err == ESP_OK) err = registry.Register(host_binding);
+#endif
         if (err == ESP_OK) err = registry.Register(maintenance_binding);
 #endif
         return err;

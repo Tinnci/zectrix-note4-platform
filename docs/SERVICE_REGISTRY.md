@@ -105,6 +105,7 @@ registry is embedded in Platform itself. Operation order remains explicit:
 | Display | Create Display | Ready | Release SPI/DMA and display resources |
 | Diagnostics | Construct with typed service dependencies | Ready | Destroy diagnostic consumer |
 | Connectivity (optional) | Create and supply Storage/NFC dependencies | Initialize connectivity | Stop/destroy connectivity before releasing its NFC adapter |
+| USB host channel (optional) | Bind fixed request/reply storage | Await foreground USB Manager entry | Close admission and discard queued work |
 | Maintenance (optional) | Create diagnostic executor and USB CLI | Start USB CLI | Cancel dispatch, join USB session, then destroy both consumers |
 
 If initialization stops before Connectivity runs, Platform still releases the

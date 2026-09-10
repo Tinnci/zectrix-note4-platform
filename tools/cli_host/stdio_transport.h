@@ -46,6 +46,7 @@ public:
     void DrainOutput(int timeout_ms);
     void Reconnect();
     void SetCommandActive(bool active) { command_active_ = active; }
+    void SetBinaryActive(bool active) { binary_active_ = active; }
     void Inject(uint8_t value) { injected_ = value; }
 
     bool IsConnected() const override { return connected_; }
@@ -75,6 +76,7 @@ private:
     bool regular_input_ = false;
     bool connected_ = false;
     bool command_active_ = false;
+    bool binary_active_ = false;
     bool eof_ = false;
     bool hangup_ = false;
     bool quit_ = false;

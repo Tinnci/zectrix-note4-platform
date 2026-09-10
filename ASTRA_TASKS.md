@@ -206,7 +206,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Verified all 34 Host targets, localization ASan/UBSan across three font/language compositions, rendered Chinese/English screens, ShellCheck and Full/Minimal/Chinese-without-Reader ESP32-S3 builds. Full is 3,018,304 bytes; Minimal is 562,752 bytes (81.4% smaller). Adding Chinese to the offline Minimal configuration costs 21,504 firmware bytes and 8 static RAM bytes. Device smoke was not required for this UI change; physical panel readability remains a hardware measurement.
 
 
-- [ ] **E1.8: USB 宿主通信与设备管理架构演进 (Host-Device USB Communication & Management Architecture)**
+- [x] **E1.8: USB 宿主通信与设备管理架构演进 (Host-Device USB Communication & Management Architecture)**
   - **背景与核心愿景**：
     - 当前 Note4 的 USB 接口局限于只读维护终端，尚未形成完整的数据导入导出与设备控制闭环。
     - 演进愿景是将 USB 接口提升为兼顾“极客交互控制”与“便捷数据流转”的统一宿主通信桥梁（Unified Host Bridge），让日常图书传输、文件管理与系统配置触手可及。
@@ -216,6 +216,10 @@ Each iteration picks the top unfinished task, implements production code, verifi
     3. *端侧视觉与人机交互协同*：当 USB 正在发生数据交换或配置变更时，墨水屏视觉层与三键状态机应如何优雅配合（例如专属传输看板 vs 呼吸式轻量反馈）？如何在各种链路状态下确保物理按键操控的确定性与流畅感？
   - **期待产出**：
     - 赋能 Astra 结合开源优秀实践（Flipper Zero, CrossPoint, Android ADB 等）与 Note4 既有架构基础设施，深入权衡并提出最符合掌上随身墨水屏特质的最佳实践工程方案。
+  - Compared MSC/MTP/serial access, CrossPoint's SD/USB controller handoff and Flipper's explicit RPC sessions. Selected framed object operations over the existing USB Serial/JTAG transport; documented host compatibility, ownership, wire format and extension choices in [docs/USB_HOST.md](docs/USB_HOST.md).
+  - Added optional Tools > USB Manager and a uv/pyserial host tool for paged book lists, bounded TXT/EPUB import/export and language/showcase/sleep-cover settings. One copied request slot serves the foreground owner; existing storage leases, staging, no-overwrite commit and deterministic cancel/Back/shutdown cleanup remain authoritative. Binary errors cannot fall through to terminal commands; uncertain mutations are never automatically retried.
+  - Verified all 35 Host targets, USB ASan/UBSan with seven Python client/integration scenarios, Chinese/English rendering, platform compositions and ShellCheck. Full, Minimal and Chinese USB-without-Reader/Wi-Fi firmware builds passed at 3,027,232 / 563,328 / 666,896 bytes; the existing profile comparison passed with an 81.4% Minimal reduction.
+  - The connected ESP32-S3 passed Full flash/boot smoke: 8 MiB PSRAM, partitions, first Launcher frame, boot confirmation, 13 applications and USB CLI. Real USB transfer throughput, cross-OS reopen and sleep/wake interaction remain hardware qualification work; Host round trips verify production framing and storage, not panel or USB timing.
 
 - [ ] **E2.1: 动态应用运行时与第三方生态架构预研 (Dynamic Application Runtime & Extensibility Research)**
   - **背景与愿景**：

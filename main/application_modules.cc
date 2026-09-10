@@ -29,6 +29,10 @@ bool TerminalApp::ComposeApplications() {
     if (connectivity_ &&
         !AddApplication("connectivity", "CONNECTIVITY", CreateConnectivity, {Icon::App, false, Text::Connectivity})) return false;
 #endif
+#if CONFIG_ZECTRIX_ENABLE_USB_HOST
+    if (usb_host_ && storage_ &&
+        !AddApplication("usb-manager", "USB MANAGER", CreateUsbManager, {Icon::Transfer, false, Text::UsbManager})) return false;
+#endif
     return AddApplication("showcase", "AUTO SHOWCASE", CreateShowcase, {Icon::App, false, Text::AutoShowcase}) &&
            AddApplication("gallery", "DISPLAY GALLERY", CreateGallery, {Icon::App, false, Text::DisplayGallery}) &&
            AddApplication("diagnostics", "HARDWARE TESTS", CreateDiagnostics, {Icon::App, false, Text::HardwareTests}) &&
