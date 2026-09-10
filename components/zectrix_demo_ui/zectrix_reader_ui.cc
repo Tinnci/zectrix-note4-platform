@@ -34,8 +34,17 @@ esp_err_t ZectrixDemoUi::ShowReader(const zectrix::app::ReaderController& reader
             std::snprintf(count, sizeof(count), "%u / %u BOOKS%s",
                 static_cast<unsigned>(reader.selected() + 1), static_cast<unsigned>(library.count()),
                 library.truncated() ? " (FIRST 32 SHOWN)" : "");
-            canvas_.Text(16, 248, count);
+            if (reader.notice() == zectrix::app::ReaderNotice::None) canvas_.Text(16, 248, count);
         }
+        const char* notice = nullptr;
+        using Notice = zectrix::app::ReaderNotice;
+        switch (reader.notice()) {
+            case Notice::None: break;
+            case Notice::RecentUnavailable: notice = "RECENT BOOK UNAVAILABLE - CHOOSE A BOOK"; break;
+            case Notice::RecentChanged: notice = "RECENT BOOK CHANGED - CHOOSE A BOOK"; break;
+            case Notice::HistoryUnavailable: notice = "READING HISTORY UNAVAILABLE"; break;
+        }
+        if (notice) canvas_.Text(16, 248, notice);
     } else if (reader.scene() == ReaderScene::Options) {
         DrawFrame("READING OPTIONS", "UP/DOWN Move  OK Choose  Hold OK Read");
         DrawUtf8Line(canvas_, 16, 54, reader.book().id.data(), 368);

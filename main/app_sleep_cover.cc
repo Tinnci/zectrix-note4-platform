@@ -8,19 +8,32 @@
 
 namespace zectrix::terminal {
 
+app::ReadingOverview TerminalApp::ReadReadingOverview() {
+    app::ReadingOverview overview;
+#if CONFIG_ZECTRIX_ENABLE_READER
+    if (!storage_) return overview;
+    reader::PlatformBookmarkStore store(*storage_);
+    reader::Bookmarks bookmarks(store);
+    overview.state = app::ReadingOverview::State::Empty;
+    if (bookmarks.Load() != reader::Result::Ok) {
+        overview.state = app::ReadingOverview::State::Error;
+    } else if (const auto* latest = bookmarks.Latest()) {
+        overview.state = app::ReadingOverview::State::Saved;
+        overview.book_id = latest->book_id;
+        overview.progress_per_mille = latest->progress_per_mille;
+    }
+#endif
+    return overview;
+}
+
 app::SleepCoverSnapshot TerminalApp::ReadSleepCover() {
     app::SleepCoverSnapshot snapshot;
     snapshot.clock = time_->Now();
     snapshot.power = power_->ReadSnapshot();
-#if CONFIG_ZECTRIX_ENABLE_READER
-    reader::PlatformBookmarkStore store(*storage_, connectivity_);
-    reader::Bookmarks bookmarks(store);
-    if (bookmarks.Load() == reader::Result::Ok && bookmarks.Latest()) {
-        snapshot.reading.book_id = bookmarks.Latest()->book_id;
-        snapshot.reading.progress_per_mille = bookmarks.Latest()->progress_per_mille;
-        snapshot.has_reading = true;
-    }
-#endif
+    const auto reading = ReadReadingOverview();
+    snapshot.reading.book_id = reading.book_id;
+    snapshot.reading.progress_per_mille = reading.progress_per_mille;
+    snapshot.has_reading = reading.state == app::ReadingOverview::State::Saved;
     return snapshot;
 }
 

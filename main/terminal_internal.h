@@ -6,6 +6,8 @@
 #include "sdkconfig.h"
 #include "zectrix/zectrix_sdk.h"
 #include "zectrix_application_catalog.h"
+#include "zectrix_launcher_controller.h"
+#include "zectrix_reading_overview.h"
 #include "zectrix_demo_ui.h"
 #include "zectrix_platform.h"
 #include "zectrix_sleep_cover.h"
@@ -64,7 +66,8 @@ private:
     class AboutApplication;
     static sdk::Status CreateAbout(TerminalApp&, sdk::Application**);
 
-    bool AddApplication(const char* id, const char* label, Creator creator);
+    bool AddApplication(const char* id, const char* label, Creator creator,
+                        app::ApplicationPresentation presentation = {});
     bool ComposeApplications();
     void UpdateSystemStatus();
     void RunApplicationShell();
@@ -73,6 +76,7 @@ private:
     void LogHeap(const char* phase);
     ControlResult Wait(uint32_t duration_ms, bool any_click_returns);
     app::SleepCoverSnapshot ReadSleepCover();
+    app::ReadingOverview ReadReadingOverview();
     [[noreturn]] void PowerOff();
 
     app::ApplicationCatalog applications_;
@@ -91,10 +95,11 @@ private:
     ZectrixSelfTest* tests_ = nullptr;
     std::array<ZectrixTestState,
                static_cast<size_t>(ZectrixTestId::kCount)> test_states_;
-    size_t launcher_selection_ = 0;
+    app::LauncherSelection launcher_selection_{};
     uint32_t gallery_selection_ = 0;
 #if CONFIG_ZECTRIX_ENABLE_READER
     uint32_t reader_selection_ = 0;
+    bool reader_continue_requested_ = false;
     bool reader_busy_ = false;
 #endif
     zectrix::app::SleepCoverStyle sleep_cover_style_ = zectrix::app::kSleepCoverDefault;

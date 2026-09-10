@@ -24,13 +24,15 @@ constexpr std::array<ZectrixTestId, 7> kTestOrder = {
 constexpr std::array<const char*, 7> kTestShortNames = {
     "RF", "AUDIO", "RTC", "PWR", "LED", "KEYS", "NFC"};
 
-void DrawFittedText(ZectrixCanvas& canvas, int x, int y, const char* text,
-                    int max_width) {
+}  // namespace
+
+void ZectrixDemoUi::DrawFittedText(ZectrixCanvas& canvas, int x, int y, const char* text,
+                                  int max_width, bool inverted) {
     if (text == nullptr || max_width <= 0) {
         return;
     }
     if (canvas.TextWidth(text) <= max_width) {
-        canvas.Text(x, y, text);
+        canvas.Text(x, y, text, 1, inverted);
         return;
     }
 
@@ -47,10 +49,8 @@ void DrawFittedText(ZectrixCanvas& canvas, int x, int y, const char* text,
         --length;
     }
     std::memcpy(fitted + length, kEllipsis, sizeof(kEllipsis));
-    canvas.Text(x, y, fitted);
+    canvas.Text(x, y, fitted, 1, inverted);
 }
-
-}  // namespace
 
 ZectrixDemoUi::ZectrixDemoUi(zectrix::display::DisplayService* display)
     : display_(display) {
