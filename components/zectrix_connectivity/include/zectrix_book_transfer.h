@@ -24,6 +24,8 @@ struct BookTransferSnapshot {
     std::array<char, 13> code{};
     std::array<char, 16> address{};
     uint32_t received = 0, expected = 0, uploaded = 0, seconds_left = 0;
+    uint32_t activity_ms = 0;
+    bool client_active = false;
 };
 
 class BookTransferRadio {

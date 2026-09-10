@@ -53,6 +53,8 @@ void BookTransfer::Poll(uint32_t now_ms, bool power_allowed, bool policy_allowed
     snapshot_.expected = progress.expected;
     snapshot_.received = std::min(progress.received, progress.expected);
     snapshot_.uploaded = progress.uploaded;
+    snapshot_.activity_ms = progress.activity_ms;
+    snapshot_.client_active = progress.active;
     if (progress.finish && !finishing_) { finishing_ = true; finish_ms_ = now_ms; }
     if (finishing_) {
         // Give the final HTTP response time to leave the radio before stopping it.
@@ -76,6 +78,7 @@ bool BookTransfer::Stop(BookTransferError error) {
     start_pending_ = false;
     ClearWifiCredentials(&pending_credentials_);
     snapshot_.state = BookTransferState::Stopping;
+    snapshot_.client_active = false;
     if (error != BookTransferError::None) snapshot_.error = error;
     if (!server_.Stop()) {
         snapshot_.error = BookTransferError::Stop;

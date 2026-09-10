@@ -383,6 +383,23 @@ See [BOOK_TRANSFER.md](BOOK_TRANSFER.md) for the API, exact time/memory limits,
 content initialization, local-network security and Host verification. Real
 association, radio current and BLE/Wi-Fi coexistence remain hardware measurements.
 
+## Radio arbitration (E1.5)
+
+The existing session owner runs `RadioArbiter` under the resource mutex. Wi-Fi
+startup, active transfer and pending/failed cleanup admit new device-to-phone
+durable frames at 250 ms intervals. Book sessions return to normal sync cadence
+after 500 ms without an active client or recent activity; released Wi-Fi restores
+normal cadence immediately. Control replies, admitted frames, retries, pairing
+and authorization retain their existing processing paths. Phone resource
+confirmation ownership takes precedence over new durable work.
+
+The scheduler observes the shared Wi-Fi claim, including diagnostics and failed
+cleanup. The driver explicitly uses STA modem sleep; firmware defaults separate
+Wi-Fi and BLE stacks across S3 cores with ESP-IDF software coexistence enabled.
+ESP-IDF remains responsible for antenna arbitration. See
+[RADIO_ARBITER.md](RADIO_ARBITER.md) for state transitions, timing, power and
+verification limits.
+
 ## Security lifecycle
 
 Pairing requires a local Note4 action. The firmware requests bonding, LE Secure

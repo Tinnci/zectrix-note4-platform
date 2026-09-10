@@ -8,6 +8,7 @@ enum { WIFI_REASON_AUTH_FAIL, WIFI_REASON_AUTH_EXPIRE, WIFI_REASON_4WAY_HANDSHAK
        WIFI_REASON_HANDSHAKE_TIMEOUT, WIFI_REASON_802_1X_AUTH_FAILED };
 enum { WIFI_STORAGE_RAM, WIFI_MODE_STA, WIFI_MODE_AP, WIFI_ALL_CHANNEL_SCAN, WIFI_AUTH_OPEN,
        WIFI_AUTH_WPA2_PSK, WPA3_SAE_PWE_BOTH, WIFI_IF_STA, WIFI_IF_AP, WIFI_SCAN_TYPE_ACTIVE };
+enum wifi_ps_type_t { WIFI_PS_NONE, WIFI_PS_MIN_MODEM, WIFI_PS_MAX_MODEM };
 struct wifi_event_sta_disconnected_t { uint8_t reason; };
 struct wifi_init_config_t {};
 #define WIFI_INIT_CONFIG_DEFAULT() wifi_init_config_t{}
@@ -30,6 +31,7 @@ esp_err_t esp_wifi_init(const wifi_init_config_t*);
 esp_err_t esp_wifi_deinit();
 esp_err_t esp_wifi_set_storage(int);
 esp_err_t esp_wifi_set_mode(int);
+esp_err_t esp_wifi_set_ps(wifi_ps_type_t);
 esp_err_t esp_wifi_set_config(int, const wifi_config_t*);
 esp_err_t esp_wifi_start();
 esp_err_t esp_wifi_stop();

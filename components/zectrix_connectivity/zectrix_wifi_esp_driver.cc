@@ -237,6 +237,8 @@ struct EspWifiBackendDriver::Impl
         }
         if (error == ESP_OK) error = esp_wifi_set_storage(WIFI_STORAGE_RAM);
         if (error == ESP_OK) error = esp_wifi_set_mode(ap_mode ? WIFI_MODE_AP : WIFI_MODE_STA);
+        // Keep station modem sleep enabled alongside BLE software coexistence.
+        if (error == ESP_OK && !ap_mode) error = esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
         if (error == ESP_OK && credentials != nullptr) {
             wifi_config_t config{};
             if (ap_mode) {
@@ -335,6 +337,10 @@ struct EspWifiBackendDriver::Impl
 };
 
 EspWifiBackendDriver::EspWifiBackendDriver() : impl_(new (std::nothrow) Impl()) {}
+
+bool EspWifiBackendDriver::RadioClaimed() {
+    return radio_claimed.load(std::memory_order_acquire);
+}
 
 EspWifiBackendDriver::~EspWifiBackendDriver() {
     if (impl_ == nullptr) return;

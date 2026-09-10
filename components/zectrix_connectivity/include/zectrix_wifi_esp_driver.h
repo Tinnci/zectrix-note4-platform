@@ -20,6 +20,9 @@ public:
     EspWifiBackendDriver(const EspWifiBackendDriver&) = delete;
     EspWifiBackendDriver& operator=(const EspWifiBackendDriver&) = delete;
 
+    // Includes diagnostics and failed cleanup; this never grants ownership.
+    static bool RadioClaimed();
+
     WifiDriverResult StartStation(const WifiCredentials& credentials) override;
     WifiDriverResult PollAssociation() override;
     WifiDriverResult PollIp() override;

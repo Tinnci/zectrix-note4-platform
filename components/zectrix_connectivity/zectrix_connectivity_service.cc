@@ -199,6 +199,7 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
     std::array<uint8_t, companion::kMaximumFrameSize> resource_frame{};
     companion::SyncEngine sync_engine;
     companion::SyncSession sync_session{sync_engine};
+    RadioArbiter radio_arbiter;
     companion::ClockMailbox clock_mailbox;
 
     companion::StoreReadStatus Load(uint8_t* output, std::size_t capacity,
@@ -642,13 +643,29 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
         xSemaphoreGive(resource_mutex);
     }
 
+    // All callers hold resource_mutex, including foreground cancellation.
+    void UpdateRadio(uint32_t now_ms) {
+#if CONFIG_ZECTRIX_ENABLE_WIFI
+        const bool claimed = EspWifiBackendDriver::RadioClaimed();
+#else
+        constexpr bool claimed = false;
+#endif
+#if CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
+        const auto& books = book_status;
+#else
+        const BookTransferSnapshot books{};
+#endif
+        radio_arbiter.Update(resource_client->WifiState(), books, claimed, now_ms);
+    }
+
     uint32_t NextResourceWakeMs() {
         if (resource_mutex == nullptr) return UINT32_MAX;
         xSemaphoreTake(resource_mutex, portMAX_DELAY);
+        const uint32_t now_ms = MonotonicMilliseconds();
         const uint32_t resource_next = resource_client == nullptr ? UINT32_MAX
-            : resource_client->NextWakeMs(MonotonicMilliseconds());
-        uint32_t next = std::min(resource_next, sync_session.NextWakeMs(MonotonicMilliseconds(),
-            resource_client == nullptr || !resource_client->AwaitingPhone()));
+            : resource_client->NextWakeMs(now_ms);
+        uint32_t next = std::min(resource_next, radio_arbiter.NextSyncWakeMs(sync_session, now_ms,
+            resource_client != nullptr && resource_client->AwaitingPhone()));
         if (BookBusy()) next = std::min(next, uint32_t{100});
         xSemaphoreGive(resource_mutex);
         return next;
@@ -657,9 +674,16 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
     void PollResource(const BleSnapshot& link) {
         if (resource_mutex == nullptr || resource_client == nullptr) return;
         xSemaphoreTake(resource_mutex, portMAX_DELAY);
+#if CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
+        if (book_share && book_share->transfer.Busy()) {
+            book_share->transfer.Poll(MonotonicMilliseconds(), BookPowerAllowed(resource_conditions), BookPolicyAllowed(resource_conditions));
+            book_status = book_share->transfer.Snapshot();
+        }
+#endif
+        UpdateRadio(MonotonicMilliseconds());
         if (IsSessionPeerAuthorized(link) && protocol_negotiated_local.load()) {
-            sync_session.Poll(*this, next_outbound_sequence, MonotonicMilliseconds(),
-                              !resource_client->AwaitingPhone());
+            radio_arbiter.PollSync(sync_session, *this, next_outbound_sequence, MonotonicMilliseconds(),
+                                   resource_client->AwaitingPhone());
             const auto status = sync_session.Status();
             if (status != companion::SyncSessionStatus::kActive &&
                 status != companion::SyncSessionStatus::kDisconnected) {
@@ -675,12 +699,7 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
                 ? companion::PhoneAvailability::kConnected
                 : companion::PhoneAvailability::kUnavailable;
         resource_client->Poll(resource_conditions, MonotonicMilliseconds());
-#if CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
-        if (book_share && book_share->transfer.Busy()) {
-            book_share->transfer.Poll(MonotonicMilliseconds(), BookPowerAllowed(resource_conditions), BookPolicyAllowed(resource_conditions));
-            book_status = book_share->transfer.Snapshot();
-        }
-#endif
+        UpdateRadio(MonotonicMilliseconds());
         xSemaphoreGive(resource_mutex);
     }
 
@@ -935,6 +954,7 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
             while (true) {
                 xSemaphoreTake(self->resource_mutex, portMAX_DELAY);
                 self->resource_client->Poll(self->resource_conditions, MonotonicMilliseconds());
+                self->UpdateRadio(MonotonicMilliseconds());
                 const bool busy = self->resource_client->WifiBusy();
                 xSemaphoreGive(self->resource_mutex);
                 if (!busy) break;
@@ -948,6 +968,7 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
                 xSemaphoreTake(self->resource_mutex, portMAX_DELAY);
                 const bool stopped = self->book_share->transfer.Stop();
                 self->book_status = self->book_share->transfer.Snapshot();
+                self->UpdateRadio(MonotonicMilliseconds());
                 xSemaphoreGive(self->resource_mutex);
                 if (stopped) break;
                 vTaskDelay(pdMS_TO_TICKS(20));
@@ -1200,6 +1221,7 @@ ConnectivitySnapshot ConnectivityService::Snapshot() const {
         snapshot.wifi_credentials_available = impl_->resource_conditions.wifi_credentials_available;
         snapshot.resource_busy = impl_->resource_client->Busy();
         snapshot.wifi_state = impl_->resource_client->WifiState();
+        snapshot.radio_mode = impl_->radio_arbiter.Mode();
 #if CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
         snapshot.book_transfer_active = impl_->BookBusy();
         if (snapshot.book_transfer_active) {
@@ -1397,6 +1419,7 @@ ConnectivityResult ConnectivityService::StartBookTransfer(BookTransferMode mode)
     code.fill(0);
     if (!started) { books->EndManagement(); return fail(BookTransferError::Server); }
     impl_->book_status = impl_->book_share->transfer.Snapshot();
+    impl_->UpdateRadio(Impl::MonotonicMilliseconds());
     return finish(ConnectivityResult::kOk);
 }
 
@@ -1405,6 +1428,7 @@ ConnectivityResult ConnectivityService::StopBookTransfer() {
     xSemaphoreTake(impl_->resource_mutex, portMAX_DELAY);
     const bool stopped = !impl_->book_share || impl_->book_share->transfer.Stop();
     if (impl_->book_share) impl_->book_status = impl_->book_share->transfer.Snapshot();
+    if (impl_->resource_client) impl_->UpdateRadio(Impl::MonotonicMilliseconds());
     xSemaphoreGive(impl_->resource_mutex);
     impl_->ble.WakeSessionWaiter();
     return stopped ? ConnectivityResult::kOk : ConnectivityResult::kTransportError;

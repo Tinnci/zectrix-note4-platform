@@ -2,6 +2,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/zectrix_features.cmake")
 set(sources
         "zectrix_ble_link.cc"
         "zectrix_connectivity_service.cc"
+        "zectrix_radio_arbiter.cc"
         "zectrix_resource_client.cc"
         "zectrix_wifi_backend.cc"
 )

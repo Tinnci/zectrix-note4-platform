@@ -198,34 +198,35 @@ bool SyncSession::Receive(const FrameView& frame) {
     return true;
 }
 
-void SyncSession::Poll(SyncFrameSender& sender, uint32_t& next_sequence,
+bool SyncSession::Poll(SyncFrameSender& sender, uint32_t& next_sequence,
                        uint32_t now_ms, bool allow_new_state) {
-    if (status_ != SyncSessionStatus::kActive) return;
+    if (status_ != SyncSessionStatus::kActive) return false;
     if (Converged()) {
         idle_ = true;
-        return;
+        return false;
     }
-    // A resource request already owns this direction's confirmation window.
+    // Resource ownership or radio pacing may defer new durable work.
     if (!allow_new_state && outbound_size_ == 0 && reply_size_ == 0) {
         idle_ = true;
-        return;
+        return false;
     }
     // Duplicate traffic is not progress and cannot keep a stalled replay alive.
     if (idle_ || progress_pending_) progress_deadline_ = now_ms + kProgressTimeoutMs;
     idle_ = false;
     progress_pending_ = false;
-    if (Remaining(now_ms, progress_deadline_) == 0) { status_ = SyncSessionStatus::kTimeout; return; }
+    if (Remaining(now_ms, progress_deadline_) == 0) { status_ = SyncSessionStatus::kTimeout; return false; }
     if (reply_size_ != 0) {
         if (sender.SendSyncFrame(reply_.data(), reply_size_) == LinkResult::kOk) {
             reply_size_ = 0;
             status_ = after_reply_;
         }
-        return;
+        return false;
     }
+    bool admitted = false;
     if (outbound_size_ == 0 && allow_new_state) {
         DurableStateView state{};
-        if (engine_.NextDurableState(&state) != SyncStatus::kOk) return;
-        if (next_sequence == 0 || next_sequence == UINT32_MAX) { status_ = SyncSessionStatus::kProtocolError; return; }
+        if (engine_.NextDurableState(&state) != SyncStatus::kOk) return false;
+        if (next_sequence == 0 || next_sequence == UINT32_MAX) { status_ = SyncSessionStatus::kProtocolError; return false; }
         uint8_t payload[kSyncFrameSize - kFrameHeaderSize];
         const auto size = EncodePayload(state, nullptr, payload, sizeof(payload));
         FrameHeader header{};
@@ -240,13 +241,15 @@ void SyncSession::Poll(SyncFrameSender& sender, uint32_t& next_sequence,
         attempts_ = 0;
         retry_at_ = now_ms;
         progress_deadline_ = now_ms + kProgressTimeoutMs;
+        admitted = true;
     }
-    if (outbound_size_ == 0 || Remaining(now_ms, retry_at_) != 0) return;
-    if (attempts_ == kMaximumAttempts) { status_ = SyncSessionStatus::kTimeout; return; }
+    if (outbound_size_ == 0 || Remaining(now_ms, retry_at_) != 0) return admitted;
+    if (attempts_ == kMaximumAttempts) { status_ = SyncSessionStatus::kTimeout; return admitted; }
     if (sender.SendSyncFrame(outbound_.data(), outbound_size_) == LinkResult::kOk) {
         ++attempts_;
         retry_at_ = now_ms + kRetryMs;
     }
+    return admitted;
 }
 
 bool SyncSession::Converged() const {
