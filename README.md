@@ -50,18 +50,24 @@ at commit `ca285c98`. See [UPSTREAM.md](UPSTREAM.md) for provenance.
 Development follows dependency-aware stage gates defined in
 [docs/ROADMAP.md](docs/ROADMAP.md).
 
+The [GitHub triage record](docs/GITHUB_TRIAGE.md) maps delivered backlog items
+to Issues and Milestones, including remaining implementation, physical
+qualification and pull-request integration work.
+
 | Stage | Status | Result |
 | --- | --- | --- |
 | M1 | Complete | Reproducible upstream baseline, hardware qualification and factory recovery |
 | M2 | Complete | Platform-owned display, input, power, time, storage and system services |
 | M3 | Complete | Static application lifecycle and first-party applications |
 | M4 | Complete | Source-stable SDK v1 and unified software/hardware exit gate |
-| C1 | In progress | Companion protocol, durable sync, secure BLE/Android path and NFC-assisted enrollment; full hardware qualification remains open |
-| D1 | In progress | USB sessions, platform diagnostics, log streaming and host simulator implemented; input observation and hardware qualification remain open |
-| M5 | In progress | A/B partition validation, streamed firmware verification and boot confirmation watchdog implemented; update delivery and hardware qualification remain open |
-| R1 | In progress | Minimal dirty-region updates, unchanged-frame suppression and adaptive full-refresh policy implemented; hardware qualification remains open |
+| C1 | Qualification open | Protocol, durable sync, secure BLE/Android enrollment, phone HTTPS and direct Wi-Fi implemented; physical end-to-end and RF/power evidence remains open |
+| D1 | Partially implemented | USB sessions, system/display diagnostics, log streaming and host simulator delivered; other status commands, input observation, confirmed mutations and USB qualification remain open |
+| M5 | Architecture complete | Measured A/B layout, streamed firmware verification and boot confirmation implemented; trusted delivery and physical rollback follow-ups remain open |
+| R1 | Implemented | Minimal dirty-region updates, unchanged-frame suppression and adaptive full-refresh policy delivered; panel measurements remain open |
+| Q1 | Implemented | Contract regression, concurrency/cleanup fixes and terminal/durable-replay audits delivered |
 | L1 | Implemented | Status bar, scene navigation, streamed TXT/EPUB reader, local Wi-Fi book management and ambient sleep covers; physical sleep/wake and standby-current measurements remain open |
 | S1 | Implemented | Typed service registry, selectable modules, conditional application composition, RTC restoration/editor and Full/Minimal regression; physical RTC retention and standby-current measurements remain open |
+| E1 | In progress | E1.1–E1.7 deliver Home, responsive navigation, radio arbitration, visual refinement and Chinese/English UI in PR #54; E1.8 host/USB architecture remains planned |
 
 The [service registry](docs/SERVICE_REGISTRY.md) provides optional typed lookup,
 ordered startup and failure cleanup with 16 fixed slots and no registry heap
