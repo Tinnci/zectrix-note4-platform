@@ -4,6 +4,55 @@
 #include <cstdlib>
 
 #include "zectrix_ascii_font_8x16.h"
+#include "zectrix_utf8.h"
+#include "sdkconfig.h"
+#if CONFIG_ZECTRIX_ENABLE_READER
+#include "zectrix_reader.h"
+#elif CONFIG_ZECTRIX_ENABLE_UI_CHINESE
+#include "zectrix_ui_chinese_font.h"
+#endif
+
+namespace {
+struct Glyph {
+    int width;
+    const uint16_t* ascii = nullptr;
+    const uint8_t* unicode = nullptr;
+    uint16_t Row(int row) const {
+        return ascii ? ascii[row] : static_cast<uint16_t>(unicode[1 + row * 2]) << 8 |
+                                     unicode[2 + row * 2];
+    }
+};
+
+Glyph UiGlyph(uint32_t cp) {
+    if (cp >= 32 && cp < 127)
+        return {kZectrixAsciiFontWidths[cp - 32], kZectrixAsciiFont8x16[cp - 32], nullptr};
+#if CONFIG_ZECTRIX_ENABLE_READER
+    const auto* bitmap = zectrix::reader::GlyphBitmap(cp);
+    return {bitmap[0], nullptr, bitmap};
+#elif CONFIG_ZECTRIX_ENABLE_UI_CHINESE
+    const auto* first = std::begin(kUiChineseCodepoints);
+    const auto* last = std::end(kUiChineseCodepoints);
+    const auto* found = std::lower_bound(first, last, cp);
+    if (found != last && *found == cp) {
+        const auto* bitmap = kUiChineseBitmaps[found - first];
+        return {bitmap[0], nullptr, bitmap};
+    }
+#endif
+    return {kZectrixAsciiFontWidths['?' - 32], kZectrixAsciiFont8x16['?' - 32], nullptr};
+}
+
+void PaintGlyph(ZectrixCanvas& canvas, int x, int y, const Glyph& glyph, int scale, bool inverted) {
+    if (inverted) canvas.FillRect(x, y, glyph.width * scale, 16 * scale, true);
+    for (int row = 0; row < 16; ++row) {
+        const auto bits = glyph.Row(row);
+        for (int col = 0; col < glyph.width; ++col) {
+            const bool set = bits & (0x8000U >> col);
+            if (set || inverted)
+                canvas.FillRect(x + col * scale, y + row * scale, scale, scale, inverted ? !set : true);
+        }
+    }
+}
+}  // namespace
 
 void ZectrixCanvas::Clear(bool white) {
     if (clip_.x == 0 && clip_.y == 0 && clip_.width == kWidth &&
@@ -86,32 +135,10 @@ void ZectrixCanvas::Text(int x, int y, const char* text, int scale,
     if (text == nullptr || scale <= 0) {
         return;
     }
-    int cursor_x = x;
-    for (const unsigned char* cursor =
-             reinterpret_cast<const unsigned char*>(text);
-         *cursor != '\0'; ++cursor) {
-        unsigned char code = *cursor;
-        if (code < 0x20 || code > 0x7e) {
-            code = '?';
-        }
-        const size_t glyph_index = code - 0x20;
-        const uint16_t* glyph = kZectrixAsciiFont8x16[glyph_index];
-        const int glyph_width = kZectrixAsciiFontWidths[glyph_index];
-        if (inverted) {
-            FillRect(cursor_x, y, glyph_width * scale, 16 * scale, true);
-        }
-        for (int row = 0; row < 16; ++row) {
-            for (int column = 0; column < glyph_width; ++column) {
-                const bool set =
-                    (glyph[row] & (1U << (15 - column))) != 0;
-                if (!set && !inverted) {
-                    continue;
-                }
-                FillRect(cursor_x + column * scale, y + row * scale,
-                         scale, scale, inverted ? !set : true);
-            }
-        }
-        cursor_x += glyph_width * scale;
+    while (*text) {
+        const auto glyph = UiGlyph(zectrix::ui::NextUtf8(text));
+        PaintGlyph(*this, x, y, glyph, scale, inverted);
+        x += glyph.width * scale;
     }
 }
 
@@ -126,14 +153,21 @@ int ZectrixCanvas::TextWidth(const char* text, int scale) const {
     }
 
     int width = 0;
-    for (const unsigned char* cursor =
-             reinterpret_cast<const unsigned char*>(text);
-         *cursor != '\0'; ++cursor) {
-        unsigned char code = *cursor;
-        if (code < 0x20 || code > 0x7e) {
-            code = '?';
-        }
-        width += kZectrixAsciiFontWidths[code - 0x20] * scale;
-    }
+    while (*text) width += UiGlyph(zectrix::ui::NextUtf8(text)).width * scale;
     return width;
+}
+
+void ZectrixCanvas::TextFitted(int x, int y, const char* text, int max_width, bool inverted) {
+    if (!text || max_width <= 0) return;
+    if (TextWidth(text) <= max_width) { Text(x, y, text, 1, inverted); return; }
+    const int ellipsis = TextWidth("...");
+    if (max_width < ellipsis) return;
+    while (*text) {
+        const auto glyph = UiGlyph(zectrix::ui::NextUtf8(text));
+        if (glyph.width + ellipsis > max_width) break;
+        PaintGlyph(*this, x, y, glyph, 1, inverted);
+        x += glyph.width;
+        max_width -= glyph.width;
+    }
+    Text(x, y, "...", 1, inverted);
 }

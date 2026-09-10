@@ -398,15 +398,31 @@ int main() {
     assert(!NormalizeAutoShowcaseSetting(0, nullptr));
 
     SettingsController settings(true);
+    assert(settings.Handle({Button::Ok, Action::Click}).decision == SettingsDecision::None);
+    assert(settings.Start() == zectrix::sdk::Status::Ok);
+    assert(settings.Start() == zectrix::sdk::Status::InvalidState);
+    assert(settings.Tick().decision == SettingsDecision::RenderQuality);
     SettingsResult setting = settings.Handle({Button::Down, Action::Click});
     assert(setting.decision == SettingsDecision::RenderFast);
-    assert(!setting.auto_showcase);
+    assert(setting.auto_showcase);
     setting = settings.Handle({Button::Ok, Action::Click});
     assert(setting.decision == SettingsDecision::Save);
     assert(!setting.auto_showcase);
+    settings.SaveCompleted(false);
+    setting = settings.Handle({Button::Ok, Action::Click});
+    assert(setting.decision == SettingsDecision::Save && !setting.auto_showcase);
+    settings.SaveCompleted(true);
+    setting = settings.Handle({Button::Ok, Action::Click});
+    assert(setting.decision == SettingsDecision::Save && setting.auto_showcase);
     assert(settings.Handle({Button::Ok, Action::LongPress}).decision ==
            SettingsDecision::Back);
     assert(settings.Handle({Button::Down, Action::LongPress}).decision ==
            SettingsDecision::Shutdown);
+    settings.Presented(false);
+    assert(settings.Tick().decision == SettingsDecision::RenderQuality);
+    settings.Presented(true);
+    assert(settings.Tick().decision == SettingsDecision::None);
+    settings.Stop();
+    assert(settings.Handle({Button::Ok, Action::Click}).decision == SettingsDecision::None);
 
 }

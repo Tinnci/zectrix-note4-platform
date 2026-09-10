@@ -106,6 +106,7 @@ private:
 #endif
     zectrix::app::SleepCoverStyle sleep_cover_style_ = zectrix::app::kSleepCoverDefault;
     bool sleep_cover_saved_ = true;
+    bool language_saved_ = true;
     zectrix::power::PowerSnapshot power_snapshot_{};
     zectrix::ui::StatusBarState status_{};
     int64_t next_power_sample_us_ = 0;

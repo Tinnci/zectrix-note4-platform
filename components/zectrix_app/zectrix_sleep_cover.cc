@@ -27,13 +27,13 @@ SleepCalendar CalendarForSleep(const time::ClockSnapshot& clock) {
 
 const SleepQuote& QuoteForSleep(const SleepCalendar& calendar) {
     static constexpr SleepQuote quotes[] = {
-        {"A little reading", "goes a long way."},
-        {"Keep a page for tomorrow.", "Let today settle."},
-        {"Take the slow path.", "Notice what stays."},
-        {"Leave room in your day", "for a good sentence."},
-        {"Small pages.", "Wide horizons."},
-        {"One quiet chapter", "is time well spent."},
-        {"Pause here.", "The next page can wait."},
+        {"A little reading", "goes a long way.", i18n::Text::QuoteReadingFirst, i18n::Text::QuoteReadingSecond},
+        {"Keep a page for tomorrow.", "Let today settle.", i18n::Text::QuoteTomorrowFirst, i18n::Text::QuoteTomorrowSecond},
+        {"Take the slow path.", "Notice what stays.", i18n::Text::QuoteSlowFirst, i18n::Text::QuoteSlowSecond},
+        {"Leave room in your day", "for a good sentence.", i18n::Text::QuoteSentenceFirst, i18n::Text::QuoteSentenceSecond},
+        {"Small pages.", "Wide horizons.", i18n::Text::QuotePagesFirst, i18n::Text::QuotePagesSecond},
+        {"One quiet chapter", "is time well spent.", i18n::Text::QuoteChapterFirst, i18n::Text::QuoteChapterSecond},
+        {"Pause here.", "The next page can wait.", i18n::Text::QuotePauseFirst, i18n::Text::QuotePauseSecond},
     };
     return quotes[calendar.valid ? calendar.day_number % std::size(quotes) : 0];
 }

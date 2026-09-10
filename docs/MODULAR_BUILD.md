@@ -11,7 +11,8 @@ an `sdkconfig.defaults` overlay for a separate build.
 | `ZECTRIX_ENABLE_WIFI` | Connectivity | Removes the shared AP/STA/scan driver; RF diagnostics report SKIP |
 | `ZECTRIX_ENABLE_WIFI_HTTP` | Wi-Fi | Removes the direct HTTPS client and its TLS transport; phone resource requests remain available |
 | `ZECTRIX_ENABLE_BOOK_TRANSFER` | Wi-Fi | Removes the HTTP server, embedded Web page and SEND BOOKS scenes |
-| `ZECTRIX_ENABLE_READER` | None | Removes TXT/EPUB parsing, pagination, reader scenes and the CJK font |
+| `ZECTRIX_ENABLE_READER` | None | Removes TXT/EPUB parsing, pagination, reader scenes and the broad CJK reader font |
+| `ZECTRIX_ENABLE_UI_CHINESE` | None | Removes the Chinese UI strings and its small font subset when Reader is also off |
 | `ZECTRIX_ENABLE_USB_CLI` | None | Removes the maintenance component, executor and USB session task; normal ESP-IDF console logs remain |
 | `ZECTRIX_ENABLE_UPDATE` | None | Removes streamed firmware writing and commit; core boot protection remains |
 
@@ -46,7 +47,9 @@ idf.py --ccache -B build-offline \
 ```
 
 Set Reader to `n` as well for the core Launcher, clock, settings, diagnostics,
-gallery and sleep covers. Set Connectivity to `y` and Wi-Fi to `n` for a BLE
+gallery and sleep covers. Chinese UI remains independently available through
+`ZECTRIX_ENABLE_UI_CHINESE`; set it to `n` to remove its glyph subset too.
+The committed Minimal profile disables both. Set Connectivity to `y` and Wi-Fi to `n` for a BLE
 companion build. To configure an existing separate build interactively, retain
 its build path: `idf.py -B build-offline menuconfig`.
 
@@ -70,7 +73,7 @@ only during early dependency expansion. Normal registration and compilation
 use IDF's generated configuration. The resolver does not rewrite `sdkconfig`.
 CMake tracks the configuration inputs so changes rebuild the dependency tree.
 
-`main/Kconfig.projbuild` sources the four component option files even when their
+`main/Kconfig.projbuild` sources the component option files even when their
 components are absent. Enabled optional components override their automatic
 projbuild discovery with `cmake/Kconfig.empty`, avoiding duplicate menus.
 This keeps disabled modules available to menuconfig without registering their
@@ -96,8 +99,10 @@ not count the omitted test as a failure or an executed test.
 Offline reading saves the same NVS bookmark format. Its latest revision stays
 pending, so a later connected firmware can enqueue it without losing reading
 progress. Calendar and sleep-cover snapshots contain only copied display data;
-they do not require reader types. The core UI uses the compact built-in font
-when the CJK font is absent, with `?` for unsupported Unicode label characters.
+they do not require reader types. The core UI can use a small system Chinese
+subset without Reader, or only the compact ASCII face with fallback glyphs for
+unsupported Unicode. See [LOCALIZATION.md](LOCALIZATION.md) for language defaults,
+persistence and font selection.
 
 These boundaries preserve the existing CrossPoint-inspired streamed reader,
 Web library and static sleep cover while allowing each feature to be selected

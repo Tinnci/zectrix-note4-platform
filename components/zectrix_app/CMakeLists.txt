@@ -5,8 +5,9 @@ set(sources "zectrix_app_contract.cc" "zectrix_application_runtime.cc"
          "zectrix_launcher_controller.cc"
          "zectrix_scene_manager.cc"
          "zectrix_gallery_controller.cc"
+         "zectrix_locale.cc" "zectrix_language_setting.cc"
          "zectrix_sleep_cover.cc")
-set(requires zectrix_power zectrix_time)
+set(requires zectrix_power zectrix_time zectrix_storage)
 if(CONFIG_ZECTRIX_ENABLE_READER)
     list(APPEND sources "zectrix_reader_controller.cc")
     list(APPEND requires zectrix_reader)

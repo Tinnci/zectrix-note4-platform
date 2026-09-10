@@ -1,3 +1,4 @@
+#include "zectrix_locale.h"
 #include "terminal_internal.h"
 
 #include <cstring>
@@ -5,6 +6,9 @@
 
 #include "terminal_assets.h"
 #include "zectrix_gallery_controller.h"
+
+using zectrix::i18n::Tr;
+using zectrix::i18n::Text;
 
 namespace zectrix::terminal {
 
@@ -39,19 +43,19 @@ public:
         using zectrix::app::GalleryPage;
         const bool quality = request.intent == sdk::RenderIntent::Quality;
         if (controller_.page() == GalleryPage::Menu) {
-            static constexpr const char* kItems[] = {
-                "LIGHTHOUSE / 1BPP", "FOOTPRINTS / PARTIAL",
-                "MOUNTAIN / 16 GRAY", "RUN ALL SCENES"};
-            return ToSdkStatus(owner_->ui_.ShowMenu("DISPLAY GALLERY", kItems,
+            const char* kItems[] = {
+                Tr(Text::LighthouseChoice), Tr(Text::FootprintsChoice),
+                Tr(Text::MountainChoice), Tr(Text::RunAllScenes)};
+            return ToSdkStatus(owner_->ui_.ShowMenu(Tr(Text::DisplayGallery), kItems,
                 std::size(kItems), controller_.selected(),
-                "UP/DOWN Move  OK View  Hold OK Back", quality));
+                Tr(Text::NavViewBack), quality));
         }
         const uint32_t image = controller_.image();
         if (controller_.page() == GalleryPage::Report) {
-            static constexpr const char* kTitles[] = {"LIGHTHOUSE", "FOOTPRINTS", "MOUNTAIN LANDSCAPE"};
-            static constexpr const char* kModes[] = {"FULL", "PARTIAL", "FULL + PRE-CLEAR"};
+            const char* kTitles[] = {Tr(Text::Lighthouse), Tr(Text::Footprints), Tr(Text::MountainLandscape)};
+            const char* kModes[] = {Tr(Text::FullRefresh), Tr(Text::PartialRefresh), Tr(Text::FullPreclear)};
             return ToSdkStatus(owner_->ui_.ShowSceneInfo(kTitles[image], kModes[image],
-                image == 2 ? "4BPP / 16 GRAY" : "1BPP B/W",
+                image == 2 ? Tr(Text::FormatGray) : Tr(Text::FormatMono),
                 image == 2 ? zectrix::display::DisplayService::kFrameBytes4Bpp
                            : zectrix::display::DisplayService::kFrameBytes1Bpp,
                 result_.elapsed_ms, result_.error, quality));

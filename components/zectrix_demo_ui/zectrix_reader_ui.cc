@@ -1,3 +1,4 @@
+#include "zectrix_locale.h"
 #include "zectrix_demo_ui.h"
 #include "zectrix_reader_controller.h"
 #include "zectrix_unicode_text.h"
@@ -5,20 +6,39 @@
 #include <algorithm>
 #include <cstdio>
 
+using zectrix::i18n::Tr;
+using zectrix::i18n::Text;
+
 using namespace zectrix::reader;
 using zectrix::ui::DrawGlyph;
 using zectrix::ui::DrawUtf8Line;
+
+namespace {
+const char* ReaderMessage(Result result) {
+    switch (result) {
+        case Result::Ok: return Tr(Text::ReaderReady);
+        case Result::Pending: return Tr(Text::ReaderLoading);
+        case Result::End: return Tr(Text::ReaderEnd);
+        case Result::Invalid: return Tr(Text::ReaderInvalid);
+        case Result::Unsupported: return Tr(Text::ReaderUnsupported);
+        case Result::TooLarge: return Tr(Text::ReaderTooLarge);
+        case Result::IoError: return Tr(Text::ReaderIoError);
+        case Result::NoMemory: return Tr(Text::ReaderNoMemory);
+    }
+    return Tr(Text::ReaderError);
+}
+}  // namespace
 
 esp_err_t ZectrixDemoUi::ShowReader(const zectrix::app::ReaderController& reader, bool full_refresh) {
     using zectrix::app::ReaderScene;
     const auto& engine = reader.engine();
     if (reader.scene() == ReaderScene::Library) {
-        DrawFrame("BOOK LIBRARY", "UP/DOWN Move  OK Open  Hold OK Back");
+        DrawFrame(Tr(Text::BookLibrary), Tr(Text::NavOpenBack));
         const auto& library = reader.library();
         if (!library.count()) {
-            canvas_.TextCentered(104, reader.result() == Result::Ok ? "YOUR LIBRARY IS EMPTY" : "BOOK STORAGE UNAVAILABLE");
-            canvas_.TextCentered(150, "ADD TXT OR EPUB BOOKS TO START");
-            canvas_.TextCentered(196, "OK Retry   Hold OK Back");
+            canvas_.TextCentered(104, reader.result() == Result::Ok ? Tr(Text::LibraryEmpty) : Tr(Text::BookStorageUnavailable));
+            canvas_.TextCentered(150, Tr(Text::AddBooks));
+            canvas_.TextCentered(196, Tr(Text::NavRetryLibrary));
         } else {
             constexpr std::size_t rows = 6;
             const auto first = reader.selected() / rows * rows;
@@ -31,27 +51,27 @@ esp_err_t ZectrixDemoUi::ShowReader(const zectrix::app::ReaderController& reader
                 DrawUtf8Line(canvas_, 16, y + 6, book.id.data(), 368, selected);
             }
             char count[64];
-            std::snprintf(count, sizeof(count), "%u / %u BOOKS%s",
+            std::snprintf(count, sizeof(count), Tr(Text::BookCount),
                 static_cast<unsigned>(reader.selected() + 1), static_cast<unsigned>(library.count()),
-                library.truncated() ? " (FIRST 32 SHOWN)" : "");
+                library.truncated() ? Tr(Text::First32Books) : "");
             if (reader.notice() == zectrix::app::ReaderNotice::None) canvas_.Text(16, 248, count);
         }
         const char* notice = nullptr;
         using Notice = zectrix::app::ReaderNotice;
         switch (reader.notice()) {
             case Notice::None: break;
-            case Notice::RecentUnavailable: notice = "RECENT BOOK UNAVAILABLE - CHOOSE A BOOK"; break;
-            case Notice::RecentChanged: notice = "RECENT BOOK CHANGED - CHOOSE A BOOK"; break;
-            case Notice::HistoryUnavailable: notice = "READING HISTORY UNAVAILABLE"; break;
+            case Notice::RecentUnavailable: notice = Tr(Text::RecentMissing); break;
+            case Notice::RecentChanged: notice = Tr(Text::RecentChanged); break;
+            case Notice::HistoryUnavailable: notice = Tr(Text::ReadingHistoryUnavailable); break;
         }
         if (notice) canvas_.Text(16, 248, notice);
     } else if (reader.scene() == ReaderScene::Options) {
-        DrawFrame("READING OPTIONS", "UP/DOWN Move  OK Choose  Hold OK Read");
+        DrawFrame(Tr(Text::ReadingOptions), Tr(Text::NavReadingOptions));
         DrawUtf8Line(canvas_, 16, 54, reader.book().id.data(), 368);
         const char* options[] = {
-            engine.page().font == FontSize::Small ? "FONT: 16 PX -> 24 PX" : "FONT: 24 PX -> 16 PX",
-            reader.remote_available() ? "USE PHONE POSITION" : "PHONE POSITION: NONE",
-            "READ FROM BEGINNING", "SAVE & RETURN",
+            engine.page().font == FontSize::Small ? Tr(Text::FontSmallToLarge) : Tr(Text::FontLargeToSmall),
+            reader.remote_available() ? Tr(Text::UsePhonePosition) : Tr(Text::NoPhonePosition),
+            Tr(Text::ReadFromStart), Tr(Text::SaveReturn),
         };
         for (std::size_t i = 0; i < std::size(options); ++i) {
             const int y = 84 + i * 40;
@@ -60,14 +80,14 @@ esp_err_t ZectrixDemoUi::ShowReader(const zectrix::app::ReaderController& reader
             canvas_.Rect(16, y, 368, 32);
             canvas_.Text(28, y + 8, options[i], 1, active);
         }
-        canvas_.Text(16, 248, reader.save_result() == Result::Ok ? "PROGRESS SAVED ON EACH PAGE" : "SAVE FAILED - OK: SAVE & RETURN");
+        canvas_.Text(16, 248, reader.save_result() == Result::Ok ? Tr(Text::ProgressAutoSaved) : Tr(Text::ProgressSaveFailed));
     } else {
-        const char* footer = "UP Prev  DN Next  OK Options";
-        if (reader.busy()) footer = "Loading...  Hold OK Library";
-        else if (reader.result() != Result::Ok) footer = "OK Library  Hold OK Back";
-        else if (reader.save_result() != Result::Ok) footer = "Not saved. OK: options / retry";
-        else if (reader.remote_available()) footer = "Phone progress ready. OK: options";
-        else if (engine.has_page() && engine.page().end) footer = "END  UP Prev  OK Options";
+        const char* footer = Tr(Text::NavRead);
+        if (reader.busy()) footer = Tr(Text::NavLoading);
+        else if (reader.result() != Result::Ok) footer = Tr(Text::NavLibraryBack);
+        else if (reader.save_result() != Result::Ok) footer = Tr(Text::NavUnsaved);
+        else if (reader.remote_available()) footer = Tr(Text::NavPhonePosition);
+        else if (engine.has_page() && engine.page().end) footer = Tr(Text::NavEndOfBook);
         DrawFrame("", footer);
         DrawUtf8Line(canvas_, 8, 26, reader.book().id.data(), 304, true);
         if (engine.has_page() && (reader.result() == Result::Ok || reader.result() == Result::Pending)) {
@@ -78,10 +98,10 @@ esp_err_t ZectrixDemoUi::ShowReader(const zectrix::app::ReaderController& reader
             for (std::size_t i = 0; i < page.count; ++i)
                 DrawGlyph(canvas_, 8 + page.glyphs[i].x, 48 + page.glyphs[i].y,
                           page.glyphs[i].codepoint, page.font);
-            if (!page.count) canvas_.TextCentered(128, "THIS BOOK CONTAINS NO TEXT");
+            if (!page.count) canvas_.TextCentered(128, Tr(Text::BookNoText));
         } else {
-            canvas_.TextCentered(120, ResultName(reader.result()));
-            canvas_.TextCentered(168, "Hold OK Library");
+            canvas_.TextCentered(120, ReaderMessage(reader.result()));
+            canvas_.TextCentered(168, Tr(Text::HoldLibrary));
         }
     }
     return full_refresh ? RefreshFull() : RefreshAuto();

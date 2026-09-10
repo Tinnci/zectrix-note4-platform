@@ -21,6 +21,7 @@ struct LauncherEntry {
     const char* id = nullptr;
     const char* label = nullptr;
     ApplicationIcon icon = ApplicationIcon::App;
+    i18n::Text label_text = i18n::Text::None;
 };
 
 struct LauncherResult {

@@ -1,3 +1,4 @@
+#include "zectrix_locale.h"
 #include "terminal_internal.h"
 
 #include "zectrix_storage_service.h"
@@ -5,6 +6,9 @@
 #include "zectrix_reader_platform.h"
 #endif
 
+
+using zectrix::i18n::Tr;
+using zectrix::i18n::Text;
 
 namespace zectrix::terminal {
 
@@ -51,7 +55,7 @@ public:
     sdk::Status Render(const sdk::RenderRequest& request) override {
         const auto result = controller_.scene() == zectrix::app::SleepCoverScene::Choose
             ? owner_.ui_.ShowSleepCoverMenu(controller_.selected(), owner_.sleep_cover_style_,
-                owner_.sleep_cover_saved_ ? nullptr : "NOT SAVED - OK RETRIES THE SETTING",
+                owner_.sleep_cover_saved_ ? nullptr : Tr(Text::CoverSaveRetry),
                 request.intent == sdk::RenderIntent::Quality)
             : owner_.ui_.ShowSleepCover(snapshot_, controller_.selected(), true, owner_.sleep_cover_saved_);
         controller_.Presented(result == ESP_OK);

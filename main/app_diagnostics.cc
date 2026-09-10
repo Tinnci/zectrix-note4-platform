@@ -1,3 +1,4 @@
+#include "zectrix_locale.h"
 #include "terminal_internal.h"
 
 #include <iterator>
@@ -5,6 +6,9 @@
 #include "esp_log.h"
 #include "zectrix_first_party_app_controllers.h"
 
+
+using zectrix::i18n::Tr;
+using zectrix::i18n::Text;
 
 namespace zectrix::terminal {
 
@@ -36,11 +40,11 @@ public:
                 controller_.selected(), owner_->test_states_,
                 request.intent == sdk::RenderIntent::Quality);
         } else {
-            static constexpr const char* kItems[] = {
-                "RUN ALL TESTS", "SELECT INDIVIDUAL TEST"};
+            const char* kItems[] = {
+                Tr(Text::RunAllTests), Tr(Text::SelectTest)};
             result = owner_->ui_.ShowMenu(
-                "HARDWARE TESTS", kItems, std::size(kItems),
-                controller_.selected(), "UP/DOWN Move  OK Select  Hold OK Back",
+                Tr(Text::HardwareTests), kItems, std::size(kItems),
+                controller_.selected(), Tr(Text::NavSelectBack),
                 request.intent == sdk::RenderIntent::Quality);
         }
         controller_.Presented(result == ESP_OK);

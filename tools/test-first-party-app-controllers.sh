@@ -10,6 +10,7 @@ trap 'rm -f "$test_binary"' EXIT
     -I"$repo_root/components/zectrix_app/include" \
     -I"$repo_root/components/zectrix_time/include" \
     "$repo_root/components/zectrix_app/zectrix_first_party_app_controllers.cc" \
+    "$repo_root/components/zectrix_app/zectrix_locale.cc" \
     "$repo_root/components/zectrix_app/zectrix_launcher_controller.cc" \
     "$repo_root/components/zectrix_app/zectrix_scene_manager.cc" \
     "$repo_root/tools/first_party_app_controllers_test.cc" \

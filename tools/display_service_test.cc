@@ -1,5 +1,7 @@
 #include "zectrix_display_service.h"
 #include "zectrix_demo_ui.h"
+#include "zectrix_first_party_app_controllers.h"
+#include "zectrix_locale.h"
 #include "zectrix_book_transfer_controller.h"
 #include "zectrix_sleep_cover.h"
 #include "zectrix_reader_controller.h"
@@ -636,11 +638,11 @@ void TestForegroundDisplayScheduling() {
         Factory factory;
         ApplicationCatalog catalog;
         assert(catalog.Add("launcher", "Launcher", factory));
-        assert(catalog.Add("reader", "BOOK READER", factory, {ApplicationIcon::Book, true}));
-        assert(catalog.Add("transfer", "SEND BOOKS", factory, {ApplicationIcon::Transfer, true}));
-        assert(catalog.Add("clock", "CLOCK", factory, {ApplicationIcon::Clock, true}));
-        assert(catalog.Add("sleep", "SLEEP COVER", factory, {ApplicationIcon::Sleep, true}));
-        assert(catalog.Add("settings", "SETTINGS", factory, {ApplicationIcon::Settings, true}));
+        assert(catalog.Add("reader", "BOOK READER", factory, {ApplicationIcon::Book, true, zectrix::i18n::Text::BookReader}));
+        assert(catalog.Add("transfer", "SEND BOOKS", factory, {ApplicationIcon::Transfer, true, zectrix::i18n::Text::SendBooks}));
+        assert(catalog.Add("clock", "CLOCK", factory, {ApplicationIcon::Clock, true, zectrix::i18n::Text::Clock}));
+        assert(catalog.Add("sleep", "SLEEP COVER", factory, {ApplicationIcon::Sleep, true, zectrix::i18n::Text::SleepCover}));
+        assert(catalog.Add("settings", "SETTINGS", factory, {ApplicationIcon::Settings, true, zectrix::i18n::Text::Settings}));
         assert(catalog.Add("about", "ABOUT", factory));
         LauncherController controller(catalog);
         factory.controller = &controller;
@@ -773,7 +775,8 @@ void SavePreview(const ZectrixCanvas& canvas, const char* name) {
     const char* directory = std::getenv("ZECTRIX_UI_PREVIEW_DIR");
     if (!directory) return;
     char path[1024];
-    std::snprintf(path, sizeof(path), "%s/%s.pbm", directory, name);
+    std::snprintf(path, sizeof(path), "%s/%s%s.pbm", directory,
+        zectrix::i18n::CurrentLanguage() == zectrix::i18n::Language::Chinese ? "zh-" : "", name);
     FILE* output = std::fopen(path, "wb");
     assert(output);
     std::fprintf(output, "P4\n400 300\n");
@@ -796,14 +799,18 @@ void TestLauncherComposition() {
     } factory;
     ApplicationCatalog full;
     assert(full.Add("launcher", "Launcher", factory));
-    assert(full.Add("reader", "BOOK READER", factory, {Icon::Book, true}));
-    assert(full.Add("book-transfer", "SEND BOOKS", factory, {Icon::Transfer, true}));
-    assert(full.Add("clock", "CLOCK", factory, {Icon::Clock, true}));
-    assert(full.Add("sleep-cover", "SLEEP COVER", factory, {Icon::Sleep, true}));
-    assert(full.Add("settings", "SETTINGS", factory, {Icon::Settings, true}));
+    assert(full.Add("reader", "BOOK READER", factory, {Icon::Book, true, zectrix::i18n::Text::BookReader}));
+    assert(full.Add("book-transfer", "SEND BOOKS", factory, {Icon::Transfer, true, zectrix::i18n::Text::SendBooks}));
+    assert(full.Add("clock", "CLOCK", factory, {Icon::Clock, true, zectrix::i18n::Text::Clock}));
+    assert(full.Add("sleep-cover", "SLEEP COVER", factory, {Icon::Sleep, true, zectrix::i18n::Text::SleepCover}));
+    assert(full.Add("settings", "SETTINGS", factory, {Icon::Settings, true, zectrix::i18n::Text::Settings}));
     const char* tools[] = {"CONNECTIVITY", "AUTO SHOWCASE", "DISPLAY GALLERY",
         "HARDWARE TESTS", "DEVICE INFO", "ABOUT & LICENSE"};
-    for (const auto* label : tools) assert(full.Add(label, label, factory));
+    constexpr zectrix::i18n::Text tool_labels[] = {zectrix::i18n::Text::Connectivity, zectrix::i18n::Text::AutoShowcase,
+        zectrix::i18n::Text::DisplayGallery, zectrix::i18n::Text::HardwareTests,
+        zectrix::i18n::Text::DeviceInfo, zectrix::i18n::Text::AboutLicense};
+    for (std::size_t i = 0; i < std::size(tools); ++i)
+        assert(full.Add(tools[i], tools[i], factory, {Icon::App, false, tool_labels[i]}));
     LauncherController launcher(full);
     assert(launcher.Start() == Status::Ok);
     assert(launcher.Tick().decision == LauncherDecision::RenderQuality);
@@ -894,10 +901,11 @@ void TestLauncherComposition() {
 
     ApplicationCatalog minimal;
     assert(minimal.Add("launcher", "Launcher", factory));
-    assert(minimal.Add("clock", "CLOCK", factory, {Icon::Clock, true}));
-    assert(minimal.Add("sleep-cover", "SLEEP COVER", factory, {Icon::Sleep, true}));
-    assert(minimal.Add("settings", "SETTINGS", factory, {Icon::Settings, true}));
-    for (std::size_t i = 1; i < std::size(tools); ++i) assert(minimal.Add(tools[i], tools[i], factory));
+    assert(minimal.Add("clock", "CLOCK", factory, {Icon::Clock, true, zectrix::i18n::Text::Clock}));
+    assert(minimal.Add("sleep-cover", "SLEEP COVER", factory, {Icon::Sleep, true, zectrix::i18n::Text::SleepCover}));
+    assert(minimal.Add("settings", "SETTINGS", factory, {Icon::Settings, true, zectrix::i18n::Text::Settings}));
+    for (std::size_t i = 1; i < std::size(tools); ++i)
+        assert(minimal.Add(tools[i], tools[i], factory, {Icon::App, false, tool_labels[i]}));
     LauncherController compact(minimal);
     assert(compact.Start() == Status::Ok);
     reading = {};
@@ -1110,6 +1118,7 @@ void TestStatusAndImageComposition() {
 }
 
 void TestConnectivityComposition() {
+    using namespace zectrix::i18n;
     Reset();
     auto service = CreateService();
     ZectrixDemoUi ui(service.get());
@@ -1117,21 +1126,58 @@ void TestConnectivityComposition() {
     status.time_valid = status.battery_valid = true;
     status.hour = 20; status.minute = 26; status.battery_percent = 82;
     ui.UpdateStatus(status);
-    assert(ui.ShowConnectivity("READY TO RECONNECT", "SELECT AN ACTION WITH UP / DOWN", nullptr, 0, true) == ESP_OK);
+    assert(ui.ShowConnectivity(Tr(Text::ReadyToReconnect), Tr(Text::SelectAction), nullptr, 0, true) == ESP_OK);
     SavePreview(ui.canvas(), "connectivity-actions");
     Frame before;
     std::memcpy(before.data(), ui.canvas().data(), before.size());
     ClearTraffic();
-    assert(ui.ShowConnectivity("READY TO RECONNECT", "SELECT AN ACTION WITH UP / DOWN", nullptr, 1, false) == ESP_OK);
+    assert(ui.ShowConnectivity(Tr(Text::ReadyToReconnect), Tr(Text::SelectAction), nullptr, 1, false) == ESP_OK);
     CheckPartial(before, {0, 0, 400, 300}, ui.canvas().data());
     assert(std::memcmp(before.data(), ui.canvas().data(), 24 * 50) == 0);
     SavePreview(ui.canvas(), "connectivity-fetch");
-    assert(ui.ShowConnectivity("PAIRING OPEN", "ENTER ON PHONE", "123456", 2, true) == ESP_OK);
+    assert(ui.ShowConnectivity(Tr(Text::PairingOpen), Tr(Text::EnterOnPhone), "123456", 2, true) == ESP_OK);
     SavePreview(ui.canvas(), "connectivity-passkey");
-    const char* choices[] = {"KEEP TRUSTED PHONE", "FORGET PHONE AND SYNC LINK"};
-    assert(ui.ShowMenu("FORGET PHONE", choices, std::size(choices), 0,
-        "UP/DOWN Move  OK Confirm  Hold OK Cancel", true) == ESP_OK);
+    const char* choices[] = {Tr(Text::KeepTrustedPhone), Tr(Text::ForgetPhoneSync)};
+    assert(ui.ShowMenu(Tr(Text::ForgetPhone), choices, std::size(choices), 0,
+        Tr(Text::NavConfirmCancel), true) == ESP_OK);
     SavePreview(ui.canvas(), "connectivity-forget");
+}
+
+void TestSettingsComposition() {
+    using namespace zectrix::i18n;
+    using namespace zectrix::app;
+    using namespace zectrix::sdk;
+    Reset();
+    auto service = CreateService();
+    ZectrixDemoUi ui(service.get());
+    SettingsController settings(false);
+    assert(settings.Start() == Status::Ok);
+    const auto original = CurrentLanguage();
+    assert(ui.ShowSettings(settings, Tr(Text::Loaded), true) == ESP_OK);
+    SavePreview(ui.canvas(), "settings");
+    Frame before;
+    std::memcpy(before.data(), ui.canvas().data(), before.size());
+    const InputEvent ok{Button::Ok, InputAction::Click}, down{Button::Down, InputAction::Click};
+    settings.Handle(ok);
+    assert(ui.ShowSettings(settings, Tr(Text::Loaded), true) == ESP_OK);
+    SavePreview(ui.canvas(), "language-picker");
+    settings.Handle(down);
+    const auto apply = settings.Handle(ok);
+    assert(apply.decision == SettingsDecision::SaveLanguage && SetLanguage(apply.language));
+    assert(ui.ShowSettings(settings, Tr(Text::Saved), true) == ESP_OK);
+    assert(std::memcmp(before.data(), ui.canvas().data(), 24 * 50) != 0);
+    SavePreview(ui.canvas(), "language-switched");
+    ClearTraffic();
+    assert(ui.ShowSettings(settings, Tr(Text::Saved), false) == ESP_OK && packets.empty());
+    fail_command = 0xe9;
+    assert(ui.ShowSettings(settings, Tr(Text::LanguageSaveFailed), true) == ESP_FAIL);
+    settings.Presented(false);
+    assert(settings.Tick().decision == SettingsDecision::RenderQuality);
+    ClearTraffic();
+    assert(ui.ShowSettings(settings, Tr(Text::LanguageSaveFailed), true) == ESP_OK);
+    settings.Presented(true);
+    SavePreview(ui.canvas(), "language-save-failed");
+    assert(SetLanguage(original));
 }
 
 void TestReaderComposition() {
@@ -1516,6 +1562,9 @@ esp_err_t spi_device_polling_transmit(spi_device_handle_t, spi_transaction_t* tr
 }
 
 int main() {
+    const char* language = std::getenv("ZECTRIX_UI_LANGUAGE");
+    zectrix::i18n::SetLanguage(language && std::strcmp(language, "zh") == 0 ?
+        zectrix::i18n::Language::Chinese : zectrix::i18n::Language::English);
     TestCreationAndInputErrors();
     TestAutomaticRefreshAndBudget();
     TestHighContrastAndSparseChanges();
@@ -1532,6 +1581,7 @@ int main() {
     TestLauncherComposition();
     TestStatusAndImageComposition();
     TestConnectivityComposition();
+    TestSettingsComposition();
     TestReaderComposition();
     TestBookTransferComposition();
     TestSleepCoverComposition();

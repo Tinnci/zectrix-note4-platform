@@ -1,9 +1,14 @@
+#include "zectrix_locale.h"
 #include "zectrix_demo_ui.h"
+#include "zectrix_first_party_app_controllers.h"
 
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <new>
+
+using zectrix::i18n::Tr;
+using zectrix::i18n::Text;
 
 namespace {
 
@@ -21,35 +26,15 @@ constexpr std::array<ZectrixTestId, 7> kTestOrder = {
     ZectrixTestId::kCharge, ZectrixTestId::kLed, ZectrixTestId::kButtons,
     ZectrixTestId::kNfc};
 
-constexpr std::array<const char*, 7> kTestShortNames = {
-    "RF", "AUDIO", "RTC", "PWR", "LED", "KEYS", "NFC"};
+constexpr std::array<Text, 7> kTestShortNames = {
+    Text::TestRf, Text::TestAudio, Text::TestRtc, Text::TestPower,
+    Text::TestLed, Text::TestKeys, Text::TestNfc};
 
 }  // namespace
 
 void ZectrixDemoUi::DrawFittedText(ZectrixCanvas& canvas, int x, int y, const char* text,
                                   int max_width, bool inverted) {
-    if (text == nullptr || max_width <= 0) {
-        return;
-    }
-    if (canvas.TextWidth(text) <= max_width) {
-        canvas.Text(x, y, text, 1, inverted);
-        return;
-    }
-
-    constexpr char kEllipsis[] = "...";
-    char fitted[80] = {};
-    size_t length = std::min(std::strlen(text), sizeof(fitted) - 4);
-    std::memcpy(fitted, text, length);
-    while (length > 0) {
-        fitted[length] = '\0';
-        if (canvas.TextWidth(fitted) + canvas.TextWidth(kEllipsis) <=
-            max_width) {
-            break;
-        }
-        --length;
-    }
-    std::memcpy(fitted + length, kEllipsis, sizeof(kEllipsis));
-    canvas.Text(x, y, fitted, 1, inverted);
+    canvas.TextFitted(x, y, text, max_width, inverted);
 }
 
 ZectrixDemoUi::ZectrixDemoUi(zectrix::display::DisplayService* display)
@@ -80,9 +65,9 @@ void ZectrixDemoUi::UpdateStatus(const zectrix::ui::StatusBarState& state) {
 void ZectrixDemoUi::DrawFrame(const char* title, const char* footer) {
     BeginContent();
     canvas_.FillRect(0, kStatusHeight, 400, kHeaderHeight - kStatusHeight, true);
-    canvas_.Text(10, kStatusHeight + 2, title, 1, true);
+    canvas_.TextFitted(10, kStatusHeight + 2, title, 380, true);
     canvas_.Line(0, 269, 399, 269);
-    canvas_.Text(8, 277, footer, 1);
+    canvas_.TextFitted(8, 277, footer, 384);
 }
 
 esp_err_t ZectrixDemoUi::ShowSplash() {
@@ -91,9 +76,9 @@ esp_err_t ZectrixDemoUi::ShowSplash() {
     canvas_.FillRect(0, 292, 400, 8, true);
     canvas_.TextCentered(58, "ZECTRIX", 2);
     canvas_.Line(72, 98, 327, 98);
-    canvas_.TextCentered(118, "POCKET E-PAPER TERMINAL", 1);
-    canvas_.TextCentered(154, "READ / CLOCK / CONNECT", 1);
-    canvas_.TextCentered(184, "400 x 300  /  16 GRAY", 1);
+    canvas_.TextCentered(118, Tr(Text::PocketEpaperTerminal), 1);
+    canvas_.TextCentered(154, Tr(Text::ReadClockConnect), 1);
+    canvas_.TextCentered(184, Tr(Text::DisplayGray), 1);
     canvas_.TextCentered(236, "ZECTRIX LAB", 1);
     return RefreshFull();
 }
@@ -118,10 +103,10 @@ esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
         const bool active = i == selected;
         if (active) {
             canvas_.FillRect(16, y, 368, box_height, true);
-            canvas_.Text(28, y + (box_height - 16) / 2, items[i], 1, true);
+            canvas_.TextFitted(28, y + (box_height - 16) / 2, items[i], 344, true);
         } else {
             canvas_.Rect(16, y, 368, box_height);
-            canvas_.Text(28, y + (box_height - 16) / 2, items[i]);
+            canvas_.TextFitted(28, y + (box_height - 16) / 2, items[i], 344);
         }
     }
     if (count > visible) {
@@ -139,13 +124,13 @@ esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
 esp_err_t ZectrixDemoUi::ShowClock(const zectrix::time::DateTime& value,
                                    bool full_refresh, const char* source,
                                    bool calendar_valid) {
-    DrawFrame("CLOCK", "OK Set   Hold OK Back   Hold DOWN Off");
+    DrawFrame(Tr(Text::Clock), Tr(Text::NavSetBackOff));
     char line[32] = {};
     if (calendar_valid) {
         std::snprintf(line, sizeof(line), "%04d-%02d-%02d", value.year,
                       value.month, value.day);
     } else {
-        std::snprintf(line, sizeof(line), "TIME NOT SET");
+        std::snprintf(line, sizeof(line), "%s", Tr(Text::TimeNotSet));
     }
     canvas_.TextCentered(92, line, 2);
     std::snprintf(line, sizeof(line), "%02d:%02d", value.hour, value.minute);
@@ -155,20 +140,30 @@ esp_err_t ZectrixDemoUi::ShowClock(const zectrix::time::DateTime& value,
                         : RefreshAuto();
 }
 
-esp_err_t ZectrixDemoUi::ShowSettings(bool auto_showcase, const char* status,
+esp_err_t ZectrixDemoUi::ShowSettings(const zectrix::app::SettingsController& settings, const char* status,
                                       bool full_refresh) {
-    DrawFrame("SETTINGS", "UP/DOWN Change  OK Save  Hold OK Back");
-    canvas_.Text(24, 62, "AUTO SHOWCASE", 1);
-    canvas_.FillRect(250, 52, 118, 34, auto_showcase);
-    canvas_.Rect(250, 52, 118, 34);
-    canvas_.Text(300, 65, auto_showcase ? "ON" : "OFF", 1,
-                 auto_showcase);
-    canvas_.Line(20, 112, 379, 112);
-    canvas_.Text(24, 134, "START AFTER 15 SECONDS IDLE");
-    canvas_.Text(24, 178, "STATUS:");
-    canvas_.Text(112, 178, status == nullptr ? "" : status);
-    return full_refresh ? RefreshFull()
-                        : RefreshAuto();
+    const bool languages = settings.page() == zectrix::app::SettingsPage::Language;
+    DrawFrame(Tr(languages ? Text::Language : Text::Settings),
+              Tr(languages ? Text::NavApplyBack : Text::NavChangeBack));
+    const auto count = languages ? zectrix::i18n::LanguageCount() : settings.option_count();
+    for (std::size_t i = 0; i < count; ++i) {
+        const int y = 64 + static_cast<int>(i) * 62;
+        const bool selected = settings.selected() == i;
+        canvas_.FillRect(16, y, 368, 42, selected);
+        canvas_.Rect(16, y, 368, 42);
+        const bool language_option = !languages && count > 1 && i == 0;
+        const char* label = languages ? zectrix::i18n::LanguageName(static_cast<zectrix::i18n::Language>(i)) :
+            Tr(language_option ? Text::Language : Text::AutoShowcase);
+        canvas_.TextFitted(28, y + 13, label, languages ? 300 : 200, selected);
+        const char* value = languages ? (static_cast<zectrix::i18n::Language>(i) == zectrix::i18n::CurrentLanguage() ? "*" : "") :
+            language_option ? zectrix::i18n::LanguageName(zectrix::i18n::CurrentLanguage()) :
+            Tr(settings.auto_showcase() ? Text::On : Text::Off);
+        canvas_.Text(372 - canvas_.TextWidth(value), y + 13, value, 1, selected);
+    }
+    canvas_.TextFitted(16, 210, Tr(languages || (count > 1 && settings.selected() == 0) ?
+        Text::LanguageHint : Text::ShowcaseIdle), 368);
+    canvas_.TextFitted(16, 246, status, 368);
+    return full_refresh ? RefreshFull() : RefreshAuto();
 }
 
 esp_err_t ZectrixDemoUi::ShowConnectivity(const char* state,
@@ -176,23 +171,23 @@ esp_err_t ZectrixDemoUi::ShowConnectivity(const char* state,
                                           const char* passkey,
                                           size_t selected,
                                           bool full_refresh) {
-    DrawFrame("PHONE CONNECTION", "UP/DOWN Move  OK Select  Hold OK Back");
+    DrawFrame(Tr(Text::PhoneConnection), Tr(Text::NavSelectBack));
     canvas_.Text(24, 58, "BLE:");
-    canvas_.Text(64, 58, state == nullptr ? "UNKNOWN" : state);
+    canvas_.Text(64, 58, state == nullptr ? Tr(Text::Unknown) : state);
     if (passkey != nullptr) {
-        canvas_.TextCentered(88, "ENTER THIS CODE ON YOUR PHONE");
+        canvas_.TextCentered(88, Tr(Text::EnterCodeOnPhone));
         canvas_.TextCentered(108, passkey, 2);
     } else {
-        canvas_.Text(24, 88, "PAIR TO CONNECT A NEW PHONE");
-        canvas_.Text(24, 108, "PAIRING WINDOW: 120 SECONDS");
+        canvas_.Text(24, 88, Tr(Text::PairNewPhoneHint));
+        canvas_.Text(24, 108, Tr(Text::PairingWindow));
     }
-    static constexpr const char* kActions[] = {
-        "PAIR A NEW PHONE", "FETCH TEST DOCUMENT", "FORGET TRUSTED PHONE"};
+    const char* kActions[] = {
+        Tr(Text::PairNewPhone), Tr(Text::FetchTestDocument), Tr(Text::ForgetTrustedPhone)};
     for (size_t i = 0; i < std::size(kActions); ++i) {
         const int y = 142 + static_cast<int>(i) * 32;
         const bool focused = i == selected;
         canvas_.FillRect(20, y, 360, 26, focused);
-        canvas_.Text(30, y + 9, kActions[i], 1, focused);
+        canvas_.Text(30, y + 5, kActions[i], 1, focused);
     }
     DrawFittedText(canvas_, 24, 248, status == nullptr ? "" : status, 352);
     return full_refresh ? RefreshFull()
@@ -203,35 +198,35 @@ esp_err_t ZectrixDemoUi::ShowSceneInfo(const char* title, const char* mode,
                                        const char* format, size_t bytes,
                                        int64_t elapsed_ms, esp_err_t result,
                                        bool full_refresh) {
-    DrawFrame("DISPLAY GALLERY", "OK Return   Hold OK Back");
+    DrawFrame(Tr(Text::DisplayGallery), Tr(Text::NavReturnBack));
     canvas_.Text(20, 54, title, 2);
     canvas_.Line(20, 92, 379, 92);
-    canvas_.Text(28, 112, "REFRESH MODE:");
+    canvas_.Text(28, 112, Tr(Text::RefreshMode));
     canvas_.Text(184, 112, mode);
-    canvas_.Text(28, 142, "PIXEL FORMAT:");
+    canvas_.Text(28, 142, Tr(Text::PixelFormat));
     canvas_.Text(184, 142, format);
     char line[64];
-    std::snprintf(line, sizeof(line), "%u BYTES",
+    std::snprintf(line, sizeof(line), Tr(Text::ByteCount),
                   static_cast<unsigned>(bytes));
     canvas_.Text(184, 172, line);
-    canvas_.Text(28, 172, "FRAME BUFFER:");
+    canvas_.Text(28, 172, Tr(Text::FrameBuffer));
     std::snprintf(line, sizeof(line), "%lld ms",
                   static_cast<long long>(elapsed_ms));
     canvas_.Text(184, 202, line);
-    canvas_.Text(28, 202, "LAST TIME:");
+    canvas_.Text(28, 202, Tr(Text::LastTime));
     std::snprintf(line, sizeof(line), "%s", esp_err_to_name(result));
     canvas_.Text(184, 232, line);
-    canvas_.Text(28, 232, "RESULT:");
+    canvas_.Text(28, 232, Tr(Text::ResultLabel));
     return full_refresh ? RefreshFull() : RefreshAuto();
 }
 
 const char* ZectrixDemoUi::StateText(ZectrixTestState state) {
     switch (state) {
-        case ZectrixTestState::kRunning: return "RUN";
-        case ZectrixTestState::kPass: return "PASS";
-        case ZectrixTestState::kFail: return "FAIL";
-        case ZectrixTestState::kSkipped: return "SKIP";
-        default: return "WAIT";
+        case ZectrixTestState::kRunning: return Tr(Text::Run);
+        case ZectrixTestState::kPass: return Tr(Text::Pass);
+        case ZectrixTestState::kFail: return Tr(Text::Fail);
+        case ZectrixTestState::kSkipped: return Tr(Text::Skip);
+        default: return Tr(Text::Wait);
     }
 }
 
@@ -253,7 +248,7 @@ void ZectrixDemoUi::DrawTestStrip(
         } else {
             canvas_.Rect(left, kHeaderHeight, width, kTestStripHeight);
         }
-        const char* name = kTestShortNames[i];
+        const char* name = Tr(kTestShortNames[i]);
         const char* state = StateText(states[static_cast<size_t>(id)]);
         canvas_.Text(left + (width - canvas_.TextWidth(name)) / 2,
                      kHeaderHeight + 2, name, 1, selected);
@@ -268,15 +263,15 @@ esp_err_t ZectrixDemoUi::ShowTestMenu(
                      static_cast<size_t>(ZectrixTestId::kCount)>& states,
     bool full_refresh) {
     const ZectrixTestId current = kTestOrder[std::min(selected, kTestOrder.size() - 1)];
-    DrawFrame("HARDWARE TESTS", "UP/DOWN Move  OK Run  Hold OK Back");
+    DrawFrame(Tr(Text::HardwareTests), Tr(Text::NavRunBack));
     DrawTestStrip(current, states);
-    canvas_.Text(20, 92, ZectrixSelfTest::Name(current), 2);
+    canvas_.Text(20, 92, Tr(kTestShortNames[std::min(selected, kTestOrder.size() - 1)]), 2);
     canvas_.Line(20, 126, 379, 126);
-    canvas_.Text(20, 142, "PRESS OK TO RUN THIS TEST");
-    canvas_.Text(20, 176, "RESULT:");
+    canvas_.Text(20, 142, Tr(Text::PressOkTest));
+    canvas_.Text(20, 176, Tr(Text::ResultLabel));
     canvas_.Text(116, 176, StateText(states[static_cast<size_t>(current)]));
-    canvas_.Text(20, 212, "RUN ALL TESTS IS AVAILABLE");
-    canvas_.Text(20, 232, "FROM THE HARDWARE TEST MENU.");
+    canvas_.Text(20, 212, Tr(Text::AllTestsAvailable));
+    canvas_.Text(20, 232, Tr(Text::FromTestMenu));
     return full_refresh ? RefreshFull()
                         : RefreshAuto();
 }
@@ -296,7 +291,7 @@ esp_err_t ZectrixDemoUi::ShowTestUpdate(
     }
     last_update_us_ = now;
 
-    DrawFrame("HARDWARE TESTS", "Follow Prompt  Hold OK Cancel  Hold DOWN Off");
+    DrawFrame(Tr(Text::HardwareTests), Tr(Text::NavTestCancel));
     DrawTestStrip(update.id, states);
     canvas_.FillRect(0, kHeaderHeight + kTestStripHeight, 400,
                      269 - kHeaderHeight - kTestStripHeight, false);
@@ -318,7 +313,7 @@ esp_err_t ZectrixDemoUi::ShowTestUpdate(
 esp_err_t ZectrixDemoUi::ShowTestSummary(
     const std::array<ZectrixTestState,
                      static_cast<size_t>(ZectrixTestId::kCount)>& states) {
-    DrawFrame("TEST SUMMARY", "OK Return   Hold OK Back   Hold DOWN Off");
+    DrawFrame(Tr(Text::TestSummary), Tr(Text::NavReturnBackOff));
     int passed = 0;
     int failed = 0;
     int skipped = 0;
@@ -328,11 +323,11 @@ esp_err_t ZectrixDemoUi::ShowTestSummary(
         skipped += state == ZectrixTestState::kSkipped ? 1 : 0;
     }
     char line[64];
-    std::snprintf(line, sizeof(line), "%d / %d PASSED", passed,
+    std::snprintf(line, sizeof(line), Tr(Text::PassedCount), passed,
                   static_cast<int>(states.size()) - skipped);
     canvas_.TextCentered(52, line, 2);
-    if (skipped) std::snprintf(line, sizeof(line), "%d FAILED   %d SKIPPED", failed, skipped);
-    else std::snprintf(line, sizeof(line), "%d FAILED", failed);
+    if (skipped) std::snprintf(line, sizeof(line), Tr(Text::FailedSkipped), failed, skipped);
+    else std::snprintf(line, sizeof(line), Tr(Text::FailedCount), failed);
     canvas_.TextCentered(94, line, 1);
     for (size_t i = 0; i < kTestOrder.size(); ++i) {
         const int column = i < 4 ? 0 : 1;
@@ -340,10 +335,8 @@ esp_err_t ZectrixDemoUi::ShowTestSummary(
         const int x = 28 + column * 196;
         const int y = 132 + row * 30;
         const ZectrixTestId id = kTestOrder[i];
-        std::snprintf(line, sizeof(line), "%-8.8s %s",
-                      ZectrixSelfTest::Name(id),
-                      StateText(states[static_cast<size_t>(id)]));
-        canvas_.Text(x, y, line);
+        canvas_.TextFitted(x, y, Tr(kTestShortNames[i]), 96);
+        canvas_.Text(x + 104, y, StateText(states[static_cast<size_t>(id)]));
     }
     return RefreshFull();
 }
@@ -351,10 +344,10 @@ esp_err_t ZectrixDemoUi::ShowTestSummary(
 esp_err_t ZectrixDemoUi::ShowDeviceInfo(
     const zectrix::power::PowerSnapshot& power,
     const zectrix::system::SystemSnapshot& system, bool full_refresh) {
-    DrawFrame("DEVICE INFO", "Hold OK Back   Hold DOWN Power Off");
+    DrawFrame(Tr(Text::DeviceInfo), Tr(Text::NavBackOff));
     char line[80];
-    const char* labels[] = {"MCU", "DISPLAY", "FLASH / PSRAM", "WI-FI MAC",
-                            "RTC / NFC", "BATTERY", "USB / CHARGE"};
+    const char* labels[] = {"MCU", Tr(Text::DisplayLabel), "FLASH / PSRAM", "WI-FI MAC",
+                            "RTC / NFC", Tr(Text::BatteryLabel), Tr(Text::UsbCharge)};
     const int ys[] = {54, 84, 114, 144, 174, 204, 234};
     for (int i = 0; i < 7; ++i) {
         canvas_.Text(18, ys[i], labels[i]);
@@ -372,27 +365,27 @@ esp_err_t ZectrixDemoUi::ShowDeviceInfo(
                   system.wifi_mac[3], system.wifi_mac[4], system.wifi_mac[5]);
     canvas_.Text(176, ys[3], line);
     std::snprintf(line, sizeof(line), "%s / %s",
-                  system.capabilities.rtc ? "READY" : "N/A",
-                  system.capabilities.nfc ? "READY" : "N/A");
+                  system.capabilities.rtc ? Tr(Text::Ready) : "N/A",
+                  system.capabilities.nfc ? Tr(Text::Ready) : "N/A");
     canvas_.Text(176, ys[4], line);
     std::snprintf(line, sizeof(line), "%u%%  %u mV",
                   power.battery_percent, power.battery_mv);
-    canvas_.Text(176, ys[5], power.battery_valid ? line : "NOT AVAILABLE");
+    canvas_.Text(176, ys[5], power.battery_valid ? line : Tr(Text::NotAvailable));
     std::snprintf(line, sizeof(line), "%s / %s",
-                  power.external_power_present ? "IN" : "OUT",
-                  power.charging ? "CHARGING" : "IDLE");
+                  power.external_power_present ? Tr(Text::UsbIn) : Tr(Text::UsbOut),
+                  power.charging ? Tr(Text::Charging) : Tr(Text::Idle));
     canvas_.Text(176, ys[6], line);
     return full_refresh ? RefreshFull() : RefreshAuto();
 }
 
 esp_err_t ZectrixDemoUi::ShowAbout(bool full_refresh) {
-    DrawFrame("ABOUT", "Hold OK Back   Hold DOWN Power Off");
-    canvas_.TextCentered(54, "ZECTRIX POCKET TERMINAL", 1);
-    canvas_.TextCentered(88, "OPEN-SOURCE E-PAPER SYSTEM", 1);
+    DrawFrame(Tr(Text::About), Tr(Text::NavBackOff));
+    canvas_.TextCentered(54, Tr(Text::ZectrixTerminal), 1);
+    canvas_.TextCentered(88, Tr(Text::OpenSourceEpaper), 1);
     canvas_.Line(44, 118, 355, 118);
     canvas_.TextCentered(138, "COPYRIGHT (C) 2026", 1);
     canvas_.TextCentered(164, "ZECTRIX LAB", 2);
-    canvas_.TextCentered(210, "MIT LICENSE", 1);
+    canvas_.TextCentered(210, Tr(Text::MitLicense), 1);
     canvas_.TextCentered(238, "www.zectrix.com", 1);
     return full_refresh ? RefreshFull() : RefreshAuto();
 }

@@ -1,4 +1,5 @@
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/zectrix_features.cmake")
+set(COMPONENT_KCONFIG_PROJBUILD "${CMAKE_CURRENT_LIST_DIR}/../../cmake/Kconfig.empty")
 set(sources "zectrix_canvas.cc" "zectrix_demo_ui.cc" "zectrix_view_port.cc"
     "zectrix_status_bar.cc" "zectrix_sleep_ui.cc" "zectrix_unicode_text.cc"
     "zectrix_launcher_ui.cc")

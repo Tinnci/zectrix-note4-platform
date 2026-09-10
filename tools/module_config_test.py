@@ -37,7 +37,7 @@ class ModuleConfigTest(unittest.TestCase):
     def test_fresh_full_build(self):
         options = self.resolve()
         self.assertEqual(set(options), {"CONNECTIVITY", "WIFI", "WIFI_HTTP", "BOOK_TRANSFER",
-                                        "READER", "BOOK_STORAGE", "USB_CLI", "UPDATE"})
+                                        "READER", "BOOK_STORAGE", "USB_CLI", "UPDATE", "UI_CHINESE"})
         self.assertTrue(all(options.values()))
         self.assertFalse(self.config.exists())
 
@@ -107,6 +107,7 @@ class ModuleConfigTest(unittest.TestCase):
     def test_empty_defaults_disable_modules_like_idf(self):
         defaults = ("CONFIG_ZECTRIX_ENABLE_CONNECTIVITY=\n"
                     "CONFIG_ZECTRIX_ENABLE_READER=\n"
+                    "CONFIG_ZECTRIX_ENABLE_UI_CHINESE=\n"
                     "CONFIG_ZECTRIX_ENABLE_USB_CLI=\n"
                     "CONFIG_ZECTRIX_ENABLE_UPDATE=\n",)
         self.assertFalse(any(self.resolve(defaults=defaults).values()))
@@ -118,9 +119,14 @@ class ModuleConfigTest(unittest.TestCase):
         for enabled in (False, True, False):
             value = "y" if enabled else "n"
             settings = "".join(f"CONFIG_ZECTRIX_ENABLE_{name}={value}\n"
-                               for name in ("CONNECTIVITY", "READER", "USB_CLI", "UPDATE"))
+                               for name in ("CONNECTIVITY", "READER", "USB_CLI", "UPDATE", "UI_CHINESE"))
             options = self.resolve(settings)
             self.assertTrue(all(value == enabled for value in options.values()))
+
+    def test_chinese_ui_does_not_require_the_reader(self):
+        options = self.resolve("CONFIG_ZECTRIX_ENABLE_READER=n\nCONFIG_ZECTRIX_ENABLE_UI_CHINESE=y\n")
+        self.assertFalse(options["READER"])
+        self.assertTrue(options["UI_CHINESE"])
 
 
 if __name__ == "__main__":
