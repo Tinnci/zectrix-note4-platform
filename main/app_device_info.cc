@@ -1,6 +1,6 @@
 #include "terminal_internal.h"
 
-#include "zectrix_first_party_app_controllers.h"
+#include "zectrix_navigation.h"
 
 
 namespace zectrix::terminal {
@@ -20,9 +20,9 @@ public:
     }
     sdk::Status HandleEvent(const sdk::InputEvent& event,
                             sdk::ApplicationContext& context) override {
-        const auto decision = zectrix::app::HandleClockInput(event);
-        if (decision == zectrix::app::ClockDecision::Home) context.RequestCommand(sdk::AppCommand::Home());
-        if (decision == zectrix::app::ClockDecision::Shutdown) context.RequestCommand(sdk::AppCommand::Shutdown());
+        const auto key = app::MapNavigation(event);
+        if (key == app::Navigation::Back) return owner_->RequestBack(context);
+        if (key == app::Navigation::Shutdown) context.RequestCommand(sdk::AppCommand::Shutdown());
         return sdk::Status::Ok;
     }
     sdk::Status HandleIdle(sdk::ApplicationContext& context) override {

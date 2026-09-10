@@ -56,8 +56,8 @@ public:
             status_ = save == ESP_OK ? "SAVED" : "SAVE FAILED";
             context.RequestRender({0, 24, 400, 276},
                                   sdk::RenderIntent::Fast);
-        } else if (result.decision == zectrix::app::SettingsDecision::Home) {
-            context.RequestCommand(sdk::AppCommand::Home());
+        } else if (result.decision == zectrix::app::SettingsDecision::Back) {
+            return owner_->RequestBack(context);
         } else if (result.decision ==
                    zectrix::app::SettingsDecision::Shutdown) {
             context.RequestCommand(sdk::AppCommand::Shutdown());

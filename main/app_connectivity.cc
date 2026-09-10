@@ -18,69 +18,16 @@ public:
     explicit ConnectivityApplication(TerminalApp& owner) : owner_(&owner) {}
 
     sdk::Status Enter(sdk::ApplicationContext& context) override {
-        status_ = "PRESS OK TO PAIR A NEW PHONE";
+        status_ = "SELECT AN ACTION WITH UP / DOWN";
         passkey_[0] = '\0';
         displayed_state_ = owner_->connectivity_->State();
-        return context.RequestRender({0, 0, 400, 300},
-                                     sdk::RenderIntent::Quality)
-                   ? sdk::Status::Ok : sdk::Status::InternalError;
+        const auto started = controller_.Start();
+        return sdk::IsOk(started) ? Apply(controller_.Tick(), context) : started;
     }
 
     sdk::Status HandleEvent(const sdk::InputEvent& event,
                             sdk::ApplicationContext& context) override {
-        const auto decision =
-            zectrix::app::HandleConnectivityInput(event);
-        if (decision == zectrix::app::ConnectivityDecision::Home) {
-            context.RequestCommand(sdk::AppCommand::Home());
-        } else if (decision ==
-                   zectrix::app::ConnectivityDecision::Shutdown) {
-            context.RequestCommand(sdk::AppCommand::Shutdown());
-        } else if (decision ==
-                   zectrix::app::ConnectivityDecision::StartPairing) {
-            const auto result = owner_->connectivity_->StartLocalPairing();
-            status_ = result == zectrix::connectivity::ConnectivityResult::kOk
-                          ? "PHONE CAN PAIR FOR 120 SECONDS"
-                          : "PAIRING IS NOT AVAILABLE";
-            context.RequestRender({0, 24, 400, 276},
-                                  sdk::RenderIntent::Fast);
-        } else if (decision ==
-                   zectrix::app::ConnectivityDecision::FetchResource) {
-            zectrix::companion::ResourceRequestMessage request{};
-            owner_->connectivity_->UpdatePower(owner_->power_->ReadSnapshot());
-            const auto result =
-                owner_->connectivity_->RequestResource(request);
-            if (result ==
-                zectrix::connectivity::ConnectivityResult::kOk) {
-                status_ = "REQUESTING TEST DOCUMENT";
-            } else if (result ==
-                       zectrix::connectivity::ConnectivityResult::kBusy) {
-                status_ = "RESOURCE REQUEST ALREADY ACTIVE";
-            } else {
-                status_ = "RESOURCE SERVICE UNAVAILABLE";
-            }
-            context.RequestRender({0, 24, 400, 276},
-                                  sdk::RenderIntent::Fast);
-        } else if (decision ==
-                   zectrix::app::ConnectivityDecision::ClearBonds) {
-            const auto result = owner_->connectivity_->ClearPeerBonds();
-            status_ = result == zectrix::connectivity::ConnectivityResult::kOk
-                          ? "TRUSTED PHONE FORGOTTEN"
-                          : "DISCONNECT BEFORE FORGETTING";
-#if CONFIG_ZECTRIX_ENABLE_READER
-            if (result == zectrix::connectivity::ConnectivityResult::kOk) {
-                zectrix::reader::PlatformBookmarkStore store(*owner_->storage_, *owner_->connectivity_);
-                zectrix::reader::Bookmarks bookmarks(store);
-                if (bookmarks.Load() != zectrix::reader::Result::Ok ||
-                    bookmarks.ResetPeer() != zectrix::reader::Result::Ok) {
-                    status_ = "PHONE RESET; READER SYNC ERROR";
-                    ESP_LOGW(kTag, "reader phone cursor reset failed");
-                }
-            }
-#endif
-            context.RequestRender({0, 24, 400, 276},
-                                  sdk::RenderIntent::Fast);
-        }
-        return sdk::Status::Ok;
+        return Apply(controller_.Handle(event), context);
     }
 
     sdk::Status HandleIdle(sdk::ApplicationContext& context) override {
@@ -130,22 +77,81 @@ public:
             context.RequestRender({0, 24, 400, 276},
                                   sdk::RenderIntent::Fast);
         }
-        return sdk::Status::Ok;
+        return Apply(controller_.Tick(), context);
     }
 
     sdk::Status Render(const sdk::RenderRequest& request) override {
-        return ToSdkStatus(owner_->ui_.ShowConnectivity(
-            StateText(owner_->connectivity_->State()), status_,
-            passkey_[0] == '\0' ? nullptr : passkey_,
-            request.intent == sdk::RenderIntent::Quality));
+        const bool quality = request.intent == sdk::RenderIntent::Quality;
+        esp_err_t result;
+        if (controller_.page() == app::ConnectivityPage::Forget) {
+            static constexpr const char* kItems[] = {"KEEP TRUSTED PHONE", "FORGET PHONE AND SYNC LINK"};
+            result = owner_->ui_.ShowMenu("FORGET PHONE", kItems, std::size(kItems),
+                controller_.selected(), "UP/DOWN Move  OK Confirm  Hold OK Cancel", quality);
+        } else {
+            result = owner_->ui_.ShowConnectivity(StateText(owner_->connectivity_->State()), status_,
+                passkey_[0] == '\0' ? nullptr : passkey_, controller_.selected(), quality);
+        }
+        controller_.Presented(result == ESP_OK);
+        return ToSdkStatus(result);
     }
 
     sdk::Status Exit() override {
+        controller_.Stop();
         std::memset(passkey_, 0, sizeof(passkey_));
         return sdk::Status::Ok;
     }
 
 private:
+    sdk::Status Apply(app::ConnectivityDecision decision, sdk::ApplicationContext& context) {
+        using Decision = app::ConnectivityDecision;
+        if (decision == Decision::Back) return owner_->RequestBack(context);
+        if (decision == Decision::Shutdown) {
+            context.RequestCommand(sdk::AppCommand::Shutdown());
+            return sdk::Status::Ok;
+        }
+        if (decision == Decision::None) return sdk::Status::Ok;
+        if (decision == Decision::StartPairing) {
+            const auto result = owner_->connectivity_->StartLocalPairing();
+            status_ = result == zectrix::connectivity::ConnectivityResult::kOk
+                          ? "PHONE CAN PAIR FOR 120 SECONDS"
+                          : "PAIRING IS NOT AVAILABLE";
+        } else if (decision == Decision::FetchResource) {
+            zectrix::companion::ResourceRequestMessage request{};
+            owner_->connectivity_->UpdatePower(owner_->power_->ReadSnapshot());
+            const auto result =
+                owner_->connectivity_->RequestResource(request);
+            if (result ==
+                zectrix::connectivity::ConnectivityResult::kOk) {
+                status_ = "REQUESTING TEST DOCUMENT";
+            } else if (result ==
+                       zectrix::connectivity::ConnectivityResult::kBusy) {
+                status_ = "RESOURCE REQUEST ALREADY ACTIVE";
+            } else {
+                status_ = "RESOURCE SERVICE UNAVAILABLE";
+            }
+        } else if (decision == Decision::ClearBonds) {
+            const auto result = owner_->connectivity_->ClearPeerBonds();
+            status_ = result == zectrix::connectivity::ConnectivityResult::kOk
+                          ? "TRUSTED PHONE FORGOTTEN"
+                          : "DISCONNECT BEFORE FORGETTING";
+#if CONFIG_ZECTRIX_ENABLE_READER
+            if (result == zectrix::connectivity::ConnectivityResult::kOk) {
+                zectrix::reader::PlatformBookmarkStore store(*owner_->storage_, *owner_->connectivity_);
+                zectrix::reader::Bookmarks bookmarks(store);
+                if (bookmarks.Load() != zectrix::reader::Result::Ok ||
+                    bookmarks.ResetPeer() != zectrix::reader::Result::Ok) {
+                    status_ = "PHONE RESET; READER SYNC ERROR";
+                    ESP_LOGW(kTag, "reader phone cursor reset failed");
+                }
+            }
+#endif
+        }
+        return context.RequestRender({0, 24, 400, 276},
+            decision == Decision::RenderQuality || decision == Decision::ClearBonds
+                ? sdk::RenderIntent::Quality : sdk::RenderIntent::Fast)
+            ? sdk::Status::Ok : sdk::Status::InternalError;
+    }
+
     void SetResourceStatus(
         const zectrix::connectivity::ResourceResponse& response) {
         using Status = zectrix::companion::ResourceStatus;
@@ -227,6 +233,7 @@ private:
     }
 
     TerminalApp* owner_;
+    app::ConnectivityController controller_;
     const char* status_ = "";
     char resource_status_[48]{};
     char passkey_[7]{};

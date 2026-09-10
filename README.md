@@ -198,7 +198,7 @@ model and limits.
 | UP press | Previous item |
 | DOWN press | Next item |
 | OK click | Select or confirm |
-| OK hold (1.5 s) | Return or cancel |
+| OK hold (1.5 s) | Return one level or cancel the current action |
 | DOWN hold (3 s) | Present sleep cover, power down peripherals and shut down |
 
 When enabled in Settings, the home screen starts Auto Showcase after 15 seconds
@@ -219,18 +219,22 @@ Splash
      |    `-- Library -> Reading -> Font / Phone Position / Restart / Save
      |-- Send Books
      |    `-- Hotspot / Home Network -> Transfer Session
-     |-- Clock
+     |-- Clock -> View / Edit
      |-- Sleep Cover
      |    `-- Dashboard / Landscape / Blank -> Preview -> Sleep
      |-- Settings
      `-- Tools
-          |-- Connectivity
+          |-- Connectivity -> Actions / Forget Phone
           |-- Auto Showcase -> 1bpp Full / Partial / 4bpp Full
           |-- Display Gallery -> Lighthouse / Footprints / Mountain / Run All
           |-- Hardware Tests -> Run All / Select Individual
           |-- Device Info
           `-- About & License
 ```
+
+Hold OK returns one level, including from a tool to its previous Tools row,
+then to Home. Hold DOWN sleeps from every first-party page. See
+[Unified navigation](docs/NAVIGATION.md) for scene and cleanup behavior.
 
 The 4bpp scene always performs a white 1bpp full refresh first to reduce
 ghosting. The display service allows at most eight partial refreshes between

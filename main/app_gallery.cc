@@ -44,7 +44,7 @@ public:
                 "MOUNTAIN / 16 GRAY", "RUN ALL SCENES"};
             return ToSdkStatus(owner_->ui_.ShowMenu("DISPLAY GALLERY", kItems,
                 std::size(kItems), controller_.selected(),
-                "UP/DOWN Move  OK View  Hold OK Home", quality));
+                "UP/DOWN Move  OK View  Hold OK Back", quality));
         }
         const uint32_t image = controller_.image();
         if (controller_.page() == GalleryPage::Report) {
@@ -88,10 +88,10 @@ public:
     }
 
 private:
-    static void Apply(zectrix::app::GalleryDecision decision, sdk::ApplicationContext& context) {
+    void Apply(zectrix::app::GalleryDecision decision, sdk::ApplicationContext& context) {
         using Decision = zectrix::app::GalleryDecision;
         if (decision == Decision::Shutdown) context.RequestCommand(sdk::AppCommand::Shutdown());
-        else if (decision == Decision::Home) context.RequestCommand(sdk::AppCommand::Home());
+        else if (decision == Decision::Back) owner_->RequestBack(context);
         else if (decision == Decision::RenderFast || decision == Decision::RenderQuality) {
             context.RequestRender({0, 24, 400, 276}, decision == Decision::RenderQuality
                 ? sdk::RenderIntent::Quality : sdk::RenderIntent::Fast);

@@ -14,59 +14,61 @@ public:
 
     sdk::Status Enter(sdk::ApplicationContext& context) override {
         owner_->test_states_.fill(ZectrixTestState::kWait);
-        return context.RequestRender({0, 0, 400, 300},
-                                     sdk::RenderIntent::Quality)
-                   ? sdk::Status::Ok : sdk::Status::InternalError;
+        const auto started = controller_.Start();
+        return sdk::IsOk(started) ? Apply(controller_.Tick(), context) : started;
     }
 
     sdk::Status HandleEvent(const sdk::InputEvent& event,
                           sdk::ApplicationContext& context) override {
-        const zectrix::app::DiagnosticsResult result = controller_.Handle(event);
-        if (result.decision == zectrix::app::DiagnosticsDecision::RenderFast) {
-            context.RequestRender({0, 24, 400, 276},
-                                  sdk::RenderIntent::Fast);
-            return sdk::Status::Ok;
-        }
-        if (result.decision == zectrix::app::DiagnosticsDecision::Home) {
-            context.RequestCommand(sdk::AppCommand::Home());
-            return sdk::Status::Ok;
-        }
-        if (result.decision == zectrix::app::DiagnosticsDecision::Shutdown) {
-            context.RequestCommand(sdk::AppCommand::Shutdown());
-            return sdk::Status::Ok;
-        }
-        if (result.decision == zectrix::app::DiagnosticsDecision::RunAll) {
-            return RunAll(context);
-        }
-        if (result.decision ==
-            zectrix::app::DiagnosticsDecision::RunSelected) {
-            return RunSelected(result.selected, context);
-        }
-        return sdk::Status::Ok;
+        return Apply(controller_.Handle(event), context);
+    }
+
+    sdk::Status HandleIdle(sdk::ApplicationContext& context) override {
+        return Apply(controller_.Tick(), context);
     }
 
     sdk::Status Render(const sdk::RenderRequest& request) override {
+        esp_err_t result;
         if (controller_.page() == zectrix::app::DiagnosticsPage::Summary) {
-            return ToSdkStatus(
-                owner_->ui_.ShowTestSummary(owner_->test_states_));
-        }
-        if (controller_.page() == zectrix::app::DiagnosticsPage::Individual) {
-            return ToSdkStatus(owner_->ui_.ShowTestMenu(
+            result = owner_->ui_.ShowTestSummary(owner_->test_states_);
+        } else if (controller_.page() == zectrix::app::DiagnosticsPage::Individual) {
+            result = owner_->ui_.ShowTestMenu(
                 controller_.selected(), owner_->test_states_,
-                request.intent == sdk::RenderIntent::Quality));
+                request.intent == sdk::RenderIntent::Quality);
+        } else {
+            static constexpr const char* kItems[] = {
+                "RUN ALL TESTS", "SELECT INDIVIDUAL TEST"};
+            result = owner_->ui_.ShowMenu(
+                "HARDWARE TESTS", kItems, std::size(kItems),
+                controller_.selected(), "UP/DOWN Move  OK Select  Hold OK Back",
+                request.intent == sdk::RenderIntent::Quality);
         }
-        static constexpr const char* kItems[] = {
-            "RUN ALL TESTS", "SELECT INDIVIDUAL TEST"};
-        return ToSdkStatus(owner_->ui_.ShowMenu(
-            "HARDWARE TESTS", kItems, std::size(kItems),
-            controller_.selected(),
-            "UP/DOWN Move  OK Select  Hold OK Home",
-            request.intent == sdk::RenderIntent::Quality));
+        controller_.Presented(result == ESP_OK);
+        return ToSdkStatus(result);
     }
 
-    sdk::Status Exit() override { return sdk::Status::Ok; }
+    sdk::Status Exit() override { controller_.Stop(); return sdk::Status::Ok; }
 
 private:
+    sdk::Status Apply(app::DiagnosticsResult result, sdk::ApplicationContext& context) {
+        using Decision = app::DiagnosticsDecision;
+        switch (result.decision) {
+            case Decision::RenderFast:
+            case Decision::RenderQuality:
+                return context.RequestRender({0, 24, 400, 276}, result.decision == Decision::RenderQuality
+                    ? sdk::RenderIntent::Quality : sdk::RenderIntent::Fast)
+                    ? sdk::Status::Ok : sdk::Status::InternalError;
+            case Decision::Back: return owner_->RequestBack(context);
+            case Decision::Shutdown:
+                context.RequestCommand(sdk::AppCommand::Shutdown());
+                return sdk::Status::Ok;
+            case Decision::RunAll: return RunAll(context);
+            case Decision::RunSelected: return RunSelected(result.selected, context);
+            case Decision::None: return sdk::Status::Ok;
+        }
+        return sdk::Status::InternalError;
+    }
+
     ZectrixTestResult Execute(ZectrixTestId id) {
         owner_->test_states_[static_cast<size_t>(id)] =
             ZectrixTestState::kRunning;
@@ -86,33 +88,38 @@ private:
 
     sdk::Status RunAll(sdk::ApplicationContext& context) {
         owner_->test_states_.fill(ZectrixTestState::kWait);
+        bool cancelled = false;
         for (size_t index = 0;
              index < static_cast<size_t>(ZectrixTestId::kCount); ++index) {
             esp_err_t draw = owner_->ui_.ShowTestMenu(
                 index, owner_->test_states_, true);
-            if (draw != ESP_OK) return ToSdkStatus(draw);
+            if (draw != ESP_OK) {
+                // Unwind Running even when a progress frame cannot be shown.
+                Apply(controller_.FinishRun(true), context);
+                return ToSdkStatus(draw);
+            }
             const ZectrixTestResult result =
                 Execute(static_cast<ZectrixTestId>(index));
             if (result == ZectrixTestResult::kShutdown) {
                 context.RequestCommand(sdk::AppCommand::Shutdown());
                 return sdk::Status::Ok;
             }
-            if (result == ZectrixTestResult::kCancelled) break;
-            if (result == ZectrixTestResult::kSkipped) {
-                owner_->test_states_[index] = ZectrixTestState::kSkipped;
-            } else {
-                owner_->test_states_[index] = result == ZectrixTestResult::kPass
-                    ? ZectrixTestState::kPass : ZectrixTestState::kFail;
+            RecordResult(index, result);
+            if (result == ZectrixTestResult::kCancelled) {
+                cancelled = true;
+                break;
             }
-            if (owner_->Wait(800, false) ==
-                ControlResult::kShutdown) {
+            const auto control = owner_->Wait(800, false);
+            if (control == ControlResult::kShutdown) {
                 context.RequestCommand(sdk::AppCommand::Shutdown());
                 return sdk::Status::Ok;
             }
+            if (control == ControlResult::kBack) {
+                cancelled = true;
+                break;
+            }
         }
-        controller_.ShowSummary();
-        return ToSdkStatus(
-            owner_->ui_.ShowTestSummary(owner_->test_states_));
+        return Apply(controller_.FinishRun(cancelled), context);
     }
 
     sdk::Status RunSelected(size_t selected,
@@ -123,20 +130,24 @@ private:
             context.RequestCommand(sdk::AppCommand::Shutdown());
             return sdk::Status::Ok;
         }
-        if (result == ZectrixTestResult::kPass) {
-            owner_->test_states_[selected] = ZectrixTestState::kPass;
-        } else if (result == ZectrixTestResult::kFail) {
-            owner_->test_states_[selected] = ZectrixTestState::kFail;
-        } else if (result == ZectrixTestResult::kSkipped) {
-            owner_->test_states_[selected] = ZectrixTestState::kSkipped;
-        }
-        if (owner_->Wait(1200, true) ==
-            ControlResult::kShutdown) {
+        RecordResult(selected, result);
+        const bool cancelled = result == ZectrixTestResult::kCancelled;
+        if (!cancelled && owner_->Wait(1200, true) == ControlResult::kShutdown) {
             context.RequestCommand(sdk::AppCommand::Shutdown());
             return sdk::Status::Ok;
         }
-        return ToSdkStatus(owner_->ui_.ShowTestMenu(
-            selected, owner_->test_states_, true));
+        return Apply(controller_.FinishRun(cancelled), context);
+    }
+
+    void RecordResult(size_t index, ZectrixTestResult result) {
+        auto& state = owner_->test_states_[index];
+        switch (result) {
+            case ZectrixTestResult::kPass: state = ZectrixTestState::kPass; break;
+            case ZectrixTestResult::kFail: state = ZectrixTestState::kFail; break;
+            case ZectrixTestResult::kSkipped: state = ZectrixTestState::kSkipped; break;
+            case ZectrixTestResult::kCancelled: state = ZectrixTestState::kWait; break;
+            case ZectrixTestResult::kShutdown: break;
+        }
     }
 
     TerminalApp* owner_;

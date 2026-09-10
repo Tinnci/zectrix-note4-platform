@@ -16,8 +16,9 @@ and top to bottom. Full has six tiles: Book Reader, Send Books, Clock, Sleep
 Cover, Settings and Tools. The focused card or tile uses white text on black.
 OK opens the selection. Hold OK returns from Tools to Home; hold DOWN retains
 global shutdown. Home and Tools selections survive application exits in RAM.
-Returning from a tool lands on Home's Tools tile; reopening Tools restores its
-previous row.
+E1.4 returns from a tool directly to its previous Tools row. Another Back
+returns to Home's Tools tile. Explicit Home and entry-failure fallback still
+land on Home. See [NAVIGATION.md](NAVIGATION.md) for the shared controls.
 
 Tools contains Connectivity, Auto Showcase, Display Gallery, Hardware Tests,
 Device Info and About & License. It is a private Launcher scene, with the

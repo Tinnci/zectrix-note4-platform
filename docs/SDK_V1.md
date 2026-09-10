@@ -96,6 +96,12 @@ application before the delegate performs the platform shutdown.
 `InputEvent` contains a product button and action. It contains no GPIO number,
 interrupt value, debounce state, or RTOS tick.
 
+The first-party shell's [navigation conventions](NAVIGATION.md) map hold OK to
+one-level Back and hold DOWN to shutdown. SDK Back and Home both target
+Launcher; the shell restores its Home/Tools parent only for Back. Private
+scenes consume child Back before submitting an application command. These are
+first-party policies and do not change SDK command signatures or priority.
+
 Commands are deferred. Their priority is:
 
 ```text

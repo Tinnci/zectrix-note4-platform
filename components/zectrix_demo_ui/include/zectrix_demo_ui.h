@@ -71,7 +71,7 @@ public:
     esp_err_t ShowSettings(bool auto_showcase, const char* status,
                            bool full_refresh);
     esp_err_t ShowConnectivity(const char* state, const char* status,
-                               const char* passkey, bool full_refresh);
+                               const char* passkey, size_t selected, bool full_refresh);
     esp_err_t ShowReader(const zectrix::app::ReaderController& reader, bool full_refresh);
     esp_err_t ShowBookTransfer(const zectrix::connectivity::BookTransferSnapshot& status,
                                bool choosing_mode, bool station_selected, bool full_refresh);

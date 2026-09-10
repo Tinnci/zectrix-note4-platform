@@ -75,7 +75,7 @@ private:
     sdk::Status Shutdown() override;
     void EnterFailsafe(sdk::Status reason) override;
     void LogHeap(const char* phase);
-    ControlResult Wait(uint32_t duration_ms, bool any_click_returns);
+    ControlResult Wait(uint32_t duration_ms, bool confirm_returns);
     app::SleepCoverSnapshot ReadSleepCover();
     app::ReadingOverview ReadReadingOverview();
     [[noreturn]] void PowerOff();

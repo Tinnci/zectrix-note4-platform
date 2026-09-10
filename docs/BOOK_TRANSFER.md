@@ -30,10 +30,14 @@ first error and retains the unsent selection for retry. **Finish session**
 ends a management session without uploading.
 
 OK on an active Note4 transfer screen stops the session. Hold OK cancels and
-returns to the mode menu. Hold OK again returns home. Hold DOWN retains global
-shutdown. The status bar remains active during transfer. Scene changes request
-Quality refresh. Progress changes request Fast at most once per second when
+returns to the mode menu. Hold OK again returns to the Launcher parent. Hold
+DOWN retains global shutdown. The status bar remains active during transfer.
+Scene changes request Quality refresh. Progress changes request Fast at most once per second when
 the displayed 10-percent step or saved-book count changes.
+
+The completed-session Reader action replaces Send Books after its exit cleanup.
+Leaving Library returns to the original Home focus without restarting the old
+transfer session. See [NAVIGATION.md](NAVIGATION.md) for shared controls.
 
 ## Session and storage limits
 

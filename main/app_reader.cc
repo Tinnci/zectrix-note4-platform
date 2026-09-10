@@ -53,7 +53,7 @@ private:
                 context.RequestRender({0, 24, 400, 276}, decision == Decision::RenderQuality
                     ? sdk::RenderIntent::Quality : sdk::RenderIntent::Fast);
                 break;
-            case Decision::Home: context.RequestCommand(sdk::AppCommand::Home()); break;
+            case Decision::Back: return owner_->RequestBack(context);
             case Decision::Shutdown: context.RequestCommand(sdk::AppCommand::Shutdown()); break;
             case Decision::None: break;
         }

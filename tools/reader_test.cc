@@ -414,10 +414,15 @@ void ControllerTests(const std::string& dir) {
     assert(reader.Handle({Button::Down, InputAction::LongPress}) == ReaderDecision::Shutdown);
     assert(reader.Handle(back) == ReaderDecision::RenderQuality);
     assert(!reader.busy() && !library.opened && reader.selected() == 1);
-    assert(reader.Handle(back) == ReaderDecision::Home);
+    assert(reader.Handle(back) == ReaderDecision::Back);
     reader.Stop();
     reader.Stop();
     assert(!library.opened);
+    const auto writes_after_exit = store.writes;
+    reader.Presented(true);
+    assert(reader.Handle(ok) == ReaderDecision::None);
+    assert(reader.Tick(20000000) == ReaderDecision::None);
+    assert(store.writes == writes_after_exit && !library.opened);
 
     Bookmarks restarted(store);
     ReaderController reboot(library, restarted);
@@ -471,7 +476,7 @@ void ContinueReadingTests(const std::string& dir) {
         assert(loaded.Latest()->position == saved.position && store.writes == writes + 1);
         assert(resumed.Handle(back) == ReaderDecision::RenderQuality);
         assert(resumed.scene() == ReaderScene::Library && !library.opened);
-        assert(resumed.Handle(back) == ReaderDecision::Home);
+        assert(resumed.Handle(back) == ReaderDecision::Back);
     }
     {
         Bookmarks loaded(store);
@@ -516,7 +521,7 @@ void ContinueReadingTests(const std::string& dir) {
         assert(recent.scene() == ReaderScene::Library && recent.notice() == expected);
         assert(!library.opened && !recent.busy() && unavailable_store.local == persisted);
         if (scenario == 6) assert(recent.selected() == 0 && library.count() == 1);
-        assert(recent.Handle(back) == ReaderDecision::Home);
+        assert(recent.Handle(back) == ReaderDecision::Back);
         library.listed_size = 0;
         library.fail_open = false;
         library.remove_last_on_open = false;

@@ -11,7 +11,7 @@ esp_err_t ZectrixDemoUi::ShowBookTransfer(const zectrix::connectivity::BookTrans
                                         bool choosing_mode, bool station_selected, bool full_refresh) {
     using namespace zectrix::connectivity;
     if (choosing_mode) {
-        DrawFrame("SEND BOOKS", "UP/DOWN Mode  OK Start  Hold OK Home");
+        DrawFrame("SEND BOOKS", "UP/DOWN Mode  OK Start  Hold OK Back");
         const char* choices[] = {"CREATE NOTE4 HOTSPOT", "USE SAVED HOME WI-FI"};
         const char* details[] = {"Connect your phone or computer directly", "Use the same network as your computer"};
         for (unsigned i = 0; i < 2; ++i) {
