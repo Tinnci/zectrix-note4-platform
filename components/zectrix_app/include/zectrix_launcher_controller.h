@@ -14,6 +14,7 @@ enum class LauncherDecision : uint8_t {
 struct LauncherSelection {
     uint32_t home = 0;
     uint32_t tools = 0;
+    LauncherScene scene = LauncherScene::Home;
 };
 
 struct LauncherEntry {
@@ -49,7 +50,7 @@ public:
     std::size_t tile_offset() const { return has_reading_overview() ? 1 : 0; }
     std::size_t tile_page() const { return TilePage(selected()); }
     LauncherEntry EntryAt(std::size_t index) const;
-    LauncherSelection selection() const { return {scenes_.state(0), scenes_.state(1)}; }
+    LauncherSelection selection() const { return {scenes_.state(0), scenes_.state(1), scene()}; }
 
 private:
     std::size_t Count(LauncherScene scene) const;

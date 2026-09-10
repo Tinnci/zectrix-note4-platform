@@ -56,7 +56,13 @@ sdk::Status LauncherController::Start(LauncherSelection selection) {
     scenes_.SetState(0, selection.home);
     scenes_.SetState(1, selection.tools < Count(LauncherScene::Tools) ? selection.tools : 0);
     action_ = {};
-    return scenes_.Start(static_cast<SceneId>(LauncherScene::Home));
+    const auto result = scenes_.Start(static_cast<SceneId>(LauncherScene::Home));
+    if (sdk::IsOk(result) && selection.scene == LauncherScene::Tools && Count(LauncherScene::Tools)) {
+        // Recreate the parent through the normal deferred transition.
+        scenes_.SetState(static_cast<SceneId>(LauncherScene::Home), Count(LauncherScene::Home) - 1);
+        scenes_.Dispatch({SceneEvent::Type::Input, {sdk::Button::Ok, sdk::InputAction::Click}});
+    }
+    return result;
 }
 
 void LauncherController::Stop() {
@@ -74,29 +80,29 @@ void LauncherController::Enter(void* context, SceneId scene) {
 bool LauncherController::Event(void* context, const SceneEvent& event) {
     auto& self = *static_cast<LauncherController*>(context);
     if (event.type != SceneEvent::Type::Input) return false;
-    const auto& input = event.input;
-    if (input.button == sdk::Button::Down && input.action == sdk::InputAction::LongPress) {
+    const auto key = MapNavigation(event.input);
+    if (key == Navigation::Shutdown) {
         self.action_ = {LauncherDecision::Shutdown};
         return true;
     }
-    if (input.action != sdk::InputAction::Click || self.count() == 0) return false;
+    if (self.count() == 0) return false;
     const auto selected = self.selected();
-    if (input.button == sdk::Button::Up || input.button == sdk::Button::Down) {
-        const auto next = (selected + (input.button == sdk::Button::Up ? self.count() - 1 : 1)) % self.count();
+    if (key == Navigation::Previous || key == Navigation::Next) {
+        const auto next = MoveSelection(selected, self.count(), key);
         self.scenes_.SetState(self.scenes_.current(), static_cast<uint32_t>(next));
         if (next != selected) self.Invalidate(self.scene() == LauncherScene::Home &&
             self.TilePage(selected) != self.TilePage(next));
-    } else if (input.button == sdk::Button::Ok) {
+    } else if (key == Navigation::Confirm) {
         const auto entry = self.EntryAt(selected);
         if (entry.id) self.action_ = {self.overview_selected()
             ? LauncherDecision::ContinueReading : LauncherDecision::OpenSelected, entry.id};
         else self.scenes_.Push(static_cast<SceneId>(LauncherScene::Tools));
-    }
+    } else return false;
     return true;
 }
 
 LauncherResult LauncherController::Handle(const sdk::InputEvent& input) {
-    const bool back = input.button == sdk::Button::Ok && input.action == sdk::InputAction::LongPress;
+    const bool back = MapNavigation(input) == Navigation::Back;
     scenes_.Dispatch({back ? SceneEvent::Type::Back : SceneEvent::Type::Input, input});
     return Tick();
 }

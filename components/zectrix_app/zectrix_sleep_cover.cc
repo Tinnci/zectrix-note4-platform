@@ -39,11 +39,18 @@ const SleepQuote& QuoteForSleep(const SleepCalendar& calendar) {
 }
 
 sdk::Status SleepCoverController::Start(SleepCoverStyle selected) {
+    if (scenes_.depth()) return sdk::Status::InvalidState;
     const auto result = scenes_.Start(0);
     scenes_.SetState(0, static_cast<uint32_t>(SleepCoverSetting(static_cast<uint32_t>(selected))));
     action_ = SleepCoverDecision::None;
     dirty_ = quality_ = false;
     return result;
+}
+
+void SleepCoverController::Stop() {
+    scenes_.Stop();
+    action_ = SleepCoverDecision::None;
+    dirty_ = quality_ = false;
 }
 
 void SleepCoverController::Enter(void* context, SceneId) {
@@ -53,35 +60,34 @@ void SleepCoverController::Enter(void* context, SceneId) {
 
 bool SleepCoverController::Event(void* context, const SceneEvent& event) {
     auto& self = *static_cast<SleepCoverController*>(context);
-    if (event.type == SceneEvent::Type::Back) {
-        if (self.scene() == SleepCoverScene::Choose) return false;
-        self.scenes_.Pop();
-        return true;
-    }
-    if (event.type != SceneEvent::Type::Input || event.input.action != sdk::InputAction::Click) return false;
-    if (event.input.button == sdk::Button::Ok) {
+    if (event.type != SceneEvent::Type::Input) return false;
+    const auto key = MapNavigation(event.input);
+    if (key == Navigation::Confirm) {
         if (self.scene() == SleepCoverScene::Choose) {
             self.action_ = SleepCoverDecision::Choose;
             self.scenes_.Push(1);
         } else self.action_ = SleepCoverDecision::Shutdown;
-    } else if (self.scene() == SleepCoverScene::Choose) {
+    } else if (self.scene() == SleepCoverScene::Choose &&
+               (key == Navigation::Previous || key == Navigation::Next)) {
         const auto selected = self.scenes_.state(0);
-        self.scenes_.SetState(0, (selected + (event.input.button == sdk::Button::Up ? 2 : 1)) % 3);
+        self.scenes_.SetState(0, MoveSelection(selected, 3, key));
         self.dirty_ = true;
-    }
+    } else return false;
     return true;
 }
 
 SleepCoverDecision SleepCoverController::Handle(const sdk::InputEvent& input) {
-    if (input.button == sdk::Button::Down && input.action == sdk::InputAction::LongPress)
-        return SleepCoverDecision::Shutdown;
-    const bool back = input.button == sdk::Button::Ok && input.action == sdk::InputAction::LongPress;
+    if (!scenes_.depth()) return SleepCoverDecision::None;
+    const auto key = MapNavigation(input);
+    if (key == Navigation::Shutdown) return SleepCoverDecision::Shutdown;
+    const bool back = key == Navigation::Back;
     if (!scenes_.Dispatch({back ? SceneEvent::Type::Back : SceneEvent::Type::Input, input, 0}) && back)
-        return SleepCoverDecision::Home;
+        return SleepCoverDecision::Back;
     return Tick();
 }
 
 SleepCoverDecision SleepCoverController::Tick() {
+    if (!scenes_.depth()) return SleepCoverDecision::None;
     const auto result = action_ != SleepCoverDecision::None ? action_ : !dirty_ ? SleepCoverDecision::None :
         quality_ ? SleepCoverDecision::RenderQuality : SleepCoverDecision::RenderFast;
     action_ = SleepCoverDecision::None;

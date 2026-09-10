@@ -7,7 +7,7 @@
 namespace zectrix::app {
 
 enum class ReaderScene : uint8_t { Library, Reading, Options };
-enum class ReaderDecision : uint8_t { None, RenderFast, RenderQuality, Home, Shutdown };
+enum class ReaderDecision : uint8_t { None, RenderFast, RenderQuality, Back, Shutdown };
 enum class ReaderNotice : uint8_t { None, RecentUnavailable, RecentChanged, HistoryUnavailable };
 
 class ReaderController {

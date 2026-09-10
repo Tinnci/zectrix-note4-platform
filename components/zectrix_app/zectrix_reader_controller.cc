@@ -52,6 +52,7 @@ void ReaderController::Stop() {
     CloseBook();
     scenes_.Stop();
     continue_requested_ = false;
+    dirty_ = quality_ = false;
     started_ = false;
 }
 
@@ -185,38 +186,38 @@ bool ReaderController::OnEvent(const SceneEvent& event) {
         }
         return true;
     }
-    if (event.type == SceneEvent::Type::Back) return false;
-    if (event.input.action != sdk::InputAction::Click) return false;
-    const auto button = event.input.button;
+    if (event.type != SceneEvent::Type::Input) return false;
+    const auto key = MapNavigation(event.input);
+    if (key != Navigation::Previous && key != Navigation::Next && key != Navigation::Confirm) return false;
     if (scene() == ReaderScene::Library) {
         if (notice_ != ReaderNotice::None) { notice_ = ReaderNotice::None; Invalidate(); }
-        if (button == sdk::Button::Ok) {
+        if (key == Navigation::Confirm) {
             if (library_.count()) OpenSelected();
             else { result_ = library_.Refresh(); Invalidate(); }
         } else if (library_.count()) {
             const auto count = library_.count();
             scenes_.SetState(Id(ReaderScene::Library),
-                (selected() + (button == sdk::Button::Up ? count - 1 : 1)) % count);
+                MoveSelection(selected(), count, key));
             Invalidate();
         }
         return true;
     }
     if (scene() == ReaderScene::Reading) {
         if (busy()) return true;
-        if (button == sdk::Button::Ok && engine_.has_page() && result_ == Result::Ok) {
+        if (key == Navigation::Confirm && engine_.has_page() && result_ == Result::Ok) {
             scenes_.Push(Id(ReaderScene::Options));
-        } else if (button == sdk::Button::Ok) {
+        } else if (key == Navigation::Confirm) {
             scenes_.Pop();
         } else if (engine_.has_page()) {
-            Operation(button == sdk::Button::Up ? engine_.Previous() : engine_.Next());
+            Operation(key == Navigation::Previous ? engine_.Previous() : engine_.Next());
         }
         return true;
     }
-    if (button == sdk::Button::Up || button == sdk::Button::Down) {
+    if (key == Navigation::Previous || key == Navigation::Next) {
         scenes_.SetState(Id(ReaderScene::Options),
-            (option() + (button == sdk::Button::Up ? kOptionCount - 1 : 1)) % kOptionCount);
+            MoveSelection(option(), kOptionCount, key));
         Invalidate();
-    } else if (button == sdk::Button::Ok) {
+    } else if (key == Navigation::Confirm) {
         switch (option()) {
             case 0:
                 Operation(engine_.SetFont(engine_.page().font == reader::FontSize::Small
@@ -246,15 +247,17 @@ bool ReaderController::OnEvent(const SceneEvent& event) {
 }
 
 ReaderDecision ReaderController::Handle(const sdk::InputEvent& input) {
-    if (input.button == sdk::Button::Down && input.action == sdk::InputAction::LongPress)
-        return ReaderDecision::Shutdown;
-    const bool back = input.button == sdk::Button::Ok && input.action == sdk::InputAction::LongPress;
+    if (!started_) return ReaderDecision::None;
+    const auto key = MapNavigation(input);
+    if (key == Navigation::Shutdown) return ReaderDecision::Shutdown;
+    const bool back = key == Navigation::Back;
     if (!scenes_.Dispatch({back ? SceneEvent::Type::Back : SceneEvent::Type::Input, input, 0}) && back)
-        return ReaderDecision::Home;
+        return ReaderDecision::Back;
     return TakeDecision();
 }
 
 ReaderDecision ReaderController::Tick(int64_t now_us) {
+    if (!started_) return ReaderDecision::None;
     if (now_us >= next_sync_us_) {
         const bool had_remote = remote_available();
         const auto saved = save_result_;
@@ -269,6 +272,7 @@ ReaderDecision ReaderController::Tick(int64_t now_us) {
 }
 
 void ReaderController::Presented(bool success) {
+    if (!started_) return;
     if (!success) {
         // Retry through the application so display recovery also saves progress.
         Invalidate(true);

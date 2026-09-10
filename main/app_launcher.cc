@@ -11,7 +11,7 @@ constexpr int64_t kHomeIdleTimeoutUs = 15000000;
 class TerminalApp::LauncherApplication final : public sdk::Application {
 public:
     explicit LauncherApplication(TerminalApp& owner)
-        : owner_(&owner), controller_(owner.applications_) {}
+        : owner_(&owner), controller_(owner.applications_), resume_parent_(owner.launcher_back_requested_) {}
 
     sdk::Status Enter(sdk::ApplicationContext& context) override {
         uint32_t stored = zectrix::app::kAutoShowcaseDefault;
@@ -34,7 +34,9 @@ public:
         }
         reading_ = owner_->ReadReadingOverview();
         last_input_us_ = owner_->time_->MonotonicMicroseconds();
-        const auto result = controller_.Start(owner_->launcher_selection_);
+        auto selection = owner_->launcher_selection_;
+        if (!resume_parent_) selection.scene = app::LauncherScene::Home;
+        const auto result = controller_.Start(selection);
         return sdk::IsOk(result) ? Apply(controller_.Tick(), context) : result;
     }
     sdk::Status HandleEvent(const sdk::InputEvent& event,
@@ -97,11 +99,15 @@ private:
     app::ReadingOverview reading_{};
     time::ClockSnapshot clock_{};
     bool auto_showcase_ = false;
+    bool resume_parent_ = false;
     int64_t last_input_us_ = 0;
 };
 
 sdk::Status TerminalApp::CreateLauncher(TerminalApp& owner, sdk::Application** output) {
-    return CreateApplication<LauncherApplication>(owner, output);
+    const auto result = CreateApplication<LauncherApplication>(owner, output);
+    // The candidate owns the return mode, including a failed allocation.
+    owner.launcher_back_requested_ = false;
+    return result;
 }
 
 }  // namespace zectrix::terminal

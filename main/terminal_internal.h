@@ -71,6 +71,7 @@ private:
     bool ComposeApplications();
     void UpdateSystemStatus();
     void RunApplicationShell();
+    sdk::Status RequestBack(sdk::ApplicationContext& context);
     sdk::Status Shutdown() override;
     void EnterFailsafe(sdk::Status reason) override;
     void LogHeap(const char* phase);
@@ -96,6 +97,7 @@ private:
     std::array<ZectrixTestState,
                static_cast<size_t>(ZectrixTestId::kCount)> test_states_;
     app::LauncherSelection launcher_selection_{};
+    bool launcher_back_requested_ = false;
     uint32_t gallery_selection_ = 0;
 #if CONFIG_ZECTRIX_ENABLE_READER
     uint32_t reader_selection_ = 0;

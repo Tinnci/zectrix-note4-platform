@@ -35,11 +35,12 @@ SleepCalendar CalendarForSleep(const time::ClockSnapshot& clock);
 const SleepQuote& QuoteForSleep(const SleepCalendar& calendar);
 
 enum class SleepCoverScene : uint8_t { Choose, Preview };
-enum class SleepCoverDecision : uint8_t { None, RenderFast, RenderQuality, Choose, Home, Shutdown };
+enum class SleepCoverDecision : uint8_t { None, RenderFast, RenderQuality, Choose, Back, Shutdown };
 
 class SleepCoverController {
 public:
     sdk::Status Start(SleepCoverStyle selected);
+    void Stop();
     SleepCoverDecision Handle(const sdk::InputEvent& input);
     SleepCoverDecision Tick();
     void Presented(bool success) { if (!success) dirty_ = quality_ = true; }
