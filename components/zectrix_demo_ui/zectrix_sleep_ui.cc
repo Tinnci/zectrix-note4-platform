@@ -151,10 +151,14 @@ esp_err_t ZectrixDemoUi::ShowSleepCover(const SleepCoverSnapshot& snapshot, Slee
         canvas_.TextCentered(152, "Book titles and dates stay private.");
         canvas_.TextCentered(207, "The display clears when you sleep.");
     }
-    canvas_.Line(16, 273, 383, 273);
-    canvas_.TextCentered(279, preview ? (preference_saved ? "PREVIEW   OK Sleep   Hold OK Back" :
-        "NOT SAVED   OK Sleep   Hold OK Back") : "SLEEPING   Press DOWN to wake");
-    if (preview) return RefreshFull();
+    if (preview) {
+        canvas_.Line(16, 273, 383, 273);
+        canvas_.TextCentered(279, preference_saved ? "PREVIEW   OK Sleep   Hold OK Back" :
+            "NOT SAVED   OK Sleep   Hold OK Back");
+        return RefreshFull();
+    }
+    canvas_.FillRect(16, 273, 368, 25, true);
+    canvas_.TextCentered(278, "PRESS DOWN TO WAKE", 1, true);
     // Commit the final surface directly. Pending status invalidations stay dormant.
     sleep_surface_ = true;
     return display_->Present1Bpp(zectrix::display::DisplayIntent::FullClean, canvas_.data(), canvas_.size());

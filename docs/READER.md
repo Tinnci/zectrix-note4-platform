@@ -78,10 +78,13 @@ word boundaries; a word wider than a line splits at Unicode scalar boundaries.
 Paragraphs use a two-character indent. TXT accepts LF and CRLF. Invalid UTF-8
 uses replacement glyphs without splitting valid characters.
 
-The page body is 384 by 216 pixels below the status/title bars. Initial pages
-and scene changes request Quality; page turns request Fast. DisplayService
-decides whether a partial or full refresh is needed. Unchanged idle callbacks
-do not redraw. Status-only updates preserve book content.
+The page body is 384 by 216 pixels below the status/title bars. E1.6 gives 24px
+text an 8px inter-line gap, increasing line advance from 28px to 32px while
+retaining seven rows. The 16px size retains its 4px gap and eleven rows. The
+larger gap uses the body's spare height without changing glyphs or source
+anchors. Initial pages and scene changes request Quality; page turns request
+Fast. DisplayService decides whether a partial or full refresh is needed.
+Unchanged idle callbacks do not redraw. Status-only updates preserve book content.
 
 ## Streaming and format limits
 
@@ -155,6 +158,8 @@ The payload layout is documented in the
 
 CrossPoint's [EpubReaderActivity](https://github.com/crosspoint-reader/crosspoint-reader/blob/develop/src/activities/reader/EpubReaderActivity.cpp)
 informs chapter/page loading and position preservation. Its
+[GfxRenderer](https://github.com/crosspoint-reader/crosspoint-reader/blob/develop/lib/GfxRenderer/GfxRenderer.cpp)
+separates line advance from glyph ink height, informing E1.6's spacing change. Its
 [web server](https://github.com/crosspoint-reader/crosspoint-reader/blob/develop/src/network/CrossPointWebServer.cpp)
 informs L1.3 file transfer. Its
 [sleep activity](https://github.com/crosspoint-reader/crosspoint-reader/blob/develop/src/activities/boot_sleep/SleepActivity.cpp)

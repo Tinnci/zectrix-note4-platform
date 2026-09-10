@@ -17,6 +17,10 @@ The preview keeps the live status bar and button hints. Final sleep replaces
 that bar with **NOTE4 / AT REST** and a battery snapshot, or clears every pixel
 for the blank style.
 
+E1.6 gives the final dashboard and landscape a black footer band with the
+centered white hint **PRESS DOWN TO WAKE**. Preview retains its live OK/Back
+controls and save-failure hint. The blank final style stays entirely white.
+
 ## Styles and saved settings
 
 | Style | Stored value | Final surface |
