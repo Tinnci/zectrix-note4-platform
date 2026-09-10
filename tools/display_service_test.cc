@@ -1109,6 +1109,31 @@ void TestStatusAndImageComposition() {
     assert(!Bit(ui.canvas().data(), 50, 0, 23));
 }
 
+void TestConnectivityComposition() {
+    Reset();
+    auto service = CreateService();
+    ZectrixDemoUi ui(service.get());
+    zectrix::ui::StatusBarState status;
+    status.time_valid = status.battery_valid = true;
+    status.hour = 20; status.minute = 26; status.battery_percent = 82;
+    ui.UpdateStatus(status);
+    assert(ui.ShowConnectivity("READY TO RECONNECT", "SELECT AN ACTION WITH UP / DOWN", nullptr, 0, true) == ESP_OK);
+    SavePreview(ui.canvas(), "connectivity-actions");
+    Frame before;
+    std::memcpy(before.data(), ui.canvas().data(), before.size());
+    ClearTraffic();
+    assert(ui.ShowConnectivity("READY TO RECONNECT", "SELECT AN ACTION WITH UP / DOWN", nullptr, 1, false) == ESP_OK);
+    CheckPartial(before, {0, 0, 400, 300}, ui.canvas().data());
+    assert(std::memcmp(before.data(), ui.canvas().data(), 24 * 50) == 0);
+    SavePreview(ui.canvas(), "connectivity-fetch");
+    assert(ui.ShowConnectivity("PAIRING OPEN", "ENTER ON PHONE", "123456", 2, true) == ESP_OK);
+    SavePreview(ui.canvas(), "connectivity-passkey");
+    const char* choices[] = {"KEEP TRUSTED PHONE", "FORGET PHONE AND SYNC LINK"};
+    assert(ui.ShowMenu("FORGET PHONE", choices, std::size(choices), 0,
+        "UP/DOWN Move  OK Confirm  Hold OK Cancel", true) == ESP_OK);
+    SavePreview(ui.canvas(), "connectivity-forget");
+}
+
 void TestReaderComposition() {
     using namespace zectrix::reader;
     using namespace zectrix::app;
@@ -1506,6 +1531,7 @@ int main() {
     TestViewPorts();
     TestLauncherComposition();
     TestStatusAndImageComposition();
+    TestConnectivityComposition();
     TestReaderComposition();
     TestBookTransferComposition();
     TestSleepCoverComposition();

@@ -13,12 +13,12 @@ esp_err_t ZectrixDemoUi::ShowReader(const zectrix::app::ReaderController& reader
     using zectrix::app::ReaderScene;
     const auto& engine = reader.engine();
     if (reader.scene() == ReaderScene::Library) {
-        DrawFrame("BOOK LIBRARY", "UP/DOWN Move  OK Open  Hold OK Home");
+        DrawFrame("BOOK LIBRARY", "UP/DOWN Move  OK Open  Hold OK Back");
         const auto& library = reader.library();
         if (!library.count()) {
             canvas_.TextCentered(104, reader.result() == Result::Ok ? "YOUR LIBRARY IS EMPTY" : "BOOK STORAGE UNAVAILABLE");
             canvas_.TextCentered(150, "ADD TXT OR EPUB BOOKS TO START");
-            canvas_.TextCentered(196, "OK Retry   Hold OK Home");
+            canvas_.TextCentered(196, "OK Retry   Hold OK Back");
         } else {
             constexpr std::size_t rows = 6;
             const auto first = reader.selected() / rows * rows;

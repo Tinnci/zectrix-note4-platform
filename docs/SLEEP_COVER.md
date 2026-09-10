@@ -8,7 +8,7 @@ power-off and remains visible without keeping the display or radios active.
 
 | Scene | UP / DOWN | OK click | Hold OK |
 | --- | --- | --- | --- |
-| Choose | Select a style | Save the choice and preview it | Home |
+| Choose | Select a style | Save the choice and preview it | Return to Launcher parent |
 | Preview | No change | Sleep now | Return to Choose |
 
 Hold DOWN for three seconds from any normal application to sleep with the

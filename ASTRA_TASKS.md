@@ -173,9 +173,12 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Completed bounded foreground input bursts, merged content/status updates and priority-preserving button buffering. Confirmation, Back and application transitions end a burst; shutdown supersedes queued actions. Existing streamed reading, successful-display bookmark persistence and single-owner display access remain in use.
   - Bounded driver lock/BUSY waits and gray-failure rail cleanup prevent endless waits and unsafe recovery commands. Extended runtime reentry protection through factories, destruction and shutdown/failsafe delegates; SDK 1.1.1 preserves source compatibility.
   - Verified all 32 Host targets, runtime ASan/UBSan, Full/Minimal ESP32-S3 builds and the connected-device Full flash/boot smoke. Nine inputs queued during an 800 ms simulated BUSY period require one subsequent refresh instead of nine, reducing simulated backlog drain from 8.1 s to 0.9 s. See [docs/DISPLAY_RESPONSIVENESS.md](docs/DISPLAY_RESPONSIVENESS.md); physical input latency and panel quality remain hardware measurements.
-- [ ] **E1.4: 交互状态机一致性与导航流整合 (Unified Navigation Consistency)**
+- [x] **E1.4: 交互状态机一致性与导航流整合 (Unified Navigation Consistency)**
   - 统一全局按键交互范式（列表/磁贴切换、确认进入、长按返回上一级场景、全局快捷休眠等）。
   - 规范各微应用间栈式调度（Push/Pop Scene）与退出清理契约，确保所有子页面行为逻辑高度一致。
+  - Completed shared button intents and one-level Back across all first-party applications. Root Back restores the Home/Tools parent and focus; explicit Home and entry-failure fallback retain their existing behavior.
+  - Integrated Connectivity action/forget scenes, Diagnostics run/cancel/summary navigation, Clock scene refresh recovery and idempotent controller cleanup. Preserved streamed reading, committed bookmarks, transfer service ownership and static shutdown covers. See [docs/NAVIGATION.md](docs/NAVIGATION.md).
+  - Verified all 32 Host targets, focused navigation ASan/UBSan, rendered connection menus and Full/Minimal ESP32-S3 builds. Device smoke was not required for this application/navigation change; physical button flows remain hardware qualification work.
 - [ ] **E1.5: 2.4GHz 射频协同仲裁机制 (Radio Arbiter for Wi-Fi & BLE)**
   - 针对 ESP32-S3 单天线共享架构，设计 Wi-Fi 高速传书与 BLE 伴侣同步的协同调度状态机。
   - 优化无线突发工作时的电源与射频资源分配，确保无线切换平滑可靠。

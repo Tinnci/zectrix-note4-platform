@@ -55,6 +55,7 @@ ConnectivityDecision ConnectivityController::Handle(const sdk::InputEvent& event
 }
 
 ConnectivityDecision ConnectivityController::Tick() {
+    if (!scenes_.depth()) return ConnectivityDecision::None;
     const auto result = action_ != ConnectivityDecision::None ? action_ : !dirty_ ? ConnectivityDecision::None :
         quality_ ? ConnectivityDecision::RenderQuality : ConnectivityDecision::RenderFast;
     action_ = ConnectivityDecision::None;
@@ -163,6 +164,7 @@ DiagnosticsResult DiagnosticsController::FinishRun(bool cancelled) {
 }
 
 DiagnosticsResult DiagnosticsController::Tick() {
+    if (!scenes_.depth()) return {};
     const auto decision = action_ != DiagnosticsDecision::None ? action_ : !dirty_ ? DiagnosticsDecision::None :
         quality_ ? DiagnosticsDecision::RenderQuality : DiagnosticsDecision::RenderFast;
     action_ = DiagnosticsDecision::None;

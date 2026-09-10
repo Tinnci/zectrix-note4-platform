@@ -18,27 +18,36 @@ public:
         ReadTime();
         const auto started = scenes_.Start(kClock);
         if (!sdk::IsOk(started)) return started;
+        dirty_ = false;
         return context.RequestRender({0, 0, 400, 300}, sdk::RenderIntent::Quality)
                    ? sdk::Status::Ok : sdk::Status::InternalError;
     }
     sdk::Status HandleEvent(const sdk::InputEvent& event,
                             sdk::ApplicationContext& context) override {
-        const auto global = app::HandleClockInput(event);
-        if (global == app::ClockDecision::Shutdown) {
+        const auto key = app::MapNavigation(event);
+        if (key == app::Navigation::Shutdown) {
             context.RequestCommand(sdk::AppCommand::Shutdown());
             return sdk::Status::Ok;
         }
-        const auto type = global == app::ClockDecision::Home ? app::SceneEvent::Type::Back
-                                                           : app::SceneEvent::Type::Input;
+        const auto previous_scene = scenes_.current();
+        const bool retry = dirty_;
+        const auto type = key == app::Navigation::Back ? app::SceneEvent::Type::Back
+                                                     : app::SceneEvent::Type::Input;
         if (!scenes_.Dispatch({type, event}) && type == app::SceneEvent::Type::Back)
-            context.RequestCommand(sdk::AppCommand::Home());
+            return owner_->RequestBack(context);
         if (dirty_) {
-            context.RequestRender({0, 24, 400, 276}, sdk::RenderIntent::Fast);
+            context.RequestRender({0, 24, 400, 276}, retry || scenes_.current() != previous_scene
+                ? sdk::RenderIntent::Quality : sdk::RenderIntent::Fast);
             dirty_ = false;
         }
         return sdk::Status::Ok;
     }
     sdk::Status HandleIdle(sdk::ApplicationContext& context) override {
+        if (dirty_) {
+            dirty_ = false;
+            return context.RequestRender({0, 24, 400, 276}, sdk::RenderIntent::Quality)
+                ? sdk::Status::Ok : sdk::Status::InternalError;
+        }
         if (scenes_.current() != kClock || owner_->time_->MonotonicMicroseconds() < next_read_us_)
             return sdk::Status::Ok;
         const app::ClockMinute previous{clock_.value.year, clock_.value.month, clock_.value.day,
@@ -58,14 +67,20 @@ public:
     }
     sdk::Status Render(const sdk::RenderRequest& request) override {
         const bool quality = request.intent == sdk::RenderIntent::Quality;
-        if (scenes_.current() == kEdit) return RenderEditor(quality);
-        const char* source = clock_.source == time::ClockSource::Uptime ? "UPTIME - TIME NOT SET" :
-            status_.persistence_pending ? "SYSTEM TIME - SAVE PENDING" :
-            !status_.utc_offset_known ? (clock_.source == time::ClockSource::Rtc ?
-                "LOCAL TIME - SET UTC OFFSET" : "SYSTEM UTC - SET CLOCK") :
-            status_.rtc_persisted ? "RTC SAVED" : "SYSTEM TIME";
-        return ToSdkStatus(owner_->ui_.ShowClock(clock_.value, quality, source,
-            clock_.source != time::ClockSource::Uptime));
+        sdk::Status result;
+        if (scenes_.current() == kEdit) {
+            result = RenderEditor(quality);
+        } else {
+            const char* source = clock_.source == time::ClockSource::Uptime ? "UPTIME - TIME NOT SET" :
+                status_.persistence_pending ? "SYSTEM TIME - SAVE PENDING" :
+                !status_.utc_offset_known ? (clock_.source == time::ClockSource::Rtc ?
+                    "LOCAL TIME - SET UTC OFFSET" : "SYSTEM UTC - SET CLOCK") :
+                status_.rtc_persisted ? "RTC SAVED" : "SYSTEM TIME";
+            result = ToSdkStatus(owner_->ui_.ShowClock(clock_.value, quality, source,
+                clock_.source != time::ClockSource::Uptime));
+        }
+        dirty_ = !sdk::IsOk(result);
+        return result;
     }
     sdk::Status Exit() override { scenes_.Stop(); return sdk::Status::Ok; }
 
@@ -78,14 +93,14 @@ private:
     }
     static bool OnSceneEvent(void* context, const app::SceneEvent& event) {
         auto& self = *static_cast<ClockApplication*>(context);
-        if (event.type != app::SceneEvent::Type::Input || event.input.action != sdk::InputAction::Click)
-            return false;
+        if (event.type != app::SceneEvent::Type::Input) return false;
+        const auto key = app::MapNavigation(event.input);
         if (self.scenes_.current() == kClock) {
-            if (event.input.button != sdk::Button::Ok) return false;
+            if (key != app::Navigation::Confirm) return false;
             self.editor_.Begin(self.owner_->time_->Now().value, self.owner_->time_->Status().utc_offset_seconds);
             self.save_failed_ = false;
             self.scenes_.Push(kEdit);
-        } else if (event.input.button == sdk::Button::Ok) {
+        } else if (key == app::Navigation::Confirm) {
             if (self.editor_.field() == app::ClockEditor::Save) {
                 const auto saved = self.owner_->time_->SetLocalTime(self.editor_.value(), self.editor_.offset_seconds());
                 if (saved == ESP_OK) {
@@ -99,8 +114,8 @@ private:
             } else {
                 self.editor_.Next();
             }
-        } else if (event.input.button == sdk::Button::Up || event.input.button == sdk::Button::Down) {
-            self.editor_.Adjust(event.input.button == sdk::Button::Up ? 1 : -1);
+        } else if (key == app::Navigation::Previous || key == app::Navigation::Next) {
+            self.editor_.Adjust(key == app::Navigation::Previous ? 1 : -1);
             self.save_failed_ = false;
         } else return false;
         self.dirty_ = true;

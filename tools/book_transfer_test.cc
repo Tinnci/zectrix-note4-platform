@@ -251,7 +251,7 @@ void Scenes() {
     constexpr sdk::InputEvent back{sdk::Button::Ok, sdk::InputAction::LongPress};
     BookTransferController controller;
     assert(sdk::IsOk(controller.Start()));
-    assert(controller.Handle(back) == BookTransferDecision::Home);
+    assert(controller.Handle(back) == BookTransferDecision::Back);
     assert(controller.Handle(down) == BookTransferDecision::RenderFast && controller.station_selected());
     assert(controller.Handle(ok) == BookTransferDecision::Station && controller.scene() == BookTransferScene::Session);
     BookTransferSnapshot status;
@@ -272,6 +272,20 @@ void Scenes() {
     assert(controller.Handle(back) == BookTransferDecision::Stop && controller.scene() == BookTransferScene::Mode);
     assert(controller.Handle(ok) == BookTransferDecision::Station);
     assert(controller.Handle({sdk::Button::Down, sdk::InputAction::LongPress}) == BookTransferDecision::Shutdown);
+    controller.Stop();
+    controller.Stop();
+    assert(controller.snapshot().state == BookTransferState::Off);
+    assert(controller.Handle(ok) == BookTransferDecision::None);
+    controller.Presented(false);
+    assert(controller.Update(status, 3000000) == BookTransferDecision::None);
+    assert(sdk::IsOk(controller.Start()));
+    assert(controller.scene() == BookTransferScene::Mode && controller.station_selected());
+    assert(controller.Handle(ok) == BookTransferDecision::Station);
+    status.state = BookTransferState::Failed;
+    controller.Update(status, 3000001);
+    assert(controller.Handle(ok) == BookTransferDecision::RenderQuality);
+    assert(controller.scene() == BookTransferScene::Mode);
+    assert(controller.Handle(back) == BookTransferDecision::Back);
 }
 }  // namespace
 

@@ -129,9 +129,14 @@ void TestGallery() {
     gallery.Handle({Button::Ok, Action::Click});
     assert(gallery.Handle({Button::Ok, Action::LongPress}) == GalleryDecision::RenderQuality);
     assert(gallery.page() == GalleryPage::Menu);
-    assert(gallery.Handle({Button::Ok, Action::LongPress}) == GalleryDecision::Home);
+    assert(gallery.Handle({Button::Ok, Action::LongPress}) == GalleryDecision::Back);
     assert(gallery.Handle({Button::Down, Action::LongPress}) == GalleryDecision::Shutdown);
+    gallery.Handle({Button::Ok, Action::Click});
+    gallery.Presented(0, true, true, 1);
     gallery.Stop();
+    gallery.Stop();
+    assert(gallery.Tick(1000000) == GalleryDecision::None);
+    assert(gallery.Handle({Button::Ok, Action::Click}) == GalleryDecision::None);
 
     GalleryController all(false, 3);
     assert(all.Start() == Status::Ok);
@@ -154,7 +159,7 @@ void TestGallery() {
     assert(automatic.page() == GalleryPage::Report);
     assert(automatic.Tick(100000000) == GalleryDecision::None);
     assert(automatic.Handle({Button::Down, Action::LongPress}) == GalleryDecision::Shutdown);
-    assert(automatic.Handle({Button::Up, Action::Click}) == GalleryDecision::Home);
+    assert(automatic.Handle({Button::Up, Action::Click}) == GalleryDecision::Back);
     automatic.Stop();
 }
 }

@@ -17,6 +17,9 @@ E1.2 adds private Home/Tools Launcher scenes, catalog-derived tiles and a local
 Continue Reading action. SDK v1 is unchanged. See [HOME.md](HOME.md).
 E1.3 adds bounded input bursts through the source-compatible SDK 1.1 dispatch
 API. See [DISPLAY_RESPONSIVENESS.md](DISPLAY_RESPONSIVENESS.md).
+E1.4 unifies first-party button intents, restores the Launcher parent on root
+Back and integrates Connectivity/Diagnostics private scenes and exit cleanup.
+See [NAVIGATION.md](NAVIGATION.md). SDK signatures are unchanged.
 
 ## Scope
 
@@ -172,6 +175,12 @@ also run on that task. Interactive tests can take up to 60 seconds. Their
 existing cancellation loop reads `InputService` while the synchronous engine
 is active. M3 does not add a worker task, queue, or event bus for this adapter.
 
+E1.4 uses private Mode/Individual/Running/Summary scenes. Run All completion
+replaces Running with Summary; OK or Back returns to Mode. Cancellation during
+a test or result wait pops to its parent, preserving the individual row.
+Intermediate display failure also unwinds Running. Final pages use the normal
+Render callback and failed-frame retry. Root Back restores the Tools parent.
+
 ## Clock and power behavior
 
 Clock, system status and sleep covers use `TimeService::Now()` without I2C
@@ -183,9 +192,9 @@ calendar the view labels `TIME NOT SET` and `UPTIME` explicitly.
 
 OK opens the Clock editor through a deferred scene push. UP/DOWN changes the
 draft, OK advances and the final Save calibrates TimeService. Long OK cancels
-the edit and pops to Clock, then returns home from the root. A pending RTC
-save is visible and does not prevent navigation or shutdown. An authorized
-Companion Hello can also calibrate through the foreground platform owner.
+the edit and pops to Clock, then returns to its Launcher parent from the root.
+A pending RTC save is visible and does not prevent navigation or shutdown.
+An authorized Companion Hello can also calibrate through the foreground platform owner.
 See [TIME.md](TIME.md) for offset, failure and retention semantics.
 
 The shell waits at most 250 ms for input between callbacks. Clock requests a
@@ -263,8 +272,8 @@ Gallery uses Menu -> Preview -> Report, with Replace for Preview -> Report so
 Back returns to the menu and its saved selection. Rendering remains in the SDK
 Render callback. Animation advances at most one frame per idle event and
 starts its next deadline after physical display completion. Display errors
-stop image rotation and request a report. Shutdown and
-root Home are SDK commands and keep their existing priority.
+stop image rotation and request a report. Root Back is a deferred SDK command;
+explicit Home and Shutdown keep their existing higher priority.
 
 `ViewPortScheduler` holds at most four bounded screen regions, with optional
 draw callbacks and dirty/quality flags. The shell uses two: status at
@@ -308,6 +317,12 @@ The runtime returns `Conflict` for the second command and ignores it.
 
 Only the foreground application callback can submit an application navigation
 command. Services and generic event publishers cannot navigate applications.
+
+SDK Back and Home both open Launcher. E1.4's first-party shell distinguishes
+them with a one-shot parent-return flag copied by the Launcher candidate and
+consumed even after failed allocation. Back restores Home or Tools and its
+focus; explicit Home and entry-failure fallback start on Home. Private child
+Back is consumed by SceneManager before any shell command is submitted.
 
 ## Render requests
 

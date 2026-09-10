@@ -126,7 +126,7 @@ esp_err_t ZectrixDemoUi::ShowLauncher(const zectrix::app::LauncherController& la
         std::array<const char*, zectrix::app::ApplicationCatalog::kCapacity> labels{};
         for (std::size_t i = 0; i < count; ++i) labels[i] = launcher.EntryAt(i).label;
         return ShowMenu("TOOLS", labels.data(), count, launcher.selected(),
-                        "UP/DOWN Move  OK Open  Hold OK Home", full_refresh);
+                        "UP/DOWN Move  OK Open  Hold OK Back", full_refresh);
     }
     if (launcher.scene() != Scene::Home) return ESP_ERR_INVALID_STATE;
     const char* footer = "UP/DOWN Move  OK Open  Hold DOWN Off";

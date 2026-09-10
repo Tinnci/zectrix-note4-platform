@@ -67,7 +67,7 @@ on display failure, before the established peripheral cleanup sequence.
 
 | Scene | UP / DOWN | OK click | Hold OK |
 | --- | --- | --- | --- |
-| Library | Select book | Open / retry library | Home |
+| Library | Select book | Open / retry library | Return to Launcher parent |
 | Reading | Previous / next page | Reading options | Library, including during loading |
 | Options | Select option | Change font, apply phone position, restart or save and return | Reading |
 

@@ -88,6 +88,8 @@ void TestLauncher() {
         LauncherController restored(catalog);
         assert(restored.Start(saved) == Status::Ok);
         restored.Tick();
+        assert(restored.scene() == LauncherScene::Tools && restored.selected() == selected_tool);
+        assert(restored.Handle(back).decision == LauncherDecision::RenderQuality);
         assert(restored.scene() == LauncherScene::Home && restored.selected() == tools_index);
         restored.Handle(ok);
         assert(restored.selected() == selected_tool);
@@ -96,12 +98,20 @@ void TestLauncher() {
         assert(restored.Tick().decision == LauncherDecision::RenderQuality);
         restored.Presented(true);
         assert(restored.Tick().decision == LauncherDecision::None);
+
+        auto home_selection = saved;
+        home_selection.scene = LauncherScene::Home;
+        LauncherController home_return(catalog);
+        assert(home_return.Start(home_selection) == Status::Ok);
+        assert(home_return.scene() == LauncherScene::Home && home_return.selected() == tools_index);
+        home_return.Handle(ok);
+        assert(home_return.scene() == LauncherScene::Tools && home_return.selected() == selected_tool);
     }
 
     ApplicationCatalog empty;
     assert(empty.Add("launcher", "Launcher", factory));
     LauncherController no_apps(empty);
-    assert(no_apps.Start({100, 100}) == Status::Ok);
+    assert(no_apps.Start({100, 100, LauncherScene::Tools}) == Status::Ok);
     no_apps.Tick();
     assert(no_apps.count() == 0 && no_apps.selected() == 0 && !no_apps.EntryAt(0).label);
     assert(no_apps.Handle(ok).decision == LauncherDecision::None);
@@ -112,7 +122,7 @@ void TestLauncher() {
     assert(single.Add("launcher", "Launcher", factory));
     assert(single.Add("clock", "CLOCK", factory, {Icon::Clock, true}));
     LauncherController one_app(single);
-    assert(one_app.Start({100, 100}) == Status::Ok);
+    assert(one_app.Start({100, 100, LauncherScene::Tools}) == Status::Ok);
     one_app.Tick();
     assert(one_app.count() == 1 && one_app.selected() == 0);
     assert(one_app.Handle(down).decision == LauncherDecision::None);
@@ -240,36 +250,138 @@ void TestClockDraft() {
     assert(editor.value().year == 2000);
 }
 
+void TestConnectivityNavigation() {
+    using namespace zectrix::app;
+    using namespace zectrix::sdk;
+    const InputEvent up{Button::Up, InputAction::Click};
+    const InputEvent down{Button::Down, InputAction::Click};
+    const InputEvent ok{Button::Ok, InputAction::Click};
+    const InputEvent back{Button::Ok, InputAction::LongPress};
+    const InputEvent off{Button::Down, InputAction::LongPress};
+    ConnectivityController connection;
+    assert(connection.Handle(ok) == ConnectivityDecision::None);
+    assert(connection.Start() == Status::Ok);
+    assert(connection.Start() == Status::InvalidState);
+    assert(connection.Tick() == ConnectivityDecision::RenderQuality);
+    assert(connection.Tick() == ConnectivityDecision::None);
+    assert(connection.Handle(ok) == ConnectivityDecision::StartPairing);
+    assert(connection.Handle(down) == ConnectivityDecision::RenderFast && connection.selected() == 1);
+    assert(connection.Handle(ok) == ConnectivityDecision::FetchResource);
+    assert(connection.Handle(down) == ConnectivityDecision::RenderFast && connection.selected() == 2);
+    assert(connection.Handle({Button::Up, InputAction::LongPress}) == ConnectivityDecision::None);
+    assert(connection.Handle(ok) == ConnectivityDecision::RenderQuality);
+    assert(connection.page() == ConnectivityPage::Forget && connection.selected() == 0);
+    assert(connection.Handle(ok) == ConnectivityDecision::RenderQuality);
+    assert(connection.page() == ConnectivityPage::Actions && connection.selected() == 2);
+    connection.Handle(ok);
+    connection.Handle(down);
+    assert(connection.selected() == 1);
+    assert(connection.Handle(back) == ConnectivityDecision::RenderQuality);
+    assert(connection.page() == ConnectivityPage::Actions && connection.selected() == 2);
+    connection.Handle(ok);
+    assert(connection.selected() == 0);
+    connection.Handle(up);
+    assert(connection.selected() == 1);
+    assert(connection.Handle(off) == ConnectivityDecision::Shutdown);
+    assert(connection.page() == ConnectivityPage::Forget);
+    assert(connection.Handle(ok) == ConnectivityDecision::ClearBonds);
+    assert(connection.page() == ConnectivityPage::Actions && connection.selected() == 2);
+    assert(connection.Handle(down) == ConnectivityDecision::RenderFast && connection.selected() == 0);
+    connection.Presented(false);
+    assert(connection.Tick() == ConnectivityDecision::RenderQuality);
+    connection.Presented(true);
+    assert(connection.Tick() == ConnectivityDecision::None);
+    assert(connection.Handle(back) == ConnectivityDecision::Back);
+    assert(connection.Handle(off) == ConnectivityDecision::Shutdown);
+    connection.Stop();
+    connection.Stop();
+    connection.Presented(false);
+    assert(connection.Handle(ok) == ConnectivityDecision::None);
+    assert(connection.Tick() == ConnectivityDecision::None);
+    assert(connection.Start() == Status::Ok && connection.page() == ConnectivityPage::Actions);
+    assert(connection.Tick() == ConnectivityDecision::RenderQuality);
+}
+
+void TestDiagnosticsNavigation() {
+    using namespace zectrix::app;
+    using namespace zectrix::sdk;
+    const InputEvent up{Button::Up, InputAction::Click};
+    const InputEvent down{Button::Down, InputAction::Click};
+    const InputEvent ok{Button::Ok, InputAction::Click};
+    const InputEvent back{Button::Ok, InputAction::LongPress};
+    const InputEvent off{Button::Down, InputAction::LongPress};
+    DiagnosticsController diagnostics;
+    assert(diagnostics.Handle(ok).decision == DiagnosticsDecision::None);
+    assert(diagnostics.Start() == Status::Ok);
+    assert(diagnostics.Start() == Status::InvalidState);
+    assert(diagnostics.Tick().decision == DiagnosticsDecision::RenderQuality);
+    assert(diagnostics.Tick().decision == DiagnosticsDecision::None);
+    assert(diagnostics.Handle(down).selected == 1);
+    assert(diagnostics.Handle(ok).page == DiagnosticsPage::Individual);
+    assert(diagnostics.Handle(up).selected == DiagnosticsController::kTestCount - 1);
+    for (bool cancelled : {false, true}) {
+        const auto run = diagnostics.Handle(ok);
+        assert(run.decision == DiagnosticsDecision::RunSelected && run.page == DiagnosticsPage::Running);
+        assert(run.selected == DiagnosticsController::kTestCount - 1);
+        assert(diagnostics.Handle(down).decision == DiagnosticsDecision::None);
+        assert(diagnostics.Handle(off).decision == DiagnosticsDecision::Shutdown);
+        const auto done = diagnostics.FinishRun(cancelled);
+        assert(done.decision == DiagnosticsDecision::RenderQuality && done.page == DiagnosticsPage::Individual);
+        assert(done.selected == run.selected);
+        assert(diagnostics.FinishRun(cancelled).decision == DiagnosticsDecision::None);
+    }
+    assert(diagnostics.Handle(back).page == DiagnosticsPage::Mode && diagnostics.selected() == 1);
+    diagnostics.Handle(ok);
+    assert(diagnostics.page() == DiagnosticsPage::Individual);
+    assert(diagnostics.selected() == DiagnosticsController::kTestCount - 1);
+    diagnostics.Handle(back);
+    diagnostics.Handle(up);
+    assert(diagnostics.Handle(ok).decision == DiagnosticsDecision::RunAll);
+    assert(diagnostics.FinishRun(true).page == DiagnosticsPage::Mode && diagnostics.selected() == 0);
+    for (const auto exit : {ok, back}) {
+        assert(diagnostics.Handle(ok).decision == DiagnosticsDecision::RunAll);
+        const auto done = diagnostics.FinishRun(false);
+        assert(done.page == DiagnosticsPage::Summary && done.decision == DiagnosticsDecision::RenderQuality);
+        assert(diagnostics.Handle(up).decision == DiagnosticsDecision::None);
+        assert(diagnostics.Handle(down).decision == DiagnosticsDecision::None);
+        assert(diagnostics.Handle(off).decision == DiagnosticsDecision::Shutdown);
+        diagnostics.Presented(false);
+        assert(diagnostics.Tick().decision == DiagnosticsDecision::RenderQuality);
+        const auto returned = diagnostics.Handle(exit);
+        assert(returned.page == DiagnosticsPage::Mode && returned.decision == DiagnosticsDecision::RenderQuality);
+    }
+    assert(diagnostics.Handle(back).decision == DiagnosticsDecision::Back);
+    diagnostics.Handle(ok);
+    diagnostics.Stop();
+    diagnostics.Stop();
+    diagnostics.Presented(false);
+    assert(diagnostics.Handle(ok).decision == DiagnosticsDecision::None);
+    assert(diagnostics.Tick().decision == DiagnosticsDecision::None);
+    assert(diagnostics.FinishRun(false).decision == DiagnosticsDecision::None);
+    assert(diagnostics.Start() == Status::Ok && diagnostics.page() == DiagnosticsPage::Mode);
+    assert(diagnostics.Tick().decision == DiagnosticsDecision::RenderQuality);
+}
+
 int main() {
     TestClockDraft();
     TestLauncher();
     TestLauncherDate();
+    TestConnectivityNavigation();
+    TestDiagnosticsNavigation();
     using namespace zectrix::app;
     using Action = zectrix::sdk::InputAction;
     using zectrix::sdk::Button;
     using zectrix::sdk::InputEvent;
 
     assert(kAutoShowcaseDefault == 0);
-    assert(HandleClockInput({Button::Ok, Action::LongPress}) ==
-           ClockDecision::Home);
-    assert(HandleClockInput({Button::Down, Action::LongPress}) ==
-           ClockDecision::Shutdown);
-    assert(HandleClockInput({Button::Ok, Action::Click}) ==
-           ClockDecision::None);
-    assert(HandleClockInput({Button::Up, Action::LongPress}) ==
-           ClockDecision::None);
-    assert(HandleConnectivityInput({Button::Ok, Action::Click}) ==
-           ConnectivityDecision::StartPairing);
-    assert(HandleConnectivityInput({Button::Up, Action::LongPress}) ==
-           ConnectivityDecision::ClearBonds);
-    assert(HandleConnectivityInput({Button::Ok, Action::LongPress}) ==
-           ConnectivityDecision::Home);
-    assert(HandleConnectivityInput({Button::Down, Action::LongPress}) ==
-           ConnectivityDecision::Shutdown);
-    assert(HandleConnectivityInput({Button::Down, Action::Click}) ==
-           ConnectivityDecision::None);
-    assert(HandleConnectivityInput({Button::Up, Action::Click}) ==
-           ConnectivityDecision::FetchResource);
+    assert(MapNavigation({Button::Ok, Action::LongPress}) == Navigation::Back);
+    assert(MapNavigation({Button::Down, Action::LongPress}) == Navigation::Shutdown);
+    assert(MapNavigation({Button::Ok, Action::Click}) == Navigation::Confirm);
+    assert(MapNavigation({Button::Up, Action::Click}) == Navigation::Previous);
+    assert(MapNavigation({Button::Down, Action::Click}) == Navigation::Next);
+    assert(MapNavigation({Button::Up, Action::LongPress}) == Navigation::None);
+    assert(MapNavigation({static_cast<Button>(99), Action::Click}) == Navigation::None);
+    assert(MapNavigation({Button::Down, static_cast<Action>(99)}) == Navigation::None);
     assert(!ClockDisplayChanged({2026, 8, 12, 10, 30},
                                 {2026, 8, 12, 10, 30}));
     assert(ClockDisplayChanged({2026, 8, 12, 10, 30},
@@ -293,30 +405,8 @@ int main() {
     assert(setting.decision == SettingsDecision::Save);
     assert(!setting.auto_showcase);
     assert(settings.Handle({Button::Ok, Action::LongPress}).decision ==
-           SettingsDecision::Home);
+           SettingsDecision::Back);
     assert(settings.Handle({Button::Down, Action::LongPress}).decision ==
            SettingsDecision::Shutdown);
 
-    DiagnosticsController diagnostics;
-    DiagnosticsResult diagnostic =
-        diagnostics.Handle({Button::Down, Action::Click});
-    assert(diagnostic.decision == DiagnosticsDecision::RenderFast);
-    assert(diagnostic.selected == 1);
-    diagnostic = diagnostics.Handle({Button::Ok, Action::Click});
-    assert(diagnostic.page == DiagnosticsPage::Individual);
-    diagnostic = diagnostics.Handle({Button::Up, Action::Click});
-    assert(diagnostic.selected == DiagnosticsController::kTestCount - 1);
-    diagnostic = diagnostics.Handle({Button::Ok, Action::Click});
-    assert(diagnostic.decision == DiagnosticsDecision::RunSelected);
-    diagnostic = diagnostics.Handle({Button::Ok, Action::LongPress});
-    assert(diagnostic.decision == DiagnosticsDecision::RenderFast);
-    assert(diagnostic.page == DiagnosticsPage::Mode);
-    diagnostic = diagnostics.Handle({Button::Ok, Action::Click});
-    assert(diagnostic.decision == DiagnosticsDecision::RunAll);
-    diagnostics.ShowSummary();
-    diagnostic = diagnostics.Handle({Button::Up, Action::Click});
-    assert(diagnostic.decision == DiagnosticsDecision::Home);
-    assert(DiagnosticsController().Handle(
-               {Button::Down, Action::LongPress}).decision ==
-           DiagnosticsDecision::Shutdown);
 }

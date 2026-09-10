@@ -62,7 +62,7 @@ void TerminalApp::Run() {
     ui_.SetTime(time_);
     UpdateSystemStatus();
     ESP_ERROR_CHECK(ui_.ShowSplash());
-    Wait(1500, false);
+    if (Wait(1500, false) == ControlResult::kShutdown) PowerOff();
 
     RunApplicationShell();
 }
@@ -190,7 +190,7 @@ void TerminalApp::LogHeap(const char* phase) {
                  snapshot.diagnostics.largest_internal_heap_block_bytes));
 }
 
-ControlResult TerminalApp::Wait(uint32_t duration_ms, bool any_click_returns) {
+ControlResult TerminalApp::Wait(uint32_t duration_ms, bool confirm_returns) {
     const TickType_t duration = pdMS_TO_TICKS(duration_ms);
     const TickType_t start = xTaskGetTickCount();
     while (xTaskGetTickCount() - start < duration) {
@@ -211,7 +211,7 @@ ControlResult TerminalApp::Wait(uint32_t duration_ms, bool any_click_returns) {
         if (key == app::Navigation::Back) {
             return ControlResult::kBack;
         }
-        if (any_click_returns && key == app::Navigation::Confirm) {
+        if (confirm_returns && key == app::Navigation::Confirm) {
             return ControlResult::kBack;
         }
     }

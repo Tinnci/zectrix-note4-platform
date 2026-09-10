@@ -50,7 +50,7 @@ int main() {
         SleepCoverController controller;
         assert(sdk::IsOk(controller.Start(style)) && controller.selected() == style);
         assert(controller.Tick() == SleepCoverDecision::None);
-        assert(controller.Handle(back) == SleepCoverDecision::Home);
+        assert(controller.Handle(back) == SleepCoverDecision::Back);
         assert(controller.Handle(up) == SleepCoverDecision::RenderFast);
         assert(controller.Handle(down) == SleepCoverDecision::RenderFast && controller.selected() == style);
         assert(controller.Handle(ok) == SleepCoverDecision::Choose && controller.scene() == SleepCoverScene::Preview);
@@ -63,6 +63,14 @@ int main() {
         assert(controller.Handle(back) == SleepCoverDecision::RenderQuality && controller.scene() == SleepCoverScene::Choose);
         assert(controller.selected() == style);
         assert(controller.Handle({sdk::Button::Down, sdk::InputAction::LongPress}) == SleepCoverDecision::Shutdown);
+        controller.Handle(ok);
+        controller.Stop();
+        controller.Stop();
+        controller.Presented(false);
+        assert(controller.Tick() == SleepCoverDecision::None);
+        assert(controller.Handle(ok) == SleepCoverDecision::None);
+        assert(sdk::IsOk(controller.Start(style)) && controller.scene() == SleepCoverScene::Choose);
+        assert(controller.selected() == style && controller.Tick() == SleepCoverDecision::None);
     }
     std::puts("PASS: sleep calendar, stable daily quotes, cover choices and deferred preview navigation.");
 }

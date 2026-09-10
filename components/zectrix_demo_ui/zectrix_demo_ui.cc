@@ -139,7 +139,7 @@ esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
 esp_err_t ZectrixDemoUi::ShowClock(const zectrix::time::DateTime& value,
                                    bool full_refresh, const char* source,
                                    bool calendar_valid) {
-    DrawFrame("CLOCK", "OK Set   Hold OK Home   Hold DOWN Off");
+    DrawFrame("CLOCK", "OK Set   Hold OK Back   Hold DOWN Off");
     char line[32] = {};
     if (calendar_valid) {
         std::snprintf(line, sizeof(line), "%04d-%02d-%02d", value.year,
@@ -157,7 +157,7 @@ esp_err_t ZectrixDemoUi::ShowClock(const zectrix::time::DateTime& value,
 
 esp_err_t ZectrixDemoUi::ShowSettings(bool auto_showcase, const char* status,
                                       bool full_refresh) {
-    DrawFrame("SETTINGS", "UP/DOWN Change  OK Save  Hold OK Home");
+    DrawFrame("SETTINGS", "UP/DOWN Change  OK Save  Hold OK Back");
     canvas_.Text(24, 62, "AUTO SHOWCASE", 1);
     canvas_.FillRect(250, 52, 118, 34, auto_showcase);
     canvas_.Rect(250, 52, 118, 34);
@@ -174,21 +174,27 @@ esp_err_t ZectrixDemoUi::ShowSettings(bool auto_showcase, const char* status,
 esp_err_t ZectrixDemoUi::ShowConnectivity(const char* state,
                                           const char* status,
                                           const char* passkey,
+                                          size_t selected,
                                           bool full_refresh) {
-    DrawFrame("PHONE CONNECTION", "OK Pair  UP Fetch  Hold UP Forget");
+    DrawFrame("PHONE CONNECTION", "UP/DOWN Move  OK Select  Hold OK Back");
     canvas_.Text(24, 58, "BLE:");
-    canvas_.Text(104, 58, state == nullptr ? "UNKNOWN" : state);
-    canvas_.Line(20, 94, 379, 94);
+    canvas_.Text(64, 58, state == nullptr ? "UNKNOWN" : state);
     if (passkey != nullptr) {
-        canvas_.TextCentered(116, "ENTER THIS CODE ON YOUR PHONE", 1);
-        canvas_.TextCentered(150, passkey, 2);
+        canvas_.TextCentered(88, "ENTER THIS CODE ON YOUR PHONE");
+        canvas_.TextCentered(108, passkey, 2);
     } else {
-        canvas_.Text(24, 118, "PAIRING REQUIRES OK ON THIS DEVICE");
-        canvas_.Text(24, 150, "WINDOW: 120 SECONDS");
+        canvas_.Text(24, 88, "PAIR TO CONNECT A NEW PHONE");
+        canvas_.Text(24, 108, "PAIRING WINDOW: 120 SECONDS");
     }
-    canvas_.Text(24, 194, "STATUS");
-    canvas_.Text(24, 220, status == nullptr ? "" : status);
-    canvas_.Text(24, 246, "PROTOCOL: NOT STARTED");
+    static constexpr const char* kActions[] = {
+        "PAIR A NEW PHONE", "FETCH TEST DOCUMENT", "FORGET TRUSTED PHONE"};
+    for (size_t i = 0; i < std::size(kActions); ++i) {
+        const int y = 142 + static_cast<int>(i) * 32;
+        const bool focused = i == selected;
+        canvas_.FillRect(20, y, 360, 26, focused);
+        canvas_.Text(30, y + 9, kActions[i], 1, focused);
+    }
+    DrawFittedText(canvas_, 24, 248, status == nullptr ? "" : status, 352);
     return full_refresh ? RefreshFull()
                         : RefreshAuto();
 }
@@ -312,7 +318,7 @@ esp_err_t ZectrixDemoUi::ShowTestUpdate(
 esp_err_t ZectrixDemoUi::ShowTestSummary(
     const std::array<ZectrixTestState,
                      static_cast<size_t>(ZectrixTestId::kCount)>& states) {
-    DrawFrame("TEST SUMMARY", "Any Key Return   Hold DOWN Power Off");
+    DrawFrame("TEST SUMMARY", "OK Return   Hold OK Back   Hold DOWN Off");
     int passed = 0;
     int failed = 0;
     int skipped = 0;

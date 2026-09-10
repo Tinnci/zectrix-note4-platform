@@ -57,7 +57,7 @@ public:
         controller_.Presented(result == ESP_OK);
         return ToSdkStatus(result);
     }
-    sdk::Status Exit() override { return sdk::Status::Ok; }
+    sdk::Status Exit() override { controller_.Stop(); return sdk::Status::Ok; }
 
 private:
     sdk::Status Apply(zectrix::app::SleepCoverDecision decision, sdk::ApplicationContext& context) {
@@ -74,7 +74,7 @@ private:
         if (decision == Decision::RenderFast || decision == Decision::RenderQuality)
             context.RequestRender({0, 24, 400, 276}, decision == Decision::RenderQuality
                 ? sdk::RenderIntent::Quality : sdk::RenderIntent::Fast);
-        else if (decision == Decision::Home) context.RequestCommand(sdk::AppCommand::Home());
+        else if (decision == Decision::Back) return owner_.RequestBack(context);
         else if (decision == Decision::Shutdown) context.RequestCommand(sdk::AppCommand::Shutdown());
         return sdk::Status::Ok;
     }

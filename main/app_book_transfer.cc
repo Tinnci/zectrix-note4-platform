@@ -29,6 +29,7 @@ public:
         return ToSdkStatus(result);
     }
     sdk::Status Exit() override {
+        controller_.Stop();
         const auto stopped = owner_.connectivity_->StopBookTransfer();
         if (stopped != zectrix::connectivity::ConnectivityResult::kOk)
             ESP_LOGW(kTag, "book transfer stop is retrying on the connectivity owner");
@@ -64,7 +65,7 @@ private:
 #endif
                 break;
             }
-            case Decision::Home: context.RequestCommand(sdk::AppCommand::Home()); break;
+            case Decision::Back: return owner_.RequestBack(context);
             case Decision::Shutdown: context.RequestCommand(sdk::AppCommand::Shutdown()); break;
             case Decision::None: break;
         }

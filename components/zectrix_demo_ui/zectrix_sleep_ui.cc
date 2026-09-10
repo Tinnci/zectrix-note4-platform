@@ -85,7 +85,7 @@ void DrawReading(ZectrixCanvas& canvas, const SleepCoverSnapshot& snapshot) {
 
 esp_err_t ZectrixDemoUi::ShowSleepCoverMenu(SleepCoverStyle selected, SleepCoverStyle active,
                                            const char* status, bool full_refresh) {
-    DrawFrame("SLEEP COVER", "UP/DOWN Select  OK Preview  Hold OK Home");
+    DrawFrame("SLEEP COVER", "UP/DOWN Select  OK Preview  Hold OK Back");
     const char* styles[] = {"DAILY DASHBOARD", "QUIET LANDSCAPE", "BLANK / PRIVACY"};
     const char* details[] = {
 #if CONFIG_ZECTRIX_ENABLE_READER
