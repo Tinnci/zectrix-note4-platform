@@ -1,7 +1,11 @@
+#include "zectrix_locale.h"
 #include "zectrix_status_bar.h"
 
 #include <algorithm>
 #include <cstdio>
+
+using zectrix::i18n::Tr;
+using zectrix::i18n::Text;
 
 namespace zectrix::ui {
 
@@ -15,11 +19,11 @@ bool StatusBarState::operator==(const StatusBarState& o) const {
 namespace {
 const char* RadioText(RadioIndicator state) {
     switch (state) {
-        case RadioIndicator::Off: return "OFF";
-        case RadioIndicator::Ready: return "ON";
-        case RadioIndicator::Busy: return "...";
-        case RadioIndicator::Connected: return "LINK";
-        case RadioIndicator::Fault: return "ERR";
+        case RadioIndicator::Off: return Tr(Text::Off);
+        case RadioIndicator::Ready: return Tr(Text::On);
+        case RadioIndicator::Busy: return Tr(Text::Busy);
+        case RadioIndicator::Connected: return Tr(Text::Link);
+        case RadioIndicator::Fault: return Tr(Text::Error);
     }
     return "?";
 }

@@ -193,7 +193,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Centered the neutral HOME title and added seven original 16x16 monochrome tile glyphs using 224 bytes of constant bitmap data. Increased 24px reader line spacing from 28px to 32px while retaining seven rows and source-byte anchors.
   - Added a high-contrast wake hint to final dashboard/landscape covers, retaining preview controls and the entirely white privacy cover. Reused the shared canvas and existing scene, display and shutdown ownership. See [docs/HOME.md](docs/HOME.md), [docs/READER.md](docs/READER.md) and [docs/SLEEP_COVER.md](docs/SLEEP_COVER.md).
   - Verified all 33 Host targets, focused display integration, reader ASan/UBSan with and without connectivity, Full/Minimal ESP32-S3 builds and rendered Home/reader/sleep variants. Device smoke was not required for this UI change; physical low-light readability and panel contrast remain hardware measurements.
-- [ ] **E1.7: 系统级原生中文与多语言框架演进 (System-wide Localization & Language Architecture)**
+- [x] **E1.7: 系统级原生中文与多语言框架演进 (System-wide Localization & Language Architecture)**
   - **核心目标**：打破目前“仅书籍数据支持中文、系统界面全英文”的局限，让状态栏、启动器磁贴、设置与导航提示具备完整的中文与国际化呈现能力。
   - **自主方案探索**：
     - 赋予 Astra 充分的设计自主权，对比并探索嵌入式环境下的最佳多语言方案（例如：编译期静态语言表、轻量运行时 Catalog 字典、或与现有应用清单绑定的本地化机制等），选取对 ESP32-S3 Flash/RAM 开销最小、最优雅的实现。
@@ -201,6 +201,9 @@ Each iteration picks the top unfinished task, implements production code, verifi
     - 零堆分配原则：字符查询与渲染不得在主绘制循环中引入动态堆内存分配；
     - 模块化裁剪兼容：继承 S1 架构，保持通过 Kconfig 自由裁剪语言包和字库的能力（极简配置下仍可剥离未使用的中文字库）；
     - 墨水屏视觉自适应：中文文本排版须严格契合 400x300 点阵布局与物理按键提示边界，避免文字截断或排版错位。
+  - Added 339 static Chinese/English strings, catalog-bound application labels and a private Settings language picker. Full defaults to Chinese; explicit choices persist through StorageService, with immediate content/status redraw, save-failure retry and one-level Back.
+  - Unified UTF-8 measurement, drawing and scalar-safe fitting without heap allocation. Chinese UI reuses Reader's font or a 355-glyph, 12,425-byte subset independently of Reader. Minimal excludes both Chinese font sources. See [docs/LOCALIZATION.md](docs/LOCALIZATION.md).
+  - Verified all 34 Host targets, localization ASan/UBSan across three font/language compositions, rendered Chinese/English screens, ShellCheck and Full/Minimal/Chinese-without-Reader ESP32-S3 builds. Full is 3,018,304 bytes; Minimal is 562,752 bytes (81.4% smaller). Adding Chinese to the offline Minimal configuration costs 21,504 firmware bytes and 8 static RAM bytes. Device smoke was not required for this UI change; physical panel readability remains a hardware measurement.
 
 
 

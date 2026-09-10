@@ -38,7 +38,7 @@ LauncherEntry LauncherController::EntryAt(std::size_t index) const {
     if (index >= count()) return {};
     const bool home = scene() == LauncherScene::Home;
     if (home && has_reading_overview()) {
-        if (index == 0) return {reader_->id, "CONTINUE READING", ApplicationIcon::Book};
+        if (index == 0) return {reader_->id, "CONTINUE READING", ApplicationIcon::Book, i18n::Text::ContinueReading};
         --index;
     }
     for (std::size_t i = 0; i < catalog_.menu_size(); ++i) {
@@ -46,9 +46,9 @@ LauncherEntry LauncherController::EntryAt(std::size_t index) const {
         if (presentation.on_home != home) continue;
         if (index-- != 0) continue;
         const auto* entry = catalog_.MenuAt(i);
-        return {entry->id, entry->display_name, presentation.icon};
+        return {entry->id, entry->display_name, presentation.icon, presentation.label};
     }
-    return {nullptr, "TOOLS", ApplicationIcon::Tools};
+    return {nullptr, "TOOLS", ApplicationIcon::Tools, i18n::Text::Tools};
 }
 
 sdk::Status LauncherController::Start(LauncherSelection selection) {

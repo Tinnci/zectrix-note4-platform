@@ -5,6 +5,7 @@
 #include "zectrix_power_service.h"
 #include "zectrix_scene_manager.h"
 #include "zectrix_time_service.h"
+#include "zectrix_locale.h"
 
 namespace zectrix::app {
 
@@ -30,7 +31,12 @@ struct SleepCalendar {
     uint32_t day_number = 0;
 };
 
-struct SleepQuote { const char* first; const char* second; };
+struct SleepQuote {
+    const char* first;
+    const char* second;
+    i18n::Text first_text = i18n::Text::None;
+    i18n::Text second_text = i18n::Text::None;
+};
 SleepCalendar CalendarForSleep(const time::ClockSnapshot& clock);
 const SleepQuote& QuoteForSleep(const SleepCalendar& calendar);
 

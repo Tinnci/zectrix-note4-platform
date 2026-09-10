@@ -145,18 +145,26 @@ The first-party shell defines these platform settings:
 | --- | --- | --- | --- | --- |
 | `ui.auto_demo` | unsigned 32-bit integer | `0` off, `1` on | `0` (L1.1) | Launcher |
 | `ui.sleep_cover` | unsigned 32-bit integer | `0` dashboard, `1` landscape, `2` blank | `0` (L1.4) | Sleep Cover / shutdown |
+| `ui.language` | unsigned 32-bit integer | `0` English, `1` Simplified Chinese | Kconfig default (E1.7) | System UI |
 
 M3 used default `1` for `ui.auto_demo`. L1.1 preserves any existing valid stored value and uses
 `0` for a missing or invalid value. When enabled, the 15-second idle timeout is
 measured from entry or the most recent physical input, not from idle-callback
 count. Launcher selection is retained in owner RAM across application exits.
 
-The Settings application uses `StorageService`. It does not call NVS. A
-missing key creates the default value. A value outside the documented range is
+The Settings application uses `StorageService`. It does not call NVS. For
+`ui.auto_demo`, a missing key creates the default value. A value outside the documented range is
 invalid. Settings uses the default and attempts to replace the invalid value.
 If a read or write fails, Settings remains active and shows the failure. It
 does not abort or restart the device. Settings pages are private application
 state and are not registry entries.
+
+E1.7 adds the private Options -> Language scene. Boot restores `ui.language`
+before the first UI frame; missing, invalid or excluded values use the compiled
+default without overwriting the stored choice. OK applies and saves a language,
+with a Quality redraw of content and status. A save failure retains the current
+boot's choice and permits retry; an unconfirmed selection is cancelled by Back.
+See [LOCALIZATION.md](LOCALIZATION.md) for the static catalog and font choices.
 
 Sleep Cover loads `ui.sleep_cover` once after platform initialization. Missing
 or invalid values use the dashboard; a missing value needs no write. OK on a

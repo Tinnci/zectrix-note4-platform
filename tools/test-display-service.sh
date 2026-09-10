@@ -43,6 +43,8 @@ reader_dir="$root_dir/components/zectrix_reader"
   "$root_dir/components/zectrix_app/zectrix_application_runtime.cc" \
   "$root_dir/components/zectrix_app/zectrix_sdk_status.cc" \
   "$root_dir/components/zectrix_app/zectrix_launcher_controller.cc" \
+  "$root_dir/components/zectrix_app/zectrix_first_party_app_controllers.cc" \
+  "$root_dir/components/zectrix_app/zectrix_locale.cc" \
   "$root_dir/components/zectrix_app/zectrix_reader_controller.cc" \
   "$root_dir/components/zectrix_app/zectrix_book_transfer_controller.cc" \
   "$root_dir/components/zectrix_app/zectrix_sleep_cover.cc" \
@@ -50,5 +52,6 @@ reader_dir="$root_dir/components/zectrix_reader"
   "$reader_dir/zectrix_reader_text.cc" "$reader_dir/zectrix_reader_font.cc" \
   "$reader_dir/zectrix_reader_bookmarks.cc" \
   "$root_dir/tools/display_service_test.cc" "$work_dir/inflate.o" "$work_dir/font.o" -o "$test_binary"
-"$test_binary"
+ZECTRIX_UI_LANGUAGE=en "$test_binary"
+ZECTRIX_UI_LANGUAGE=zh "$test_binary"
 echo 'PASS: display service, dirty regions, SSD2683 transfers and UI integration tests.'

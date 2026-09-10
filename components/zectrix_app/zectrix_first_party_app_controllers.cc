@@ -70,22 +70,69 @@ bool ClockDisplayChanged(const ClockMinute& displayed,
            displayed.minute != current.minute;
 }
 
-SettingsResult SettingsController::Handle(const sdk::InputEvent& event) {
-    const auto key = MapNavigation(event);
-    if (key == Navigation::Shutdown) {
-        return {SettingsDecision::Shutdown, auto_showcase_};
-    }
-    if (key == Navigation::Back) {
-        return {SettingsDecision::Back, auto_showcase_};
-    }
+sdk::Status SettingsController::Start() { return Start(auto_showcase_, language_); }
+
+sdk::Status SettingsController::Start(bool auto_showcase, i18n::Language language) {
+    if (scenes_.depth()) return sdk::Status::InvalidState;
+    auto_showcase_ = auto_showcase;
+    language_ = i18n::Supports(language) ? language : i18n::DefaultLanguage();
+    save_failed_ = false;
+    return scenes_.Start(static_cast<SceneId>(SettingsPage::Options));
+}
+
+void SettingsController::Stop() {
+    scenes_.Stop();
+    action_ = SettingsDecision::None;
+    dirty_ = quality_ = false;
+}
+
+void SettingsController::Enter(void* context, SceneId) {
+    auto& self = *static_cast<SettingsController*>(context);
+    self.dirty_ = self.quality_ = true;
+}
+
+bool SettingsController::Event(void* context, const SceneEvent& event) {
+    auto& self = *static_cast<SettingsController*>(context);
+    if (event.type != SceneEvent::Type::Input) return false;
+    const auto key = MapNavigation(event.input);
     if (key == Navigation::Previous || key == Navigation::Next) {
-        auto_showcase_ = !auto_showcase_;
-        return {SettingsDecision::RenderFast, auto_showcase_};
-    }
-    if (key == Navigation::Confirm) {
-        return {SettingsDecision::Save, auto_showcase_};
-    }
-    return {SettingsDecision::None, auto_showcase_};
+        const auto count = self.page() == SettingsPage::Options ? self.option_count() : i18n::LanguageCount();
+        self.scenes_.SetState(self.scenes_.current(), MoveSelection(self.selected(), count, key));
+        self.dirty_ = true;
+    } else if (key == Navigation::Confirm) {
+        if (self.page() == SettingsPage::Language) {
+            self.language_ = static_cast<i18n::Language>(self.selected());
+            self.action_ = SettingsDecision::SaveLanguage;
+            self.dirty_ = self.quality_ = true;
+        } else if (self.option_count() > 1 && self.selected() == 0) {
+            self.scenes_.SetState(static_cast<SceneId>(SettingsPage::Language), static_cast<uint32_t>(self.language_));
+            self.scenes_.Push(static_cast<SceneId>(SettingsPage::Language));
+        } else {
+            if (!self.save_failed_) self.auto_showcase_ = !self.auto_showcase_;
+            self.action_ = SettingsDecision::Save;
+            self.dirty_ = true;
+        }
+    } else return false;
+    return true;
+}
+
+SettingsResult SettingsController::Handle(const sdk::InputEvent& event) {
+    if (!scenes_.depth()) return {};
+    const auto key = MapNavigation(event);
+    if (key == Navigation::Shutdown) return {SettingsDecision::Shutdown, auto_showcase_, language_};
+    const bool back = key == Navigation::Back;
+    if (!scenes_.Dispatch({back ? SceneEvent::Type::Back : SceneEvent::Type::Input, event}) && back)
+        return {SettingsDecision::Back, auto_showcase_, language_};
+    return Tick();
+}
+
+SettingsResult SettingsController::Tick() {
+    if (!scenes_.depth()) return {};
+    const auto decision = action_ != SettingsDecision::None ? action_ : !dirty_ ? SettingsDecision::None :
+        quality_ ? SettingsDecision::RenderQuality : SettingsDecision::RenderFast;
+    action_ = SettingsDecision::None;
+    dirty_ = quality_ = false;
+    return {decision, auto_showcase_, language_};
 }
 
 bool NormalizeAutoShowcaseSetting(uint32_t stored, bool* value) {

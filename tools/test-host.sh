@@ -17,6 +17,7 @@ host_tests=(
     test-enrollment-ndef.sh
     test-first-party-app-controllers.sh
     test-input-event.sh
+    test-localization.sh
     test-module-config.sh
     test-pairing-bootstrap.sh
     test-platform.sh

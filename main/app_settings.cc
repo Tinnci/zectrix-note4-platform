@@ -1,82 +1,80 @@
 #include "terminal_internal.h"
 
 #include "zectrix_first_party_app_controllers.h"
+#include "zectrix_language_setting.h"
 #include "zectrix_storage_service.h"
-
 
 namespace zectrix::terminal {
 
 class TerminalApp::SettingsApplication final : public sdk::Application {
 public:
     explicit SettingsApplication(TerminalApp& owner)
-        : owner_(&owner), controller_(zectrix::app::kAutoShowcaseDefault != 0) {}
+        : owner_(&owner), controller_(app::kAutoShowcaseDefault != 0) {}
 
     sdk::Status Enter(sdk::ApplicationContext& context) override {
-        uint32_t stored = zectrix::app::kAutoShowcaseDefault;
-        const esp_err_t read = owner_->storage_->GetUInt32(
-            zectrix::app::kAutoShowcaseSettingKey, &stored);
-        bool value = zectrix::app::kAutoShowcaseDefault != 0;
+        uint32_t stored = app::kAutoShowcaseDefault;
+        const auto read = owner_->storage_->GetUInt32(app::kAutoShowcaseSettingKey, &stored);
+        bool value = app::kAutoShowcaseDefault != 0;
         bool repair = false;
         if (read == ESP_ERR_NOT_FOUND) {
-            status_ = "DEFAULT CREATED";
+            status_ = i18n::Text::DefaultCreated;
             repair = true;
         } else if (read != ESP_OK) {
-            status_ = "LOAD FAILED - DEFAULT";
-        } else if (!zectrix::app::NormalizeAutoShowcaseSetting(stored,
-                                                               &value)) {
-            status_ = "INVALID RESET";
-            value = zectrix::app::kAutoShowcaseDefault != 0;
+            status_ = i18n::Text::LoadFailedDefault;
+        } else if (!app::NormalizeAutoShowcaseSetting(stored, &value)) {
+            status_ = i18n::Text::InvalidReset;
             repair = true;
         } else {
-            status_ = "LOADED";
+            status_ = i18n::Text::Loaded;
         }
-        if (repair) {
-            const esp_err_t save = owner_->storage_->SetUInt32(
-                zectrix::app::kAutoShowcaseSettingKey,
-                zectrix::app::kAutoShowcaseDefault);
-            if (save != ESP_OK) status_ = "DEFAULT NOT SAVED";
-        }
-        controller_ = zectrix::app::SettingsController(value);
-        return context.RequestRender({0, 0, 400, 300},
-                                     sdk::RenderIntent::Quality)
-                   ? sdk::Status::Ok : sdk::Status::InternalError;
+        if (repair && owner_->storage_->SetUInt32(app::kAutoShowcaseSettingKey,
+                                                  app::kAutoShowcaseDefault) != ESP_OK)
+            status_ = i18n::Text::DefaultNotSaved;
+        if (!owner_->language_saved_ && i18n::LanguageCount() > 1) status_ = i18n::Text::LanguageSaveFailed;
+        const auto started = controller_.Start(value, i18n::CurrentLanguage());
+        return sdk::IsOk(started) ? Apply(controller_.Tick(), context) : started;
     }
 
-    sdk::Status HandleEvent(const sdk::InputEvent& event,
-                          sdk::ApplicationContext& context) override {
-        const zectrix::app::SettingsResult result = controller_.Handle(event);
-        if (result.decision == zectrix::app::SettingsDecision::RenderFast) {
-            status_ = "NOT SAVED";
-            context.RequestRender({0, 24, 400, 276},
-                                  sdk::RenderIntent::Fast);
-        } else if (result.decision == zectrix::app::SettingsDecision::Save) {
-            const esp_err_t save = owner_->storage_->SetUInt32(
-                zectrix::app::kAutoShowcaseSettingKey,
-                result.auto_showcase ? 1 : 0);
-            status_ = save == ESP_OK ? "SAVED" : "SAVE FAILED";
-            context.RequestRender({0, 24, 400, 276},
-                                  sdk::RenderIntent::Fast);
-        } else if (result.decision == zectrix::app::SettingsDecision::Back) {
-            return owner_->RequestBack(context);
-        } else if (result.decision ==
-                   zectrix::app::SettingsDecision::Shutdown) {
-            context.RequestCommand(sdk::AppCommand::Shutdown());
-        }
-        return sdk::Status::Ok;
+    sdk::Status HandleEvent(const sdk::InputEvent& event, sdk::ApplicationContext& context) override {
+        return Apply(controller_.Handle(event), context);
     }
-
+    sdk::Status HandleIdle(sdk::ApplicationContext& context) override {
+        return Apply(controller_.Tick(), context);
+    }
     sdk::Status Render(const sdk::RenderRequest& request) override {
-        return ToSdkStatus(owner_->ui_.ShowSettings(
-            controller_.auto_showcase(), status_,
-            request.intent == sdk::RenderIntent::Quality));
+        const auto result = owner_->ui_.ShowSettings(controller_, i18n::Tr(status_),
+            request.intent == sdk::RenderIntent::Quality);
+        controller_.Presented(result == ESP_OK);
+        return ToSdkStatus(result);
     }
-
-    sdk::Status Exit() override { return sdk::Status::Ok; }
+    sdk::Status Exit() override { controller_.Stop(); return sdk::Status::Ok; }
 
 private:
+    sdk::Status Apply(app::SettingsResult result, sdk::ApplicationContext& context) {
+        using Decision = app::SettingsDecision;
+        if (result.decision == Decision::None) return sdk::Status::Ok;
+        if (result.decision == Decision::Back) return owner_->RequestBack(context);
+        if (result.decision == Decision::Shutdown) {
+            context.RequestCommand(sdk::AppCommand::Shutdown());
+            return sdk::Status::Ok;
+        }
+        if (result.decision == Decision::SaveLanguage) {
+            owner_->language_saved_ = i18n::SaveLanguage(*owner_->storage_, result.language) == ESP_OK;
+            status_ = owner_->language_saved_ ? i18n::Text::Saved : i18n::Text::LanguageSaveFailed;
+        } else if (result.decision == Decision::Save) {
+            const auto saved = owner_->storage_->SetUInt32(app::kAutoShowcaseSettingKey,
+                                                           result.auto_showcase ? 1 : 0);
+            controller_.SaveCompleted(saved == ESP_OK);
+            status_ = saved == ESP_OK ? i18n::Text::Saved : i18n::Text::SaveFailed;
+        }
+        const bool quality = result.decision == Decision::RenderQuality || result.decision == Decision::SaveLanguage;
+        return context.RequestRender({0, 0, 400, 300}, quality ? sdk::RenderIntent::Quality : sdk::RenderIntent::Fast)
+            ? sdk::Status::Ok : sdk::Status::InternalError;
+    }
+
     TerminalApp* owner_;
-    zectrix::app::SettingsController controller_;
-    const char* status_ = "";
+    app::SettingsController controller_;
+    i18n::Text status_ = i18n::Text::None;
 };
 
 sdk::Status TerminalApp::CreateSettings(TerminalApp& owner, sdk::Application** output) {

@@ -17,6 +17,7 @@
 #include "zectrix_view_port.h"
 
 namespace zectrix::app { class ReaderController; }
+namespace zectrix::app { class SettingsController; }
 namespace zectrix::app { class LauncherController; struct ReadingOverview; }
 namespace zectrix::app { struct SleepCoverSnapshot; enum class SleepCoverStyle : uint8_t; }
 namespace zectrix::connectivity { struct BookTransferSnapshot; }
@@ -68,7 +69,7 @@ public:
     esp_err_t ShowClock(const zectrix::time::DateTime& value,
                         bool full_refresh, const char* source = "RTC",
                         bool calendar_valid = true);
-    esp_err_t ShowSettings(bool auto_showcase, const char* status,
+    esp_err_t ShowSettings(const zectrix::app::SettingsController& settings, const char* status,
                            bool full_refresh);
     esp_err_t ShowConnectivity(const char* state, const char* status,
                                const char* passkey, size_t selected, bool full_refresh);

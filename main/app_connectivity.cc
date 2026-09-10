@@ -1,3 +1,4 @@
+#include "zectrix_locale.h"
 #include "terminal_internal.h"
 
 #include <cstdio>
@@ -11,6 +12,9 @@
 #include "zectrix_reader_platform.h"
 #endif
 
+using zectrix::i18n::Tr;
+using zectrix::i18n::Text;
+
 namespace zectrix::terminal {
 
 class TerminalApp::ConnectivityApplication final : public sdk::Application {
@@ -18,7 +22,7 @@ public:
     explicit ConnectivityApplication(TerminalApp& owner) : owner_(&owner) {}
 
     sdk::Status Enter(sdk::ApplicationContext& context) override {
-        status_ = "SELECT AN ACTION WITH UP / DOWN";
+        status_ = Tr(Text::SelectAction);
         passkey_[0] = '\0';
         displayed_state_ = owner_->connectivity_->State();
         const auto started = controller_.Start();
@@ -41,7 +45,7 @@ public:
         if (owner_->connectivity_->TakePairingPasskey(&passkey)) {
             std::snprintf(passkey_, sizeof(passkey_), "%06lu",
                           static_cast<unsigned long>(passkey));
-            status_ = "ENTER ON PHONE";
+            status_ = Tr(Text::EnterOnPhone);
             changed = true;
         }
         const auto current_state = owner_->connectivity_->State();
@@ -56,20 +60,20 @@ public:
                 std::memset(passkey_, 0, sizeof(passkey_));
                 status_ = current_state == zectrix::connectivity::
                                   ConnectivityState::kProtocolNegotiatedLocal
-                              ? "HELLO ACCEPTED; AUTHORIZATION NEXT"
+                              ? Tr(Text::HelloAccepted)
                               : current_state ==
                                   zectrix::connectivity::ConnectivityState::kLinkReady
-                              ? "SECURE BLE READY; VERIFYING PHONE"
-                              : "LINK SECURED; ENABLING UPDATES";
+                              ? Tr(Text::VerifyingPhone)
+                              : Tr(Text::EnablingUpdates);
             } else if (current_state ==
                        zectrix::connectivity::ConnectivityState::kPairing) {
-                status_ = "SELECT ZECTRIX NOTE4 ON PHONE";
+                status_ = Tr(Text::SelectNote4OnPhone);
             } else if (current_state ==
                        zectrix::connectivity::ConnectivityState::kAdvertising) {
-                status_ = "TRUSTED PHONE CAN RECONNECT";
+                status_ = Tr(Text::PhoneCanReconnect);
             } else if (current_state ==
                        zectrix::connectivity::ConnectivityState::kFault) {
-                status_ = "BLUETOOTH NEEDS A RESTART";
+                status_ = Tr(Text::BluetoothRestart);
             }
             changed = true;
         }
@@ -84,9 +88,9 @@ public:
         const bool quality = request.intent == sdk::RenderIntent::Quality;
         esp_err_t result;
         if (controller_.page() == app::ConnectivityPage::Forget) {
-            static constexpr const char* kItems[] = {"KEEP TRUSTED PHONE", "FORGET PHONE AND SYNC LINK"};
-            result = owner_->ui_.ShowMenu("FORGET PHONE", kItems, std::size(kItems),
-                controller_.selected(), "UP/DOWN Move  OK Confirm  Hold OK Cancel", quality);
+            const char* kItems[] = {Tr(Text::KeepTrustedPhone), Tr(Text::ForgetPhoneSync)};
+            result = owner_->ui_.ShowMenu(Tr(Text::ForgetPhone), kItems, std::size(kItems),
+                controller_.selected(), Tr(Text::NavConfirmCancel), quality);
         } else {
             result = owner_->ui_.ShowConnectivity(StateText(owner_->connectivity_->State()), status_,
                 passkey_[0] == '\0' ? nullptr : passkey_, controller_.selected(), quality);
@@ -113,8 +117,8 @@ private:
         if (decision == Decision::StartPairing) {
             const auto result = owner_->connectivity_->StartLocalPairing();
             status_ = result == zectrix::connectivity::ConnectivityResult::kOk
-                          ? "PHONE CAN PAIR FOR 120 SECONDS"
-                          : "PAIRING IS NOT AVAILABLE";
+                          ? Tr(Text::PairingOpen120)
+                          : Tr(Text::PairingUnavailable);
         } else if (decision == Decision::FetchResource) {
             zectrix::companion::ResourceRequestMessage request{};
             owner_->connectivity_->UpdatePower(owner_->power_->ReadSnapshot());
@@ -122,25 +126,25 @@ private:
                 owner_->connectivity_->RequestResource(request);
             if (result ==
                 zectrix::connectivity::ConnectivityResult::kOk) {
-                status_ = "REQUESTING TEST DOCUMENT";
+                status_ = Tr(Text::RequestingDocument);
             } else if (result ==
                        zectrix::connectivity::ConnectivityResult::kBusy) {
-                status_ = "RESOURCE REQUEST ALREADY ACTIVE";
+                status_ = Tr(Text::ResourceBusy);
             } else {
-                status_ = "RESOURCE SERVICE UNAVAILABLE";
+                status_ = Tr(Text::ResourceUnavailable);
             }
         } else if (decision == Decision::ClearBonds) {
             const auto result = owner_->connectivity_->ClearPeerBonds();
             status_ = result == zectrix::connectivity::ConnectivityResult::kOk
-                          ? "TRUSTED PHONE FORGOTTEN"
-                          : "DISCONNECT BEFORE FORGETTING";
+                          ? Tr(Text::PhoneForgotten)
+                          : Tr(Text::DisconnectBeforeForget);
 #if CONFIG_ZECTRIX_ENABLE_READER
             if (result == zectrix::connectivity::ConnectivityResult::kOk) {
                 zectrix::reader::PlatformBookmarkStore store(*owner_->storage_, *owner_->connectivity_);
                 zectrix::reader::Bookmarks bookmarks(store);
                 if (bookmarks.Load() != zectrix::reader::Result::Ok ||
                     bookmarks.ResetPeer() != zectrix::reader::Result::Ok) {
-                    status_ = "PHONE RESET; READER SYNC ERROR";
+                    status_ = Tr(Text::PhoneResetReaderError);
                     ESP_LOGW(kTag, "reader phone cursor reset failed");
                 }
             }
@@ -159,54 +163,54 @@ private:
             case Status::kSuccess:
                 std::snprintf(
                     resource_status_, sizeof(resource_status_),
-                    "FETCHED %u BYTES VIA %s",
+                    Tr(Text::FetchedBytes),
                     static_cast<unsigned>(response.body_size),
                     response.path == zectrix::companion::ConnectivityPath::kDirectWifi
-                        ? "WI-FI" : "PHONE");
+                        ? "WI-FI" : Tr(Text::Phone));
                 break;
             case Status::kPhoneUnavailable:
                 std::snprintf(resource_status_, sizeof(resource_status_),
                               "%s", response.retry_queued
-                                  ? "NETWORK UNAVAILABLE; RETRY QUEUED"
-                                  : "NETWORK RESOURCE UNAVAILABLE");
+                                  ? Tr(Text::NetworkRetryQueued)
+                                  : Tr(Text::NetworkResourceUnavailable));
                 break;
             case Status::kPhoneOffline:
                 std::snprintf(resource_status_, sizeof(resource_status_),
                               "%s", response.retry_queued
-                                  ? "PHONE OFFLINE; RETRY QUEUED" : "PHONE OFFLINE");
+                                  ? Tr(Text::PhoneOfflineRetry) : Tr(Text::PhoneOffline));
                 break;
             case Status::kTimeout:
                 std::snprintf(resource_status_, sizeof(resource_status_),
                               "%s", response.retry_queued
-                                  ? "REQUEST TIMED OUT; RETRY QUEUED" : "REQUEST TIMED OUT");
+                                  ? Tr(Text::RequestTimeoutRetry) : Tr(Text::RequestTimeout));
                 break;
             case Status::kServerError:
                 std::snprintf(resource_status_, sizeof(resource_status_),
-                              "RESOURCE SERVER ERROR");
+                              "%s", Tr(Text::ResourceServerError));
                 break;
             case Status::kResponseTooLarge:
                 std::snprintf(resource_status_, sizeof(resource_status_),
-                              "RESOURCE RESPONSE TOO LARGE");
+                              "%s", Tr(Text::ResourceTooLarge));
                 break;
             case Status::kNotAuthorized:
                 std::snprintf(resource_status_, sizeof(resource_status_),
                               "%s", response.path ==
                                   zectrix::companion::ConnectivityPath::kDirectWifi
-                                  ? "WI-FI AUTHENTICATION FAILED"
-                                  : "PHONE AUTHORIZATION REQUIRED");
+                                  ? Tr(Text::WifiAuthFailed)
+                                  : Tr(Text::PhoneAuthRequired));
                 break;
             case Status::kUnsupportedCapability:
                 std::snprintf(resource_status_, sizeof(resource_status_),
-                              "RESOURCE NOT SUPPORTED");
+                              "%s", Tr(Text::ResourceUnsupported));
                 break;
             default:
                 std::snprintf(resource_status_, sizeof(resource_status_),
-                              "INVALID RESOURCE RESPONSE");
+                              "%s", Tr(Text::ResourceInvalid));
                 break;
         }
         if (response.wifi_stop == zectrix::connectivity::WifiStopResult::kFailure) {
             std::snprintf(resource_status_, sizeof(resource_status_),
-                          "WI-FI STOP FAILED; RESTART REQUIRED");
+                          "%s", Tr(Text::WifiStopFailed));
         }
         status_ = resource_status_;
     }
@@ -214,21 +218,21 @@ private:
     static const char* StateText(
         zectrix::connectivity::ConnectivityState state) {
         switch (state) {
-            case zectrix::connectivity::ConnectivityState::kIdle: return "OFFLINE";
+            case zectrix::connectivity::ConnectivityState::kIdle: return Tr(Text::Offline);
             case zectrix::connectivity::ConnectivityState::kAdvertising:
-                return "READY TO RECONNECT";
+                return Tr(Text::ReadyToReconnect);
             case zectrix::connectivity::ConnectivityState::kPairing:
-                return "PAIRING OPEN";
+                return Tr(Text::PairingOpen);
             case zectrix::connectivity::ConnectivityState::kSecuring:
-                return "SECURING LINK";
+                return Tr(Text::SecuringLink);
             case zectrix::connectivity::ConnectivityState::kSecure:
-                return "SECURE LINK";
+                return Tr(Text::SecureLink);
             case zectrix::connectivity::ConnectivityState::kLinkReady:
-                return "BLE READY";
+                return Tr(Text::BleReady);
             case zectrix::connectivity::ConnectivityState::kProtocolNegotiatedLocal:
-                return "PROTOCOL NEGOTIATED";
-            case zectrix::connectivity::ConnectivityState::kFault: return "FAULT";
-            default: return "STOPPED";
+                return Tr(Text::ProtocolNegotiated);
+            case zectrix::connectivity::ConnectivityState::kFault: return Tr(Text::Fault);
+            default: return Tr(Text::Stopped);
         }
     }
 

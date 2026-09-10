@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "zectrix_scene_manager.h"
+#include "zectrix_locale.h"
 
 namespace zectrix::app {
 
@@ -49,10 +50,13 @@ struct ClockMinute {
 bool ClockDisplayChanged(const ClockMinute& displayed,
                          const ClockMinute& current);
 
+enum class SettingsPage : SceneId { Options, Language };
 enum class SettingsDecision : uint8_t {
     None,
     RenderFast,
+    RenderQuality,
     Save,
+    SaveLanguage,
     Back,
     Shutdown,
 };
@@ -60,18 +64,37 @@ enum class SettingsDecision : uint8_t {
 struct SettingsResult {
     SettingsDecision decision = SettingsDecision::None;
     bool auto_showcase = false;
+    i18n::Language language = i18n::Language::English;
 };
 
 class SettingsController {
 public:
-    explicit SettingsController(bool auto_showcase)
-        : auto_showcase_(auto_showcase) {}
+    explicit SettingsController(bool auto_showcase, i18n::Language language = i18n::CurrentLanguage())
+        : auto_showcase_(auto_showcase), language_(language) {}
 
+    sdk::Status Start();
+    sdk::Status Start(bool auto_showcase, i18n::Language language);
+    void Stop();
     SettingsResult Handle(const sdk::InputEvent& event);
+    SettingsResult Tick();
+    void Presented(bool success) { if (!success) dirty_ = quality_ = true; }
+    void SaveCompleted(bool success) { save_failed_ = !success; }
     bool auto_showcase() const { return auto_showcase_; }
+    i18n::Language language() const { return language_; }
+    SettingsPage page() const { return static_cast<SettingsPage>(scenes_.current()); }
+    std::size_t selected() const { return scenes_.state(scenes_.current()); }
+    std::size_t option_count() const { return i18n::LanguageCount() > 1 ? 2 : 1; }
 
 private:
+    static void Enter(void* context, SceneId scene);
+    static bool Event(void* context, const SceneEvent& event);
+    inline static constexpr SceneHandler kHandlers[] = {{Enter, Event, nullptr}, {Enter, Event, nullptr}};
+    SceneManager scenes_{kHandlers, std::size(kHandlers), this};
     bool auto_showcase_;
+    i18n::Language language_;
+    SettingsDecision action_ = SettingsDecision::None;
+    bool dirty_ = false, quality_ = false;
+    bool save_failed_ = false;
 };
 
 constexpr uint32_t kAutoShowcaseDefault = 0;

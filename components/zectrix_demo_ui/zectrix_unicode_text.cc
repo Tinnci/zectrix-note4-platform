@@ -1,4 +1,5 @@
 #include "zectrix_unicode_text.h"
+#include "zectrix_utf8.h"
 #include "sdkconfig.h"
 #if CONFIG_ZECTRIX_ENABLE_READER
 #include "zectrix_reader.h"
@@ -22,46 +23,26 @@ void DrawGlyph(ZectrixCanvas& canvas, int x, int y, uint32_t cp, FontSize font, 
 }
 #endif
 
-namespace {
-uint32_t NextScalar(const char** text) {
-    const auto first = static_cast<uint8_t>(*(*text)++);
-    if (first < 0x80) return first;
-    if (first < 0xc2 || first > 0xf4) return 0xfffd;
-    const unsigned count = first < 0xe0 ? 2 : first < 0xf0 ? 3 : 4;
-    uint32_t cp = first & (count == 2 ? 31 : count == 3 ? 15 : 7);
-    for (unsigned i = 1; i < count; ++i) {
-        const auto byte = static_cast<uint8_t>(**text);
-        if (byte < 0x80 || byte > 0xbf) return 0xfffd;
-        ++*text;
-        cp = (cp << 6) | (byte & 63);
-    }
-    return cp < (count == 2 ? 0x80U : count == 3 ? 0x800U : 0x10000U) ||
-        cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) ? 0xfffd : cp;
-}
-}  // namespace
-
 void DrawUtf8Line(ZectrixCanvas& canvas, int x, int y, const char* text, int width, bool inverted) {
     if (!text || width <= 0) return;
-    const int right = x + width;
-    while (*text) {
-        const auto cp = NextScalar(&text);
 #if CONFIG_ZECTRIX_ENABLE_READER
+    const int right = x + width;
+    int measured = 0;
+    const char* probe = text;
+    while (*probe) measured += GlyphWidth(NextUtf8(probe), FontSize::Small);
+    const int ellipsis = measured > width ? GlyphWidth(0x2026, FontSize::Small) : 0;
+    while (*text) {
+        const auto cp = NextUtf8(text);
         const auto glyph_width = GlyphWidth(cp, FontSize::Small);
-        if (x + glyph_width + (*text ? 16 : 0) > right) {
-            DrawGlyph(canvas, x, y, 0x2026, FontSize::Small, inverted);
+        if (x + glyph_width + ellipsis > right) {
+            if (x + ellipsis <= right) DrawGlyph(canvas, x, y, 0x2026, FontSize::Small, inverted);
             break;
         }
         DrawGlyph(canvas, x, y, cp, FontSize::Small, inverted);
-#else
-        const char glyph[] = {cp >= 32 && cp < 127 ? static_cast<char>(cp) : '?', 0};
-        const int glyph_width = canvas.TextWidth(glyph);
-        if (x + glyph_width + (*text ? canvas.TextWidth("...") : 0) > right) {
-            if (x + canvas.TextWidth("...") <= right) canvas.Text(x, y, "...", 1, inverted);
-            break;
-        }
-        canvas.Text(x, y, glyph, 1, inverted);
-#endif
         x += glyph_width;
     }
+#else
+    canvas.TextFitted(x, y, text, width, inverted);
+#endif
 }
 }  // namespace zectrix::ui

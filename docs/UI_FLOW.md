@@ -32,7 +32,7 @@ UP/DOWN then visits the tiles from left to right and top to bottom:
 2. **SEND BOOKS** — local Wi-Fi upload, download and book management.
 3. **CLOCK** — retained calendar time and offline date/UTC-offset setup.
 4. **SLEEP COVER** — daily dashboard, landscape or blank privacy screen.
-5. **SETTINGS** — automatic showcase preference.
+5. **SETTINGS** — system language and automatic showcase preference.
 6. **TOOLS** — Connectivity, Auto Showcase, Display Gallery, Hardware Tests,
    Device Info and About & License.
 
@@ -42,6 +42,11 @@ labels, icons, placement and navigation come from that same application catalog.
 Minimal has Clock, Sleep Cover, Settings and Tools in two rows and no reading
 focus. More than six tiles use additional pages with a page indicator.
 See [HOME.md](HOME.md) and [MODULAR_BUILD.md](MODULAR_BUILD.md).
+
+E1.7 localizes these labels, status indicators and button hints. Full defaults
+to Simplified Chinese; **设置 / SETTINGS -> 语言 / LANGUAGE** switches between
+Chinese and English. The picker retains the standard UP/DOWN, OK and Back
+controls. See [LOCALIZATION.md](LOCALIZATION.md).
 
 Returning home restores the previous Home selection. Tools uses a private
 scene; hold OK pops to Home. Opening an app from Tools then returning home

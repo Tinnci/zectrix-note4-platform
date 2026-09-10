@@ -1,5 +1,13 @@
 #pragma once
 
+#ifndef CONFIG_ZECTRIX_ENABLE_UI_CHINESE
+#define CONFIG_ZECTRIX_ENABLE_UI_CHINESE 1
+#endif
+// Existing image fixtures run in English; localization tests select both.
+#ifndef CONFIG_ZECTRIX_UI_DEFAULT_CHINESE
+#define CONFIG_ZECTRIX_UI_DEFAULT_CHINESE 0
+#endif
+
 // Host tests default to the full product. Individual tests can override a
 // module with -DCONFIG_ZECTRIX_ENABLE_*=0 before compiling production sources.
 #ifndef CONFIG_ZECTRIX_ENABLE_CONNECTIVITY

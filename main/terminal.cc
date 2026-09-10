@@ -6,6 +6,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "zectrix_storage_service.h"
+#include "zectrix_language_setting.h"
 #include "zectrix_input_service.h"
 #include "zectrix_foreground_dispatch.h"
 
@@ -45,6 +46,10 @@ void TerminalApp::Run() {
     time_ = &platform_.Time();
     storage_ = &platform_.Storage();
     system_ = &platform_.System();
+    const auto language_result = i18n::RestoreLanguage(*storage_);
+    language_saved_ = language_result == ESP_OK || language_result == ESP_ERR_NOT_FOUND ||
+        language_result == ESP_ERR_NOT_SUPPORTED;
+    if (!language_saved_) ESP_LOGW(kTag, "language preference unavailable; using compiled default");
 #if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
     connectivity_ = platform_.Services().Get<zectrix::connectivity::ConnectivityService>();
     if (connectivity_) connectivity_->UpdatePower(power_->ReadSnapshot());

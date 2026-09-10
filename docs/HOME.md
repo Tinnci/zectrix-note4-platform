@@ -4,6 +4,11 @@ E1.2 replaces the flat Launcher menu with a daily overview and application
 tiles. It uses the existing 400 x 300 monochrome canvas, persistent status bar
 and application runtime.
 
+E1.7 adds Chinese and English labels through catalog presentation metadata.
+Full starts in Chinese unless a saved preference selects English; Settings
+contains the language picker. Focus, IDs and module composition remain stable
+when language changes. See [LOCALIZATION.md](LOCALIZATION.md).
+
 ## Everyday controls
 
 With Reader enabled, the first focus is the reading overview. OK resumes the

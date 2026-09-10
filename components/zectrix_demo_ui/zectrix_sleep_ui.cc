@@ -1,3 +1,4 @@
+#include "zectrix_locale.h"
 #include "zectrix_demo_ui.h"
 #include "zectrix_sleep_cover.h"
 #include "zectrix_unicode_text.h"
@@ -6,10 +7,15 @@
 #include <algorithm>
 #include <cstdio>
 
+using zectrix::i18n::Tr;
+using zectrix::i18n::Text;
+
 namespace {
 using namespace zectrix::app;
-constexpr const char* kMonths[] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
-constexpr const char* kWeekdays[] = {"MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"};
+constexpr Text kMonths[] = {Text::Jan, Text::Feb, Text::Mar, Text::Apr, Text::May, Text::Jun,
+    Text::Jul, Text::Aug, Text::Sep, Text::Oct, Text::Nov, Text::Dec};
+constexpr Text kWeekdays[] = {Text::Monday, Text::Tuesday, Text::Wednesday, Text::Thursday,
+    Text::Friday, Text::Saturday, Text::Sunday};
 
 void DrawLandscape(ZectrixCanvas& canvas, unsigned variation) {
     const int sun_x = 265 + static_cast<int>(variation % 3) * 20;
@@ -35,23 +41,27 @@ void DrawLandscape(ZectrixCanvas& canvas, unsigned variation) {
 void DrawCalendar(ZectrixCanvas& canvas, const SleepCoverSnapshot& snapshot, const SleepCalendar& calendar) {
     const auto& date = snapshot.clock.value;
     if (!calendar.valid) {
-        canvas.TextCentered(58, "TIME NOT SET", 2);
-        canvas.TextCentered(114, "Set the clock for a daily calendar.");
+        canvas.TextCentered(58, Tr(Text::TimeNotSet), 2);
+        canvas.TextCentered(114, Tr(Text::SetClockForCalendar));
 #if CONFIG_ZECTRIX_ENABLE_READER
-        canvas.TextCentered(147, "Your saved reading position is below.");
+        canvas.TextCentered(147, Tr(Text::SavedReadingBelow));
 #endif
         return;
     }
     char line[40];
-    std::snprintf(line, sizeof(line), "%s %04d", kMonths[date.month - 1], date.year);
+    std::snprintf(line, sizeof(line), Tr(Text::MonthYear), date.year, Tr(kMonths[date.month - 1]));
     canvas.Text(16, 32, line);
     std::snprintf(line, sizeof(line), "%02d", date.day);
     canvas.Text(14, 55, line, 4);
-    canvas.Text(16, 130, kWeekdays[calendar.weekday]);
-    std::snprintf(line, sizeof(line), "AS OF %02d:%02d", date.hour, date.minute);
+    canvas.Text(16, 130, Tr(kWeekdays[calendar.weekday]));
+    std::snprintf(line, sizeof(line), Tr(Text::AsOfTime), date.hour, date.minute);
     canvas.Text(16, 152, line);
-    const char* weekdays[] = {"M", "T", "W", "T", "F", "S", "S"};
-    for (unsigned col = 0; col < 7; ++col) canvas.Text(195 + col * 28, 32, weekdays[col]);
+    constexpr Text weekdays[] = {Text::WeekMon, Text::WeekTue, Text::WeekWed, Text::WeekThu,
+        Text::WeekFri, Text::WeekSat, Text::WeekSun};
+    for (unsigned col = 0; col < 7; ++col) {
+        const auto* label = Tr(weekdays[col]);
+        canvas.Text(186 + col * 28 + (26 - canvas.TextWidth(label)) / 2, 32, label);
+    }
     for (unsigned day = 1; day <= calendar.days; ++day) {
         const unsigned cell = calendar.first_weekday + day - 1;
         const int x = 186 + (cell % 7) * 28, y = 54 + (cell / 7) * 19;
@@ -65,9 +75,9 @@ void DrawCalendar(ZectrixCanvas& canvas, const SleepCoverSnapshot& snapshot, con
 #if CONFIG_ZECTRIX_ENABLE_READER
 void DrawReading(ZectrixCanvas& canvas, const SleepCoverSnapshot& snapshot) {
     canvas.Line(16, 175, 383, 175);
-    canvas.Text(16, 183, "LAST SAVED READING");
+    canvas.Text(16, 183, Tr(Text::LastSavedReading));
     if (!snapshot.has_reading) {
-        canvas.Text(16, 206, "Open a book and make a little time.");
+        canvas.Text(16, 206, Tr(Text::MakeReadingTime));
         return;
     }
     const auto progress = std::min<uint16_t>(snapshot.reading.progress_per_mille, 1000);
@@ -85,15 +95,15 @@ void DrawReading(ZectrixCanvas& canvas, const SleepCoverSnapshot& snapshot) {
 
 esp_err_t ZectrixDemoUi::ShowSleepCoverMenu(SleepCoverStyle selected, SleepCoverStyle active,
                                            const char* status, bool full_refresh) {
-    DrawFrame("SLEEP COVER", "UP/DOWN Select  OK Preview  Hold OK Back");
-    const char* styles[] = {"DAILY DASHBOARD", "QUIET LANDSCAPE", "BLANK / PRIVACY"};
+    DrawFrame(Tr(Text::SleepCover), Tr(Text::NavCoverPreview));
+    const char* styles[] = {Tr(Text::DailyDashboard), Tr(Text::QuietLandscape), Tr(Text::BlankPrivacy)};
     const char* details[] = {
 #if CONFIG_ZECTRIX_ENABLE_READER
-        "Calendar, saved reading and a daily line",
+        Tr(Text::DashboardDetail),
 #else
-        "Calendar and a daily line",
+        Tr(Text::CalendarDetail),
 #endif
-        "A daily line with a mountain illustration", "A clean white screen after power-off"};
+        Tr(Text::LandscapeDetail), Tr(Text::BlankDetail)};
     for (unsigned i = 0; i < std::size(styles); ++i) {
         const bool chosen = i == static_cast<unsigned>(selected);
         const int y = 54 + i * 62;
@@ -103,7 +113,7 @@ esp_err_t ZectrixDemoUi::ShowSleepCoverMenu(SleepCoverStyle selected, SleepCover
         if (i == static_cast<unsigned>(active)) canvas_.Text(354, y + 7, "*", 1, chosen);
         canvas_.Text(16, y + 34, details[i]);
     }
-    canvas_.Text(16, 246, status ? status : "OK sets your cover. Hold DOWN to sleep.");
+    canvas_.Text(16, 246, status ? status : Tr(Text::SetCoverHint));
     return full_refresh ? RefreshFull() : RefreshAuto();
 }
 
@@ -117,11 +127,11 @@ esp_err_t ZectrixDemoUi::ShowSleepCover(const SleepCoverSnapshot& snapshot, Slee
         gray_frame_.reset();
         canvas_.ResetClip();
         canvas_.Clear();
-        canvas_.Text(16, 4, "NOTE4 / AT REST");
+        canvas_.Text(16, 4, Tr(Text::AtRest));
         char battery[24];
         if (snapshot.power.battery_valid && !snapshot.power.battery_absent)
-            std::snprintf(battery, sizeof(battery), "BAT %u%%", std::min<unsigned>(snapshot.power.battery_percent, 100));
-        else std::snprintf(battery, sizeof(battery), "BAT --");
+            std::snprintf(battery, sizeof(battery), Tr(Text::BatteryPercent), std::min<unsigned>(snapshot.power.battery_percent, 100));
+        else std::snprintf(battery, sizeof(battery), "%s", Tr(Text::BatteryUnknown));
         canvas_.Text(384 - canvas_.TextWidth(battery), 4, battery);
         canvas_.Line(16, 23, 383, 23);
     }
@@ -133,32 +143,32 @@ esp_err_t ZectrixDemoUi::ShowSleepCover(const SleepCoverSnapshot& snapshot, Slee
         DrawReading(canvas_, snapshot);
 #endif
         char line[96];
-        std::snprintf(line, sizeof(line), "%s %s", quote.first, quote.second);
+        std::snprintf(line, sizeof(line), "%s %s", Tr(quote.first_text, quote.first), Tr(quote.second_text, quote.second));
         zectrix::ui::DrawUtf8Line(canvas_, 16, 246, line, 368);
     } else if (style == SleepCoverStyle::Quote) {
-        canvas_.TextCentered(31, "A MOMENT BETWEEN PAGES");
+        canvas_.TextCentered(31, Tr(Text::BetweenPages));
         DrawLandscape(canvas_, calendar.day_number);
-        canvas_.TextCentered(180, quote.first);
-        canvas_.TextCentered(205, quote.second);
+        canvas_.TextCentered(180, Tr(quote.first_text, quote.first));
+        canvas_.TextCentered(205, Tr(quote.second_text, quote.second));
         char date[48];
         const auto& value = snapshot.clock.value;
-        if (calendar.valid) std::snprintf(date, sizeof(date), "AS OF %02d %s %04d  %02d:%02d",
-            value.day, kMonths[value.month - 1], value.year, value.hour, value.minute);
-        else std::snprintf(date, sizeof(date), "TIME NOT SET");
+        if (calendar.valid) std::snprintf(date, sizeof(date), Tr(Text::AsOfDate),
+            value.year, value.month, value.day, value.hour, value.minute);
+        else std::snprintf(date, sizeof(date), "%s", Tr(Text::TimeNotSet));
         canvas_.TextCentered(246, date);
     } else {
-        canvas_.TextCentered(101, "A QUIET BLANK SCREEN");
-        canvas_.TextCentered(152, "Book titles and dates stay private.");
-        canvas_.TextCentered(207, "The display clears when you sleep.");
+        canvas_.TextCentered(101, Tr(Text::QuietBlankScreen));
+        canvas_.TextCentered(152, Tr(Text::ReadingStaysPrivate));
+        canvas_.TextCentered(207, Tr(Text::DisplayClearsOnSleep));
     }
     if (preview) {
         canvas_.Line(16, 273, 383, 273);
-        canvas_.TextCentered(279, preference_saved ? "PREVIEW   OK Sleep   Hold OK Back" :
-            "NOT SAVED   OK Sleep   Hold OK Back");
+        canvas_.TextCentered(279, preference_saved ? Tr(Text::PreviewControls) :
+            Tr(Text::UnsavedPreviewControls));
         return RefreshFull();
     }
     canvas_.FillRect(16, 273, 368, 25, true);
-    canvas_.TextCentered(278, "PRESS DOWN TO WAKE", 1, true);
+    canvas_.TextCentered(278, Tr(Text::WakeHint), 1, true);
     // Commit the final surface directly. Pending status invalidations stay dormant.
     sleep_surface_ = true;
     return display_->Present1Bpp(zectrix::display::DisplayIntent::FullClean, canvas_.data(), canvas_.size());

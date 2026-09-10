@@ -1,6 +1,7 @@
 #pragma once
 
 #include "zectrix/sdk/application.h"
+#include "zectrix_locale.h"
 
 namespace zectrix::app {
 
@@ -9,6 +10,7 @@ enum class ApplicationIcon : uint8_t { App, Book, Transfer, Clock, Sleep, Settin
 struct ApplicationPresentation {
     ApplicationIcon icon = ApplicationIcon::App;
     bool on_home = false;
+    i18n::Text label = i18n::Text::None;
 };
 
 // Composition finishes before the runtime borrows this storage. Entry zero is

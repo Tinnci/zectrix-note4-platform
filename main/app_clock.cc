@@ -1,3 +1,4 @@
+#include "zectrix_locale.h"
 #include "terminal_internal.h"
 
 #include <cstdio>
@@ -6,6 +7,9 @@
 #include "zectrix_clock_editor.h"
 #include "zectrix_first_party_app_controllers.h"
 #include "zectrix_scene_manager.h"
+
+using zectrix::i18n::Tr;
+using zectrix::i18n::Text;
 
 namespace zectrix::terminal {
 
@@ -71,11 +75,11 @@ public:
         if (scenes_.current() == kEdit) {
             result = RenderEditor(quality);
         } else {
-            const char* source = clock_.source == time::ClockSource::Uptime ? "UPTIME - TIME NOT SET" :
-                status_.persistence_pending ? "SYSTEM TIME - SAVE PENDING" :
+            const char* source = clock_.source == time::ClockSource::Uptime ? Tr(Text::UptimeUnset) :
+                status_.persistence_pending ? Tr(Text::TimeSavePending) :
                 !status_.utc_offset_known ? (clock_.source == time::ClockSource::Rtc ?
-                    "LOCAL TIME - SET UTC OFFSET" : "SYSTEM UTC - SET CLOCK") :
-                status_.rtc_persisted ? "RTC SAVED" : "SYSTEM TIME";
+                    Tr(Text::SetUtcOffset) : Tr(Text::SetSystemClock)) :
+                status_.rtc_persisted ? Tr(Text::RtcSaved) : Tr(Text::SystemTime);
             result = ToSdkStatus(owner_->ui_.ShowClock(clock_.value, quality, source,
                 clock_.source != time::ClockSource::Uptime));
         }
@@ -128,21 +132,21 @@ private:
     sdk::Status RenderEditor(bool quality) {
         const auto& value = editor_.value();
         std::array<std::array<char, 40>, app::ClockEditor::Count> rows{};
-        std::snprintf(rows[0].data(), rows[0].size(), "YEAR         %04d", value.year);
-        std::snprintf(rows[1].data(), rows[1].size(), "MONTH        %02d", value.month);
-        std::snprintf(rows[2].data(), rows[2].size(), "DAY          %02d", value.day);
-        std::snprintf(rows[3].data(), rows[3].size(), "HOUR         %02d", value.hour);
-        std::snprintf(rows[4].data(), rows[4].size(), "MINUTE       %02d", value.minute);
+        std::snprintf(rows[0].data(), rows[0].size(), Tr(Text::YearValue), value.year);
+        std::snprintf(rows[1].data(), rows[1].size(), Tr(Text::MonthValue), value.month);
+        std::snprintf(rows[2].data(), rows[2].size(), Tr(Text::DayValue), value.day);
+        std::snprintf(rows[3].data(), rows[3].size(), Tr(Text::HourValue), value.hour);
+        std::snprintf(rows[4].data(), rows[4].size(), Tr(Text::MinuteValue), value.minute);
         const int offset = editor_.offset_seconds();
         const int magnitude = offset < 0 ? -offset : offset;
-        std::snprintf(rows[5].data(), rows[5].size(), "UTC OFFSET   %c%02d:%02d",
+        std::snprintf(rows[5].data(), rows[5].size(), Tr(Text::UtcValue),
                       offset < 0 ? '-' : '+', magnitude / 3600, magnitude / 60 % 60);
-        std::snprintf(rows[6].data(), rows[6].size(), "%s", save_failed_ ? "SAVE FAILED - OK RETRY" : "SAVE DATE AND TIME");
+        std::snprintf(rows[6].data(), rows[6].size(), "%s", save_failed_ ? Tr(Text::SaveClockRetry) : Tr(Text::SaveClock));
         std::array<const char*, app::ClockEditor::Count> labels{};
         for (std::size_t i = 0; i < labels.size(); ++i) labels[i] = rows[i].data();
         const char* footer = editor_.field() == app::ClockEditor::Save ?
-            "UP Back  DOWN Start  OK Save  Hold OK Cancel" : "UP +  DOWN -  OK Next  Hold OK Cancel";
-        return ToSdkStatus(owner_->ui_.ShowMenu("SET CLOCK", labels.data(), labels.size(), editor_.field(), footer, quality));
+            Tr(Text::NavClockSave) : Tr(Text::NavClockNext);
+        return ToSdkStatus(owner_->ui_.ShowMenu(Tr(Text::SetClock), labels.data(), labels.size(), editor_.field(), footer, quality));
     }
 
     void ReadTime() {

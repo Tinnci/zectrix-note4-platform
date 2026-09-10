@@ -1,3 +1,4 @@
+#include "zectrix_locale.h"
 #include "zectrix_demo_ui.h"
 
 #include <algorithm>
@@ -6,6 +7,9 @@
 #include "zectrix_launcher_controller.h"
 #include "zectrix_reading_overview.h"
 #include "zectrix_unicode_text.h"
+
+using zectrix::i18n::Tr;
+using zectrix::i18n::Text;
 
 namespace {
 
@@ -70,28 +74,28 @@ void DrawOverview(ZectrixCanvas& canvas, const zectrix::time::ClockSnapshot& clo
     canvas.Line(126, 60, 126, 121);
     if (active) canvas.FillRect(127, 53, 260, 76, true);
     if (clock.source != zectrix::time::ClockSource::Uptime && zectrix::time::IsValid(clock.value)) {
-        constexpr const char* months[] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
-            "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
-        constexpr const char* weekdays[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
+        constexpr Text months[] = {Text::Jan, Text::Feb, Text::Mar, Text::Apr, Text::May, Text::Jun,
+            Text::Jul, Text::Aug, Text::Sep, Text::Oct, Text::Nov, Text::Dec};
+        constexpr Text weekdays[] = {Text::Sun, Text::Mon, Text::Tue, Text::Wed, Text::Thu, Text::Fri, Text::Sat};
         const auto& date = clock.value;
         const auto weekday = (zectrix::time::CalendarSeconds(date) / 86400 + 4) % 7;
-        canvas.Text(24, 58, weekdays[weekday]);
+        canvas.Text(24, 58, Tr(weekdays[weekday]));
         char value[12];
         std::snprintf(value, sizeof(value), "%02d", date.day);
         canvas.Text(24, 78, value, 2);
-        canvas.Text(78, 79, months[date.month - 1]);
+        canvas.Text(78, 79, Tr(months[date.month - 1]));
         std::snprintf(value, sizeof(value), "%04d", date.year);
         canvas.Text(78, 102, value);
     } else {
-        canvas.Text(24, 63, "DATE");
-        canvas.Text(24, 84, "NOT SET");
-        canvas.Text(24, 106, "Use CLOCK");
+        canvas.Text(24, 63, Tr(Text::Date));
+        canvas.Text(24, 84, Tr(Text::NotSet));
+        canvas.Text(24, 106, Tr(Text::UseClock));
     }
 
     using State = zectrix::app::ReadingOverview::State;
     switch (reading.state) {
         case State::Saved: {
-            canvas.Text(140, 58, "CONTINUE READING", 1, active);
+            canvas.Text(140, 58, Tr(Text::ContinueReading), 1, active);
             auto title = reading.book_id;
             title.back() = '\0';
             zectrix::ui::DrawUtf8Line(canvas, 140, 80, title.data(), 236, active);
@@ -106,19 +110,19 @@ void DrawOverview(ZectrixCanvas& canvas, const zectrix::time::ClockSnapshot& clo
             break;
         }
         case State::Empty:
-            canvas.Text(140, 58, "OPEN LIBRARY", 1, active);
-            canvas.Text(140, 83, "Choose your first book", 1, active);
+            canvas.Text(140, 58, Tr(Text::OpenLibrary), 1, active);
+            canvas.Text(140, 83, Tr(Text::ChooseFirstBook), 1, active);
             canvas.Text(140, 105, "TXT / EPUB", 1, active);
             break;
         case State::Error:
-            canvas.Text(140, 58, "OPEN LIBRARY", 1, active);
-            canvas.Text(140, 83, "Progress unavailable", 1, active);
-            canvas.Text(140, 105, "OK to retry", 1, active);
+            canvas.Text(140, 58, Tr(Text::OpenLibrary), 1, active);
+            canvas.Text(140, 83, Tr(Text::ProgressUnavailable), 1, active);
+            canvas.Text(140, 105, Tr(Text::OkRetry), 1, active);
             break;
         case State::Unavailable:
-            canvas.Text(140, 58, "POCKET TERMINAL");
-            canvas.Text(140, 83, "Clock, covers and tools");
-            canvas.Text(140, 105, "Choose an app below");
+            canvas.Text(140, 58, Tr(Text::PocketTerminal));
+            canvas.Text(140, 83, Tr(Text::ClockCoversTools));
+            canvas.Text(140, 105, Tr(Text::ChooseAppBelow));
             break;
     }
 }
@@ -132,20 +136,23 @@ esp_err_t ZectrixDemoUi::ShowLauncher(const zectrix::app::LauncherController& la
     const auto count = launcher.count();
     if (launcher.scene() == Scene::Tools) {
         std::array<const char*, zectrix::app::ApplicationCatalog::kCapacity> labels{};
-        for (std::size_t i = 0; i < count; ++i) labels[i] = launcher.EntryAt(i).label;
-        return ShowMenu("TOOLS", labels.data(), count, launcher.selected(),
-                        "UP/DOWN Move  OK Open  Hold OK Back", full_refresh);
+        for (std::size_t i = 0; i < count; ++i) {
+            const auto entry = launcher.EntryAt(i);
+            labels[i] = Tr(entry.label_text, entry.label);
+        }
+        return ShowMenu(Tr(Text::Tools), labels.data(), count, launcher.selected(),
+                        Tr(Text::NavOpenBack), full_refresh);
     }
     if (launcher.scene() != Scene::Home) return ESP_ERR_INVALID_STATE;
-    const char* footer = "UP/DOWN Move  OK Open  Hold DOWN Off";
+    const char* footer = Tr(Text::NavOpenOff);
     if (launcher.overview_selected()) footer = reading.state == zectrix::app::ReadingOverview::State::Saved
-        ? "UP/DOWN Move  OK Read  Hold DOWN Off" : "UP/DOWN Move  OK Library  Hold DOWN Off";
+        ? Tr(Text::NavReadOff) : Tr(Text::NavLibraryOff);
     DrawFrame("", footer);
-    canvas_.TextCentered(26, "HOME", 1, true);
+    canvas_.TextCentered(26, Tr(Text::Home), 1, true);
     DrawOverview(canvas_, clock, reading, launcher.overview_selected());
     const auto tiles = count - launcher.tile_offset();
     if (tiles == 0) {
-        canvas_.TextCentered(188, "NO APPS AVAILABLE");
+        canvas_.TextCentered(188, Tr(Text::NoApps));
     } else {
         constexpr auto per_page = zectrix::app::LauncherController::kTilesPerPage;
         const auto page = launcher.tile_page();
@@ -162,7 +169,8 @@ esp_err_t ZectrixDemoUi::ShowLauncher(const zectrix::app::LauncherController& la
             canvas_.FillRect(x, y, 184, height, active);
             canvas_.Rect(x, y, 184, height);
             DrawIcon(canvas_, entry.icon, x + 12, y + (height - 16) / 2, !active);
-            DrawFittedText(canvas_, x + 40, y + (height - 16) / 2, entry.label, 136, active);
+            DrawFittedText(canvas_, x + 40, y + (height - 16) / 2,
+                           Tr(entry.label_text, entry.label), 136, active);
         }
         if (tiles > per_page) {
             char pages[16];

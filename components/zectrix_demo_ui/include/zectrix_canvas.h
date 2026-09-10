@@ -27,6 +27,8 @@ public:
     void TextCentered(int y, const char* text, int scale = 1,
                       bool inverted = false);
     int TextWidth(const char* text, int scale = 1) const;
+    void TextFitted(int x, int y, const char* text, int max_width,
+                    bool inverted = false);
 
     uint8_t* data() { return pixels_.data(); }
     const uint8_t* data() const { return pixels_.data(); }

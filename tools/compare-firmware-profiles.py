@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 
-MODULES = ("CONNECTIVITY", "WIFI", "WIFI_HTTP", "BOOK_TRANSFER", "READER",
+MODULES = ("CONNECTIVITY", "WIFI", "WIFI_HTTP", "BOOK_TRANSFER", "READER", "UI_CHINESE",
            "USB_CLI", "UPDATE", "BOOK_STORAGE")
 OPTIONAL_COMPONENTS = {
     "zectrix_connectivity", "zectrix_companion", "zectrix_nfc_service",

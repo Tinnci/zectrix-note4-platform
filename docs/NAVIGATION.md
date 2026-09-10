@@ -67,7 +67,8 @@ HTTP session. Builds without Reader return Home from the finished transfer.
 | Connectivity | Actions -> Forget. Back cancels removal and restores the action row. Exit stops private scenes and clears the displayed passkey; Platform continues to own BLE and resource work. |
 | Diagnostics | Mode -> Individual -> Running for one test; Mode -> Running for all. Completion of one test returns to its selected row. Successful Run All replaces Running with Summary; OK or Back returns to Mode. Cancellation during a test or its result wait returns to the parent without starting another test. |
 | Gallery | Menu -> Preview, replacing Preview with Report. Back returns to the selected menu row. Exit stops timed frame advancement. |
-| Settings / Device Info / About | Single root page. Back returns to the Launcher parent. Settings saves only on OK. |
+| Settings | Options -> Language. Back cancels an unapplied language selection and retains the parent row. OK applies/saves a language or toggles/saves automatic showcase; failed saves can be retried. |
+| Device Info / About | Single root page. Back returns to the Launcher parent. |
 
 Scene transitions execute after event callbacks return. Enter/exit callbacks
 cannot navigate recursively, and an unconsumed Back pops exactly one child.
