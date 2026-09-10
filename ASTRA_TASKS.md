@@ -207,10 +207,24 @@ Each iteration picks the top unfinished task, implements production code, verifi
 
 
 - [ ] **E1.8: USB 终端交互与数据通道演进 (Interactive USB CLI & Data Protocol Evolution)**
-  - 调研并探索基于 USB Serial/JTAG 的交互式设置与数据传输机制（对标 Flipper Zero CLI/RPC 与流式传输）。
-  - 探索免驱 USB 通道下的文本终端交互扩展（如系统设置控制、存储浏览等）与高效文件/书籍导入导出能力。
-  - 研究协议自动化切换（如标志符/握手魔数切换传输模式）与设备端交互（如专属传输界面或前台状态反馈）的协同方案。
-  - 保持轻量、零动态堆分配原则，确保大文件传输不阻塞系统生命周期与物理按键响应。
+  - **核心痛点与演进目标**：
+    - 解决当前 USB 接口仅作为只读日志/诊断终端、无法进行双向设置与电子书导入导出的“数据孤岛”问题。
+    - 探索构建一套兼顾“开发者命令行交互/自动化管道”与“日常用户便捷文件导入导出”的高效 USB 数据通道。
+  - **权衡维度与候选方案空间 (Supplementary Trade-offs to Weigh - No Premature Anchoring)**：
+    - *方案空间 A：USB-CDC 双模流式传输 (In-Band Dual Mode & Framed Streaming)*
+      - 参考 Flipper Zero CLI/RPC 与 Android ADB 架构：同一串口在人类交互终端（Human CLI，支持 `storage ls/cat`、系统配置查看与修改）与二进制数据流（Machine Stream，支持文件分块推拉与 CRC 校验）间无缝切换；
+      - 探索无需 USB 软硬件重新枚举（Zero Re-enumeration）的特征标志符/魔数自动协商机制；评估对未来 Chrome/Edge WebSerial 网页免驱传书的天然兼容性。
+    - *方案空间 B：原生 USB 大容量存储 (USB Mass Storage Class / MSC)*
+      - 参考 Kindle 经典体验：在菜单中提供显式切换，通过 TinyUSB 将设备虚拟为移动磁盘，支持在 Windows/Mac 资源管理器中直观拖拽拷贝；
+      - 权衡重点：评估主机写入期间单片机端文件系统安全卸载（Unmount/Remount）机制与互斥锁保护，防止双端并发读写导致 Flash 扇区损坏。
+    - *方案空间 C：媒体传输协议 (MTP)*
+      - 探索基于对象的文件传输协议，评估其在单片机不卸载文件系统即可写入的优势，对比在 ESP32-S3 上的协议栈开销及 macOS 平台免驱兼容性。
+  - **端侧感知与人机工效底线 (Ergonomics & Safety Invariants)**：
+    - **视觉与状态感知**：数据传输期间墨水屏需具备明确的状态与进度呈现（如轻量进度指示或专属传输看板场景），避免黑盒等待；
+    - **物理按键安全熔断**：确保单手物理按键（如长按返回）在任何传输与阻塞状态下均可最高优先级安全打断，回滚未完成分片并释放总线互斥锁；
+    - **嵌入式稳健性**：坚持流式分块写入（Streaming/Chunked）、零动态堆内存泄漏、严守 ESP32-S3 内存与 Flash 边界。
+  - **自主探索空间**：
+    - 鼓励 Astra 结合工程中已有的 `zectrix_cli`、`PlatformControlDispatcher`、`StorageService` 基础设施，深入对比权衡上述候选方案，自主提出最优雅、轻量、高可用的设计与实现。
 
 ---
 
