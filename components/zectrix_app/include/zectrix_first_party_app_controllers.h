@@ -7,26 +7,6 @@
 
 namespace zectrix::app {
 
-enum class LauncherDecision : uint8_t { None, RenderFast, OpenSelected, Shutdown };
-
-struct LauncherResult {
-    LauncherDecision decision = LauncherDecision::None;
-    std::size_t selected = 0;
-};
-
-class LauncherController {
-public:
-    explicit LauncherController(std::size_t item_count, std::size_t selected = 0)
-        : item_count_(item_count), selected_(selected < item_count ? selected : 0) {}
-
-    LauncherResult Handle(const sdk::InputEvent& event);
-    std::size_t selected() const { return selected_; }
-
-private:
-    std::size_t item_count_ = 0;
-    std::size_t selected_ = 0;
-};
-
 enum class ClockDecision : uint8_t { None, Home, Shutdown };
 
 ClockDecision HandleClockInput(const sdk::InputEvent& event);

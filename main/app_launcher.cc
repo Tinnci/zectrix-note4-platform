@@ -4,7 +4,6 @@
 #include "zectrix_first_party_app_controllers.h"
 #include "zectrix_storage_service.h"
 
-
 namespace zectrix::terminal {
 
 constexpr int64_t kHomeIdleTimeoutUs = 15000000;
@@ -12,7 +11,7 @@ constexpr int64_t kHomeIdleTimeoutUs = 15000000;
 class TerminalApp::LauncherApplication final : public sdk::Application {
 public:
     explicit LauncherApplication(TerminalApp& owner)
-        : owner_(&owner), controller_(owner.applications_.menu_size(), owner.launcher_selection_) {}
+        : owner_(&owner), controller_(owner.applications_) {}
 
     sdk::Status Enter(sdk::ApplicationContext& context) override {
         uint32_t stored = zectrix::app::kAutoShowcaseDefault;
@@ -33,63 +32,70 @@ public:
                 }
             }
         }
+        reading_ = owner_->ReadReadingOverview();
         last_input_us_ = owner_->time_->MonotonicMicroseconds();
-        return context.RequestRender({0, 0, 400, 300},
-                                     sdk::RenderIntent::Quality)
-                   ? sdk::Status::Ok : sdk::Status::InternalError;
+        const auto result = controller_.Start(owner_->launcher_selection_);
+        return sdk::IsOk(result) ? Apply(controller_.Tick(), context) : result;
     }
     sdk::Status HandleEvent(const sdk::InputEvent& event,
                           sdk::ApplicationContext& context) override {
         last_input_us_ = owner_->time_->MonotonicMicroseconds();
-        const zectrix::app::LauncherResult result = controller_.Handle(event);
-        using Decision = zectrix::app::LauncherDecision;
-        const char* target = nullptr;
-        switch (result.decision) {
-            case Decision::RenderFast:
-                context.RequestRender({0, 24, 400, 276}, sdk::RenderIntent::Fast);
-                break;
-            case Decision::OpenSelected:
-                if (const auto* entry = owner_->applications_.MenuAt(result.selected)) target = entry->id;
-                break;
-            case Decision::Shutdown:
-                context.RequestCommand(sdk::AppCommand::Shutdown());
-                break;
-            case Decision::None: break;
-        }
-        if (target) {
-            sdk::AppCommand open;
-            if (!sdk::AppCommand::Open(target, &open)) return sdk::Status::InvalidState;
-            context.RequestCommand(open);
-        }
-        return sdk::Status::Ok;
+        return Apply(controller_.Handle(event), context);
     }
     sdk::Status HandleIdle(sdk::ApplicationContext& context) override {
         const int64_t now = owner_->time_->MonotonicMicroseconds();
-        if (auto_showcase_ && now - last_input_us_ >= kHomeIdleTimeoutUs) {
+        if (controller_.scene() == app::LauncherScene::Home &&
+            auto_showcase_ && now - last_input_us_ >= kHomeIdleTimeoutUs) {
             last_input_us_ = now;
-            sdk::AppCommand open;
-            if (sdk::AppCommand::Open("showcase", &open)) context.RequestCommand(open);
+            return Apply({app::LauncherDecision::OpenSelected, "showcase"}, context);
         }
-        return sdk::Status::Ok;
+        if (controller_.scene() == app::LauncherScene::Home &&
+            app::LauncherDateChanged(clock_, owner_->time_->Now())) controller_.Invalidate();
+        return Apply(controller_.Tick(), context);
     }
     sdk::Status Render(const sdk::RenderRequest& request) override {
-        std::array<const char*, app::ApplicationCatalog::kCapacity> labels{};
-        const auto count = owner_->applications_.menu_size();
-        for (std::size_t i = 0; i < count; ++i) labels[i] = owner_->applications_.MenuAt(i)->display_name;
-        return ToSdkStatus(owner_->ui_.ShowMenu(
-            "ZECTRIX | LAUNCHER", labels.data(), count,
-            controller_.selected(),
-            "UP/DOWN Move  OK Select  Hold DOWN Off",
-            request.intent == sdk::RenderIntent::Quality));
+        clock_ = owner_->time_->Now();
+        const auto result = owner_->ui_.ShowLauncher(controller_, clock_, reading_,
+            request.intent == sdk::RenderIntent::Quality);
+        controller_.Presented(result == ESP_OK);
+        return ToSdkStatus(result);
     }
     sdk::Status Exit() override {
-        owner_->launcher_selection_ = controller_.selected();
+        owner_->launcher_selection_ = controller_.selection();
+        controller_.Stop();
         return sdk::Status::Ok;
     }
 
 private:
+    sdk::Status Apply(app::LauncherResult result, sdk::ApplicationContext& context) {
+        using Decision = app::LauncherDecision;
+        sdk::AppCommand command;
+        switch (result.decision) {
+            case Decision::RenderFast:
+            case Decision::RenderQuality:
+                return context.RequestRender({0, 24, 400, 276}, result.decision == Decision::RenderQuality
+                    ? sdk::RenderIntent::Quality : sdk::RenderIntent::Fast)
+                    ? sdk::Status::Ok : sdk::Status::InternalError;
+            case Decision::OpenSelected:
+            case Decision::ContinueReading:
+                if (!sdk::AppCommand::Open(result.target, &command)) return sdk::Status::InvalidState;
+                break;
+            case Decision::Shutdown:
+                command = sdk::AppCommand::Shutdown();
+                break;
+            case Decision::None: return sdk::Status::Ok;
+        }
+        const auto submitted = context.RequestCommand(command);
+        const bool accepted = submitted == sdk::SubmitResult::Accepted || submitted == sdk::SubmitResult::Superseded;
+#if CONFIG_ZECTRIX_ENABLE_READER
+        if (accepted) owner_->reader_continue_requested_ = result.decision == Decision::ContinueReading;
+#endif
+        return accepted ? sdk::Status::Ok : sdk::Status::InvalidState;
+    }
     TerminalApp* owner_;
     zectrix::app::LauncherController controller_;
+    app::ReadingOverview reading_{};
+    time::ClockSnapshot clock_{};
     bool auto_showcase_ = false;
     int64_t last_input_us_ = 0;
 };

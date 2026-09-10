@@ -30,6 +30,7 @@ reader_dir="$root_dir/components/zectrix_reader"
   "$root_dir/components/zectrix_epd/zectrix_epd.cc" \
   "$root_dir/components/zectrix_demo_ui/zectrix_canvas.cc" \
   "$root_dir/components/zectrix_demo_ui/zectrix_demo_ui.cc" \
+  "$root_dir/components/zectrix_demo_ui/zectrix_launcher_ui.cc" \
   "$root_dir/components/zectrix_demo_ui/zectrix_view_port.cc" \
   "$root_dir/components/zectrix_demo_ui/zectrix_status_bar.cc" \
   "$root_dir/components/zectrix_demo_ui/zectrix_reader_ui.cc" \
@@ -37,6 +38,7 @@ reader_dir="$root_dir/components/zectrix_reader"
   "$root_dir/components/zectrix_demo_ui/zectrix_unicode_text.cc" \
   "$root_dir/components/zectrix_demo_ui/zectrix_sleep_ui.cc" \
   "$root_dir/components/zectrix_app/zectrix_scene_manager.cc" \
+  "$root_dir/components/zectrix_app/zectrix_launcher_controller.cc" \
   "$root_dir/components/zectrix_app/zectrix_reader_controller.cc" \
   "$root_dir/components/zectrix_app/zectrix_book_transfer_controller.cc" \
   "$root_dir/components/zectrix_app/zectrix_sleep_cover.cc" \

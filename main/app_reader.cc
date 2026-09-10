@@ -12,10 +12,11 @@ public:
     explicit ReaderApplication(TerminalApp& owner)
         : owner_(&owner), library_(*owner.storage_),
           store_(*owner.storage_, owner.connectivity_), bookmarks_(store_),
-          controller_(library_, bookmarks_, owner.reader_selection_) {}
+          controller_(library_, bookmarks_, owner.reader_selection_),
+          continue_reading_(owner.reader_continue_requested_) {}
 
     sdk::Status Enter(sdk::ApplicationContext& context) override {
-        const auto result = controller_.Start();
+        const auto result = controller_.Start(continue_reading_);
         if (!sdk::IsOk(result)) return result;
         owner_->LogHeap("reader active");
         return context.RequestRender({0, 24, 400, 276}, sdk::RenderIntent::Quality)
@@ -62,10 +63,14 @@ private:
     zectrix::reader::PlatformBookmarkStore store_;
     zectrix::reader::Bookmarks bookmarks_;
     zectrix::app::ReaderController controller_;
+    bool continue_reading_ = false;
 };
 
 sdk::Status TerminalApp::CreateReader(TerminalApp& owner, sdk::Application** output) {
-    return CreateApplication<ReaderApplication>(owner, output);
+    const auto result = CreateApplication<ReaderApplication>(owner, output);
+    // The candidate owns the launch mode; failed allocation also consumes it.
+    owner.reader_continue_requested_ = false;
+    return result;
 }
 
 }  // namespace zectrix::terminal

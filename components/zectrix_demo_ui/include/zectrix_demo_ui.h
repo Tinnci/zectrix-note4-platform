@@ -17,6 +17,7 @@
 #include "zectrix_view_port.h"
 
 namespace zectrix::app { class ReaderController; }
+namespace zectrix::app { class LauncherController; struct ReadingOverview; }
 namespace zectrix::app { struct SleepCoverSnapshot; enum class SleepCoverStyle : uint8_t; }
 namespace zectrix::connectivity { struct BookTransferSnapshot; }
 
@@ -37,6 +38,9 @@ public:
                              const uint8_t* pixels, size_t size);
 
     esp_err_t ShowSplash();
+    esp_err_t ShowLauncher(const zectrix::app::LauncherController& launcher,
+                           const zectrix::time::ClockSnapshot& clock,
+                           const zectrix::app::ReadingOverview& reading, bool full_refresh);
     esp_err_t ShowMenu(const char* title, const char* const* items,
                        size_t count, size_t selected, const char* footer,
                        bool full_refresh);
@@ -87,6 +91,8 @@ private:
     void BeginContent();
     void OverlayGrayStatus();
     void DrawFrame(const char* title, const char* footer);
+    static void DrawFittedText(ZectrixCanvas& canvas, int x, int y, const char* text,
+                               int max_width, bool inverted = false);
     void DrawTestStrip(
         ZectrixTestId current,
         const std::array<ZectrixTestState,

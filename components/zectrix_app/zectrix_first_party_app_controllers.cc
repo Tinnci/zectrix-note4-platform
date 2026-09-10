@@ -2,28 +2,6 @@
 
 namespace zectrix::app {
 
-LauncherResult LauncherController::Handle(const sdk::InputEvent& event) {
-    if (event.button == sdk::Button::Down &&
-        event.action == sdk::InputAction::LongPress) {
-        return {LauncherDecision::Shutdown, selected_};
-    }
-    if (item_count_ == 0 || event.action != sdk::InputAction::Click) {
-        return {LauncherDecision::None, selected_};
-    }
-    if (event.button == sdk::Button::Up) {
-        selected_ = (selected_ + item_count_ - 1) % item_count_;
-        return {LauncherDecision::RenderFast, selected_};
-    }
-    if (event.button == sdk::Button::Down) {
-        selected_ = (selected_ + 1) % item_count_;
-        return {LauncherDecision::RenderFast, selected_};
-    }
-    if (event.button == sdk::Button::Ok) {
-        return {LauncherDecision::OpenSelected, selected_};
-    }
-    return {LauncherDecision::None, selected_};
-}
-
 ConnectivityDecision HandleConnectivityInput(const sdk::InputEvent& event) {
     if (event.button == sdk::Button::Down &&
         event.action == sdk::InputAction::LongPress) {

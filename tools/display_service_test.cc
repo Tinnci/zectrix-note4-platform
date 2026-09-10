@@ -3,6 +3,8 @@
 #include "zectrix_book_transfer_controller.h"
 #include "zectrix_sleep_cover.h"
 #include "zectrix_reader_controller.h"
+#include "zectrix_launcher_controller.h"
+#include "zectrix_reading_overview.h"
 #include "zectrix_epd.h"
 
 #include <algorithm>
@@ -629,6 +631,158 @@ void SavePreview(const ZectrixCanvas& canvas, const char* name) {
     assert(std::fclose(output) == 0);
 }
 
+void TestLauncherComposition() {
+    using namespace zectrix::app;
+    using namespace zectrix::sdk;
+    using Icon = ApplicationIcon;
+    Reset();
+    auto service = CreateService();
+    ZectrixDemoUi ui(service.get());
+    class Factory final : public ApplicationFactory {
+        Status Create(const ApplicationRegistry&, Application**) override {
+            assert(false);
+            return Status::Unsupported;
+        }
+    } factory;
+    ApplicationCatalog full;
+    assert(full.Add("launcher", "Launcher", factory));
+    assert(full.Add("reader", "BOOK READER", factory, {Icon::Book, true}));
+    assert(full.Add("book-transfer", "SEND BOOKS", factory, {Icon::Transfer, true}));
+    assert(full.Add("clock", "CLOCK", factory, {Icon::Clock, true}));
+    assert(full.Add("sleep-cover", "SLEEP COVER", factory, {Icon::Sleep, true}));
+    assert(full.Add("settings", "SETTINGS", factory, {Icon::Settings, true}));
+    const char* tools[] = {"CONNECTIVITY", "AUTO SHOWCASE", "DISPLAY GALLERY",
+        "HARDWARE TESTS", "DEVICE INFO", "ABOUT & LICENSE"};
+    for (const auto* label : tools) assert(full.Add(label, label, factory));
+    LauncherController launcher(full);
+    assert(launcher.Start() == Status::Ok);
+    assert(launcher.Tick().decision == LauncherDecision::RenderQuality);
+    const InputEvent down{Button::Down, InputAction::Click};
+    const InputEvent ok{Button::Ok, InputAction::Click};
+    const InputEvent back{Button::Ok, InputAction::LongPress};
+    zectrix::time::ClockSnapshot clock{{2026, 9, 10, 4, 12, 34, 0}, zectrix::time::ClockSource::Rtc};
+    zectrix::ui::StatusBarState status;
+    status.time_valid = status.battery_valid = true;
+    status.hour = 12;
+    status.minute = 34;
+    status.battery_percent = 82;
+    status.ble = zectrix::ui::RadioIndicator::Connected;
+    ui.UpdateStatus(status);
+    ReadingOverview reading;
+    reading.state = ReadingOverview::State::Saved;
+    std::strcpy(reading.book_id.data(), "风从海上来 - A Quiet Journey.epub");
+    reading.progress_per_mille = 427;
+    const auto allocated = heap_allocations;
+    assert(ui.ShowLauncher(launcher, clock, reading, true) == ESP_OK);
+    assert(heap_allocations == allocated && Inspect(*service).refresh_count == 1);
+    SavePreview(ui.canvas(), "home-full");
+
+    Frame before;
+    std::memcpy(before.data(), ui.canvas().data(), before.size());
+    assert(launcher.Handle(down).decision == LauncherDecision::RenderFast);
+    assert(ui.ShowLauncher(launcher, clock, reading, false) == ESP_OK);
+    assert(std::memcmp(before.data(), ui.canvas().data(), 24 * 50) == 0);
+    SavePreview(ui.canvas(), "home-library-selected");
+    std::memcpy(before.data(), ui.canvas().data(), before.size());
+    ClearTraffic();
+    assert(launcher.Handle(down).decision == LauncherDecision::RenderFast);
+    assert(ui.ShowLauncher(launcher, clock, reading, false) == ESP_OK);
+    assert(std::memcmp(before.data(), ui.canvas().data(), 138 * 50) == 0);
+    const auto dirty = ReferenceDirty(before, {0, 0, 400, 300}, ui.canvas().data());
+    assert(dirty.y >= 138 && dirty.y + dirty.height <= 176);
+    const auto bytes = CheckPartial(before, {0, 0, 400, 300}, ui.canvas().data());
+    std::printf("MEASURE: home tile focus RAM payload=%zu bytes.\n", bytes);
+    SavePreview(ui.canvas(), "home-transfer-selected");
+    ClearTraffic();
+    assert(launcher.Tick().decision == LauncherDecision::None);
+    assert(ui.ShowLauncher(launcher, clock, reading, false) == ESP_OK && packets.empty());
+
+    std::memcpy(before.data(), ui.canvas().data(), before.size());
+    ++status.minute;
+    ui.UpdateStatus(status);
+    assert(ui.RefreshPending() == ESP_OK);
+    assert(std::memcmp(before.data() + 1200, ui.canvas().data() + 1200, before.size() - 1200) == 0);
+    const auto refreshes = Inspect(*service).refresh_count;
+    ++status.minute;
+    ui.UpdateStatus(status);
+    launcher.Handle(down);
+    assert(ui.ShowLauncher(launcher, clock, reading, false) == ESP_OK);
+    assert(ui.RefreshPending() == ESP_OK && Inspect(*service).refresh_count == refreshes + 1);
+
+    launcher.Handle(down);
+    fail_command = 0xe9;
+    assert(ui.ShowLauncher(launcher, clock, reading, false) == ESP_FAIL);
+    launcher.Presented(false);
+    assert(launcher.Tick().decision == LauncherDecision::RenderQuality);
+    ClearTraffic();
+    assert(ui.ShowLauncher(launcher, clock, reading, true) == ESP_OK);
+    launcher.Presented(true);
+    std::memcpy(before.data(), ui.canvas().data(), before.size());
+    CheckFull(before);
+    assert(launcher.Tick().decision == LauncherDecision::None);
+
+    while (launcher.selected() + 1 < launcher.count()) launcher.Handle(down);
+    assert(launcher.Handle(ok).decision == LauncherDecision::RenderQuality);
+    assert(ui.ShowLauncher(launcher, clock, reading, true) == ESP_OK);
+    SavePreview(ui.canvas(), "home-tools");
+    assert(launcher.Handle(back).decision == LauncherDecision::RenderQuality);
+    assert(ui.ShowLauncher(launcher, clock, reading, true) == ESP_OK);
+    SavePreview(ui.canvas(), "home-tools-selected");
+    launcher.Handle(down);
+    for (const auto state : {ReadingOverview::State::Empty, ReadingOverview::State::Error}) {
+        reading.state = state;
+        assert(ui.ShowLauncher(launcher, clock, reading, true) == ESP_OK);
+        SavePreview(ui.canvas(), state == ReadingOverview::State::Empty ? "home-empty" : "home-history-error");
+    }
+    reading.state = ReadingOverview::State::Saved;
+    reading.book_id.fill('W');
+    reading.progress_per_mille = UINT16_MAX;
+    assert(ui.ShowLauncher(launcher, clock, reading, true) == ESP_OK);
+    SavePreview(ui.canvas(), "home-long-title");
+    launcher.Stop();
+    assert(ui.ShowLauncher(launcher, clock, reading, true) == ESP_ERR_INVALID_STATE);
+
+    ApplicationCatalog minimal;
+    assert(minimal.Add("launcher", "Launcher", factory));
+    assert(minimal.Add("clock", "CLOCK", factory, {Icon::Clock, true}));
+    assert(minimal.Add("sleep-cover", "SLEEP COVER", factory, {Icon::Sleep, true}));
+    assert(minimal.Add("settings", "SETTINGS", factory, {Icon::Settings, true}));
+    for (std::size_t i = 1; i < std::size(tools); ++i) assert(minimal.Add(tools[i], tools[i], factory));
+    LauncherController compact(minimal);
+    assert(compact.Start() == Status::Ok);
+    reading = {};
+    status.ble = zectrix::ui::RadioIndicator::Off;
+    ui.UpdateStatus(status);
+    assert(ui.ShowLauncher(compact, clock, reading, true) == ESP_OK);
+    SavePreview(ui.canvas(), "home-minimal");
+    status.time_valid = status.battery_valid = false;
+    ui.UpdateStatus(status);
+    assert(ui.ShowLauncher(compact, {}, reading, true) == ESP_OK);
+    SavePreview(ui.canvas(), "home-minimal-unset");
+
+    ApplicationCatalog extended;
+    assert(extended.Add("launcher", "Launcher", factory));
+    std::array<std::array<char, 24>, ApplicationCatalog::kCapacity - 1> names{};
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        std::snprintf(names[i].data(), names[i].size(), "EXTRA APPLICATION %u", static_cast<unsigned>(i + 1));
+        assert(extended.Add(names[i].data(), names[i].data(), factory, {Icon::App, true}));
+    }
+    LauncherController pages(extended);
+    assert(pages.Start() == Status::Ok);
+    assert(ui.ShowLauncher(pages, clock, reading, true) == ESP_OK);
+    SavePreview(ui.canvas(), "home-page-first");
+    pages.Handle({Button::Up, InputAction::Click});
+    assert(pages.tile_page() == 2);
+    assert(ui.ShowLauncher(pages, clock, reading, true) == ESP_OK);
+    SavePreview(ui.canvas(), "home-page-last");
+
+    ApplicationCatalog empty;
+    LauncherController no_apps(empty);
+    assert(no_apps.Start() == Status::Ok);
+    assert(ui.ShowLauncher(no_apps, {}, reading, true) == ESP_OK);
+    SavePreview(ui.canvas(), "home-no-apps");
+}
+
 void TestViewPorts() {
     using zectrix::ui::ViewPortScheduler;
     ViewPortScheduler ports;
@@ -1160,6 +1314,7 @@ int main() {
     TestShutdownReleasesSpi();
     TestUiTraffic();
     TestViewPorts();
+    TestLauncherComposition();
     TestStatusAndImageComposition();
     TestReaderComposition();
     TestBookTransferComposition();

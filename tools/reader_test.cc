@@ -297,18 +297,22 @@ public:
     explicit TestLibrary(Bytes& text, Bytes& epub) : sources{{&text, &epub}} {}
     std::array<Bytes*, 2> sources;
     bool opened = false;
-    Result Refresh() override { Close(); return Result::Ok; }
-    std::size_t count() const override { return sources.size(); }
+    bool fail_open = false;
+    uint32_t listed_size = 0;
+    Result refresh_result = Result::Ok;
+    Result Refresh() override { Close(); return refresh_result; }
+    std::size_t count() const override { return refresh_result == Result::Ok ? sources.size() : 0; }
     bool truncated() const override { return false; }
     BookInfo Get(std::size_t index) const override {
         BookInfo info;
         assert(index < count());
         std::strcpy(info.id.data(), index ? "other.epub" : "小说.txt");
-        info.bytes = sources[index]->Size();
+        info.bytes = listed_size ? listed_size : sources[index]->Size();
         info.format = index ? Format::Epub : Format::Text;
         return info;
     }
     Result Open(std::size_t index, Source** source) override {
+        if (fail_open) { *source = nullptr; return Result::IoError; }
         *source = sources[index]; opened = true; return Result::Ok;
     }
     void Close() override { opened = false; }
@@ -425,6 +429,127 @@ void ControllerTests(const std::string& dir) {
     assert(restarted.Find("小说.txt", source.Size())->position == second);
     reboot.Stop();
 }
+
+void ContinueReadingTests(const std::string& dir) {
+    using namespace zectrix::app;
+    using zectrix::sdk::Button;
+    using zectrix::sdk::InputAction;
+    const zectrix::sdk::InputEvent back{Button::Ok, InputAction::LongPress};
+    const zectrix::sdk::InputEvent ok{Button::Ok, InputAction::Click};
+    Bytes text(std::string(12000, 'w'));
+    Bytes epub(ReadFile(dir + "/long-hidden.epub"));
+    TestLibrary library(text, epub);
+    Store store;
+    Bookmarks marks(store);
+    assert(marks.Load() == Result::Ok);
+    {
+        ReaderController empty(library, marks, 1);
+        assert(zectrix::sdk::IsOk(empty.Start(true)));
+        assert(empty.scene() == ReaderScene::Library && empty.selected() == 1 && !library.opened);
+    }
+    Bookmark saved;
+    saved.book_id = library.Get(0).id;
+    saved.source_bytes = text.Size();
+    saved.position.offset = 8000;
+    saved.font = FontSize::Large;
+    assert(marks.Save(saved) == Result::Ok);
+    const auto writes = store.writes;
+    {
+        // Continue chooses the latest ID, independently of the old list index.
+        Bookmarks loaded(store);
+        ReaderController resumed(library, loaded, 1);
+        assert(zectrix::sdk::IsOk(resumed.Start(true)));
+        assert(resumed.scene() == ReaderScene::Reading && resumed.selected() == 0);
+        assert(resumed.engine().page().start == saved.position && resumed.engine().page().font == saved.font);
+        resumed.Presented(false);
+        assert(store.writes == writes && *loaded.Latest() == saved);
+        assert(resumed.Tick(1) == ReaderDecision::RenderQuality);
+        resumed.Presented(true);
+        assert(loaded.Latest()->position == saved.position && store.writes == writes + 1);
+        assert(resumed.Handle(back) == ReaderDecision::RenderQuality);
+        assert(resumed.scene() == ReaderScene::Library && !library.opened);
+        assert(resumed.Handle(back) == ReaderDecision::Home);
+    }
+    {
+        Bookmarks loaded(store);
+        ReaderController manual(library, loaded, 1);
+        assert(zectrix::sdk::IsOk(manual.Start()));
+        assert(manual.scene() == ReaderScene::Library && manual.selected() == 1 && !library.opened);
+    }
+
+    for (unsigned scenario = 0; scenario < 6; ++scenario) {
+        Store unavailable_store;
+        Bookmarks unavailable_marks(unavailable_store);
+        assert(unavailable_marks.Load() == Result::Ok);
+        auto mark = saved;
+        auto expected = ReaderNotice::RecentChanged;
+        if (scenario == 0) {
+            std::strcpy(mark.book_id.data(), "deleted.txt");
+            expected = ReaderNotice::RecentUnavailable;
+        }
+        if (scenario == 1) --mark.source_bytes;
+        if (scenario == 2) library.listed_size = ++mark.source_bytes;
+        if (scenario == 3) {
+            library.fail_open = true;
+            expected = ReaderNotice::RecentUnavailable;
+        }
+        if (scenario == 4) mark.position.offset = text.Size() + 1;
+        if (scenario == 5) {
+            mark.book_id = library.Get(1).id;
+            mark.source_bytes = epub.Size();
+            mark.position.chapter = 100;
+        }
+        assert(unavailable_marks.Save(mark) == Result::Ok);
+        const auto persisted = unavailable_store.local;
+        ReaderController recent(library, unavailable_marks);
+        assert(zectrix::sdk::IsOk(recent.Start(true)));
+        for (unsigned poll = 0; recent.busy() && poll < 10000; ++poll) recent.Tick(poll);
+        assert(recent.scene() == ReaderScene::Library && recent.notice() == expected);
+        assert(!library.opened && !recent.busy() && unavailable_store.local == persisted);
+        assert(recent.Handle(back) == ReaderDecision::Home);
+        library.listed_size = 0;
+        library.fail_open = false;
+    }
+
+    {
+        Store damaged;
+        damaged.local = {99, 0, 0, 0};
+        Bookmarks history(damaged);
+        ReaderController reader(library, history);
+        assert(zectrix::sdk::IsOk(reader.Start(true)));
+        assert(reader.scene() == ReaderScene::Library && reader.notice() == ReaderNotice::HistoryUnavailable);
+        assert(reader.Handle(ok) == ReaderDecision::RenderQuality);
+        assert(reader.engine().has_page());
+        reader.Presented(true);
+        assert(reader.save_result() == Result::Invalid && damaged.local[0] == 99);
+    }
+    {
+        library.refresh_result = Result::IoError;
+        Bookmarks history(store);
+        ReaderController reader(library, history);
+        assert(zectrix::sdk::IsOk(reader.Start(true)));
+        assert(reader.scene() == ReaderScene::Library && reader.result() == Result::IoError);
+        assert(!reader.busy() && !library.opened);
+        library.refresh_result = Result::Ok;
+    }
+    {
+        Store pending_store;
+        Bookmarks history(pending_store);
+        assert(history.Load() == Result::Ok);
+        saved.book_id = library.Get(1).id;
+        saved.source_bytes = epub.Size();
+        saved.position = {};
+        assert(history.Save(saved) == Result::Ok);
+        const auto persisted = pending_store.local;
+        ReaderController reader(library, history);
+        assert(zectrix::sdk::IsOk(reader.Start(true)));
+        assert(reader.scene() == ReaderScene::Reading && reader.busy());
+        assert(reader.Handle({Button::Down, InputAction::LongPress}) == ReaderDecision::Shutdown);
+        assert(reader.Handle(back) == ReaderDecision::RenderQuality);
+        assert(reader.scene() == ReaderScene::Library && !reader.busy() && !library.opened);
+        assert(pending_store.local == persisted);
+    }
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -486,5 +611,6 @@ int main(int argc, char** argv) {
     assert(!detail::ResolvePath("", "https://example.com/book", path, sizeof(path)));
     BookmarkTests();
     ControllerTests(dir);
+    ContinueReadingTests(dir);
     TestReaderPlatform(argv[1]);
 }

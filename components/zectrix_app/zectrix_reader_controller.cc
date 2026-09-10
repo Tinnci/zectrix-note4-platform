@@ -12,12 +12,18 @@ ReaderController::ReaderController(reader::Library& library, reader::Bookmarks& 
     scenes_.SetState(Id(ReaderScene::Library), selected);
 }
 
-sdk::Status ReaderController::Start() {
+sdk::Status ReaderController::Start(bool continue_reading) {
     if (started_) return sdk::Status::InvalidState;
+    notice_ = ReaderNotice::None;
     save_result_ = bookmarks_.Load();
     if (save_result_ == Result::Ok) bookmarks_.Sync();
     const auto result = scenes_.Start(Id(ReaderScene::Library));
     started_ = sdk::IsOk(result);
+    if (started_ && continue_reading) {
+        // Resume through an event so the Library parent remains on the stack.
+        continue_requested_ = true;
+        scenes_.Dispatch({SceneEvent::Type::Tick});
+    }
     dirty_ = quality_ = false;
     return result;
 }
@@ -33,6 +39,7 @@ void ReaderController::CloseBook() {
     bookmarks_.Sync();
     applying_remote_ = false;
     opening_book_ = false;
+    resume_only_ = false;
     page_presented_ = false;
     engine_.Close();
     library_.Close();
@@ -42,6 +49,7 @@ void ReaderController::Stop() {
     if (!started_) return;
     CloseBook();
     scenes_.Stop();
+    continue_requested_ = false;
     started_ = false;
 }
 
@@ -92,13 +100,48 @@ void ReaderController::Poll() {
     }
 }
 
-void ReaderController::OpenSelected() {
+void ReaderController::ContinueReading() {
+    if (save_result_ != Result::Ok) {
+        notice_ = ReaderNotice::HistoryUnavailable;
+        return;
+    }
+    const auto* mark = bookmarks_.Latest();
+    if (!mark || result_ != Result::Ok) return;
+    for (std::size_t i = 0; i < library_.count(); ++i) {
+        const auto book = library_.Get(i);
+        if (book.id != mark->book_id) continue;
+        scenes_.SetState(Id(ReaderScene::Library), i);
+        if (book.bytes != mark->source_bytes) notice_ = ReaderNotice::RecentChanged;
+        else OpenSelected(true);
+        return;
+    }
+    notice_ = ReaderNotice::RecentUnavailable;
+}
+
+void ReaderController::OpenSelected(bool resume_only) {
+    notice_ = ReaderNotice::None;
     CloseBook();
     reader::Source* source = nullptr;
     book_ = library_.Get(selected());
     result_ = library_.Open(selected(), &source);
+    if (resume_only && (result_ != Result::Ok || !source)) {
+        notice_ = ReaderNotice::RecentUnavailable;
+        CloseBook();
+        result_ = library_.Refresh();
+        Invalidate(true);
+        return;
+    }
     if (result_ == Result::Ok && source) {
         book_.bytes = source->Size();
+        // Recheck the opened source: listing metadata can become stale.
+        if (resume_only && !bookmarks_.Find(book_.id.data(), book_.bytes)) {
+            notice_ = ReaderNotice::RecentChanged;
+            CloseBook();
+            result_ = library_.Refresh();
+            Invalidate(true);
+            return;
+        }
+        resume_only_ = resume_only;
         result_ = engine_.Open(*source, book_.format);
         opening_book_ = result_ == Result::Pending;
         if (result_ == Result::Ok) {
@@ -108,25 +151,44 @@ void ReaderController::OpenSelected() {
     } else if (result_ == Result::Ok) {
         result_ = Result::IoError;
     }
-    scenes_.Push(Id(ReaderScene::Reading));
+    if (notice_ != ReaderNotice::None) {
+        CloseBook();
+        result_ = library_.Refresh();
+        Invalidate(true);
+    } else {
+        scenes_.Push(Id(ReaderScene::Reading));
+    }
 }
 
 void ReaderController::BeginPage() {
     const auto* mark = bookmarks_.Find(book_.id.data(), book_.bytes);
     const bool resume = mark && engine_.ValidPosition(mark->position);
+    if (resume_only_ && !resume) {
+        notice_ = ReaderNotice::RecentChanged;
+        result_ = Result::Invalid;
+        return;
+    }
+    resume_only_ = false;
     result_ = engine_.Seek(resume ? mark->position : reader::Position{},
                            resume ? mark->font : reader::FontSize::Small);
 }
 
 bool ReaderController::OnEvent(const SceneEvent& event) {
     if (event.type == SceneEvent::Type::Tick) {
-        if (scene() == ReaderScene::Reading) Poll();
+        if (continue_requested_) {
+            continue_requested_ = false;
+            ContinueReading();
+        } else if (scene() == ReaderScene::Reading) {
+            Poll();
+            if (notice_ != ReaderNotice::None) scenes_.Pop();
+        }
         return true;
     }
     if (event.type == SceneEvent::Type::Back) return false;
     if (event.input.action != sdk::InputAction::Click) return false;
     const auto button = event.input.button;
     if (scene() == ReaderScene::Library) {
+        if (notice_ != ReaderNotice::None) { notice_ = ReaderNotice::None; Invalidate(); }
         if (button == sdk::Button::Ok) {
             if (library_.count()) OpenSelected();
             else { result_ = library_.Refresh(); Invalidate(); }
