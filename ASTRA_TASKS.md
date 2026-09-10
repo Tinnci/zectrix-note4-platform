@@ -221,7 +221,10 @@ Each iteration picks the top unfinished task, implements production code, verifi
 
 ## GitHub Project & Milestone Governance (项目治理与远程同步)
 
-- [ ] **G1.1: GitHub Issues 与 Milestones 状态审查与同步治理 (GitHub Issues & Milestones Triage)**
+- [x] **G1.1: GitHub Issues 与 Milestones 状态审查与同步治理 (GitHub Issues & Milestones Triage)**
   - 使用 `gh` CLI 检查并分析远程 GitHub 仓库的现有 Issue 与 Milestone 状态。
   - 根据工程实际已交付完成的 Milestone（C1 互联平台、D1 维护命令行、M5 OTA更新、R1 墨水屏进阶、L1 实用启动器与阅读器、S1 模块化解耦等），系统性审查关联的 Issue，更新交付说明并规范关闭已解决的问题。
   - 同步创建或更新 GitHub Milestones（如 L1, S1, E1），对齐远程仓库的项目进度看板，确保 GitHub 状态与本地工程契约保持一致。
+  - Reviewed 47 existing Issues and eight Milestones with gh; added delivery/evidence updates to all 16 open Issues. Closed the completed M5 architecture decision #7 and recorded completed R1/Q1/L1/S1 delivery in #59–#62 and their Milestones.
+  - Resolved the R1 research/display naming collision, added E1 tracking and updated PR #54 to its actual E1.1–E1.7 scope. Preserved the new E1.8 plan in #58 and retained unfinished C1/D1 implementation and physical acceptance work. Existing OTA and device-measurement follow-ups are explicit in #55–#57.
+  - Verified all 34 Host targets and read back GitHub states, assignments and PR metadata. Updated README/roadmap and recorded the scope mapping in [docs/GITHUB_TRIAGE.md](docs/GITHUB_TRIAGE.md). No firmware or hardware change was needed for this governance iteration.

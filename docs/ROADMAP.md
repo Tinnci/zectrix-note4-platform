@@ -4,6 +4,11 @@ The project uses stage gates. A later milestone can start only when its stated
 dependencies are satisfied. Advanced E-Ink quality research runs in parallel
 and does not block unrelated input or power work.
 
+[G1.1 triage](GITHUB_TRIAGE.md) maps the autonomous backlog to GitHub Issues
+and Milestones. C1 and D1 use different subtask numbering in the two systems.
+Completed software slices do not close an older Issue whose remaining command
+or physical acceptance work is still outstanding.
+
 ## M1 — Reproducible reference baseline
 
 Goal: reproduce the upstream hardware demo without architectural changes.
@@ -60,12 +65,15 @@ unified software and hardware gate. No binary ABI is promised.
 
 Goal: select a safe update and partition layout from measured requirements.
 
-Status: In progress. M5.1 implements A/B partition validation, native OTA
-rollback and a hardware watchdog for unconfirmed startup. The owner confirms
+Status: Architecture and M5.1/M5.2 implementation complete. M5.1 implements
+A/B partition validation, native OTA rollback and a hardware watchdog for
+unconfirmed startup. The owner confirms
 a trial after platform initialization and the first launcher render. See
 [ADR-0005](adr/0005-ab-ota-boot-confirmation.md). M5.2 adds streamed CRC-32 and
 header verification, bounded native image validation, flash readback and boot
-selection. Update delivery and hardware fault injection remain open.
+selection. The measured architecture decision in GitHub #7 is resolved.
+Trusted update delivery and hardware fault injection remain explicit
+[follow-up work](GITHUB_TRIAGE.md#remaining-work).
 
 - Measure maximum firmware, assets and user-data requirements.
 - Select an A/B OTA, rollback and recovery design.
@@ -79,11 +87,14 @@ recovery guarantees.
 Goal: add a BLE-first companion channel and an on-demand Wi-Fi data path
 without exposing radio or RTOS mechanisms to applications.
 
-Status: In progress. This milestone is independent of M5 and R1. The protocol,
+Status: Implementation delivered; physical qualification remains open. This
+milestone is independent of M5 and dynamic application research. The protocol,
 durable synchronization, policy, secure BLE/Android path, NFC-assisted
-enrollment and controlled phone HTTPS resource vertical slice are implemented;
-the transport-neutral direct Wi-Fi burst state machine is host-qualified. Its
-ESP-IDF driver, integration and hardware exit gates stay open.
+enrollment, controlled phone HTTPS resource path, production ESP-IDF Wi-Fi
+driver and direct HTTPS escalation are implemented. Q1 adds callback/cleanup
+regressions and E1.5 adds Wi-Fi/BLE arbitration. GitHub #34–#39 and #48 retain
+their specified Android/Note4 and RF/power evidence requirements. #29 and #38
+remain open until their dependencies and end-to-end evidence are complete.
 
 - Use ESP-NimBLE for a Note4 peripheral and an Android central.
 - Carry a versioned companion protocol over two transport characteristics.
@@ -108,12 +119,16 @@ the affected gate and Issue open.
 Goal: provide a bounded USB maintenance interface without bypassing platform
 ownership, application lifecycle or local security policy.
 
-Status: In progress. This milestone can develop beside C1. D1.1 USB Serial/JTAG
+Status: Partially implemented against the broader GitHub scope. This milestone
+can develop beside C1. The backlog's D1.1 USB Serial/JTAG
 sessions and D1.2 owner-dispatched system/heap/task/uptime/display diagnostics
 and bounded log observation are implemented. D1.3 adds an interactive host
-simulator with terminal, pipe and reconnect integration tests. Input observation
-and real USB qualification remain open. Mutating connectivity commands remain
-blocked by the applicable C1 authorization gate.
+simulator with terminal, pipe and reconnect integration tests. Q1 hardens USB
+reconnect and shutdown. `power status`, `time get`, `connectivity status`,
+`app list`, `app current`, `input watch` and confirmed mutations remain
+unimplemented in the production command table. Real USB transcripts remain
+required by #42–#47. Mutating connectivity commands retain the applicable C1
+authorization requirements. See the [scope mapping](GITHUB_TRIAGE.md#issue-decisions).
 
 - Use a static hierarchical command tree and bounded parser.
 - Keep terminal work in the CLI task and execute platform operations through a
@@ -129,13 +144,17 @@ tests without bypassing resource ownership.
 
 ## R1 — E-paper refresh optimization
 
-Status: In progress. R1.1 implements full-frame and packed-patch comparison,
-minimal dirty bounds and unchanged-frame suppression using the existing
-driver shadow. R1.2 adds actual black/white transition counts and adaptive
+Status: R1.1/R1.2 software delivery complete. R1.1 implements full-frame and
+packed-patch comparison, minimal dirty bounds and unchanged-frame suppression
+using the existing driver shadow. R1.2 adds actual black/white transition counts and adaptive
 cleanup: at least 25% changed pixels in one update, or 50% accumulated across
 partial updates including the pending frame, selects the existing full OTP
 path. The maximum remains eight partial refreshes. Physical panel
 qualification and threshold calibration remain open.
+
+The GitHub milestone previously named R1 referred to dynamic application
+research. G1.1 preserves it as **Research — Dynamic application runtime** and
+creates a separate R1 milestone for this delivered refresh implementation.
 
 The production driver, display service and demo UI pass the Host suite,
 AddressSanitizer/UndefinedBehaviorSanitizer and the ESP32-S3 build. The Host
@@ -153,9 +172,13 @@ footprint assets change 2,312 pixels in total, below both pixel thresholds.
 
 ## Q1 — Contract regression and concurrency audits
 
+Status: Q1.1–Q1.3 complete. The current Host suite has 34 targets. The 26-target
+counts below describe the original Q1 verification.
+
 Q1.1 adds real USB and ESP Wi-Fi driver execution to the existing Host targets.
-The suite contains 26 targets covering application/SDK boundaries, platform
-services, connectivity and sync, CLI, display and OTA behavior. The USB stop
+At Q1.1 delivery the suite contained 26 targets covering application/SDK
+boundaries, platform services, connectivity and sync, CLI, display and OTA
+behavior. The USB stop
 regression reproduced a notification sent to an already exited worker. Stop
 now waits on the existing completion semaphore while the worker observes its
 bounded poll interval.
@@ -199,6 +222,38 @@ build and the ESP32-S3 build pass. CLI and sync targets also pass
 AddressSanitizer and UndefinedBehaviorSanitizer. The contracts record the
 upstream references and tested behavior; real USB and BLE qualification
 remains hardware work.
+
+## L1 — Practical launcher and reader
+
+Status: L1.1–L1.4 implemented and recorded in the L1 GitHub milestone.
+The shared status bar and private SceneManager/ViewPort flow support streamed
+TXT/EPUB reading, committed bookmarks, local Wi-Fi book management and static
+sleep covers. See [Reader](READER.md), [Send Books](BOOK_TRANSFER.md) and
+[Sleep Cover](SLEEP_COVER.md). Host, firmware and boot-smoke evidence is recorded
+in those documents. Physical reading/transfer controls, sleep/wake and current
+measurements remain tracked follow-ups.
+
+## S1 — Modular platform and build profiles
+
+Status: S1.1–S1.4 implemented. The typed service registry, Kconfig selection and
+conditional application catalog support Full and Minimal firmware. Both profiles
+passed the recorded flash/boot smokes. [Modular builds](MODULAR_BUILD.md) and
+[RTC ownership](TIME.md) document the results and limits. Physical backup-supply
+retention and standby current remain follow-up measurements.
+
+## E1 — Daily-use UI and host communication
+
+Status: E1.1–E1.7 implemented in [PR #54](https://github.com/Tinnci/zectrix-note4-platform/pull/54),
+pending integration into main at the G1.1 review. These iterations deliver the
+firmware study, Home dashboard, responsive display scheduling, unified navigation,
+radio arbitration, visual refinement and system Chinese/English support.
+See [Home](HOME.md), [navigation](NAVIGATION.md), [radio arbitration](RADIO_ARBITER.md)
+and [localization](LOCALIZATION.md) for implementation and verification.
+
+E1.8 remains planned. It explores host-device USB communication, human terminal
+and bulk-data sessions, filesystem ownership and coordinated device UI. The
+protocol and transport choices remain open architectural questions in
+`ASTRA_TASKS.md`; this review does not select or implement them.
 
 ## Deferred research
 
