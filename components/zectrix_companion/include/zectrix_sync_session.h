@@ -35,7 +35,9 @@ public:
                      uint32_t last_incoming_sequence = 0);
     void Disconnect();
     bool Receive(const FrameView& frame);
-    void Poll(SyncFrameSender& sender, uint32_t& next_sequence,
+    // Returns true when a new durable frame is admitted, even if TX is busy.
+    // Pausing admission preserves replies, retries and the in-flight frame.
+    bool Poll(SyncFrameSender& sender, uint32_t& next_sequence,
               uint32_t now_ms, bool allow_new_state = true);
     uint32_t NextWakeMs(uint32_t now_ms, bool allow_new_state = true) const;
     bool Converged() const;

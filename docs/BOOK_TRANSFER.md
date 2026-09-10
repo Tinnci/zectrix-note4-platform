@@ -39,6 +39,12 @@ The completed-session Reader action replaces Send Books after its exit cleanup.
 Leaving Library returns to the original Home focus without restarting the old
 transfer session. See [NAVIGATION.md](NAVIGATION.md) for shared controls.
 
+Companion BLE synchronization remains available during transfer. The
+[radio arbiter](RADIO_ARBITER.md) spaces new outbound durable frames by 250 ms
+during active Wi-Fi work, while control replies and retries continue. Normal
+sync cadence returns after 500 ms of HTTP inactivity or immediately after Wi-Fi
+is released. STA modem sleep and automatic session shutdown limit radio use.
+
 ## Session and storage limits
 
 The hotspot uses WPA2 and accepts up to two clients. Each session has a new

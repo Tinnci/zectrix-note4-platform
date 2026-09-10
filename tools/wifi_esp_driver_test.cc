@@ -40,6 +40,8 @@ esp_netif_t* station_netif = nullptr;
 bool wifi_initialized = false, wifi_started = false, default_handlers = false;
 bool fail_init = false, fail_stop = false, fail_enqueue = false;
 bool fail_deinit = false;
+bool fail_power_save = false;
+unsigned power_save_calls = 0;
 esp_event_base_t fail_unregister_base = nullptr;
 std::vector<std::string> cleanup;
 WifiDriverResult http_result = WifiDriverResult::kPending;
@@ -61,12 +63,15 @@ void Reset() {
     assert(handlers.empty() && tcp_calls.empty() && dns_calls.empty());
     assert(netifs == 0 && tls_objects == 0 && station_netif == nullptr);
     assert(!wifi_initialized && !wifi_started && !default_handlers && !http_active);
+    assert(!EspWifiBackendDriver::RadioClaimed());
     unregister_entered = false;
     fail_init = fail_stop = fail_enqueue = false;
     register_calls = fail_register_at = connect_calls = 0;
     lookups = 0;
     dns_result = ERR_INPROGRESS;
     fail_deinit = false;
+    fail_power_save = false;
+    power_save_calls = 0;
     fail_unregister_base = nullptr;
     http_result = WifiDriverResult::kPending;
     cleanup.clear();
@@ -122,23 +127,28 @@ void CompleteDns(bool success = true) {
 }
 
 void TestExclusiveClaimAndStartupFailure() {
-    for (unsigned failure = 0; failure < 3; ++failure) {
+    for (unsigned failure = 0; failure < 4; ++failure) {
         Reset();
         EspWifiBackendDriver first, second;
         fail_init = failure == 1;
         fail_register_at = failure == 2 ? 2 : 0;
+        fail_power_save = failure == 3;
         assert(first.StartStation(Credentials()) == WifiDriverResult::kPending);
+        assert(EspWifiBackendDriver::RadioClaimed());
         assert(second.StartScan() == WifiDriverResult::kUnavailable);
         if (failure != 0) assert(first.PollAssociation() == WifiDriverResult::kUnavailable);
         else {
             fail_stop = true;
             assert(first.StopStation() == WifiDriverResult::kUnavailable);
+            assert(EspWifiBackendDriver::RadioClaimed());
             assert(second.StartScan() == WifiDriverResult::kUnavailable);
             fail_stop = false;
         }
         assert(first.StopStation() == WifiDriverResult::kReady);
+        assert(!EspWifiBackendDriver::RadioClaimed());
         fail_init = false;
         fail_register_at = 0;
+        fail_power_save = false;
         assert(second.StartScan() == WifiDriverResult::kPending);
         Emit(WIFI_EVENT, WIFI_EVENT_STA_START);
         WifiScanSnapshot scan;
@@ -159,6 +169,7 @@ void TestHotspotAndLanAddress() {
     assert(driver.StartAccessPoint(credentials) == WifiDriverResult::kUnavailable);
     assert(driver.StartAccessPoint(Credentials()) == WifiDriverResult::kPending);
     assert(radio_mode == WIFI_MODE_AP);
+    assert(power_save_calls == 0 && EspWifiBackendDriver::RadioClaimed());
     assert(driver.PollAccessPoint() == WifiDriverResult::kPending);
     assert(other.StartStation(Credentials()) == WifiDriverResult::kUnavailable);
     Emit(WIFI_EVENT, WIFI_EVENT_AP_START);
@@ -174,6 +185,7 @@ void TestHotspotAndLanAddress() {
     fail_stop = false;
     assert(driver.StopStation() == WifiDriverResult::kReady);
     Connect(driver);
+    assert(power_save_calls == 1);
     assert(radio_mode == WIFI_MODE_STA && driver.LocalAddress(address.data(), address.size()));
     assert(driver.StopStation() == WifiDriverResult::kReady);
     Reset();
@@ -364,6 +376,7 @@ void TestFailedCleanupRetainsOwnership() {
         backend.Poll(9);
         WifiBackendOutcome outcome;
         assert(backend.State() == WifiBackendState::kStopFailed);
+        assert(EspWifiBackendDriver::RadioClaimed());
         assert(backend.TakeOutcome(&outcome));
         assert(outcome.operation == WifiOperationResult::kSuccess && outcome.stop == WifiStopResult::kFailure);
         assert(!backend.Begin({}, 10));
@@ -372,6 +385,7 @@ void TestFailedCleanupRetainsOwnership() {
         fail_stop = fail_deinit = false;
         fail_unregister_base = nullptr;
         assert(driver.StopStation() == WifiDriverResult::kReady);
+        assert(!EspWifiBackendDriver::RadioClaimed());
         assert(netifs == 0 && handlers.empty() && !wifi_initialized);
         assert(diagnostic.StartScan() == WifiDriverResult::kPending);
         assert(diagnostic.StopStation() == WifiDriverResult::kReady);
@@ -446,6 +460,12 @@ esp_err_t esp_wifi_deinit() {
 }
 esp_err_t esp_wifi_set_storage(int) { return ESP_OK; }
 esp_err_t esp_wifi_set_mode(int mode) { radio_mode = mode; return ESP_OK; }
+esp_err_t esp_wifi_set_ps(wifi_ps_type_t mode) {
+    assert(wifi_initialized && !wifi_started && radio_mode == WIFI_MODE_STA);
+    assert(mode == WIFI_PS_MIN_MODEM);
+    ++power_save_calls;
+    return fail_power_save ? ESP_FAIL : ESP_OK;
+}
 esp_err_t esp_wifi_set_config(int iface, const wifi_config_t* config) {
     if (iface == WIFI_IF_AP) {
         assert(config->ap.authmode == WIFI_AUTH_WPA2_PSK && config->ap.max_connection == 2);

@@ -21,6 +21,7 @@ host_tests=(
     test-pairing-bootstrap.sh
     test-platform.sh
     test-power-service.sh
+    test-radio-arbiter.sh
     test-reader.sh
     test-resource-client.sh
     test-resource-gateway.sh

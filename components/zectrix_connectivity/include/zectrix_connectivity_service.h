@@ -7,6 +7,7 @@
 #include "zectrix_resource_client.h"
 #include "zectrix_sync_engine.h"
 #include "zectrix_book_transfer.h"
+#include "zectrix_radio_arbiter.h"
 
 namespace zectrix::nfc { class NfcService; }
 namespace zectrix::storage { class StorageService; }
@@ -57,6 +58,7 @@ struct ConnectivitySnapshot {
     bool resource_busy = false;
     bool book_transfer_active = false;
     WifiBackendState wifi_state = WifiBackendState::kStopped;
+    RadioMode radio_mode = RadioMode::kCompanion;
     companion::ConnectivityDecision resource_decision{};
 };
 
