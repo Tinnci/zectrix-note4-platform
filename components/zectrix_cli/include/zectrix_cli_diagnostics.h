@@ -10,12 +10,14 @@ const CommandDescriptor* DiagnosticCommands(std::size_t* count);
 
 class DiagnosticExecutor final : public CliExecutor {
 public:
-    DiagnosticExecutor(PlatformControlDispatcher& dispatcher, LogBuffer& logs)
-        : dispatcher_(dispatcher), logs_(logs) {}
+    DiagnosticExecutor(PlatformControlDispatcher& dispatcher, LogBuffer& logs,
+                       CliBinarySession* binary = nullptr)
+        : dispatcher_(dispatcher), logs_(logs), binary_(binary) {}
 
     ExecuteStatus Execute(const Invocation&, BoundedOutput*) override;
     ExecuteStatus Poll(BoundedOutput*) override;
     void Cancel() override;
+    CliBinarySession* BinarySession() override { return binary_; }
     bool streaming() const { return active_ == Handler::kLogFollow; }
 
 private:
@@ -25,6 +27,7 @@ private:
 
     PlatformControlDispatcher& dispatcher_;
     LogBuffer& logs_;
+    CliBinarySession* binary_;
     CancellationToken cancellation_;
     ControlTicket ticket_;
     ControlResult result_;

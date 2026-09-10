@@ -37,7 +37,7 @@ class ModuleConfigTest(unittest.TestCase):
     def test_fresh_full_build(self):
         options = self.resolve()
         self.assertEqual(set(options), {"CONNECTIVITY", "WIFI", "WIFI_HTTP", "BOOK_TRANSFER",
-                                        "READER", "BOOK_STORAGE", "USB_CLI", "UPDATE", "UI_CHINESE"})
+                                        "READER", "BOOK_STORAGE", "USB_CLI", "USB_HOST", "UPDATE", "UI_CHINESE"})
         self.assertTrue(all(options.values()))
         self.assertFalse(self.config.exists())
 
@@ -90,6 +90,7 @@ class ModuleConfigTest(unittest.TestCase):
         self.assertFalse(options["READER"] or options["WIFI_HTTP"])
         self.assertTrue(options["WIFI"] and options["BOOK_TRANSFER"] and options["BOOK_STORAGE"])
         options = self.resolve("CONFIG_ZECTRIX_ENABLE_READER=n\n"
+                               "CONFIG_ZECTRIX_ENABLE_USB_HOST=n\n"
                                "CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER=n\n")
         self.assertFalse(options["BOOK_STORAGE"])
         self.assertTrue(options["WIFI_HTTP"])
@@ -127,6 +128,13 @@ class ModuleConfigTest(unittest.TestCase):
         options = self.resolve("CONFIG_ZECTRIX_ENABLE_READER=n\nCONFIG_ZECTRIX_ENABLE_UI_CHINESE=y\n")
         self.assertFalse(options["READER"])
         self.assertTrue(options["UI_CHINESE"])
+
+    def test_usb_books_without_reader_or_wifi(self):
+        options = self.resolve("CONFIG_ZECTRIX_ENABLE_READER=n\nCONFIG_ZECTRIX_ENABLE_CONNECTIVITY=n\n")
+        self.assertTrue(options["USB_HOST"] and options["BOOK_STORAGE"])
+        self.assertFalse(options["READER"] or options["BOOK_TRANSFER"])
+        options = self.resolve("CONFIG_ZECTRIX_ENABLE_USB_CLI=n\nCONFIG_ZECTRIX_ENABLE_USB_HOST=y\n")
+        self.assertFalse(options["USB_HOST"])
 
 
 if __name__ == "__main__":

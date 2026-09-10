@@ -18,6 +18,8 @@ reader_dir="$root_dir/components/zectrix_reader"
   -I"$root_dir/components/zectrix_demo_ui/include" \
   -I"$root_dir/components/zectrix_demo_ui/font" \
   -I"$root_dir/components/zectrix_app/include" \
+  -I"$root_dir/components/zectrix_host/include" \
+  -I"$root_dir/components/zectrix_storage/include" \
   -I"$root_dir/components/zectrix_board/include" \
   -I"$root_dir/components/zectrix_connectivity/include" \
   -I"$root_dir/components/zectrix_companion/include" \
@@ -36,6 +38,7 @@ reader_dir="$root_dir/components/zectrix_reader"
   "$root_dir/components/zectrix_demo_ui/zectrix_status_bar.cc" \
   "$root_dir/components/zectrix_demo_ui/zectrix_reader_ui.cc" \
   "$root_dir/components/zectrix_demo_ui/zectrix_book_transfer_ui.cc" \
+  "$root_dir/components/zectrix_demo_ui/zectrix_usb_manager_ui.cc" \
   "$root_dir/components/zectrix_demo_ui/zectrix_unicode_text.cc" \
   "$root_dir/components/zectrix_demo_ui/zectrix_sleep_ui.cc" \
   "$root_dir/components/zectrix_app/zectrix_scene_manager.cc" \

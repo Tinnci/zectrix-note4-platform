@@ -117,16 +117,16 @@ std::size_t StdioTransport::Read(uint8_t* destination, std::size_t capacity) {
         const auto value = input_.front();
         // Pipes submit one line at a time. Leave the next command queued while
         // the real executor pages a reply; cancellation remains available.
-        if (!interactive_ && command_active_ && value != 0x03 &&
+        if (!binary_active_ && !interactive_ && command_active_ && value != 0x03 &&
             value != 0x04 && value != 0x12) break;
         input_.Pop();
-        if (value == 0x04 || value == 0x12) {
+        if (!binary_active_ && (value == 0x04 || value == 0x12)) {
             quit_ = value == 0x04;
             reconnect_ = value == 0x12;
             break;
         }
         destination[count++] = value;
-        if (!interactive_ && (value == '\r' || value == '\n' || value == 0x03)) break;
+        if (!binary_active_ && !interactive_ && (value == '\r' || value == '\n' || value == 0x03)) break;
     }
     return count;
 }

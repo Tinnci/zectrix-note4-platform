@@ -2,6 +2,9 @@
 #include "sdkconfig.h"
 #include "zectrix_boot_esp.h"
 #include "zectrix_board.h"
+#if CONFIG_ZECTRIX_ENABLE_USB_HOST
+#include "zectrix_host_channel.h"
+#endif
 
 #include <algorithm>
 #include <cassert>
@@ -274,6 +277,7 @@ CliUsbService::CliUsbService() = default;
 CliUsbService::~CliUsbService() { AssertWithdrawn<CliUsbService>(); events.emplace_back("delete:cli"); }
 esp_err_t CliUsbService::Start(CliExecutor* executor) {
     assert(executor != nullptr);
+    assert((executor->BinarySession() != nullptr) == (CONFIG_ZECTRIX_ENABLE_USB_HOST != 0));
     cli_executor = executor;
     return Result("cli");
 }
@@ -318,7 +322,7 @@ int main() {
         (void)platform.Connectivity();
         (void)platform.Update();
         const auto& registry = platform.Services();
-        assert(&registry == inspected_registry && registry.size() == 11);
+        assert(&registry == inspected_registry && registry.size() == 11 + CONFIG_ZECTRIX_ENABLE_USB_HOST);
         // These lookups compile in another translation unit than registration.
         assert(registry.Get<zectrix::display::DisplayService>() == &platform.Display());
         assert(registry.Get<zectrix::input::InputService>() == &platform.Input());
@@ -355,7 +359,16 @@ int main() {
         pending_clock_sample = true;
         platform.Poll();
         assert(time_polls == 1 && applied_clock_ms == 1709179200123 && !pending_clock_sample);
+#if CONFIG_ZECTRIX_ENABLE_USB_HOST
+        auto* host = registry.Get<zectrix::host::Channel>();
+        assert(host && !host->Connect());
+        host->Enable();
+        assert(host->Connect());
+#endif
         platform.StopMaintenance();
+#if CONFIG_ZECTRIX_ENABLE_USB_HOST
+        assert(!host->Session() && !host->Connect());
+#endif
         output.Clear();
         assert(cli_executor->Execute(invocation, &output) == zectrix::cli::ExecuteStatus::kUnavailable);
     }

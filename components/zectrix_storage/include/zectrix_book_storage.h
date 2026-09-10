@@ -72,7 +72,7 @@ public:
                    std::size_t* count, bool* truncated, const char* after = nullptr);
     esp_err_t Open(const char* name, BookFile* file);
     static bool ValidName(const char* name);
-    // Management excludes reader handles until the HTTP owner has joined.
+    // Management excludes reader handles until its USB or HTTP owner releases it.
     esp_err_t BeginManagement();
     esp_err_t EndManagement();
     esp_err_t Space(BookSpace* space);

@@ -46,6 +46,9 @@ void TerminalApp::Run() {
     time_ = &platform_.Time();
     storage_ = &platform_.Storage();
     system_ = &platform_.System();
+#if CONFIG_ZECTRIX_ENABLE_USB_HOST
+    usb_host_ = platform_.Services().Get<host::Channel>();
+#endif
     const auto language_result = i18n::RestoreLanguage(*storage_);
     language_saved_ = language_result == ESP_OK || language_result == ESP_ERR_NOT_FOUND ||
         language_result == ESP_ERR_NOT_SUPPORTED;
@@ -144,12 +147,15 @@ void TerminalApp::RunApplicationShell() {
     ESP_LOGI(kTag, "launcher ready: applications=%u", static_cast<unsigned>(applications_.size()));
     while (runtime.state() == sdk::LifecycleState::Active) {
         sdk::InputEvent event;
-        // Pending pagination yields one tick between bounded parse slices.
+        // Pagination and USB requests yield one tick between bounded slices.
+        bool busy = false;
 #if CONFIG_ZECTRIX_ENABLE_READER
-        const TickType_t timeout = reader_busy_ ? TickType_t{1} : pdMS_TO_TICKS(250);
-#else
-        const TickType_t timeout = pdMS_TO_TICKS(250);
+        busy = reader_busy_;
 #endif
+#if CONFIG_ZECTRIX_ENABLE_USB_HOST
+        busy = busy || (usb_host_ && usb_host_->Session() != 0);
+#endif
+        const TickType_t timeout = busy ? TickType_t{1} : pdMS_TO_TICKS(250);
         const bool received = input_->Wait(&event, timeout);
         UpdateSystemStatus();
         const sdk::Status result = received ? app::DispatchInputBurst(runtime, event,

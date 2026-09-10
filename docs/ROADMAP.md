@@ -172,7 +172,7 @@ footprint assets change 2,312 pixels in total, below both pixel thresholds.
 
 ## Q1 — Contract regression and concurrency audits
 
-Status: Q1.1–Q1.3 complete. The current Host suite has 34 targets. The 26-target
+Status: Q1.1–Q1.3 complete. The current Host suite has 35 targets. The 26-target
 counts below describe the original Q1 verification.
 
 Q1.1 adds real USB and ESP Wi-Fi driver execution to the existing Host targets.
@@ -250,10 +250,14 @@ radio arbitration, visual refinement and system Chinese/English support.
 See [Home](HOME.md), [navigation](NAVIGATION.md), [radio arbitration](RADIO_ARBITER.md)
 and [localization](LOCALIZATION.md) for implementation and verification.
 
-E1.8 remains planned. It explores host-device USB communication, human terminal
-and bulk-data sessions, filesystem ownership and coordinated device UI. The
-protocol and transport choices remain open architectural questions in
-`ASTRA_TASKS.md`; this review does not select or implement them.
+E1.8 implements [USB book and settings management](USB_HOST.md). An explicit
+terminal command enters a bounded binary session on the existing Serial/JTAG
+transport. The foreground USB Manager owns the storage lease, cancellation,
+settings and progress view. A Python host tool supplies import/export, paged
+listing and common settings. The architecture study compares MSC, MTP and
+serial access; USB-OTG classes and an Android/browser client remain possible
+extensions. Real transfer throughput and physical interaction remain device
+qualification work.
 
 ## Deferred research
 

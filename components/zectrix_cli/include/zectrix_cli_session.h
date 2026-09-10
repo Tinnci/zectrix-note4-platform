@@ -28,6 +28,17 @@ enum class ExecuteStatus : uint8_t {
     kPending,
     kBusy,
     kTimeout,
+    kBinary,
+};
+
+// An explicit command lends the transport to one bounded binary session.
+class CliBinarySession {
+public:
+    virtual ~CliBinarySession() = default;
+    virtual bool Start(BoundedOutput* greeting) = 0;
+    // False means a validated peer close, never a framing or transport error.
+    virtual bool Poll(CliTransport& transport) = 0;
+    virtual void Cancel() = 0;
 };
 
 class CliExecutor {
@@ -38,6 +49,7 @@ public:
     // Pending commands produce at most one bounded chunk per poll.
     virtual ExecuteStatus Poll(BoundedOutput*) { return ExecuteStatus::kOk; }
     virtual void Cancel() {}
+    virtual CliBinarySession* BinarySession() { return nullptr; }
 };
 
 class CliSession final {
@@ -53,6 +65,7 @@ public:
     std::size_t line_size() const { return line_size_; }
     std::size_t history_size() const { return history_size_; }
     bool command_active() const { return command_active_; }
+    bool binary_active() const { return binary_ != nullptr; }
 
 private:
     enum class EscapeState : uint8_t { kNone, kEscape, kControlSequence, kSs3 };
@@ -74,6 +87,7 @@ private:
 
     CliTransport& transport_;
     CliExecutor& executor_;
+    CliBinarySession* binary_ = nullptr;
     std::array<char, kMaximumLineSize + 1> line_{};
     std::size_t line_size_ = 0;
     std::size_t cursor_ = 0;

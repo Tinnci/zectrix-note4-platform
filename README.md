@@ -67,13 +67,13 @@ qualification and pull-request integration work.
 | Q1 | Implemented | Contract regression, concurrency/cleanup fixes and terminal/durable-replay audits delivered |
 | L1 | Implemented | Status bar, scene navigation, streamed TXT/EPUB reader, local Wi-Fi book management and ambient sleep covers; physical sleep/wake and standby-current measurements remain open |
 | S1 | Implemented | Typed service registry, selectable modules, conditional application composition, RTC restoration/editor and Full/Minimal regression; physical RTC retention and standby-current measurements remain open |
-| E1 | In progress | E1.1–E1.7 deliver Home, responsive navigation, radio arbitration, visual refinement and Chinese/English UI in PR #54; E1.8 host/USB architecture remains planned |
+| E1 | Implemented | E1.1–E1.8 deliver Home, navigation, radio arbitration, Chinese/English UI and USB book/settings management; physical USB transfer qualification remains open |
 
 The [service registry](docs/SERVICE_REGISTRY.md) provides optional typed lookup,
 ordered startup and failure cleanup with 16 fixed slots and no registry heap
 allocation. Existing Platform accessors use the same service instances.
 The [module build options](docs/MODULAR_BUILD.md) select connectivity, Wi-Fi,
-HTTPS, Web transfer, reading, USB maintenance and firmware writing. Core boot
+HTTPS, Web transfer, reading, USB maintenance/management and firmware writing. Core boot
 protection and the clock/sleep UI remain available in trimmed builds.
 Run `bash tools/test-minimal-profile.sh` for the complete Host suite and
 isolated Full/Minimal firmware builds with size and static RAM comparison.
@@ -170,6 +170,23 @@ browser and select **Upload & finish**. The same page supports download and
 deletion. Wi-Fi turns off when the session ends. See
 [docs/BOOK_TRANSFER.md](docs/BOOK_TRANSFER.md) for controls and session limits.
 
+For a wired connection, open **Tools > USB Manager** on Note4. The host tool
+lists books, imports/exports TXT and EPUB, and reads or changes language,
+auto-showcase and sleep-cover settings. Uploads preserve existing books.
+
+```bash
+uv run --script tools/usb-manager.py ports
+uv run --script tools/usb-manager.py --port /dev/cu.usbmodem14301 list
+uv run --script tools/usb-manager.py --port /dev/cu.usbmodem14301 put novel.epub
+uv run --script tools/usb-manager.py --port /dev/cu.usbmodem14301 get novel.epub exported.epub
+uv run --script tools/usb-manager.py --port /dev/cu.usbmodem14301 set-setting language zh-CN
+```
+
+The same connection returns to the maintenance prompt after each invocation.
+Short OK cancels the USB session; hold OK returns to Tools and releases the
+book library. See [USB architecture and usage](docs/USB_HOST.md) for platform
+support, protocol, storage rules and verification.
+
 ## Host maintenance CLI
 
 Run the maintenance CLI on Linux or macOS with a C++17 compiler. The host
@@ -192,8 +209,8 @@ order, and EOF completes pending replies and cancels log streams.
 Run terminal and pipe integration tests with `bash tools/test-cli-host.sh`, or
 the complete suite with `bash tools/test-host.sh`. Tests require Python 3 and
 [uv](https://docs.astral.sh/uv/getting-started/installation/). Python fixtures use
-the standard library; module configuration tests provision IDF's Kconfig library
-through uv. See the
+the standard library; USB management tests provision pyserial and module
+configuration tests provision IDF's Kconfig library through uv. See the
 [maintenance CLI contract](docs/MAINTENANCE_CLI_CONTRACT.md) for the execution
 model and limits.
 
@@ -231,6 +248,7 @@ Splash
      |-- Settings
      `-- Tools
           |-- Connectivity -> Actions / Forget Phone
+          |-- USB Manager -> Books / Settings
           |-- Auto Showcase -> 1bpp Full / Partial / 4bpp Full
           |-- Display Gallery -> Lighthouse / Footprints / Mountain / Run All
           |-- Hardware Tests -> Run All / Select Individual

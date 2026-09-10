@@ -10,10 +10,11 @@ namespace zectrix {
 PlatformDiagnostics::PlatformDiagnostics(system::SystemService& system,
                                          display::DisplayService& display,
                                          input::InputService& input,
-                                         time::TimeService& time)
+                                         time::TimeService& time,
+                                         cli::CliBinarySession* binary)
     : system_(system), display_(display), input_(input), time_(time),
       owner_task_(xTaskGetCurrentTaskHandle()), dispatcher_(*this),
-      executor_(dispatcher_, cli::MaintenanceLogs()) {
+      executor_(dispatcher_, cli::MaintenanceLogs(), binary) {
     input_.SetWaitHook(OnWait, this);
 }
 

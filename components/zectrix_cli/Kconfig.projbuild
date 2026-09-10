@@ -4,3 +4,11 @@ config ZECTRIX_ENABLE_USB_CLI
     help
         Enable the USB serial/JTAG maintenance task and diagnostic executor.
         Disabling the CLI preserves the normal ESP-IDF console and boot logs.
+
+config ZECTRIX_ENABLE_USB_HOST
+    bool "USB book and settings management"
+    depends on ZECTRIX_ENABLE_USB_CLI
+    default y
+    help
+        Add the USB Manager application and bounded host file-transfer session.
+        Books use the existing storage lease without Wi-Fi or the reader.

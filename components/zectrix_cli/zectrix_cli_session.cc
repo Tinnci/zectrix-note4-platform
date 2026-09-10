@@ -29,6 +29,7 @@ const char* ExecuteError(ExecuteStatus status) {
         case ExecuteStatus::kBusy: return "command busy";
         case ExecuteStatus::kTimeout: return "owner request timed out";
         case ExecuteStatus::kPending: break;
+        case ExecuteStatus::kBinary: break;
         case ExecuteStatus::kOk: break;
     }
     return "command failed";
@@ -48,11 +49,29 @@ void CliSession::Poll() {
     if (!connected_) OnConnected();
     if (!connected_) return;
 
+    if (binary_ != nullptr) {
+        if (!binary_->Poll(transport_)) {
+            binary_->Cancel();
+            binary_ = nullptr;
+            transport_.DiscardInput();
+            ClearLine();
+            previous_was_cr_ = false;
+            Write("\r\n");
+            Write(kPrompt);
+        }
+        return;
+    }
+
     std::array<uint8_t, 32> input{};
     const std::size_t received =
         std::min(transport_.Read(input.data(), input.size()), input.size());
     for (std::size_t index = 0; index < received && connected_; ++index) {
         ProcessByte(input[index]);
+        // The peer must wait for the greeting before sending binary bytes.
+        if (binary_ != nullptr) {
+            transport_.DiscardInput();
+            break;
+        }
     }
     if (connected_ && command_active_) {
         BoundedOutput output;
@@ -62,6 +81,8 @@ void CliSession::Poll() {
 }
 
 void CliSession::Reset() {
+    if (binary_ != nullptr) binary_->Cancel();
+    binary_ = nullptr;
     executor_.Cancel();
     transport_.DiscardInput();
     command_active_ = false;
@@ -245,17 +266,19 @@ void CliSession::SubmitLine() {
 
 void CliSession::FinishExecution(ExecuteStatus status,
                                  const BoundedOutput& output) {
+    if (status == ExecuteStatus::kBinary) binary_ = executor_.BinarySession();
     command_active_ = status == ExecuteStatus::kPending;
     if (output.size() != 0) {
         if (!Write(output.data(), output.size()) || !Write("\r\n")) return;
     }
-    if (status != ExecuteStatus::kOk && status != ExecuteStatus::kPending) {
+    if (status != ExecuteStatus::kOk && status != ExecuteStatus::kPending &&
+        status != ExecuteStatus::kBinary) {
         executor_.Cancel();
         Write("error: ");
         Write(ExecuteError(status));
         Write("\r\n");
     }
-    if (!command_active_) Write(kPrompt);
+    if (!command_active_ && binary_ == nullptr) Write(kPrompt);
 }
 
 void CliSession::AddHistory() {

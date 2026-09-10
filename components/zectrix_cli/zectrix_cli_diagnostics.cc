@@ -29,6 +29,10 @@ constexpr CommandDescriptor kLog[] = {
     Leaf("stats", "Log queue, drop and truncation counts", "log stats",
          Handler::kLogStats, Execution::kImmediate),
 };
+constexpr CommandDescriptor kHost[] = {
+    Leaf("start", "Enter USB management; open USB MANAGER on the device first",
+         "host start 1", Handler::kHostStart, Execution::kImmediate),
+};
 constexpr CommandDescriptor kCommands[] = {
     Leaf("help", "List commands or show command usage", "help [command]",
          Handler::kHelp, Execution::kImmediate),
@@ -40,6 +44,8 @@ constexpr CommandDescriptor kCommands[] = {
      Execution::kImmediate, false, kDisplay, std::size(kDisplay)},
     {"log", "Log observation", "log <follow|stats>", Access::kReadOnly,
      Execution::kImmediate, false, kLog, std::size(kLog)},
+    {"host", "USB book and settings session", "host start 1", Access::kReadOnly,
+     Execution::kImmediate, false, kHost, std::size(kHost)},
     Leaf("sysinfo", "Alias for system info", "sysinfo", Handler::kSystemInfo),
     Leaf("heap", "Alias for system heap", "heap", Handler::kHeap),
     Leaf("tasks", "Alias for system tasks", "tasks", Handler::kTasks),
@@ -117,7 +123,7 @@ ExecuteStatus DiagnosticExecutor::Help(const Invocation& invocation,
                        "system <info|heap|tasks|uptime>, display status\r\n"
                        "log follow [error|warn|info|debug], log stats\r\n"
                        "Aliases: sysinfo, heap, tasks, uptime, epd-inspect, log-stream\r\n"
-                       "Ctrl+C cancels the active command or stream.");
+                       "Ctrl+C cancels; host start 1 enters USB management.");
         return ExecuteStatus::kOk;
     }
     const CommandDescriptor* commands = kCommands;
@@ -151,6 +157,12 @@ ExecuteStatus DiagnosticExecutor::Execute(const Invocation& invocation,
     const auto& command = *resolution.command;
     const std::size_t arguments = invocation.count - resolution.argument_index;
     if (command.handler == Handler::kHelp) return Help(invocation, output);
+    if (command.handler == Handler::kHostStart) {
+        if (arguments != 1 || std::strcmp(invocation[resolution.argument_index], "1") != 0)
+            return ExecuteStatus::kInvalidArguments;
+        return binary_ != nullptr && binary_->Start(output) ? ExecuteStatus::kBinary
+                                                          : ExecuteStatus::kUnavailable;
+    }
     if (command.handler != Handler::kLogFollow && arguments != 0) {
         return ExecuteStatus::kInvalidArguments;
     }

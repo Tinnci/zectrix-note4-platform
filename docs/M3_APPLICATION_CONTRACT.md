@@ -21,6 +21,12 @@ E1.4 unifies first-party button intents, restores the Launcher parent on root
 Back and integrates Connectivity/Diagnostics private scenes and exit cleanup.
 See [NAVIGATION.md](NAVIGATION.md). SDK signatures are unchanged.
 
+E1.8 adds the optional USB Manager destination in Tools. It owns the existing
+book-management lease and executes one copied host request per idle callback.
+The USB worker has no application or Storage pointers. Settings use the same
+foreground language/sleep-cover state as local controls. Binary sessions select
+a one-tick shell wait; normal idle waits remain 250 ms. See [USB_HOST.md](USB_HOST.md).
+
 ## Scope
 
 M3 runs statically linked applications through one lifecycle. The runtime owns

@@ -83,6 +83,14 @@ under Connectivity ownership. Progress renders are limited to one per second
 and 10-percent steps or saved-book count changes. See
 [BOOK_TRANSFER.md](BOOK_TRANSFER.md) for browser controls and timeouts.
 
+USB Manager is a single Tools dashboard for computer connections. Entry acquires
+the library lease; a busy or unavailable library shows a retry action. Short OK
+cancels the current host session, hold OK returns to Tools, and hold DOWN shuts
+down through the existing lifecycle. Other direction input has no action.
+Import/export progress and short-file transitions are coalesced to at most once
+per second; cancellation, errors and language changes redraw promptly. Returning
+to reading releases the lease first. See [USB_HOST.md](USB_HOST.md).
+
 Clock uses View -> Edit. OK opens date/time setup, UP/DOWN changes a field,
 and OK advances to a final Save. Hold OK cancels the draft and returns to View,
 then home. Save sets system time and attempts RTC persistence; failures show
