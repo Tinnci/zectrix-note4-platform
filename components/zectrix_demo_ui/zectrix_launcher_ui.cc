@@ -88,7 +88,7 @@ void DrawOverview(ZectrixCanvas& canvas, const zectrix::time::ClockSnapshot& clo
             title.back() = '\0';
             zectrix::ui::DrawUtf8Line(canvas, 140, 80, title.data(), 236, active);
             const unsigned progress = std::min<unsigned>(reading.progress_per_mille, 1000);
-            char value[12];
+            char value[24];
             std::snprintf(value, sizeof(value), "%u.%u%%", progress / 10, progress % 10);
             const int label_x = 376 - canvas.TextWidth(value);
             canvas.Text(label_x, 103, value, 1, active);
