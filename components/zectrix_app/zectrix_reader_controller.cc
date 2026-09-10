@@ -1,5 +1,7 @@
 #include "zectrix_reader_controller.h"
 
+#include <cstring>
+
 namespace zectrix::app {
 namespace {
 using reader::Result;
@@ -53,6 +55,12 @@ void ReaderController::Stop() {
     started_ = false;
 }
 
+void ReaderController::RefreshLibrary() {
+    CloseBook();
+    result_ = library_.Refresh();
+    if (selected() >= library_.count()) scenes_.SetState(Id(ReaderScene::Library), 0);
+}
+
 std::size_t ReaderController::selected() const { return scenes_.state(Id(ReaderScene::Library)); }
 std::size_t ReaderController::option() const { return scenes_.state(Id(ReaderScene::Options)); }
 
@@ -65,11 +73,7 @@ bool ReaderController::remote_available() const {
 void ReaderController::EnterScene(void* context, SceneId scene) {
     auto& self = *static_cast<ReaderController*>(context);
     self.Invalidate(true);
-    if (scene == Id(ReaderScene::Library)) {
-        self.CloseBook();
-        self.result_ = self.library_.Refresh();
-        if (self.selected() >= self.library_.count()) self.scenes_.SetState(scene, 0);
-    }
+    if (scene == Id(ReaderScene::Library)) self.RefreshLibrary();
 }
 
 bool ReaderController::HandleScene(void* context, const SceneEvent& event) {
@@ -109,7 +113,7 @@ void ReaderController::ContinueReading() {
     if (!mark || result_ != Result::Ok) return;
     for (std::size_t i = 0; i < library_.count(); ++i) {
         const auto book = library_.Get(i);
-        if (book.id != mark->book_id) continue;
+        if (std::strncmp(book.id.data(), mark->book_id.data(), book.id.size()) != 0) continue;
         scenes_.SetState(Id(ReaderScene::Library), i);
         if (book.bytes != mark->source_bytes) notice_ = ReaderNotice::RecentChanged;
         else OpenSelected(true);
@@ -126,8 +130,7 @@ void ReaderController::OpenSelected(bool resume_only) {
     result_ = library_.Open(selected(), &source);
     if (resume_only && (result_ != Result::Ok || !source)) {
         notice_ = ReaderNotice::RecentUnavailable;
-        CloseBook();
-        result_ = library_.Refresh();
+        RefreshLibrary();
         Invalidate(true);
         return;
     }
@@ -136,8 +139,7 @@ void ReaderController::OpenSelected(bool resume_only) {
         // Recheck the opened source: listing metadata can become stale.
         if (resume_only && !bookmarks_.Find(book_.id.data(), book_.bytes)) {
             notice_ = ReaderNotice::RecentChanged;
-            CloseBook();
-            result_ = library_.Refresh();
+            RefreshLibrary();
             Invalidate(true);
             return;
         }
@@ -152,8 +154,7 @@ void ReaderController::OpenSelected(bool resume_only) {
         result_ = Result::IoError;
     }
     if (notice_ != ReaderNotice::None) {
-        CloseBook();
-        result_ = library_.Refresh();
+        RefreshLibrary();
         Invalidate(true);
     } else {
         scenes_.Push(Id(ReaderScene::Reading));

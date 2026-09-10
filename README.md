@@ -78,7 +78,8 @@ for individual build/flash commands and measured results.
 The [firmware fork and UI study](docs/FIRMWARE_UI_STUDY.md) compares Biscuit,
 CrossMux, CrossInk, Momentum and Unleashed. It proposes daily Home, typography
 and personal cover improvements within the existing ownership and power model.
-The Launcher now shows a scroll indicator when its entries exceed eight rows.
+The [Home dashboard](docs/HOME.md) now provides a calendar/reading overview,
+Continue Reading, module-aware app tiles and a separate Tools scene.
 
 > [!CAUTION]
 > This project targets the black-and-white ZECTRIX NOTE4 hardware. It is not
@@ -210,6 +211,7 @@ shows an **AS OF** snapshot and does not update during sleep.
 ```text
 Splash
   -> Home
+     |-- Reading overview -> Continue Reading / Library
      |-- Book Reader
      |    `-- Library -> Reading -> Font / Phone Position / Restart / Save
      |-- Send Books
@@ -217,20 +219,14 @@ Splash
      |-- Clock
      |-- Sleep Cover
      |    `-- Dashboard / Landscape / Blank -> Preview -> Sleep
-     |-- Settings / Connectivity
-     |-- Auto Showcase
-     |    `-- 1bpp Full -> 1bpp Partial -> 4bpp Full
-     |-- Display Gallery
-     |    |-- Lighthouse / Full 1bpp
-     |    |-- Footprints / Partial 1bpp
-     |    |-- Mountain / Full 4bpp
-     |    `-- Run All Scenes
-     |-- Hardware Tests
-     |    |-- Run All Tests
-     |    `-- Select Individual
-     |         `-- Wi-Fi RF / Audio / RTC / Power / LED / Buttons / NFC
-     |-- Device Info
-     `-- About & License
+     |-- Settings
+     `-- Tools
+          |-- Connectivity
+          |-- Auto Showcase -> 1bpp Full / Partial / 4bpp Full
+          |-- Display Gallery -> Lighthouse / Footprints / Mountain / Run All
+          |-- Hardware Tests -> Run All / Select Individual
+          |-- Device Info
+          `-- About & License
 ```
 
 The 4bpp scene always performs a white 1bpp full refresh first to reduce
