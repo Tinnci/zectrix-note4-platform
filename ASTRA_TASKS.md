@@ -217,6 +217,17 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - **期待产出**：
     - 赋能 Astra 结合开源优秀实践（Flipper Zero, CrossPoint, Android ADB 等）与 Note4 既有架构基础设施，深入权衡并提出最符合掌上随身墨水屏特质的最佳实践工程方案。
 
+- [ ] **E2.1: 动态应用运行时与第三方生态架构预研 (Dynamic Application Runtime & Extensibility Research)**
+  - **背景与愿景**：
+    - 掌上随身墨水屏终端的长期生命力在于开放的第三方极客应用生态。
+    - 对标 GitHub Milestone #6（`Research — Dynamic application runtime`），探索让第三方应用在不重新编译或全量烧录整机固件的前提下，被独立分发、加载与运行的技术路径。
+  - **交由 Astra 深度推演的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
+    1. *执行载体与沙箱隔离*：如何权衡原生精简 ELF 动态重定位（对标 Flipper Zero `.fap`）、轻量 WebAssembly 字节码虚拟机（如 Wasm3/WAMR）以及微型脚本引擎在 ESP32-S3（无 MMU、8MB 八线 PSRAM）上的内存开销、执行性能与故障隔离能力？
+    2. *稳定二进制 ABI 与系统调用边界*：如何从当前的 C++17 源码级 SDK（SDK v1）逐步沉淀出一套版本化、二进制稳定的系统调用跳转表（Syscall Jump Table），确保第三方应用在底层固件升级迭代时保持良好的跨版本运行兼容性？
+    3. *动态发现、生命周期与存储流转*：独立编译的微应用如何借助 USB/文件系统通道（衔接 E1.8 成果）进行热插拔安装与管理？启动器（Launcher）与场景栈如何动态解析应用元数据并实现零碎片加载与退出清理？
+  - **期待产出**：
+    - 输出系统性技术预研报告，深入评估各技术路线在 Note4 软硬件平台上的可行性、内存/Flash 预算开销与演进阶段建议。
+
 ---
 
 ## GitHub Project & Milestone Governance (项目治理与远程同步)
