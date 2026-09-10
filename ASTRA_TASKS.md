@@ -206,7 +206,11 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Verified all 34 Host targets, localization ASan/UBSan across three font/language compositions, rendered Chinese/English screens, ShellCheck and Full/Minimal/Chinese-without-Reader ESP32-S3 builds. Full is 3,018,304 bytes; Minimal is 562,752 bytes (81.4% smaller). Adding Chinese to the offline Minimal configuration costs 21,504 firmware bytes and 8 static RAM bytes. Device smoke was not required for this UI change; physical panel readability remains a hardware measurement.
 
 
-
+- [ ] **E1.8: USB 终端交互与数据通道演进 (Interactive USB CLI & Data Protocol Evolution)**
+  - 调研并探索基于 USB Serial/JTAG 的交互式设置与数据传输机制（对标 Flipper Zero CLI/RPC 与流式传输）。
+  - 探索免驱 USB 通道下的文本终端交互扩展（如系统设置控制、存储浏览等）与高效文件/书籍导入导出能力。
+  - 研究协议自动化切换（如标志符/握手魔数切换传输模式）与设备端交互（如专属传输界面或前台状态反馈）的协同方案。
+  - 保持轻量、零动态堆分配原则，确保大文件传输不阻塞系统生命周期与物理按键响应。
 
 ---
 
