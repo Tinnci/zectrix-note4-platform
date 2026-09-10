@@ -7,6 +7,7 @@
 #include "freertos/task.h"
 #include "zectrix_storage_service.h"
 #include "zectrix_input_service.h"
+#include "zectrix_foreground_dispatch.h"
 
 #include "zectrix_boot_guard.h"
 #if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
@@ -146,7 +147,8 @@ void TerminalApp::RunApplicationShell() {
 #endif
         const bool received = input_->Wait(&event, timeout);
         UpdateSystemStatus();
-        const sdk::Status result = received ? runtime.Step(&event) : runtime.Idle();
+        const sdk::Status result = received ? app::DispatchInputBurst(runtime, event,
+            [this](sdk::InputEvent* pending) { return input_->Wait(pending, 0); }) : runtime.Idle();
         if (!sdk::IsOk(result)) {
             ESP_LOGE(kTag, "application step failed: %s", sdk::StatusName(result));
         } else if (runtime.state() == sdk::LifecycleState::Active) {

@@ -156,6 +156,17 @@ logical `Button` and `Action` values. Wait values use native FreeRTOS ticks so
 `portMAX_DELAY` keeps its wait-forever meaning. Physical sampling, GPIO
 numbers, FreeRTOS queues, and debounce thresholds remain inside board support.
 
+E1.3 retains independent button sampling while display calls wait for BUSY.
+A fixed 16-event buffer uses a short critical section; its one-slot wake queue
+is only a notification and never holds physical input. Enqueue never waits for
+capacity. On overflow, confirmation/Back can displace the newest queued
+direction; Back can also displace a click when no direction remains. If all
+slots are controls, further confirmations are dropped; existing Back events
+remain. Shutdown supersedes queued input and is delivered first. Retained
+events otherwise keep their order. Maintenance wake notifications do not
+consume these slots or extend a wait deadline. The wait hook remains outside
+display operations. See [DISPLAY_RESPONSIVENESS.md](DISPLAY_RESPONSIVENESS.md).
+
 `PowerService` attaches to board support with a typed reference. It exposes
 logical battery, external-power, and wake-reason values. It owns the shutdown
 rail sequence and the deep-sleep call. The application owner enters shutdown

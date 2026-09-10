@@ -15,6 +15,8 @@ catalog supplies both enabled runtime registrations and Launcher navigation.
 Clock adds a private View/Edit scene pair and TimeService-owned calibration.
 E1.2 adds private Home/Tools Launcher scenes, catalog-derived tiles and a local
 Continue Reading action. SDK v1 is unchanged. See [HOME.md](HOME.md).
+E1.3 adds bounded input bursts through the source-compatible SDK 1.1 dispatch
+API. See [DISPLAY_RESPONSIVENESS.md](DISPLAY_RESPONSIVENESS.md).
 
 ## Scope
 
@@ -91,7 +93,7 @@ owned storage in M3.
 
 ## Runtime step
 
-The runtime performs these operations in order:
+The existing `Step(event)` performs these operations in order:
 
 1. Read at most one `InputEvent`.
 2. Dispatch the event to the foreground application.
@@ -111,6 +113,16 @@ runtime. The runtime owns that pointer immediately.
 `Idle()` is an explicit runtime input. It calls the foreground idle callback.
 The runtime processes a command from that callback only after the callback
 returns.
+
+E1.3's shell can instead call `DispatchInput(event)` for up to 16 queued
+events, merging render requests before one render. OK, long presses, errors
+and foreground-generation changes finish the burst immediately. The shell
+never dispatches a later queued event across that boundary before rendering.
+A direction-only burst ends with `Idle()`, granting bounded reader/timer work
+even when more input is queued. Sampling remains on the existing button task;
+application callbacks, lifecycle, maintenance polling and display calls remain
+serial on the foreground owner. Status invalidation joins the same frame.
+Display completion is synchronous, including Reader's `Presented()` callback.
 
 The M3 migration adapter was removed in L1.1. Gallery, Auto Showcase, Device
 Info and About now use the same foreground lifecycle as Clock, Settings,

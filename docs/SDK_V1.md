@@ -1,6 +1,6 @@
 # Zectrix SDK v1
 
-Status: Source-stable version 1.0.0.
+Status: Source-stable version 1.1.0.
 
 ## Scope
 
@@ -37,7 +37,7 @@ zectrix/zectrix_sdk.h
 
 ## Version policy
 
-SDK v1 uses semantic version 1.0.0.
+SDK v1 uses semantic version 1.1.0.
 
 - Increment `major` for a source-breaking change.
 - Increment `minor` for an additive source-compatible feature.
@@ -106,6 +106,25 @@ Each render request contains an owned dirty region, a `Fast` or `Quality`
 intent, and the foreground generation. The runtime coalesces at most one
 pending request. It discards a request from an outgoing generation. The display
 service selects the physical refresh mode and owns E-Ink baseline recovery.
+
+Version 1.1 adds `ApplicationRuntime::DispatchInput(const InputEvent&)`. It
+dispatches one event and resolves its command after the callback returns,
+without invoking `Render`. Existing `Step(const InputEvent*)` retains its
+signature and dispatch/command/render behavior. `Step()` flushes pending work;
+`Idle()` gives the foreground an idle callback before flushing it.
+
+A caller using `DispatchInput` must bound each burst and finish with `Step()`
+or `Idle()` before blocking for new input. Check lifecycle state and foreground
+generation after every dispatch: shutdown needs no flush, and a transition
+must finish drawing its new foreground before dispatching more input.
+Confirmation and long presses also end the first-party shell's burst. A
+direction-only burst finishes with `Idle()` so pagination and timers continue
+under load. Dirty regions merge and Quality wins within the pending request;
+requests belonging to an outgoing foreground are discarded. This API does not
+represent a successful physical display: bookmarks and display accounting
+still depend on synchronous render completion. Callback reentry through
+`Start`, `Step`, `DispatchInput`, `Idle` or `Stop` returns `InvalidState`.
+See [DISPLAY_RESPONSIVENESS.md](DISPLAY_RESPONSIVENESS.md) for the shell policy.
 
 ## Errors
 

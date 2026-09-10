@@ -1,7 +1,9 @@
 #include "zectrix/sdk/application.h"
 #include "zectrix_application_catalog.h"
+#include "zectrix_foreground_dispatch.h"
 
 #include <cassert>
+#include <deque>
 #include <new>
 #include <string>
 #include <vector>
@@ -21,11 +23,18 @@ struct Behavior {
     bool event_home = false;
     bool event_shutdown = false;
     bool event_render = false;
+    bool open_on_ok_only = false;
     bool idle_home = false;
     bool factory_returns_null = false;
     int create_count = 0;
     int destroy_count = 0;
     int render_count = 0;
+    int event_count = 0;
+    int idle_count = 0;
+    sdk::DirtyRegion event_dirty{2, 2, 6, 6};
+    sdk::RenderIntent event_intent = sdk::RenderIntent::Fast;
+    sdk::RenderRequest last_render{};
+    sdk::ApplicationRuntime* reenter = nullptr;
 };
 
 std::vector<std::string> events;
@@ -47,10 +56,20 @@ public:
         return behavior_->enter_result;
     }
 
-    sdk::Status HandleEvent(const sdk::InputEvent&,
+    sdk::Status HandleEvent(const sdk::InputEvent& event,
                             sdk::ApplicationContext& context) override {
         events.push_back(std::string("event-begin:") + name_);
-        if (behavior_->event_open != nullptr) {
+        ++behavior_->event_count;
+        if (behavior_->reenter) {
+            auto& runtime = *behavior_->reenter;
+            assert(runtime.Start() == sdk::Status::InvalidState);
+            assert(runtime.Step(&event) == sdk::Status::InvalidState);
+            assert(runtime.DispatchInput(event) == sdk::Status::InvalidState);
+            assert(runtime.Idle() == sdk::Status::InvalidState);
+            assert(runtime.Stop() == sdk::Status::InvalidState);
+        }
+        if (behavior_->event_open != nullptr &&
+            (!behavior_->open_on_ok_only || event.button == sdk::Button::Ok)) {
             sdk::AppCommand command;
             assert(sdk::AppCommand::Open(behavior_->event_open, &command));
             context.RequestCommand(command);
@@ -62,7 +81,7 @@ public:
             context.RequestCommand(sdk::AppCommand::Shutdown());
         }
         if (behavior_->event_render) {
-            context.RequestRender({2, 2, 6, 6}, sdk::RenderIntent::Fast);
+            context.RequestRender(behavior_->event_dirty, behavior_->event_intent);
         }
         events.push_back(std::string("event-end:") + name_);
         return behavior_->event_result;
@@ -70,14 +89,16 @@ public:
 
     sdk::Status HandleIdle(sdk::ApplicationContext& context) override {
         events.push_back(std::string("idle:") + name_);
+        ++behavior_->idle_count;
         if (behavior_->idle_home) {
             context.RequestCommand(sdk::AppCommand::Home());
         }
         return behavior_->idle_result;
     }
 
-    sdk::Status Render(const sdk::RenderRequest&) override {
+    sdk::Status Render(const sdk::RenderRequest& request) override {
         ++behavior_->render_count;
+        behavior_->last_render = request;
         events.push_back(std::string("render:") + name_);
         return behavior_->render_result;
     }
@@ -163,6 +184,83 @@ int main() {
         {"broken", "Broken", &broken_factory},
     };
     const sdk::InputEvent input{sdk::Button::Ok, sdk::InputAction::Click};
+    const sdk::InputEvent down{sdk::Button::Down, sdk::InputAction::Click};
+
+    {
+        Delegate delegate;
+        sdk::ApplicationRuntime runtime(descriptors, 3, "launcher", delegate);
+        assert(runtime.DispatchInput(down) == sdk::Status::InvalidState);
+        assert(runtime.Start() == sdk::Status::Ok && runtime.Step() == sdk::Status::Ok);
+        launcher.event_render = true;
+        launcher.reenter = &runtime;
+        assert(runtime.DispatchInput(down) == sdk::Status::Ok);
+        launcher.event_dirty = {20, 30, 5, 7};
+        launcher.event_intent = sdk::RenderIntent::Quality;
+        assert(runtime.DispatchInput(down) == sdk::Status::Ok);
+        launcher.event_intent = sdk::RenderIntent::Fast;
+        assert(runtime.DispatchInput(down) == sdk::Status::Ok);
+        assert(launcher.render_count == 1);
+        assert(runtime.Idle() == sdk::Status::Ok && launcher.render_count == 2);
+        const auto& render = launcher.last_render;
+        assert(render.dirty.x == 2 && render.dirty.y == 2);
+        assert(render.dirty.width == 23 && render.dirty.height == 35);
+        assert(render.intent == sdk::RenderIntent::Quality);
+    }
+    Reset(launcher, clock, broken);
+
+    {
+        Delegate delegate;
+        sdk::ApplicationRuntime runtime(descriptors, 3, "launcher", delegate);
+        assert(runtime.Start() == sdk::Status::Ok && runtime.Step() == sdk::Status::Ok);
+        launcher.event_render = true;
+        std::deque<sdk::InputEvent> backlog(zectrix::app::kMaxInputBurst * 2, down);
+        const auto poll = [&backlog](sdk::InputEvent* event) {
+            if (backlog.empty()) return false;
+            *event = backlog.front();
+            backlog.pop_front();
+            return true;
+        };
+        sdk::InputEvent event;
+        for (int batch = 1; batch <= 2; ++batch) {
+            assert(poll(&event));
+            assert(zectrix::app::DispatchInputBurst(runtime, event, poll) == sdk::Status::Ok);
+            assert(launcher.event_count == batch * static_cast<int>(zectrix::app::kMaxInputBurst));
+            assert(launcher.idle_count == batch && launcher.render_count == batch + 1);
+        }
+        assert(backlog.empty());
+
+        // Confirmation resolves after earlier directions and leaves later input
+        // for the newly rendered foreground, without drawing the outgoing one.
+        launcher.event_open = "clock";
+        launcher.open_on_ok_only = true;
+        backlog = {down, input, down};
+        assert(zectrix::app::DispatchInputBurst(runtime, down, poll) == sdk::Status::Ok);
+        assert(IsForeground(runtime, "clock") && backlog.size() == 1);
+        assert(clock.render_count == 1 && clock.event_count == 0 && clock.idle_count == 0);
+        assert(launcher.render_count == 3 && launcher.destroy_count == 1);
+    }
+    Reset(launcher, clock, broken);
+
+    for (int boundary = 0; boundary < 4; ++boundary) {
+        Delegate delegate;
+        sdk::ApplicationRuntime runtime(descriptors, 3, "launcher", delegate);
+        assert(runtime.Start() == sdk::Status::Ok && runtime.Step() == sdk::Status::Ok);
+        launcher.event_render = true;
+        if (boundary == 0) launcher.event_open = "clock";
+        if (boundary == 1) launcher.event_shutdown = true;
+        if (boundary == 2) launcher.event_result = sdk::Status::IoError;
+        const auto event = boundary == 3
+            ? sdk::InputEvent{sdk::Button::Ok, sdk::InputAction::LongPress} : down;
+        const auto result = zectrix::app::DispatchInputBurst(runtime, event,
+            [](sdk::InputEvent*) { assert(false); return false; });
+        assert(result == (boundary == 2 ? sdk::Status::IoError : sdk::Status::Ok));
+        assert(launcher.event_count == 1 && launcher.idle_count == 0);
+        if (boundary == 0) assert(clock.render_count == 1 && launcher.render_count == 1);
+        if (boundary == 1) assert(delegate.shutdown_count == 1 && launcher.render_count == 1);
+        if (boundary >= 2) assert(launcher.render_count == 2);
+        runtime.Stop();
+        Reset(launcher, clock, broken);
+    }
 
     {
         zectrix::app::ApplicationCatalog catalog;

@@ -80,6 +80,9 @@ CrossMux, CrossInk, Momentum and Unleashed. It proposes daily Home, typography
 and personal cover improvements within the existing ownership and power model.
 The [Home dashboard](docs/HOME.md) now provides a calendar/reading overview,
 Continue Reading, module-aware app tiles and a separate Tools scene.
+The [display scheduling update](docs/DISPLAY_RESPONSIVENESS.md) coalesces queued
+navigation draws, protects control input under load and bounds driver lock
+waits while preserving synchronous display completion and reader bookmarks.
 
 > [!CAUTION]
 > This project targets the black-and-white ZECTRIX NOTE4 hardware. It is not

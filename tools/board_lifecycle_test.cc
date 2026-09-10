@@ -42,7 +42,9 @@ struct BoardHostTask {
 };
 struct BoardHostQueue {
     std::mutex mutex;
-    std::deque<ZectrixButtonEvent> events;
+    std::condition_variable changed;
+    std::deque<uint8_t> signals;
+    UBaseType_t capacity = 0;
 };
 struct BoardHostI2cBus { unsigned devices = 0; };
 struct BoardHostI2cDevice { BoardHostI2cBus* bus; uint16_t address; };
@@ -86,6 +88,7 @@ std::atomic<bool> playback_entered{false}, playback_release{false};
 std::atomic<bool> playback_timed_out{false}, playback_join_retry{false};
 unsigned field_waits_before_stop = 0;
 BoardHostTask* field_task = nullptr;
+std::atomic<unsigned> button_polls{0}, queue_waits{0};
 const auto epoch = std::chrono::steady_clock::now();
 std::array<uint8_t, 16> rtc_registers{};
 unsigned rtc_calendar_writes = 0, rtc_control_writes = 0;
@@ -134,6 +137,80 @@ void Reset() {
     delayed_playback = false;
     playback_entered = playback_release = playback_timed_out = playback_join_retry = false;
     field_task = nullptr;
+    button_polls = queue_waits = 0;
+}
+
+void TestButtonBuffer() {
+    const ZectrixButtonEvent up{ZectrixButton::kUp, ZectrixButtonAction::kClick};
+    const ZectrixButtonEvent down{ZectrixButton::kDown, ZectrixButtonAction::kClick};
+    const ZectrixButtonEvent ok{ZectrixButton::kOk, ZectrixButtonAction::kClick};
+    const ZectrixButtonEvent back{ZectrixButton::kOk, ZectrixButtonAction::kLongPress};
+    const ZectrixButtonEvent shutdown{ZectrixButton::kDown, ZectrixButtonAction::kLongPress};
+    ZectrixButtonEvent event;
+    ZectrixButtonBuffer buffer;
+    assert(!buffer.Pop(&event) && !buffer.Pop(nullptr));
+    for (std::size_t i = 0; i < ZectrixButtonBuffer::kCapacity; ++i)
+        assert(buffer.Push(i % 2 ? up : down));
+    assert(!buffer.Push(down));
+    assert(buffer.Push(ok) && buffer.Push(back));
+    for (std::size_t i = 0; i < ZectrixButtonBuffer::kCapacity - 2; ++i) {
+        assert(buffer.Pop(&event) && event.button == (i % 2 ? up.button : down.button));
+        assert(event.action == ZectrixButtonAction::kClick);
+    }
+    assert(buffer.Pop(&event) && event.button == ok.button && event.action == ok.action);
+    assert(buffer.Pop(&event) && event.button == back.button && event.action == back.action);
+    assert(!buffer.Pop(&event));
+    for (std::size_t i = 0; i < ZectrixButtonBuffer::kCapacity; ++i) assert(buffer.Push(ok));
+    assert(!buffer.Push(ok) && buffer.Push(back));
+    for (std::size_t i = 0; i < ZectrixButtonBuffer::kCapacity - 1; ++i)
+        assert(buffer.Pop(&event) && event.action == ok.action);
+    assert(buffer.Pop(&event) && event.action == back.action);
+    for (std::size_t i = 0; i < ZectrixButtonBuffer::kCapacity; ++i) assert(buffer.Push(back));
+    assert(!buffer.Push(back) && buffer.Push(shutdown));
+    assert(!buffer.Push(up) && !buffer.Push(ok) && !buffer.Push(back));
+    assert(buffer.Push(shutdown));
+    assert(buffer.Pop(&event) && event.button == shutdown.button && event.action == shutdown.action);
+    assert(!buffer.Pop(&event));
+    assert(buffer.Push(up) && buffer.Pop(&event) && event.button == up.button);
+}
+
+void TestButtonProducerAndWake() {
+    Reset();
+    {
+        ZectrixBoard board;
+        assert(board.Init() == ESP_OK);
+        WaitFor([] { return button_polls.load() > 0; });
+        std::thread waiter([&] {
+            ZectrixButtonEvent event;
+            assert(board.WaitButton(&event, portMAX_DELAY));
+            assert(event.action == ZectrixButtonAction::kWake);
+        });
+        WaitFor([] { return queue_waits.load() > 0; });
+        for (unsigned i = 0; i < 1000; ++i) board.WakeButtonWait();
+        waiter.join();
+        board.DrainButtons();
+        ZectrixButtonEvent event;
+        assert(!board.WaitButton(&event, 0));
+
+        // Sampling proceeds while the foreground is busy and the one-slot
+        // signal queue is full. Wake traffic must not consume physical input.
+        std::atomic<bool> stop{false};
+        std::thread waker([&] {
+            while (!stop.load()) { board.WakeButtonWait(); std::this_thread::yield(); }
+        });
+        levels[ZECTRIX_BUTTON_UP] = 0;
+        std::this_thread::sleep_for(100ms);
+        stop = true;
+        waker.join();
+        assert(board.WaitButton(&event, 0));
+        assert(event.button == ZectrixButton::kUp && event.action == ZectrixButtonAction::kClick);
+        board.DrainButtons();
+        const auto started = std::chrono::steady_clock::now();
+        assert(!board.WaitButton(&event, pdMS_TO_TICKS(20)));
+        assert(std::chrono::steady_clock::now() - started >= 20ms);
+        assert(board.ShutdownPeripherals() == ESP_OK);
+    }
+    Reset();
 }
 
 void EmitField(bool present) {
@@ -512,24 +589,35 @@ TickType_t xTaskGetTickCount() {
     return static_cast<TickType_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - epoch).count());
 }
-void vTaskDelay(TickType_t ticks) { std::this_thread::sleep_for(std::chrono::milliseconds(std::min(ticks, 1u))); }
+void vTaskDelay(TickType_t ticks) {
+    if (current_task && current_task->name == "zectrix_buttons") ++button_polls;
+    std::this_thread::sleep_for(std::chrono::milliseconds(std::min(ticks, 1u)));
+}
 void vTaskDelete(TaskHandle_t task) { assert(task == nullptr); current_task->deleted = true; throw TaskExit{}; }
-QueueHandle_t xQueueCreate(UBaseType_t, UBaseType_t size) {
-    assert(size == sizeof(ZectrixButtonEvent));
+QueueHandle_t xQueueCreate(UBaseType_t capacity, UBaseType_t size) {
+    assert(capacity == 1 && size == sizeof(uint8_t));
     if (failure == Failure::Queue) return nullptr;
     ++queues;
-    return new BoardHostQueue;
+    auto* queue = new BoardHostQueue;
+    queue->capacity = capacity;
+    return queue;
 }
-BaseType_t xQueueSend(QueueHandle_t queue, const void* event, TickType_t) {
+BaseType_t xQueueSend(QueueHandle_t queue, const void* signal, TickType_t ticks) {
+    assert(ticks == 0);
     std::lock_guard<std::mutex> lock(queue->mutex);
-    queue->events.push_back(*static_cast<const ZectrixButtonEvent*>(event));
+    if (queue->signals.size() == queue->capacity) return pdFALSE;
+    queue->signals.push_back(*static_cast<const uint8_t*>(signal));
+    queue->changed.notify_one();
     return pdTRUE;
 }
-BaseType_t xQueueReceive(QueueHandle_t queue, void* event, TickType_t) {
-    std::lock_guard<std::mutex> lock(queue->mutex);
-    if (queue->events.empty()) return pdFALSE;
-    *static_cast<ZectrixButtonEvent*>(event) = queue->events.front();
-    queue->events.pop_front();
+BaseType_t xQueueReceive(QueueHandle_t queue, void* signal, TickType_t ticks) {
+    std::unique_lock<std::mutex> lock(queue->mutex);
+    ++queue_waits;
+    const auto ready = [&] { return !queue->signals.empty(); };
+    if (ticks == portMAX_DELAY) queue->changed.wait(lock, ready);
+    else if (!queue->changed.wait_for(lock, std::chrono::milliseconds(ticks), ready)) return pdFALSE;
+    *static_cast<uint8_t*>(signal) = queue->signals.front();
+    queue->signals.pop_front();
     return pdTRUE;
 }
 void vQueueDelete(QueueHandle_t queue) { --queues; delete queue; }
@@ -740,6 +828,8 @@ esp_err_t esp_sleep_enable_ext1_wakeup_io(uint64_t mask, esp_sleep_ext1_wakeup_m
 [[noreturn]] void esp_deep_sleep_start() { AssertReleased(); throw SleepEntered{}; }
 
 int main() {
+    TestButtonBuffer();
+    TestButtonProducerAndWake();
     TestRtcCalendar();
     TestPowerTransition();
     TestPowerButtonWake();

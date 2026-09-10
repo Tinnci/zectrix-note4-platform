@@ -178,6 +178,9 @@ public:
 
     Status Start();
     Status Step(const InputEvent* event = nullptr);
+    // Dispatch and resolve navigation without drawing. The owner must finish
+    // a bounded input burst with Step() or Idle() before waiting for new input.
+    Status DispatchInput(const InputEvent& event);
     Status Idle();
     Status Stop();
 

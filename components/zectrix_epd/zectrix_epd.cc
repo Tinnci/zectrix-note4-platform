@@ -22,11 +22,12 @@ constexpr int kBwStride = kWidth / 8;
 constexpr int kNativeStride = kWidth / 4;
 constexpr size_t kMaxTransferSize = 1024;
 constexpr int64_t kExternalRefreshTimeoutUs = 5LL * 1000 * 1000;
+constexpr TickType_t kLockTimeout = std::max<TickType_t>(1, pdMS_TO_TICKS(100));
 
 class MutexGuard {
 public:
     explicit MutexGuard(SemaphoreHandle_t mutex) : mutex_(mutex) {
-        locked_ = mutex_ != nullptr && xSemaphoreTake(mutex_, portMAX_DELAY) == pdTRUE;
+        locked_ = mutex_ != nullptr && xSemaphoreTake(mutex_, kLockTimeout) == pdTRUE;
     }
     ~MutexGuard() {
         if (locked_) {
@@ -266,7 +267,7 @@ struct zectrix_epd_t {
                 ESP_LOGE(kTag, "BUSY timeout during %s", operation);
                 return ESP_ERR_TIMEOUT;
             }
-            vTaskDelay(pdMS_TO_TICKS(10));
+            vTaskDelay(std::max<TickType_t>(1, pdMS_TO_TICKS(10)));
         }
         return ESP_OK;
     }
@@ -694,13 +695,13 @@ extern "C" esp_err_t zectrix_epd_del(zectrix_epd_handle_t handle) {
 extern "C" esp_err_t zectrix_epd_power_on(zectrix_epd_handle_t handle) {
     if (handle == nullptr) return ESP_ERR_INVALID_ARG;
     MutexGuard guard(handle->mutex);
-    return guard.locked() ? handle->PowerOnLocked() : ESP_FAIL;
+    return guard.locked() ? handle->PowerOnLocked() : ESP_ERR_TIMEOUT;
 }
 
 extern "C" esp_err_t zectrix_epd_power_off(zectrix_epd_handle_t handle) {
     if (handle == nullptr) return ESP_ERR_INVALID_ARG;
     MutexGuard guard(handle->mutex);
-    return guard.locked() ? handle->PowerOffLocked() : ESP_FAIL;
+    return guard.locked() ? handle->PowerOffLocked() : ESP_ERR_TIMEOUT;
 }
 
 extern "C" bool zectrix_epd_is_powered(zectrix_epd_handle_t handle) {
@@ -719,7 +720,7 @@ extern "C" esp_err_t zectrix_epd_copy_shadow(zectrix_epd_handle_t handle,
         return ESP_ERR_INVALID_ARG;
     }
     MutexGuard guard(handle->mutex);
-    if (!guard.locked()) return ESP_FAIL;
+    if (!guard.locked()) return ESP_ERR_TIMEOUT;
     if (!handle->shadow_valid) return ESP_ERR_INVALID_STATE;
     std::memcpy(destination, handle->shadow + offset, size);
     return ESP_OK;
@@ -745,7 +746,7 @@ extern "C" esp_err_t zectrix_epd_analyze_1bpp(
     const esp_err_t err = ValidatePatch(&source, pixels, pixels_size);
     if (err != ESP_OK) return err;
     MutexGuard guard(handle->mutex);
-    if (!guard.locked()) return ESP_FAIL;
+    if (!guard.locked()) return ESP_ERR_TIMEOUT;
     if (!handle->shadow_valid) return ESP_ERR_INVALID_STATE;
     *result = handle->Analyze(source, pixels);
     return ESP_OK;
@@ -759,7 +760,7 @@ extern "C" esp_err_t zectrix_epd_refresh_full_1bpp(zectrix_epd_handle_t handle,
         return ESP_ERR_INVALID_ARG;
     }
     MutexGuard guard(handle->mutex);
-    if (!guard.locked()) return ESP_FAIL;
+    if (!guard.locked()) return ESP_ERR_TIMEOUT;
     if (!handle->powered || !handle->controller_ready) return ESP_ERR_INVALID_STATE;
     esp_err_t err = handle->PrepareOtpRefresh();
     if (err == ESP_OK) {
@@ -782,7 +783,7 @@ extern "C" esp_err_t zectrix_epd_refresh_partial_1bpp(
     if (validation != ESP_OK) return validation;
     const size_t source_stride = static_cast<size_t>((rect->width + 7) / 8);
     MutexGuard guard(handle->mutex);
-    if (!guard.locked()) return ESP_FAIL;
+    if (!guard.locked()) return ESP_ERR_TIMEOUT;
     if (!handle->powered || !handle->controller_ready || !handle->shadow_valid) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -855,7 +856,7 @@ extern "C" esp_err_t zectrix_epd_refresh_full_4bpp(zectrix_epd_handle_t handle,
         return ESP_ERR_INVALID_ARG;
     }
     MutexGuard guard(handle->mutex);
-    if (!guard.locked()) return ESP_FAIL;
+    if (!guard.locked()) return ESP_ERR_TIMEOUT;
     if (!handle->powered || !handle->controller_ready) return ESP_ERR_INVALID_STATE;
 
     esp_err_t err = handle->PrepareOtpRefresh();
@@ -876,15 +877,19 @@ extern "C" esp_err_t zectrix_epd_refresh_full_4bpp(zectrix_epd_handle_t handle,
         if (err == ESP_OK) err = handle->WriteGrayPass(static_cast<int>(pass), framebuffer);
         if (err == ESP_OK) err = handle->TriggerExternalBatch(pass == 0);
     }
-    if (session_open && handle->internal_power_on) {
-        esp_err_t off_err = handle->SendCommand(0x02);
-        if (off_err == ESP_OK) off_err = handle->SendData(0x00);
-        if (off_err == ESP_OK) off_err = handle->WaitBusy("4bpp internal power off");
+    if (err == ESP_OK && session_open && handle->internal_power_on) {
+        err = handle->SendCommand(0x02);
+        if (err == ESP_OK) err = handle->SendData(0x00);
+        if (err == ESP_OK) err = handle->WaitBusy("4bpp internal power off");
         handle->internal_power_on = false;
-        if (err == ESP_OK) err = off_err;
     }
-    const esp_err_t restore_err = handle->RestoreOtp();
-    if (err == ESP_OK) err = restore_err;
+    if (err == ESP_OK) err = handle->RestoreOtp();
+    if (err != ESP_OK) {
+        // A failed gray pass may still be BUSY. Leave recovery to external
+        // rail-off, without power-off commands or OTP writes to the controller.
+        handle->controller_ready = false;
+        handle->internal_power_on = false;
+    }
     handle->shadow_valid = false;
     return err;
 }

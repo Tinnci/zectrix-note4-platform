@@ -7,12 +7,14 @@
 namespace sdk = zectrix::sdk;
 
 static_assert(ZECTRIX_SDK_VERSION_MAJOR == 1);
-static_assert(ZECTRIX_SDK_VERSION_MINOR == 0);
+static_assert(ZECTRIX_SDK_VERSION_MINOR == 1);
 static_assert(ZECTRIX_SDK_VERSION_PATCH == 0);
 static_assert(sdk::kVersion.major == 1);
 static_assert(static_cast<unsigned>(sdk::Status::Ok) == 0);
 static_assert(static_cast<unsigned>(sdk::Status::InternalError) == 10);
 static_assert(std::is_same_v<decltype(sdk::InputEvent{}.button), sdk::Button>);
+static_assert(std::is_same_v<decltype(&sdk::ApplicationRuntime::Step),
+    sdk::Status (sdk::ApplicationRuntime::*)(const sdk::InputEvent*)>);
 
 namespace {
 

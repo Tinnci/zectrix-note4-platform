@@ -5,7 +5,10 @@
 #include "zectrix_reader_controller.h"
 #include "zectrix_launcher_controller.h"
 #include "zectrix_reading_overview.h"
+#include "zectrix_foreground_dispatch.h"
+#include "zectrix_button_buffer.h"
 #include "zectrix_epd.h"
+#include "ssd2683_waveform.h"
 
 #include <algorithm>
 #include <array>
@@ -14,6 +17,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <map>
 #include <memory>
 #include <new>
@@ -43,6 +47,10 @@ unsigned heap_allocations = 0, fail_heap_at = 0;
 int fail_command = -1, fail_data = -1;
 bool fail_power_off = false, timeout_refresh = false, fail_lock = false;
 int64_t now_us = 0;
+int64_t refresh_busy_us = 0, busy_until_us = 0;
+unsigned refresh_triggers = 0, stuck_refresh = 0;
+bool busy_stuck = false;
+std::function<void()> during_delay;
 
 void Reset() {
     assert(!bus_active && devices == 0 && mutexes == 0 && allocations.empty());
@@ -55,6 +63,10 @@ void Reset() {
     fail_command = fail_data = -1;
     fail_power_off = timeout_refresh = fail_lock = false;
     now_us = 0;
+    refresh_busy_us = busy_until_us = 0;
+    refresh_triggers = stuck_refresh = 0;
+    busy_stuck = false;
+    during_delay = {};
 }
 
 void ClearTraffic() { packets.clear(); gpio_writes = 0; }
@@ -491,7 +503,7 @@ void TestFailuresRecoverWithFullFrame() {
             if (failure == 2) timeout_refresh = true;
             if (failure == 3) fail_power_off = true;
             if (failure == 4) fail_lock = true;
-            const auto expected = failure == 2 ? ESP_ERR_TIMEOUT : ESP_FAIL;
+            const auto expected = failure == 2 || failure == 4 ? ESP_ERR_TIMEOUT : ESP_FAIL;
             assert(service->Present1Bpp(DisplayIntent::Auto, frame.data(), frame.size()) == expected);
             if (failure == 2) assert(!HasCommand(0x02));
             assert(!service->CanUsePartial());
@@ -539,6 +551,144 @@ void TestBatchAndGray() {
     ClearTraffic();
     Present(*service, frame);
     CheckFull(frame);
+}
+
+void TestGrayTimeoutRecovery() {
+    for (bool batch : {false, true}) {
+        // Refresh 1 is the required white preclear; later ones are gray passes.
+        for (unsigned phase = 1; phase <= 1 + ssd2683_waveform::kVendorGray16RenderPassCount; ++phase) {
+            Reset();
+            auto service = CreateService();
+            if (batch) assert(service->BeginBatch() == ESP_OK);
+            std::array<uint8_t, DisplayService::kFrameBytes4Bpp> gray{};
+            stuck_refresh = phase;
+            const auto started = now_us;
+            assert(service->Present4Bpp(DisplayIntent::Quality, gray.data(), gray.size()) == ESP_ERR_TIMEOUT);
+            assert(refresh_triggers == phase && packets.back().command == 0x12);
+            const auto elapsed = now_us - started;
+            assert(elapsed >= (phase == 1 ? 2000000 : 5000000));
+            assert(elapsed < (phase == 1 ? 2500000 : 5500000));
+            assert(!service->CanUsePartial() && !Inspect(*service).framebuffer_valid);
+            if (batch) assert(service->EndBatch() == ESP_OK);
+            assert(!busy_stuck && !service->IsPowered() && pins[GPIO_NUM_6] == 0);
+            assert(packets.back().command == 0x12);
+            stuck_refresh = 0;
+            ClearTraffic();
+            Frame frame;
+            frame.fill(0xff);
+            Present(*service, frame);
+            CheckFull(frame);
+            assert(service->CanUsePartial());
+        }
+    }
+}
+
+void TestForegroundDisplayScheduling() {
+    using namespace zectrix::sdk;
+    using namespace zectrix::app;
+    class Home final : public Application {
+    public:
+        Home(LauncherController& controller, ZectrixDemoUi& ui) : controller_(controller), ui_(ui) {}
+        Status Enter(ApplicationContext& context) override {
+            assert(controller_.Start() == Status::Ok);
+            return Apply(controller_.Tick(), context);
+        }
+        Status HandleEvent(const InputEvent& event, ApplicationContext& context) override {
+            return Apply(controller_.Handle(event), context);
+        }
+        Status HandleIdle(ApplicationContext& context) override { return Apply(controller_.Tick(), context); }
+        Status Render(const RenderRequest& request) override {
+            const auto result = ui_.ShowLauncher(controller_, {}, {}, request.intent == RenderIntent::Quality);
+            controller_.Presented(result == ESP_OK);
+            return result == ESP_OK ? Status::Ok : Status::IoError;
+        }
+        Status Exit() override { controller_.Stop(); return Status::Ok; }
+    private:
+        Status Apply(LauncherResult result, ApplicationContext& context) {
+            assert(result.decision == LauncherDecision::None || result.decision == LauncherDecision::RenderFast ||
+                   result.decision == LauncherDecision::RenderQuality);
+            if (result.decision != LauncherDecision::None)
+                context.RequestRender({0, 24, 400, 276}, result.decision == LauncherDecision::RenderQuality
+                    ? RenderIntent::Quality : RenderIntent::Fast);
+            return Status::Ok;
+        }
+        LauncherController& controller_;
+        ZectrixDemoUi& ui_;
+    };
+    class Factory final : public ApplicationFactory, public RuntimeDelegate {
+    public:
+        LauncherController* controller = nullptr;
+        ZectrixDemoUi* ui = nullptr;
+        Status Create(const ApplicationRegistry&, Application** output) override {
+            *output = new Home(*controller, *ui);
+            return Status::Ok;
+        }
+        Status Shutdown() override { return Status::Ok; }
+        void EnterFailsafe(Status) override { assert(false); }
+    };
+    std::array<uint32_t, 2> refreshes{};
+    std::array<int64_t, 2> drain_us{};
+    Frame serial_frame{};
+    for (unsigned coalesce = 0; coalesce < 2; ++coalesce) {
+        Reset();
+        auto service = CreateService();
+        ZectrixDemoUi ui(service.get());
+        Factory factory;
+        ApplicationCatalog catalog;
+        assert(catalog.Add("launcher", "Launcher", factory));
+        assert(catalog.Add("reader", "BOOK READER", factory, {ApplicationIcon::Book, true}));
+        assert(catalog.Add("transfer", "SEND BOOKS", factory, {ApplicationIcon::Transfer, true}));
+        assert(catalog.Add("clock", "CLOCK", factory, {ApplicationIcon::Clock, true}));
+        assert(catalog.Add("sleep", "SLEEP COVER", factory, {ApplicationIcon::Sleep, true}));
+        assert(catalog.Add("settings", "SETTINGS", factory, {ApplicationIcon::Settings, true}));
+        assert(catalog.Add("about", "ABOUT", factory));
+        LauncherController controller(catalog);
+        factory.controller = &controller;
+        factory.ui = &ui;
+        ApplicationRuntime runtime(catalog.data(), catalog.size(), "launcher", factory);
+        assert(runtime.Start() == Status::Ok);
+        ZectrixButtonBuffer buttons;
+        refresh_busy_us = 800000;
+        unsigned produced = 0;
+        int64_t next_input_us = 80000;
+        during_delay = [&] {
+            while (produced < 9 && now_us >= next_input_us) {
+                assert(buttons.Push({ZectrixButton::kDown, ZectrixButtonAction::kClick}));
+                ++produced;
+                next_input_us += 80000;
+            }
+        };
+        // The sampler fills the bounded buffer while the initial frame is BUSY.
+        assert(runtime.Step() == Status::Ok && produced == 9);
+        during_delay = {};
+        const auto poll = [&buttons](InputEvent* event) {
+            ZectrixButtonEvent button;
+            if (!buttons.Pop(&button)) return false;
+            *event = {Button::Down, InputAction::Click};
+            return true;
+        };
+        const auto before = Inspect(*service).refresh_count;
+        const auto started = now_us;
+        zectrix::ui::StatusBarState status;
+        status.time_valid = true;
+        status.hour = 12;
+        status.minute = 35;
+        ui.UpdateStatus(status);
+        InputEvent event;
+        while (poll(&event)) {
+            assert((coalesce ? DispatchInputBurst(runtime, event, poll) : runtime.Step(&event)) == Status::Ok);
+            assert(ui.RefreshPending() == ESP_OK);
+        }
+        refreshes[coalesce] = Inspect(*service).refresh_count - before;
+        drain_us[coalesce] = now_us - started;
+        assert(controller.selected() == 9 % controller.count());
+        if (!coalesce) std::memcpy(serial_frame.data(), ui.canvas().data(), serial_frame.size());
+        else assert(std::memcmp(serial_frame.data(), ui.canvas().data(), serial_frame.size()) == 0);
+    }
+    assert(refreshes[0] == 9 && refreshes[1] == 1);
+    assert(drain_us[1] < 1000000 && drain_us[0] > 7000000);
+    std::printf("MEASURE: nine queued Home inputs at simulated 800ms BUSY: refreshes=%u -> %u, drain=%lld -> %lld us.\n",
+        refreshes[0], refreshes[1], static_cast<long long>(drain_us[0]), static_cast<long long>(drain_us[1]));
 }
 
 void TestShutdownReleasesSpi() {
@@ -1044,6 +1194,27 @@ void TestReaderComposition() {
     reader.Presented(true);
     assert(saved.position < bookmarks.Find(saved.book_id.data(), saved.source_bytes)->position);
     assert(reader.Tick(1) == ReaderDecision::None);
+
+    // Skipped pages and timer work must never publish an unseen position.
+    const auto displayed = *bookmarks.Latest();
+    for (unsigned turn = 0; turn < 3; ++turn) {
+        assert(reader.Handle({Button::Down, InputAction::Click}) == ReaderDecision::RenderFast);
+        assert(*bookmarks.Latest() == displayed);
+    }
+    reader.Tick(now_us);
+    assert(*bookmarks.Latest() == displayed);
+    refresh_busy_us = 800000;
+    unsigned busy_samples = 0;
+    during_delay = [&] {
+        ++busy_samples;
+        assert(*bookmarks.Latest() == displayed);
+    };
+    assert(ui.ShowReader(reader, false) == ESP_OK && busy_samples > 0);
+    during_delay = {};
+    assert(*bookmarks.Latest() == displayed);
+    reader.Presented(true);
+    assert(displayed.position < bookmarks.Latest()->position);
+    assert(bookmarks.Latest()->position == reader.engine().page().start);
 }
 
 void TestBookTransferComposition() {
@@ -1223,8 +1394,13 @@ void heap_caps_free(void* pointer) {
     std::free(pointer);
 }
 SemaphoreHandle_t xSemaphoreCreateMutex() { ++mutexes; return new FakeSemaphore; }
-BaseType_t xSemaphoreTake(SemaphoreHandle_t mutex, TickType_t) {
-    if (fail_lock) { fail_lock = false; return pdFALSE; }
+BaseType_t xSemaphoreTake(SemaphoreHandle_t mutex, TickType_t ticks) {
+    assert(ticks == pdMS_TO_TICKS(100));
+    if (fail_lock) {
+        fail_lock = false;
+        now_us += static_cast<int64_t>(ticks) * 1000;
+        return pdFALSE;
+    }
     assert(!mutex->locked);
     mutex->locked = true;
     return pdTRUE;
@@ -1235,7 +1411,11 @@ BaseType_t xSemaphoreGive(SemaphoreHandle_t mutex) {
     return pdTRUE;
 }
 void vSemaphoreDelete(SemaphoreHandle_t mutex) { assert(!mutex->locked); --mutexes; delete mutex; }
-void vTaskDelay(TickType_t ticks) { now_us += static_cast<int64_t>(ticks) * 1000; }
+void vTaskDelay(TickType_t ticks) {
+    assert(ticks > 0);
+    now_us += static_cast<int64_t>(ticks) * 1000;
+    if (during_delay) during_delay();
+}
 int64_t esp_timer_get_time() { return now_us; }
 int64_t zectrix::time::TimeService::MonotonicMicroseconds() const { return now_us; }
 const char* ZectrixSelfTest::Name(ZectrixTestId) { return "test"; }
@@ -1250,15 +1430,18 @@ esp_err_t gpio_config(const gpio_config_t* config) {
 }
 esp_err_t gpio_set_level(gpio_num_t pin, int value) {
     ++gpio_writes;
+    if (pin == GPIO_NUM_9) assert(!busy_stuck);
     if (pin == GPIO_NUM_6 && value == 0 && fail_power_off) {
         fail_power_off = false;
         return ESP_FAIL;
     }
     pins[pin] = value;
+    if (pin == GPIO_NUM_6 && value == 0) busy_stuck = false;
     return ESP_OK;
 }
 int gpio_get_level(gpio_num_t pin) {
     assert(pin == GPIO_NUM_8);
+    if (busy_stuck || now_us < busy_until_us) return 0;
     return timeout_refresh && !packets.empty() && packets.back().command == 0x12 ? 0 : 1;
 }
 esp_err_t gpio_hold_dis(gpio_num_t) { return ESP_OK; }
@@ -1292,7 +1475,12 @@ esp_err_t spi_device_polling_transmit(spi_device_handle_t, spi_transaction_t* tr
     assert(size > 0 && size <= 1024 && transaction->length % 8 == 0);
     if (pins[GPIO_NUM_10] == 0) {
         assert(size == 1);
+        assert(!busy_stuck);
         if (bytes[0] == fail_command) { fail_command = -1; return ESP_FAIL; }
+        if (bytes[0] == 0x12) {
+            busy_until_us = now_us + refresh_busy_us;
+            if (++refresh_triggers == stuck_refresh) busy_stuck = true;
+        }
         packets.push_back({bytes[0], {}});
     } else {
         assert(!packets.empty());
@@ -1311,6 +1499,8 @@ int main() {
     TestDriverDiffAndWindow();
     TestFailuresRecoverWithFullFrame();
     TestBatchAndGray();
+    TestGrayTimeoutRecovery();
+    TestForegroundDisplayScheduling();
     TestShutdownReleasesSpi();
     TestUiTraffic();
     TestViewPorts();
