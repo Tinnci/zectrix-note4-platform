@@ -182,6 +182,12 @@ Each iteration picks the top unfinished task, implements production code, verifi
 - [ ] **E1.5: 2.4GHz 射频协同仲裁机制 (Radio Arbiter for Wi-Fi & BLE)**
   - 针对 ESP32-S3 单天线共享架构，设计 Wi-Fi 高速传书与 BLE 伴侣同步的协同调度状态机。
   - 优化无线突发工作时的电源与射频资源分配，确保无线切换平滑可靠。
+- [ ] **E1.6: 视觉呈现精细化与交互打磨 (Visual Refinement & Ergonomic Polish)**
+  - 探索主屏顶栏的中立与极简呈现（如标题去品牌化、平衡居中构图，探索 `HOME` 或 `NOTE4 | HOME` 等中立命名）。
+  - 针对大字号阅读排版探索行间距优化（如适度扩大行距以提供更多呼吸感），消除 400x300 墨水屏上连续多行 CJK 排版的视觉黏连感。
+  - 优化待机画报底部唤醒提示（`Press DOWN to wake`）的视觉辨识度（探索加粗或高对比点阵字型），提升弱光或反光环境下的易读性。
+  - 探索磁贴图标精细化演进，研究将基于文字符号拼接的磁贴标识升级为 16x16 紧凑单色位图图标（Bitmap Glyph），赋予启动器磁贴更细腻纯粹的极客质感。
+
 
 ---
 
