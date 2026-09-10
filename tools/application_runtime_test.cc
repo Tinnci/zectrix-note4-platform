@@ -12,6 +12,16 @@ namespace {
 
 namespace sdk = zectrix::sdk;
 
+void CheckReentry(sdk::ApplicationRuntime* runtime) {
+    if (runtime == nullptr) return;
+    const sdk::InputEvent event{sdk::Button::Down, sdk::InputAction::Click};
+    assert(runtime->Start() == sdk::Status::InvalidState);
+    assert(runtime->Step(&event) == sdk::Status::InvalidState);
+    assert(runtime->DispatchInput(event) == sdk::Status::InvalidState);
+    assert(runtime->Idle() == sdk::Status::InvalidState);
+    assert(runtime->Stop() == sdk::Status::InvalidState);
+}
+
 struct Behavior {
     sdk::Status factory_result = sdk::Status::Ok;
     sdk::Status enter_result = sdk::Status::Ok;
@@ -45,11 +55,13 @@ public:
     TestApplication(const char* name, Behavior& behavior)
         : name_(name), behavior_(&behavior) {}
     ~TestApplication() override {
+        CheckReentry(behavior_->reenter);
         ++behavior_->destroy_count;
         events.push_back(std::string("destroy:") + name_);
     }
 
     sdk::Status Enter(sdk::ApplicationContext& context) override {
+        CheckReentry(behavior_->reenter);
         retained_context = &context;
         events.push_back(std::string("enter:") + name_);
         context.RequestRender({0, 0, 10, 10}, sdk::RenderIntent::Quality);
@@ -60,14 +72,7 @@ public:
                             sdk::ApplicationContext& context) override {
         events.push_back(std::string("event-begin:") + name_);
         ++behavior_->event_count;
-        if (behavior_->reenter) {
-            auto& runtime = *behavior_->reenter;
-            assert(runtime.Start() == sdk::Status::InvalidState);
-            assert(runtime.Step(&event) == sdk::Status::InvalidState);
-            assert(runtime.DispatchInput(event) == sdk::Status::InvalidState);
-            assert(runtime.Idle() == sdk::Status::InvalidState);
-            assert(runtime.Stop() == sdk::Status::InvalidState);
-        }
+        CheckReentry(behavior_->reenter);
         if (behavior_->event_open != nullptr &&
             (!behavior_->open_on_ok_only || event.button == sdk::Button::Ok)) {
             sdk::AppCommand command;
@@ -88,6 +93,7 @@ public:
     }
 
     sdk::Status HandleIdle(sdk::ApplicationContext& context) override {
+        CheckReentry(behavior_->reenter);
         events.push_back(std::string("idle:") + name_);
         ++behavior_->idle_count;
         if (behavior_->idle_home) {
@@ -97,6 +103,7 @@ public:
     }
 
     sdk::Status Render(const sdk::RenderRequest& request) override {
+        CheckReentry(behavior_->reenter);
         ++behavior_->render_count;
         behavior_->last_render = request;
         events.push_back(std::string("render:") + name_);
@@ -104,6 +111,7 @@ public:
     }
 
     sdk::Status Exit() override {
+        CheckReentry(behavior_->reenter);
         events.push_back(std::string("exit:") + name_);
         return behavior_->exit_result;
     }
@@ -125,6 +133,7 @@ public:
         *output = nullptr;
         ++behavior_->create_count;
         events.push_back(std::string("factory:") + name_);
+        CheckReentry(behavior_->reenter);
         if (!sdk::IsOk(behavior_->factory_result)) {
             return behavior_->factory_result;
         }
@@ -141,10 +150,12 @@ private:
 class Delegate final : public sdk::RuntimeDelegate {
 public:
     sdk::Status Shutdown() override {
+        CheckReentry(reenter);
         ++shutdown_count;
         return shutdown_result;
     }
     void EnterFailsafe(sdk::Status reason) override {
+        CheckReentry(reenter);
         ++failsafe_count;
         failsafe_reason = reason;
     }
@@ -153,6 +164,7 @@ public:
     int failsafe_count = 0;
     sdk::Status shutdown_result = sdk::Status::Ok;
     sdk::Status failsafe_reason = sdk::Status::Ok;
+    sdk::ApplicationRuntime* reenter = nullptr;
 };
 
 bool IsForeground(const sdk::ApplicationRuntime& runtime, const char* id) {
@@ -185,6 +197,37 @@ int main() {
     };
     const sdk::InputEvent input{sdk::Button::Ok, sdk::InputAction::Click};
     const sdk::InputEvent down{sdk::Button::Down, sdk::InputAction::Click};
+
+    // Every external callback, including cleanup, must return before another
+    // runtime operation can change ownership or enter the shutdown delegate.
+    for (unsigned failure = 0; failure < 3; ++failure) {
+        Delegate delegate;
+        sdk::ApplicationRuntime runtime(descriptors, 3, "launcher", delegate);
+        launcher.reenter = clock.reenter = delegate.reenter = &runtime;
+        launcher.event_render = true;
+        if (failure == 1) launcher.factory_result = sdk::Status::NoMemory;
+        if (failure == 2) launcher.enter_result = sdk::Status::IoError;
+        const auto expected = failure == 1 ? sdk::Status::NoMemory :
+                              failure == 2 ? sdk::Status::IoError : sdk::Status::Ok;
+        assert(runtime.Start() == expected);
+        if (failure == 0) {
+            assert(runtime.Step() == sdk::Status::Ok);
+            assert(runtime.DispatchInput(down) == sdk::Status::Ok);
+            assert(runtime.Idle() == sdk::Status::Ok);
+            launcher.event_open = "clock";
+            assert(runtime.Step(&input) == sdk::Status::Ok);
+            assert(IsForeground(runtime, "clock") && runtime.foreground_generation() == 2);
+        } else {
+            assert(runtime.state() == sdk::LifecycleState::Failsafe);
+            assert(delegate.failsafe_count == 1 && delegate.failsafe_reason == expected);
+        }
+        assert(delegate.shutdown_count == 0);
+        assert(runtime.Stop() == sdk::Status::Ok && runtime.Stop() == sdk::Status::Ok);
+        assert(delegate.shutdown_count == 1);
+        assert(launcher.destroy_count == (failure == 1 ? 0 : 1));
+        assert(clock.destroy_count == (failure == 0 ? 1 : 0));
+        Reset(launcher, clock, broken);
+    }
 
     {
         Delegate delegate;

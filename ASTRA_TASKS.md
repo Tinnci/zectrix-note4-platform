@@ -166,10 +166,13 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Added a calendar/reading overview, six catalog-driven Home tiles and a private Tools scene. UP/DOWN follows one circular focus order, selections survive returns, and trimmed modules reflow into fewer rows. The existing canvas, status viewport and refresh ownership remain in use.
   - Continue Reading restores the latest committed local bookmark through cancellable Library/Reading scenes. Missing books, stale file lengths and invalid positions return to Library with an explanation; failed display commits preserve saved progress. See [docs/HOME.md](docs/HOME.md).
   - Verified all 32 Host targets, reader ASan/UBSan with and without connectivity, rendered Home variants, ShellCheck and Full/Minimal ESP32-S3 builds. Full is 3,000,736 bytes and Minimal is 553,200 bytes (81.6% smaller); adjacent tile focus transfers 3,456 bytes of panel RAM data. Device smoke was not needed for this UI change; physical contrast and latency remain hardware measurements.
-- [ ] **E1.3: 墨水屏高响应度调度与防卡死保护 (Display Responsiveness & Input Concurrency)**
+- [x] **E1.3: 墨水屏高响应度调度与防卡死保护 (Display Responsiveness & Input Concurrency)**
   - 借鉴 Flipper Zero ViewPort 锁管理与事件流机制，优化慢速 EPD 刷新与高频输入的并发处理。
   - 在硬件 BUSY 传输期间探索非阻塞更新尝试、脏区域合并（Dirty Region Merge）或跳帧策略。
   - 确保高频按键与时间更新下输入队列不阻塞、界面无假死，保持流畅单手操控手感。
+  - Completed bounded foreground input bursts, merged content/status updates and priority-preserving button buffering. Confirmation, Back and application transitions end a burst; shutdown supersedes queued actions. Existing streamed reading, successful-display bookmark persistence and single-owner display access remain in use.
+  - Bounded driver lock/BUSY waits and gray-failure rail cleanup prevent endless waits and unsafe recovery commands. Extended runtime reentry protection through factories, destruction and shutdown/failsafe delegates; SDK 1.1.1 preserves source compatibility.
+  - Verified all 32 Host targets, runtime ASan/UBSan, Full/Minimal ESP32-S3 builds and the connected-device Full flash/boot smoke. Nine inputs queued during an 800 ms simulated BUSY period require one subsequent refresh instead of nine, reducing simulated backlog drain from 8.1 s to 0.9 s. See [docs/DISPLAY_RESPONSIVENESS.md](docs/DISPLAY_RESPONSIVENESS.md); physical input latency and panel quality remain hardware measurements.
 - [ ] **E1.4: 交互状态机一致性与导航流整合 (Unified Navigation Consistency)**
   - 统一全局按键交互范式（列表/磁贴切换、确认进入、长按返回上一级场景、全局快捷休眠等）。
   - 规范各微应用间栈式调度（Push/Pop Scene）与退出清理契约，确保所有子页面行为逻辑高度一致。
