@@ -159,3 +159,27 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Reviewed Biscuit, CrossMux, CrossInk, Momentum and Unleashed source with CrossPoint/Flipper references. Documented daily Home, scene ownership, static versus active standby, streamed transfer, font preparation and image dithering decisions in [docs/FIRMWARE_UI_STUDY.md](docs/FIRMWARE_UI_STUDY.md).
   - Added a proportional Launcher overflow indicator on the existing canvas, hidden when all eight rows fit. No new task, buffer, persistent state or refresh operation is required. Added the Minimal menu to the visual preview fixture.
   - Verified all 32 Host targets, the focused display suite, Full/Minimal ESP32-S3 builds and rendered first/last/Minimal menus. Full is 2,995,824 bytes and Minimal is 548,960 bytes (81.7% smaller); static internal RAM is 213,495/118,651 bytes. Hardware was not required for this UI change; proposed home, font and cover features remain subsequent iterations.
+- [ ] **E1.2: 磁贴仪表盘主屏演进 (Tile Dashboard & Overview Card)**
+  - 基于 E1.1 对 Biscuit 和 Flipper 桌面架构的调研，设计并实现卡片化主屏体验。
+  - 探索将主屏划分为系统状态/阅读概览卡片与多功能应用磁贴（App Tiles）。
+  - 支持单手物理按键直观导航与焦点切换，自适应模块动态装配状态。
+- [ ] **E1.3: 墨水屏高响应度调度与防卡死保护 (Display Responsiveness & Input Concurrency)**
+  - 借鉴 Flipper Zero ViewPort 锁管理与事件流机制，优化慢速 EPD 刷新与高频输入的并发处理。
+  - 在硬件 BUSY 传输期间探索非阻塞更新尝试、脏区域合并（Dirty Region Merge）或跳帧策略。
+  - 确保高频按键与时间更新下输入队列不阻塞、界面无假死，保持流畅单手操控手感。
+- [ ] **E1.4: 交互状态机一致性与导航流整合 (Unified Navigation Consistency)**
+  - 统一全局按键交互范式（列表/磁贴切换、确认进入、长按返回上一级场景、全局快捷休眠等）。
+  - 规范各微应用间栈式调度（Push/Pop Scene）与退出清理契约，确保所有子页面行为逻辑高度一致。
+- [ ] **E1.5: 2.4GHz 射频协同仲裁机制 (Radio Arbiter for Wi-Fi & BLE)**
+  - 针对 ESP32-S3 单天线共享架构，设计 Wi-Fi 高速传书与 BLE 伴侣同步的协同调度状态机。
+  - 优化无线突发工作时的电源与射频资源分配，确保无线切换平滑可靠。
+
+---
+
+## GitHub Project & Milestone Governance (项目治理与远程同步)
+
+- [ ] **G1.1: GitHub Issues 与 Milestones 状态审查与同步治理 (GitHub Issues & Milestones Triage)**
+  - 使用 `gh` CLI 检查并分析远程 GitHub 仓库的现有 Issue 与 Milestone 状态。
+  - 根据工程实际已交付完成的 Milestone（C1 互联平台、D1 维护命令行、M5 OTA更新、R1 墨水屏进阶、L1 实用启动器与阅读器、S1 模块化解耦等），系统性审查关联的 Issue，更新交付说明并规范关闭已解决的问题。
+  - 同步创建或更新 GitHub Milestones（如 L1, S1, E1），对齐远程仓库的项目进度看板，确保 GitHub 状态与本地工程契约保持一致。
+
