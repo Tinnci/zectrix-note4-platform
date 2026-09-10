@@ -78,8 +78,9 @@ Status ApplicationRuntime::SwitchTo(const ApplicationId& id,
 
     state_ = LifecycleState::Creating;
     Application* raw_candidate = nullptr;
-    const Status create_result =
-        descriptor->factory->Create(registry_, &raw_candidate);
+    const Status create_result = InvokeCallback([&] {
+        return descriptor->factory->Create(registry_, &raw_candidate);
+    });
     std::unique_ptr<Application> candidate(raw_candidate);
     if (!IsOk(create_result) || candidate == nullptr) {
         const Status failure =
@@ -133,7 +134,10 @@ void ApplicationRuntime::EnterFailsafe(Status reason) {
     commands_ = {};
     state_ = LifecycleState::Failsafe;
     last_error_ = reason;
-    delegate_->EnterFailsafe(reason);
+    InvokeCallback([this, reason] {
+        delegate_->EnterFailsafe(reason);
+        return Status::Ok;
+    });
 }
 
 void ApplicationRuntime::ExitAndDestroyForeground() {
@@ -142,10 +146,14 @@ void ApplicationRuntime::ExitAndDestroyForeground() {
         return;
     }
     state_ = LifecycleState::Exiting;
-    const Status exit_result = InvokeCallback(
-        [this] { return foreground_->Exit(); });
+    const Status exit_result = InvokeCallback([this] {
+        const Status result = foreground_->Exit();
+        // Destructors can also call external code; retain the reentry guard
+        // until the outgoing application has released all of its resources.
+        foreground_.reset();
+        return result;
+    });
     if (!IsOk(exit_result)) last_error_ = exit_result;
-    foreground_.reset();
     foreground_id_ = {};
     state_ = LifecycleState::Absent;
 }
@@ -221,14 +229,15 @@ Status ApplicationRuntime::Stop() {
     ExitAndDestroyForeground();
     renders_.Discard();
     commands_ = {};
-    const Status result = delegate_->Shutdown();
+    const Status result = InvokeCallback([this] { return delegate_->Shutdown(); });
     if (!IsOk(result)) last_error_ = result;
     state_ = LifecycleState::Stopped;
     return result;
 }
 
 SubmitResult ApplicationRuntime::SubmitCommand(const AppCommand& command) {
-    if (!callback_active_ || state_ == LifecycleState::Exiting) {
+    if (!callback_active_ ||
+        (state_ != LifecycleState::Entering && state_ != LifecycleState::Active)) {
         return SubmitResult::Rejected;
     }
     return commands_.Submit(command);
@@ -237,7 +246,7 @@ SubmitResult ApplicationRuntime::SubmitCommand(const AppCommand& command) {
 bool ApplicationRuntime::SubmitRender(const DirtyRegion& dirty,
                                       RenderIntent intent) {
     if (!callback_active_ || dirty.IsEmpty() ||
-        state_ == LifecycleState::Exiting) {
+        (state_ != LifecycleState::Entering && state_ != LifecycleState::Active)) {
         return false;
     }
     renders_.Submit({generation_, dirty, intent});

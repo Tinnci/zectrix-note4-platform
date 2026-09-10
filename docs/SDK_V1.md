@@ -1,6 +1,6 @@
 # Zectrix SDK v1
 
-Status: Source-stable version 1.1.0.
+Status: Source-stable version 1.1.1.
 
 ## Scope
 
@@ -37,7 +37,7 @@ zectrix/zectrix_sdk.h
 
 ## Version policy
 
-SDK v1 uses semantic version 1.1.0.
+SDK v1 uses semantic version 1.1.1.
 
 - Increment `major` for a source-breaking change.
 - Increment `minor` for an additive source-compatible feature.
@@ -124,6 +124,10 @@ requests belonging to an outgoing foreground are discarded. This API does not
 represent a successful physical display: bookmarks and display accounting
 still depend on synchronous render completion. Callback reentry through
 `Start`, `Step`, `DispatchInput`, `Idle` or `Stop` returns `InvalidState`.
+Version 1.1.1 extends this protection to factories, application destructors
+and shutdown/failsafe delegates. Navigation and render submission are accepted
+only from entering or active application callbacks. A factory or cleanup
+callback cannot start another lifecycle operation while ownership is changing.
 See [DISPLAY_RESPONSIVENESS.md](DISPLAY_RESPONSIVENESS.md) for the shell policy.
 
 ## Errors

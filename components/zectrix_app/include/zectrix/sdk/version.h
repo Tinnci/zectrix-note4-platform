@@ -4,8 +4,8 @@
 
 #define ZECTRIX_SDK_VERSION_MAJOR 1
 #define ZECTRIX_SDK_VERSION_MINOR 1
-#define ZECTRIX_SDK_VERSION_PATCH 0
-#define ZECTRIX_SDK_VERSION_STRING "1.1.0"
+#define ZECTRIX_SDK_VERSION_PATCH 1
+#define ZECTRIX_SDK_VERSION_STRING "1.1.1"
 
 namespace zectrix::sdk {
 inline namespace v1 {

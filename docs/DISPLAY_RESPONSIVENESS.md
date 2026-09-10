@@ -34,6 +34,12 @@ successful physical refresh consumes the partial-refresh budget. Existing
 `Step` callers retain their behavior; [SDK_V1.md](SDK_V1.md) describes the
 additive API and callback-reentry rejection.
 
+The same reentry protection covers factories, application destruction and
+shutdown/failsafe delegates. Nested runtime operations return `InvalidState`
+until the callback returns; only entering or active application callbacks can
+submit navigation or rendering. This closes a recursive-shutdown failure in
+the initial E1.3 implementation without adding a mutex or another task.
+
 ## Bounded input storage
 
 `ZectrixButtonBuffer` stores 16 physical events. A short board critical section
@@ -92,8 +98,15 @@ make the panel's current waveform interruptible.
 Host scenarios also exercise a real threaded button producer with a saturated
 wake queue, control-event overflow and shutdown priority, bounded dispatch
 under continuous input, dirty/Quality merging, transitions and callback
-reentry, unchanged SDK call signatures, skipped-page bookmark persistence,
+reentry through creation, rendering, destruction and shutdown/failsafe paths,
+unchanged SDK call signatures, skipped-page bookmark persistence,
 and BUSY timeout at the white preclear and every gray pass with/without an
 explicit power batch. Failed refreshes must release power and recover through
 a full frame. The standard Host and Full/Minimal firmware regression covers
 both configured products.
+
+Completion checks on 2026-09-10 passed all 32 Host targets, runtime ASan/UBSan
+and Full/Minimal ESP32-S3 builds. Full firmware is 3,001,712 bytes; Minimal is
+554,224 bytes. The connected-device Full flash/boot smoke confirmed the first
+Launcher frame, boot confirmation, 12 applications and USB CLI startup.
+Physical button latency, contrast and ghosting remain panel measurements.

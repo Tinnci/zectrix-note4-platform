@@ -8,7 +8,7 @@ namespace sdk = zectrix::sdk;
 
 static_assert(ZECTRIX_SDK_VERSION_MAJOR == 1);
 static_assert(ZECTRIX_SDK_VERSION_MINOR == 1);
-static_assert(ZECTRIX_SDK_VERSION_PATCH == 0);
+static_assert(ZECTRIX_SDK_VERSION_PATCH == 1);
 static_assert(sdk::kVersion.major == 1);
 static_assert(static_cast<unsigned>(sdk::Status::Ok) == 0);
 static_assert(static_cast<unsigned>(sdk::Status::InternalError) == 10);
