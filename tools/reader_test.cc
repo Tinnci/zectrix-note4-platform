@@ -298,10 +298,12 @@ public:
     std::array<Bytes*, 2> sources;
     bool opened = false;
     bool fail_open = false;
+    bool remove_last_on_open = false;
+    std::size_t listed_count = 2;
     uint32_t listed_size = 0;
     Result refresh_result = Result::Ok;
     Result Refresh() override { Close(); return refresh_result; }
-    std::size_t count() const override { return refresh_result == Result::Ok ? sources.size() : 0; }
+    std::size_t count() const override { return refresh_result == Result::Ok ? listed_count : 0; }
     bool truncated() const override { return false; }
     BookInfo Get(std::size_t index) const override {
         BookInfo info;
@@ -312,6 +314,7 @@ public:
         return info;
     }
     Result Open(std::size_t index, Source** source) override {
+        if (remove_last_on_open) { --listed_count; *source = nullptr; return Result::End; }
         if (fail_open) { *source = nullptr; return Result::IoError; }
         *source = sources[index]; opened = true; return Result::Ok;
     }
@@ -477,7 +480,7 @@ void ContinueReadingTests(const std::string& dir) {
         assert(manual.scene() == ReaderScene::Library && manual.selected() == 1 && !library.opened);
     }
 
-    for (unsigned scenario = 0; scenario < 6; ++scenario) {
+    for (unsigned scenario = 0; scenario < 7; ++scenario) {
         Store unavailable_store;
         Bookmarks unavailable_marks(unavailable_store);
         assert(unavailable_marks.Load() == Result::Ok);
@@ -499,6 +502,12 @@ void ContinueReadingTests(const std::string& dir) {
             mark.source_bytes = epub.Size();
             mark.position.chapter = 100;
         }
+        if (scenario == 6) {
+            mark.book_id = library.Get(1).id;
+            mark.source_bytes = epub.Size();
+            library.remove_last_on_open = true;
+            expected = ReaderNotice::RecentUnavailable;
+        }
         assert(unavailable_marks.Save(mark) == Result::Ok);
         const auto persisted = unavailable_store.local;
         ReaderController recent(library, unavailable_marks);
@@ -506,9 +515,12 @@ void ContinueReadingTests(const std::string& dir) {
         for (unsigned poll = 0; recent.busy() && poll < 10000; ++poll) recent.Tick(poll);
         assert(recent.scene() == ReaderScene::Library && recent.notice() == expected);
         assert(!library.opened && !recent.busy() && unavailable_store.local == persisted);
+        if (scenario == 6) assert(recent.selected() == 0 && library.count() == 1);
         assert(recent.Handle(back) == ReaderDecision::Home);
         library.listed_size = 0;
         library.fail_open = false;
+        library.remove_last_on_open = false;
+        library.listed_count = 2;
     }
 
     {

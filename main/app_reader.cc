@@ -18,6 +18,7 @@ public:
     sdk::Status Enter(sdk::ApplicationContext& context) override {
         const auto result = controller_.Start(continue_reading_);
         if (!sdk::IsOk(result)) return result;
+        owner_->reader_busy_ = controller_.busy();
         owner_->LogHeap("reader active");
         return context.RequestRender({0, 24, 400, 276}, sdk::RenderIntent::Quality)
             ? sdk::Status::Ok : sdk::Status::InternalError;

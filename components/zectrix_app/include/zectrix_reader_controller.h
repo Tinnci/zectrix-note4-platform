@@ -44,6 +44,7 @@ private:
     void Operation(reader::Result result);
     void SaveDisplayed();
     void CloseBook();
+    void RefreshLibrary();
     ReaderDecision TakeDecision();
     void Invalidate(bool quality = false) { dirty_ = true; quality_ |= quality; }
     inline static constexpr SceneHandler kHandlers[] = {

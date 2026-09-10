@@ -14,28 +14,32 @@ confirms on release, a 1.5-second OK hold returns or cancels, and a 3-second
 DOWN hold requests global shutdown. Selection wraps at the top and bottom of
 each menu.
 
-The home menu contains:
+Home has a calendar/reading overview and two columns of application tiles.
+The reading card is the first focus when Reader is available. OK continues the
+latest committed local position, or opens Library when there is no history.
+UP/DOWN then visits the tiles from left to right and top to bottom:
 
-1. **BOOK READER** — TXT/EPUB library, paginated reading, font size and saved progress.
+1. **BOOK READER** — open the TXT/EPUB library to choose a book.
 2. **SEND BOOKS** — local Wi-Fi upload, download and book management.
-3. **CLOCK** — retained calendar time, offline date/UTC-offset setup and explicit unset/uptime fallback.
-4. **SLEEP COVER** — choose a daily dashboard, landscape or blank privacy screen.
-5. **SETTINGS** — persist the automatic showcase preference.
-6. **CONNECTIVITY** — phone pairing, resource fetch and trusted-phone management.
-7. **AUTO SHOWCASE** — unattended rotation of all three display modes.
-8. **DISPLAY GALLERY** — individual display previews and measurements.
-9. **HARDWARE TESTS** — run all tests or choose one test.
-10. **DEVICE INFO** — board information and live power measurements.
-11. **ABOUT & LICENSE** — project ownership and license.
+3. **CLOCK** — retained calendar time and offline date/UTC-offset setup.
+4. **SLEEP COVER** — daily dashboard, landscape or blank privacy screen.
+5. **SETTINGS** — automatic showcase preference.
+6. **TOOLS** — Connectivity, Auto Showcase, Display Gallery, Hardware Tests,
+   Device Info and About & License.
 
 Kconfig removes BOOK READER, SEND BOOKS and CONNECTIVITY when their modules
 are disabled. Available services determine which selected factories are bound;
-menu labels, scrolling and navigation come from that same application catalog.
-See [MODULAR_BUILD.md](MODULAR_BUILD.md).
+labels, icons, placement and navigation come from that same application catalog.
+Minimal has Clock, Sleep Cover, Settings and Tools in two rows and no reading
+focus. More than six tiles use additional pages with a page indicator.
+See [HOME.md](HOME.md) and [MODULAR_BUILD.md](MODULAR_BUILD.md).
 
-Returning home restores the previous selection. Auto Showcase is off by
+Returning home restores the previous Home selection. Tools uses a private
+scene; hold OK pops to Home. Opening an app from Tools then returning home
+focuses the Tools tile, and reopening Tools restores its previous row.
+Auto Showcase is off by
 default for new installations; valid existing preferences are retained. If
-enabled, it starts after 15 seconds without physical input on the home screen.
+enabled, it starts after 15 seconds without physical input on Home, excluding Tools.
 A click or long OK leaves it after the active physical refresh completes.
 
 All top-level destinations use the application runtime. Gallery uses a private
@@ -45,11 +49,11 @@ menu; at a root screen it returns home. Menu selection survives push/pop.
 Run All returns to its menu after three previews. The rotation and footprint
 animation use idle deadlines rather than separate blocking input loops.
 
-The Launcher scrolls its eight visible rows to reach all eleven items. A narrow
-scrollbar in the right margin shows the visible fraction and position when the
-menu overflows; it disappears when all entries fit, including Minimal's eight
-entries. It moves with the menu in the same refresh. Reader
-uses Library -> Reading -> Options. UP/DOWN turn pages in Reading; OK opens
+Tools retains the eight-row scrolling list. Its narrow overflow indicator
+appears only when needed and moves in the same refresh. Reader uses Library ->
+Reading -> Options, including when opened through Continue Reading. Missing
+books or changed positions leave the user in Library with a visible reason.
+UP/DOWN turn pages in Reading; OK opens
 font/resume/restart/save options. Long OK returns one scene, and loading remains
 cancellable. Font changes preserve the current source anchor. A successful
 display saves progress to NVS and the C1 outbox. Phone progress is offered for
@@ -101,6 +105,8 @@ automatically resumes RTC display after recovery.
 ## Refresh policy
 
 - Splash, scene changes, initial reader pages, font changes, reports and summaries use full 1bpp refresh.
+- Home tile-page changes use Quality; focus changes use Fast. Date changes
+  redraw the overview, while ordinary minute updates remain in the status bar.
 - Reader page turns request Fast; DisplayService selects partial or full refresh.
 - Menu selection and live test content use partial 1bpp refresh.
 - After eight UI partial refreshes, promote the next update to full refresh.
@@ -160,8 +166,9 @@ cycling. No timer wake or periodic display update is scheduled.
 
 The [E1.1 fork study](FIRMWARE_UI_STUDY.md) compares Biscuit, CrossMux,
 CrossInk, Momentum and Unleashed with their upstream designs. It documents
-the delivered menu overflow cue and proposed daily Home, font and personal
-cover iterations, including their memory and power implications.
+the menu overflow cue and proposed daily Home, font and personal cover work,
+including memory and power implications. E1.2 delivers the Home/Tools layout
+and local Continue Reading described in [HOME.md](HOME.md).
 
 L1 uses independently implemented adaptations of these upstream designs:
 

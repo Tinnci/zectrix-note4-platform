@@ -6,6 +6,11 @@ single display owner already support this direction. The first delivered
 change is an overflow indicator for the Launcher. The larger home, font and
 cover changes below are proposals for subsequent iterations.
 
+E1.2 now implements the [Home dashboard](HOME.md), including local Continue
+Reading, catalog-derived tiles and Tools. This study's source observations
+and E1.1 measurements remain a record of that iteration; the remaining font
+and imported-cover proposals are still future work.
+
 ## Sources and scope
 
 Source review date: **2026-09-10**. This study inspected application and renderer

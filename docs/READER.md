@@ -5,6 +5,13 @@ unencrypted EPUB from the Storage-owned book library. The persistent status
 bar, application lifecycle and DisplayService refresh policy also apply to
 the reader.
 
+E1.2 adds **CONTINUE READING** on the [Home dashboard](HOME.md). It resumes the
+latest committed local bookmark; the separate **BOOK READER** tile still opens
+Library. With no bookmark the overview opens Library as well. A missing file,
+changed source length or invalid saved position leaves the user in Library
+with an explanation. Resume retains the Library parent, so hold OK still
+returns there and loading can be cancelled.
+
 ## Install books
 
 The `books` SPIFFS partition occupies 4 MiB at `0x912000`. Factory, OTA, OTA

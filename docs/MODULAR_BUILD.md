@@ -225,9 +225,10 @@ the qualified IDF environment. They exercise a fresh full config, contradictory
 parent/child requests, independent Web/reader/HTTPS choices, empty defaults,
 defaults versus saved settings, and repeated off/on/off changes. The resolver
 leaves input files intact. Launcher controllers receive the actual catalog
-count and are tested with empty, single-item and reduced/full menus, selection
-restoration and wrap. Runtime tests open the same descriptor exposed by the
-menu and verify omitted destinations cannot be found.
+and are tested with empty, single-item and reduced/full compositions, tile
+pagination, overview focus, Tools return, selection restoration and wrap.
+Runtime tests open the same descriptor exposed by the menu and verify omitted
+destinations cannot be found. See [HOME.md](HOME.md) for the dashboard layout.
 Platform tests compile the production composition with optional dependencies
 absent, individually present and fully enabled, including trial-boot failures
 and shutdown. Reader tests run with and without connectivity sources and

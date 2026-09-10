@@ -13,6 +13,8 @@ shutdown surface. See [SLEEP_COVER.md](SLEEP_COVER.md).
 S1.3 separates entry, shell ownership and application modules; a bounded
 catalog supplies both enabled runtime registrations and Launcher navigation.
 Clock adds a private View/Edit scene pair and TimeService-owned calibration.
+E1.2 adds private Home/Tools Launcher scenes, catalog-derived tiles and a local
+Continue Reading action. SDK v1 is unchanged. See [HOME.md](HOME.md).
 
 ## Scope
 
@@ -66,6 +68,14 @@ the descriptors and the shell owns their factories for the runtime's lifetime.
 Launcher uses those same descriptors for labels and Open IDs, with no parallel
 enum-to-destination table. This retains CrossPoint-style bounded reader work
 and Flipper-style deferred SceneManager/ViewPort ownership.
+
+E1.2 stores icon/Home placement beside those descriptors. Launcher preserves
+Home and Tools focus in owner RAM and uses the same IDs for Open commands.
+Continue Reading passes a one-shot launch mode through the composition owner;
+the Reader candidate copies it before Launcher exit. The factory consumes the
+mode even after failed allocation. Reader validates and opens the latest local
+bookmark through its Library/Reading scenes, keeping parsing and persistence
+out of Home rendering.
 
 M3 builds an application runtime and firmware framework on ESP-IDF and IDF
 FreeRTOS. It does not build a new operating system. M4 can stabilize the

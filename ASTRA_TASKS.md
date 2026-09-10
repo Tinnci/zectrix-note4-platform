@@ -159,10 +159,13 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Reviewed Biscuit, CrossMux, CrossInk, Momentum and Unleashed source with CrossPoint/Flipper references. Documented daily Home, scene ownership, static versus active standby, streamed transfer, font preparation and image dithering decisions in [docs/FIRMWARE_UI_STUDY.md](docs/FIRMWARE_UI_STUDY.md).
   - Added a proportional Launcher overflow indicator on the existing canvas, hidden when all eight rows fit. No new task, buffer, persistent state or refresh operation is required. Added the Minimal menu to the visual preview fixture.
   - Verified all 32 Host targets, the focused display suite, Full/Minimal ESP32-S3 builds and rendered first/last/Minimal menus. Full is 2,995,824 bytes and Minimal is 548,960 bytes (81.7% smaller); static internal RAM is 213,495/118,651 bytes. Hardware was not required for this UI change; proposed home, font and cover features remain subsequent iterations.
-- [ ] **E1.2: 磁贴仪表盘主屏演进 (Tile Dashboard & Overview Card)**
+- [x] **E1.2: 磁贴仪表盘主屏演进 (Tile Dashboard & Overview Card)**
   - 基于 E1.1 对 Biscuit 和 Flipper 桌面架构的调研，设计并实现卡片化主屏体验。
   - 探索将主屏划分为系统状态/阅读概览卡片与多功能应用磁贴（App Tiles）。
   - 支持单手物理按键直观导航与焦点切换，自适应模块动态装配状态。
+  - Added a calendar/reading overview, six catalog-driven Home tiles and a private Tools scene. UP/DOWN follows one circular focus order, selections survive returns, and trimmed modules reflow into fewer rows. The existing canvas, status viewport and refresh ownership remain in use.
+  - Continue Reading restores the latest committed local bookmark through cancellable Library/Reading scenes. Missing books, stale file lengths and invalid positions return to Library with an explanation; failed display commits preserve saved progress. See [docs/HOME.md](docs/HOME.md).
+  - Verified all 32 Host targets, reader ASan/UBSan with and without connectivity, rendered Home variants, ShellCheck and Full/Minimal ESP32-S3 builds. Full is 3,000,736 bytes and Minimal is 553,200 bytes (81.6% smaller); adjacent tile focus transfers 3,456 bytes of panel RAM data. Device smoke was not needed for this UI change; physical contrast and latency remain hardware measurements.
 - [ ] **E1.3: 墨水屏高响应度调度与防卡死保护 (Display Responsiveness & Input Concurrency)**
   - 借鉴 Flipper Zero ViewPort 锁管理与事件流机制，优化慢速 EPD 刷新与高频输入的并发处理。
   - 在硬件 BUSY 传输期间探索非阻塞更新尝试、脏区域合并（Dirty Region Merge）或跳帧策略。
@@ -182,4 +185,3 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - 使用 `gh` CLI 检查并分析远程 GitHub 仓库的现有 Issue 与 Milestone 状态。
   - 根据工程实际已交付完成的 Milestone（C1 互联平台、D1 维护命令行、M5 OTA更新、R1 墨水屏进阶、L1 实用启动器与阅读器、S1 模块化解耦等），系统性审查关联的 Issue，更新交付说明并规范关闭已解决的问题。
   - 同步创建或更新 GitHub Milestones（如 L1, S1, E1），对齐远程仓库的项目进度看板，确保 GitHub 状态与本地工程契约保持一致。
-
