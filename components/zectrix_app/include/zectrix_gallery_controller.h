@@ -5,7 +5,7 @@
 namespace zectrix::app {
 
 enum class GalleryPage : SceneId { Menu, Preview, Report };
-enum class GalleryDecision : uint8_t { None, RenderFast, RenderQuality, Home, Shutdown };
+enum class GalleryDecision : uint8_t { None, RenderFast, RenderQuality, Back, Shutdown };
 
 class GalleryController {
 public:
@@ -14,7 +14,7 @@ public:
     GalleryController& operator=(const GalleryController&) = delete;
 
     sdk::Status Start();
-    void Stop() { scenes_.Stop(); }
+    void Stop();
     GalleryDecision Handle(const sdk::InputEvent& event);
     GalleryDecision Tick(int64_t now_us);
     // Schedule from completion, so a slow physical refresh never skips a frame.

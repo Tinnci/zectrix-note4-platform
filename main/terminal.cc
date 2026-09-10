@@ -162,6 +162,13 @@ sdk::Status TerminalApp::Shutdown() {
     PowerOff();
 }
 
+sdk::Status TerminalApp::RequestBack(sdk::ApplicationContext& context) {
+    const auto submitted = context.RequestCommand(sdk::AppCommand::Back());
+    const bool accepted = submitted == sdk::SubmitResult::Accepted || submitted == sdk::SubmitResult::Superseded;
+    if (accepted) launcher_back_requested_ = true;
+    return accepted ? sdk::Status::Ok : sdk::Status::InvalidState;
+}
+
 void TerminalApp::EnterFailsafe(sdk::Status reason) {
     ESP_LOGE(kTag, "application runtime failsafe: %s",
              sdk::StatusName(reason));
@@ -197,16 +204,14 @@ ControlResult TerminalApp::Wait(uint32_t duration_ms, bool any_click_returns) {
                           std::min(remaining, pdMS_TO_TICKS(100)))) {
             continue;
         }
-        if (event.button == zectrix::input::Button::Down &&
-            event.action == zectrix::input::Action::LongPress) {
+        const auto key = app::MapNavigation(event);
+        if (key == app::Navigation::Shutdown) {
             return ControlResult::kShutdown;
         }
-        if (event.button == zectrix::input::Button::Ok &&
-            event.action == zectrix::input::Action::LongPress) {
+        if (key == app::Navigation::Back) {
             return ControlResult::kBack;
         }
-        if (any_click_returns &&
-            event.action == zectrix::input::Action::Click) {
+        if (any_click_returns && key == app::Navigation::Confirm) {
             return ControlResult::kBack;
         }
     }

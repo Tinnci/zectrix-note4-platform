@@ -3,24 +3,40 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "zectrix/sdk/input.h"
+#include "zectrix_scene_manager.h"
 
 namespace zectrix::app {
 
-enum class ClockDecision : uint8_t { None, Home, Shutdown };
-
-ClockDecision HandleClockInput(const sdk::InputEvent& event);
-
+enum class ConnectivityPage : SceneId { Actions, Forget };
 enum class ConnectivityDecision : uint8_t {
     None,
+    RenderFast,
+    RenderQuality,
     StartPairing,
     FetchResource,
     ClearBonds,
-    Home,
+    Back,
     Shutdown,
 };
 
-ConnectivityDecision HandleConnectivityInput(const sdk::InputEvent& event);
+class ConnectivityController {
+public:
+    sdk::Status Start();
+    void Stop();
+    ConnectivityDecision Handle(const sdk::InputEvent& event);
+    ConnectivityDecision Tick();
+    void Presented(bool success) { if (!success) dirty_ = quality_ = true; }
+    ConnectivityPage page() const { return static_cast<ConnectivityPage>(scenes_.current()); }
+    std::size_t selected() const { return scenes_.state(scenes_.current()); }
+
+private:
+    static void Enter(void* context, SceneId scene);
+    static bool Event(void* context, const SceneEvent& event);
+    inline static constexpr SceneHandler kHandlers[] = {{Enter, Event, nullptr}, {Enter, Event, nullptr}};
+    SceneManager scenes_{kHandlers, std::size(kHandlers), this};
+    ConnectivityDecision action_ = ConnectivityDecision::None;
+    bool dirty_ = false, quality_ = false;
+};
 
 struct ClockMinute {
     int year = 0;
@@ -37,7 +53,7 @@ enum class SettingsDecision : uint8_t {
     None,
     RenderFast,
     Save,
-    Home,
+    Back,
     Shutdown,
 };
 
@@ -63,13 +79,14 @@ constexpr char kAutoShowcaseSettingKey[] = "ui.auto_demo";
 
 bool NormalizeAutoShowcaseSetting(uint32_t stored, bool* value);
 
-enum class DiagnosticsPage : uint8_t { Mode, Individual, Summary };
+enum class DiagnosticsPage : SceneId { Mode, Individual, Running, Summary };
 enum class DiagnosticsDecision : uint8_t {
     None,
     RenderFast,
+    RenderQuality,
     RunAll,
     RunSelected,
-    Home,
+    Back,
     Shutdown,
 };
 
@@ -83,14 +100,26 @@ class DiagnosticsController {
 public:
     static constexpr std::size_t kTestCount = 7;
 
+    sdk::Status Start();
+    void Stop();
     DiagnosticsResult Handle(const sdk::InputEvent& event);
-    void ShowSummary() { page_ = DiagnosticsPage::Summary; }
-    DiagnosticsPage page() const { return page_; }
-    std::size_t selected() const { return selected_; }
+    DiagnosticsResult FinishRun(bool cancelled);
+    DiagnosticsResult Tick();
+    void Presented(bool success) { if (!success) dirty_ = quality_ = true; }
+    DiagnosticsPage page() const { return static_cast<DiagnosticsPage>(scenes_.current()); }
+    std::size_t selected() const;
 
 private:
-    DiagnosticsPage page_ = DiagnosticsPage::Mode;
-    std::size_t selected_ = 0;
+    static void Enter(void* context, SceneId scene);
+    static bool Event(void* context, const SceneEvent& event);
+    inline static constexpr SceneHandler kHandlers[] = {
+        {Enter, Event, nullptr}, {Enter, Event, nullptr},
+        {Enter, Event, nullptr}, {Enter, Event, nullptr},
+    };
+    SceneManager scenes_{kHandlers, std::size(kHandlers), this};
+    DiagnosticsDecision action_ = DiagnosticsDecision::None;
+    bool run_all_ = false, finish_requested_ = false, cancelled_ = false;
+    bool dirty_ = false, quality_ = false;
 };
 
 }  // namespace zectrix::app

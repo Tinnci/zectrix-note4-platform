@@ -6,11 +6,12 @@
 namespace zectrix::app {
 
 enum class BookTransferScene : uint8_t { Mode, Session };
-enum class BookTransferDecision : uint8_t { None, RenderFast, RenderQuality, Hotspot, Station, Stop, Reader, Home, Shutdown };
+enum class BookTransferDecision : uint8_t { None, RenderFast, RenderQuality, Hotspot, Station, Stop, Reader, Back, Shutdown };
 
 class BookTransferController {
 public:
     sdk::Status Start();
+    void Stop();
     BookTransferDecision Handle(const sdk::InputEvent& input);
     BookTransferDecision Update(const connectivity::BookTransferSnapshot& snapshot, int64_t now_us);
     void Presented(bool success) { if (!success) dirty_ = quality_ = true; }

@@ -6,6 +6,7 @@
 
 #include "zectrix/sdk/input.h"
 #include "zectrix/sdk/status.h"
+#include "zectrix_navigation.h"
 
 namespace zectrix::app {
 
@@ -33,6 +34,9 @@ public:
 
     SceneManager(const SceneHandler* handlers, std::size_t count, void* context)
         : handlers_(handlers), count_(count), context_(context) {}
+
+    SceneManager(const SceneManager&) = delete;
+    SceneManager& operator=(const SceneManager&) = delete;
 
     sdk::Status Start(SceneId root);
     bool Dispatch(const SceneEvent& event);

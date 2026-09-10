@@ -13,9 +13,15 @@ GalleryController::GalleryController(bool automatic, uint32_t selected)
 }
 
 sdk::Status GalleryController::Start() {
+    if (scenes_.depth()) return sdk::Status::InvalidState;
     const auto result = scenes_.Start(Id(automatic_ ? GalleryPage::Preview : GalleryPage::Menu));
     dirty_ = false;
     return result;
+}
+
+void GalleryController::Stop() {
+    scenes_.Stop();
+    dirty_ = presented_ = more_frames_ = false;
 }
 
 void GalleryController::EnterScene(void* context, SceneId scene) {
@@ -34,16 +40,19 @@ bool GalleryController::HandleScene(void* context, const SceneEvent& event) {
 }
 
 GalleryDecision GalleryController::Handle(const sdk::InputEvent& input) {
-    if (input.button == sdk::Button::Down && input.action == sdk::InputAction::LongPress)
-        return GalleryDecision::Shutdown;
-    if (automatic_ && input.action == sdk::InputAction::Click) return GalleryDecision::Home;
-    const bool back = input.button == sdk::Button::Ok && input.action == sdk::InputAction::LongPress;
+    if (!scenes_.depth()) return GalleryDecision::None;
+    const auto key = MapNavigation(input);
+    if (key == Navigation::Shutdown) return GalleryDecision::Shutdown;
+    if (automatic_ && (key == Navigation::Previous || key == Navigation::Next ||
+                       key == Navigation::Confirm || key == Navigation::Back)) return GalleryDecision::Back;
+    const bool back = key == Navigation::Back;
     const SceneEvent event{back ? SceneEvent::Type::Back : SceneEvent::Type::Input, input, 0};
-    if (!scenes_.Dispatch(event) && back) return GalleryDecision::Home;
+    if (!scenes_.Dispatch(event) && back) return GalleryDecision::Back;
     return TakeDecision();
 }
 
 GalleryDecision GalleryController::Tick(int64_t now_us) {
+    if (!scenes_.depth()) return GalleryDecision::None;
     scenes_.Dispatch({SceneEvent::Type::Tick, {}, now_us});
     return TakeDecision();
 }
@@ -82,21 +91,22 @@ bool GalleryController::OnEvent(const SceneEvent& event) {
         }
         return true;
     }
-    if (event.type != SceneEvent::Type::Input || event.input.action != sdk::InputAction::Click) return false;
+    if (event.type != SceneEvent::Type::Input) return false;
+    const auto key = MapNavigation(event.input);
     if (page() == GalleryPage::Menu) {
-        if (event.input.button == sdk::Button::Up || event.input.button == sdk::Button::Down) {
+        if (key == Navigation::Previous || key == Navigation::Next) {
             scenes_.SetState(Id(GalleryPage::Menu),
-                (selected() + (event.input.button == sdk::Button::Up ? 3 : 1)) % 4);
+                MoveSelection(selected(), 4, key));
             dirty_ = true;
             quality_ = false;
-        } else if (event.input.button == sdk::Button::Ok) {
+        } else if (key == Navigation::Confirm) {
             run_all_ = selected() == 3;
             image_ = run_all_ ? 0 : selected();
             scenes_.Push(Id(GalleryPage::Preview));
-        }
+        } else return false;
         return true;
     }
-    if (event.input.button == sdk::Button::Ok) {
+    if (key == Navigation::Confirm) {
         if (page() == GalleryPage::Preview) scenes_.Replace(Id(GalleryPage::Report));
         else scenes_.Pop();
         return true;
