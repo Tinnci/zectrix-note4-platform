@@ -221,7 +221,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Verified all 35 Host targets, USB ASan/UBSan with seven Python client/integration scenarios, Chinese/English rendering, platform compositions and ShellCheck. Full, Minimal and Chinese USB-without-Reader/Wi-Fi firmware builds passed at 3,027,232 / 563,328 / 666,896 bytes; the existing profile comparison passed with an 81.4% Minimal reduction.
   - The connected ESP32-S3 passed Full flash/boot smoke: 8 MiB PSRAM, partitions, first Launcher frame, boot confirmation, 13 applications and USB CLI. Real USB transfer throughput, cross-OS reopen and sleep/wake interaction remain hardware qualification work; Host round trips verify production framing and storage, not panel or USB timing.
 
-- [ ] **E2.1: 动态应用运行时与第三方生态架构预研 (Dynamic Application Runtime & Extensibility Research)**
+- [x] **E2.1: 动态应用运行时与第三方生态架构预研 (Dynamic Application Runtime & Extensibility Research)**
   - **背景与愿景**：
     - 掌上随身墨水屏终端的长期生命力在于开放的第三方极客应用生态。
     - 对标 GitHub Milestone #6（`Research — Dynamic application runtime`），探索让第三方应用在不重新编译或全量烧录整机固件的前提下，被独立分发、加载与运行的技术路径。
@@ -231,6 +231,10 @@ Each iteration picks the top unfinished task, implements production code, verifi
     3. *动态发现、生命周期与存储流转*：独立编译的微应用如何借助 USB/文件系统通道（衔接 E1.8 成果）进行热插拔安装与管理？启动器（Launcher）与场景栈如何动态解析应用元数据并实现零碎片加载与退出清理？
   - **期待产出**：
     - 输出系统性技术预研报告，深入评估各技术路线在 Note4 软硬件平台上的可行性、内存/Flash 预算开销与演进阶段建议。
+  - Compared Espressif ELF, Wasm3, WAMR and Lua with CrossPoint workflows and Flipper FAP/SceneManager/ViewPort ownership. Documented the proposed binary host boundary, paged Apps destination, USB/storage installation and bounded lifecycle in [docs/DYNAMIC_APPLICATION_RESEARCH.md](docs/DYNAMIC_APPLICATION_RESEARCH.md).
+  - Completed executable probes for memory limits, malformed input, copied imports, 100 load/unload cycles and callback/initialization loops. Corrected Wasm3 budget reset, protected and metered Lua initialization, and retained WAMR's writable module input through unload. Experimental engines remain outside normal firmware and Host builds.
+  - Full-image links add 63,952 / 64,032 / 79,792 bytes for Wasm3 / WAMR / Lua; all fit the existing 3 MiB slots. Metered WAMR is the preferred compiled-app prototype, with Lua as a personal-scripting alternative. The report records Wasm initialization timeouts and reproducible Host UBSan findings rather than claiming safe arbitrary-code execution.
+  - Verified all 35 production Host targets, the Full firmware build, three isolated ESP32-S3 probe links and restricted Lua ASan/UBSan. SDK v1 stays source-compatible and static; third-party loading and physical guest execution remain subsequent implementation work. No hardware flash, partition change or new release gate was needed.
 
 ---
 

@@ -50,16 +50,16 @@ void* probe_calloc(size_t count, size_t size) {
 
 void probe_free(void* pointer) { (void)probe_realloc(pointer, 0); }
 
-void probe_require(int condition, const char* detail) {
+void probe_require(int condition, const char* detail, const char* file, int line) {
     if (condition) return;
-    fprintf(stderr, "Probe failed: %s\n", detail);
+    fprintf(stderr, "Probe failed: %s (%s:%d)\n", detail, file, line);
     abort();
 }
 
 int32_t probe_emit(const void* bytes, uint32_t length) {
     // Copy a bounded host-owned payload before a guest can change its memory.
     if (length > 64) return -1;
-    char copy[64];
+    char copy[64] = {0};
     memcpy(copy, bytes, length);
     if (length != 5 || memcmp(copy, "NOTE4", 5) != 0) {
         fprintf(stderr, "Unexpected emission %u: length=%u bytes=%02x %02x %02x %02x %02x\n",
