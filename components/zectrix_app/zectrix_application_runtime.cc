@@ -60,6 +60,7 @@ ApplicationRuntime::ApplicationRuntime(
 ApplicationRuntime::~ApplicationRuntime() { ExitAndDestroyForeground(); }
 
 Status ApplicationRuntime::Start() {
+    if (callback_active_) return Status::InvalidState;
     if (state_ == LifecycleState::Active) return Status::Ok;
     if (state_ != LifecycleState::Absent) return Status::InvalidState;
     const Status validation = registry_.Validate(launcher_id_);
@@ -150,17 +151,10 @@ void ApplicationRuntime::ExitAndDestroyForeground() {
 }
 
 Status ApplicationRuntime::Step(const InputEvent* event) {
-    if (state_ != LifecycleState::Active || !foreground_) {
+    if (callback_active_ || state_ != LifecycleState::Active || !foreground_) {
         return Status::InvalidState;
     }
-    Status result = Status::Ok;
-    if (event != nullptr) {
-        result = InvokeCallback(
-            [this, event] { return foreground_->HandleEvent(*event, context_); });
-        if (!IsOk(result)) last_error_ = result;
-    }
-    const Status command_result = ProcessCommand();
-    if (!IsOk(command_result)) result = command_result;
+    Status result = event != nullptr ? DispatchInput(*event) : ProcessCommand();
     if (state_ == LifecycleState::Active) {
         const Status render_result = ProcessRender();
         if (!IsOk(render_result)) result = render_result;
@@ -168,8 +162,19 @@ Status ApplicationRuntime::Step(const InputEvent* event) {
     return result;
 }
 
+Status ApplicationRuntime::DispatchInput(const InputEvent& event) {
+    if (callback_active_ || state_ != LifecycleState::Active || !foreground_) {
+        return Status::InvalidState;
+    }
+    const Status result = InvokeCallback(
+        [this, &event] { return foreground_->HandleEvent(event, context_); });
+    if (!IsOk(result)) last_error_ = result;
+    const Status command_result = ProcessCommand();
+    return IsOk(command_result) ? result : command_result;
+}
+
 Status ApplicationRuntime::Idle() {
-    if (state_ != LifecycleState::Active || !foreground_) {
+    if (callback_active_ || state_ != LifecycleState::Active || !foreground_) {
         return Status::InvalidState;
     }
     Status result = InvokeCallback(
@@ -211,6 +216,7 @@ Status ApplicationRuntime::ProcessRender() {
 }
 
 Status ApplicationRuntime::Stop() {
+    if (callback_active_) return Status::InvalidState;
     if (state_ == LifecycleState::Stopped) return Status::Ok;
     ExitAndDestroyForeground();
     renders_.Discard();

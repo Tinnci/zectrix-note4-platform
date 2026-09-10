@@ -117,6 +117,7 @@ esp_err_t ZectrixBoard::ShutdownPeripherals() {
         button_queue_ = nullptr;
     }
     button_wait_wake_pending_.store(false);
+    button_events_ = {};
     if (result != ESP_OK) {
         ESP_LOGW(kTag, "peripheral shutdown incomplete: %s", esp_err_to_name(result));
     }
@@ -208,7 +209,7 @@ esp_err_t ZectrixBoard::Init() {
         return err;
     }
 
-    button_queue_ = xQueueCreate(16, sizeof(ZectrixButtonEvent));
+    button_queue_ = xQueueCreate(1, sizeof(uint8_t));
     if (button_queue_ == nullptr) {
         return ESP_ERR_NO_MEM;
     }
@@ -290,7 +291,7 @@ void ZectrixBoard::ButtonTask() {
                             const ZectrixButtonEvent event = {
                                 definition.button,
                                 ZectrixButtonAction::kClick};
-                            xQueueSend(button_queue_, &event, 0);
+                            QueueButtonEvent(event);
                         }
                     }
                 } else if (!state.armed) {
@@ -299,7 +300,7 @@ void ZectrixBoard::ButtonTask() {
                            !ClickOnPress(definition.button)) {
                     const ZectrixButtonEvent event = {
                         definition.button, ZectrixButtonAction::kClick};
-                    xQueueSend(button_queue_, &event, 0);
+                    QueueButtonEvent(event);
                 }
             }
 
@@ -311,7 +312,7 @@ void ZectrixBoard::ButtonTask() {
                     state.long_sent = true;
                     const ZectrixButtonEvent event = {
                         definition.button, ZectrixButtonAction::kLongPress};
-                    xQueueSend(button_queue_, &event, 0);
+                    QueueButtonEvent(event);
                 }
             }
         }
@@ -321,23 +322,42 @@ void ZectrixBoard::ButtonTask() {
     vTaskDelete(nullptr);
 }
 
-bool ZectrixBoard::WaitButton(ZectrixButtonEvent* event,
-                              TickType_t timeout) {
-    if (event == nullptr || button_queue_ == nullptr ||
-        xQueueReceive(button_queue_, event, timeout) != pdTRUE) return false;
-    if (event->action == ZectrixButtonAction::kWake) {
-        button_wait_wake_pending_.store(false);
+void ZectrixBoard::QueueButtonEvent(const ZectrixButtonEvent& event) {
+    portENTER_CRITICAL(&button_lock_);
+    const bool accepted = button_events_.Push(event);
+    portEXIT_CRITICAL(&button_lock_);
+    if (accepted) {
+        const uint8_t signal = 1;
+        xQueueSend(button_queue_, &signal, 0);
     }
-    return true;
+}
+
+bool ZectrixBoard::WaitButton(ZectrixButtonEvent* event, TickType_t timeout) {
+    if (event == nullptr || button_queue_ == nullptr) return false;
+    const TickType_t started = xTaskGetTickCount();
+    for (;;) {
+        portENTER_CRITICAL(&button_lock_);
+        const bool received = button_events_.Pop(event);
+        portEXIT_CRITICAL(&button_lock_);
+        if (received) return true;
+        if (button_wait_wake_pending_.exchange(false)) {
+            *event = {ZectrixButton::kOk, ZectrixButtonAction::kWake};
+            return true;
+        }
+        // A stale or coalesced signal must not extend the caller's deadline.
+        const TickType_t elapsed = xTaskGetTickCount() - started;
+        const TickType_t remaining = timeout == portMAX_DELAY ? portMAX_DELAY :
+            (elapsed < timeout ? timeout - elapsed : 0);
+        uint8_t signal;
+        if (xQueueReceive(button_queue_, &signal, remaining) != pdTRUE) return false;
+    }
 }
 
 void ZectrixBoard::WakeButtonWait() {
     if (button_queue_ == nullptr || button_wait_wake_pending_.exchange(true)) return;
-    const ZectrixButtonEvent wake{ZectrixButton::kOk, ZectrixButtonAction::kWake};
-    if (xQueueSend(button_queue_, &wake, 0) != pdTRUE) {
-        // A full queue already makes the owner's next wait runnable.
-        button_wait_wake_pending_.store(false);
-    }
+    const uint8_t signal = 1;
+    // A full signal queue already makes the owner's next wait runnable.
+    xQueueSend(button_queue_, &signal, 0);
 }
 
 void ZectrixBoard::DrainButtons() {

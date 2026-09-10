@@ -22,7 +22,23 @@ ESP_ERROR_CHECK(zectrix_epd_del(epd));
 
 `zectrix_epd_new()` configures GPIO and SPI but leaves the external display
 rail off. All refresh functions are synchronous: they return after the BUSY
-handshake completes or the configured timeout expires.
+handshake completes or a timeout expires. Normal BUSY phases use
+`busy_timeout_ms` (2 seconds by default); each external grayscale refresh phase
+has a 5-second timeout. BUSY polling yields at least one RTOS tick.
+
+Driver operations wait at most 100 ms (at least one tick) for their mutex and
+return `ESP_ERR_TIMEOUT` on contention; `zectrix_epd_is_powered()` returns
+false if it cannot acquire the lock. This does not make multi-call
+DisplayService transactions safe for concurrent owners. Finish all callers
+before deleting the handle.
+
+If a grayscale phase fails, the driver invalidates its controller state and
+1bpp shadow. It sends no further power-off/OTP commands and does not reset a
+possibly BUSY controller. Call `zectrix_epd_power_off()` to cut the external
+rail, then power on and establish a full 1bpp frame before partial updates.
+DisplayService performs this rail cleanup automatically outside an explicit
+batch; callers must still end an open batch after failure. Successful gray
+rendering retains its white preclear and OTP restoration sequence.
 
 ## Full 1bpp refresh
 

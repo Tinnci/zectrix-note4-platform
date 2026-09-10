@@ -14,6 +14,15 @@ confirms on release, a 1.5-second OK hold returns or cancels, and a 3-second
 DOWN hold requests global shutdown. Selection wraps at the top and bottom of
 each menu.
 
+While the panel refreshes, the button task keeps sampling. The shell processes
+up to 16 queued events before drawing the resulting selection; confirmation,
+long presses and application transitions end that burst. Timer and pagination
+work receive a slice after direction bursts, and status changes join the same
+frame. Holding DOWN supersedes queued actions so shutdown follows the active
+physical refresh or its timeout. See
+[DISPLAY_RESPONSIVENESS.md](DISPLAY_RESPONSIVENESS.md) for overload behavior
+and the distinction between input sampling and physical display latency.
+
 Home has a calendar/reading overview and two columns of application tiles.
 The reading card is the first focus when Reader is available. OK continues the
 latest committed local position, or opens Library when there is no history.

@@ -15,27 +15,11 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
+#include "zectrix_button_buffer.h"
 
 class AudioCodec;
 class RtcPcf8563;
 class ZectrixNfc;
-
-enum class ZectrixButton : uint8_t {
-    kUp = 0,
-    kDown,
-    kOk,
-};
-
-enum class ZectrixButtonAction : uint8_t {
-    kClick = 0,
-    kLongPress,
-    kWake,
-};
-
-struct ZectrixButtonEvent {
-    ZectrixButton button = ZectrixButton::kOk;
-    ZectrixButtonAction action = ZectrixButtonAction::kClick;
-};
 
 struct ZectrixPowerSnapshot {
     bool battery_valid = false;
@@ -90,6 +74,7 @@ private:
 
     static void ButtonTaskEntry(void* arg);
     void ButtonTask();
+    void QueueButtonEvent(const ZectrixButtonEvent& event);
     esp_err_t InitPowerAndGpio();
     esp_err_t InitI2c();
     void InitBatteryAdc();
@@ -99,6 +84,8 @@ private:
     adc_oneshot_unit_handle_t adc_handle_ = nullptr;
     adc_cali_handle_t adc_cali_ = nullptr;
     QueueHandle_t button_queue_ = nullptr;
+    portMUX_TYPE button_lock_ = portMUX_INITIALIZER_UNLOCKED;
+    ZectrixButtonBuffer button_events_;
     std::atomic<bool> button_wait_wake_pending_{false};
     SemaphoreHandle_t button_task_done_ = nullptr;
     std::atomic<bool> button_task_stop_{false};
