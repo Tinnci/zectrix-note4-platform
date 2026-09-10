@@ -4,6 +4,9 @@
 #include <stdio.h>
 #include <string.h>
 
+static const uint8_t* source_bytes = guest_bytes;
+static uint32_t source_size = sizeof(guest_bytes);
+
 #ifdef PROBE_WAMR
 #include "wasm_export.h"
 
@@ -12,7 +15,7 @@ static wasm_module_inst_t instance;
 static wasm_exec_env_t execution;
 static int initialized;
 static char error[128];
-static uint8_t module_bytes[sizeof(guest_bytes)];
+static uint8_t* module_bytes;
 
 static int32_t emit(wasm_exec_env_t env, uint32_t offset, uint32_t length) {
     wasm_module_inst_t owner = wasm_runtime_get_module_inst(env);
@@ -51,8 +54,10 @@ static int open_guest(void) {
     initialized = wasm_runtime_full_init(&args);
     if (!initialized) return 0;
     // WAMR can rewrite bytecode while loading; the backing bytes stay owned.
-    memcpy(module_bytes, guest_bytes, sizeof(guest_bytes));
-    module = wasm_runtime_load(module_bytes, sizeof(module_bytes), error, sizeof(error));
+    module_bytes = probe_malloc(source_size);
+    if (!module_bytes) return 0;
+    memcpy(module_bytes, source_bytes, source_size);
+    module = wasm_runtime_load(module_bytes, source_size, error, sizeof(error));
     if (!module) return 0;
     instance = wasm_runtime_instantiate(module, 4096, 0, error, sizeof(error));
     if (!instance) return 0;
@@ -77,10 +82,12 @@ static void close_guest(void) {
     if (execution) wasm_runtime_destroy_exec_env(execution);
     if (instance) wasm_runtime_deinstantiate(instance);
     if (module) wasm_runtime_unload(module);
+    probe_free(module_bytes);
     if (initialized) wasm_runtime_destroy();
     execution = NULL;
     instance = NULL;
     module = NULL;
+    module_bytes = NULL;
     initialized = 0;
 }
 
@@ -112,11 +119,13 @@ m3ApiRawFunction(emit) {
 }
 
 static int open_guest(void) {
+    // Module initialization also calls m3_Yield while evaluating data offsets.
+    yield_calls = 0;
     environment = m3_NewEnvironment();
     if (!environment) return 0;
     runtime = m3_NewRuntime(environment, 4096, NULL);
     if (!runtime) return 0;
-    error = m3_ParseModule(environment, &unloaded_module, guest_bytes, sizeof(guest_bytes));
+    error = m3_ParseModule(environment, &unloaded_module, source_bytes, source_size);
     if (error) return 0;
     error = m3_LoadModule(runtime, unloaded_module);
     if (error) return 0;
@@ -149,10 +158,22 @@ static void close_guest(void) {
 #define ENGINE "wasm3"
 #endif
 
-int research_probe(int spin_only) {
+int research_probe(ProbeMode mode) {
     int32_t result = 0;
+    if (mode == PROBE_START || mode == PROBE_POST) {
+        source_bytes = mode == PROBE_START ? guest_start_bytes : guest_post_bytes;
+        source_size = mode == PROBE_START ? sizeof(guest_start_bytes) : sizeof(guest_post_bytes);
+        puts("{\"event\":\"init-start\"}");
+        fflush(stdout);
+        PROBE_REQUIRE(open_guest());
+        // Wasm3 defers the start function until the first function lookup.
+        PROBE_REQUIRE(call_guest("step", &result));
+        close_guest();
+        puts("{\"event\":\"init-returned\"}");
+        return 0;
+    }
     PROBE_REQUIRE(open_guest());
-    if (spin_only) {
+    if (mode == PROBE_SPIN) {
         puts("{\"event\":\"spin-start\"}");
         fflush(stdout);
         PROBE_REQUIRE(!call_guest("spin", &result));
@@ -182,6 +203,13 @@ int research_probe(int spin_only) {
     PROBE_REQUIRE(!call_guest("recurse", &result));
     close_guest();
     PROBE_REQUIRE(probe_heap.live == 0);
+
+    // Reject a truncated module and release all partially created state.
+    source_size = 7;
+    PROBE_REQUIRE(!open_guest());
+    close_guest();
+    PROBE_REQUIRE(probe_heap.live == 0);
+    source_size = sizeof(guest_bytes);
 
     // Repeat the complete owner lifetime, including after a trapped callback.
     for (unsigned i = 0; i < 100; ++i) {

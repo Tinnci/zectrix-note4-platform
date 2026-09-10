@@ -70,6 +70,12 @@ IDF FreeRTOS is the kernel and scheduler. It is a mechanism layer below the
 Zectrix runtime. Product architecture does not use task topology as its
 dependency graph. See `docs/adr/0003-freertos-runtime-sdk-boundary.md`.
 
+[E2.1 research](DYNAMIC_APPLICATION_RESEARCH.md) compares ELF, Wasm3, WAMR and
+Lua with executable Host probes and isolated ESP32-S3 link measurements. It
+proposes a versioned guest boundary and an Apps adapter within this ownership
+model. Dynamic loading remains future implementation; the normal firmware and
+SDK v1 do not acquire an engine dependency or a binary ABI promise.
+
 ## Service composition
 
 Platform's internal `ServiceRegistry` holds 16 borrowed, typed provider slots.

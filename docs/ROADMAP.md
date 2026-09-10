@@ -259,7 +259,20 @@ serial access; USB-OTG classes and an Android/browser client remain possible
 extensions. Real transfer throughput and physical interaction remain device
 qualification work.
 
-## Deferred research
+## E2 — Dynamic application research
+
+E2.1 completes the [runtime architecture study](DYNAMIC_APPLICATION_RESEARCH.md)
+with actual Wasm3/WAMR/Lua execution, failure and lifecycle probes, plus isolated
+ESP32-S3 Full-image links. Metered WAMR is the preferred compiled-app experiment;
+Lua is a personal-scripting alternative. The report records unbounded Wasm
+initialization and Host sanitizer findings, and proposes versioned host calls,
+bounded app discovery, USB installation and cleanup through existing owners.
+
+This is a research result. SDK v1 remains a source interface for static apps;
+the normal firmware does not load third-party applications. A working guest
+adapter, execution-boundary fixes and object installation are subsequent work.
+
+## Deferred implementation
 
 The following work is not a prerequisite for M1–M4:
 
@@ -269,4 +282,5 @@ The following work is not a prerequisite for M1–M4:
 - application signing and distribution.
 - custom bootloader.
 
-These items require SDK v1 and separate design decisions.
+E2.1 evaluates the runtime/package choices; their implementation and public
+distribution still require separate product decisions.
