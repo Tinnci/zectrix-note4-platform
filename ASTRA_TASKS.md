@@ -185,11 +185,14 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Added an allocation-free RadioArbiter on the existing Connectivity session owner. Wi-Fi bursts admit new outbound durable frames every 250 ms; book sessions restore normal sync after 500 ms of inactivity or immediately after radio release.
   - Preserved pairing, authorization, ACK/NACK, in-flight retries, phone confirmation ownership and failed-cleanup claims. Kept STA modem sleep and separated Wi-Fi/BLE stacks across S3 cores. See [docs/RADIO_ARBITER.md](docs/RADIO_ARBITER.md).
   - Verified all 33 Host targets, focused radio ASan/UBSan, Full/Minimal/BLE-only ESP32-S3 builds and connected-device flash/boot smoke. Simulated 256 KiB AP/STA upload/download runs sustain bidirectional sync; eight outbound states converge in 2000 ms. Physical RF throughput, BLE latency and current remain hardware measurements.
-- [ ] **E1.6: 视觉呈现精细化与交互打磨 (Visual Refinement & Ergonomic Polish)**
+- [x] **E1.6: 视觉呈现精细化与交互打磨 (Visual Refinement & Ergonomic Polish)**
   - 探索主屏顶栏的中立与极简呈现（如标题去品牌化、平衡居中构图，探索 `HOME` 或 `NOTE4 | HOME` 等中立命名）。
   - 针对大字号阅读排版探索行间距优化（如适度扩大行距以提供更多呼吸感），消除 400x300 墨水屏上连续多行 CJK 排版的视觉黏连感。
   - 优化待机画报底部唤醒提示（`Press DOWN to wake`）的视觉辨识度（探索加粗或高对比点阵字型），提升弱光或反光环境下的易读性。
   - 探索磁贴图标精细化演进，研究将基于文字符号拼接的磁贴标识升级为 16x16 紧凑单色位图图标（Bitmap Glyph），赋予启动器磁贴更细腻纯粹的极客质感。
+  - Centered the neutral HOME title and added seven original 16x16 monochrome tile glyphs using 224 bytes of constant bitmap data. Increased 24px reader line spacing from 28px to 32px while retaining seven rows and source-byte anchors.
+  - Added a high-contrast wake hint to final dashboard/landscape covers, retaining preview controls and the entirely white privacy cover. Reused the shared canvas and existing scene, display and shutdown ownership. See [docs/HOME.md](docs/HOME.md), [docs/READER.md](docs/READER.md) and [docs/SLEEP_COVER.md](docs/SLEEP_COVER.md).
+  - Verified all 33 Host targets, focused display integration, reader ASan/UBSan with and without connectivity, Full/Minimal ESP32-S3 builds and rendered Home/reader/sleep variants. Device smoke was not required for this UI change; physical low-light readability and panel contrast remain hardware measurements.
 - [ ] **E1.7: 系统级原生中文与多语言框架演进 (System-wide Localization & Language Architecture)**
   - **核心目标**：打破目前“仅书籍数据支持中文、系统界面全英文”的局限，让状态栏、启动器磁贴、设置与导航提示具备完整的中文与国际化呈现能力。
   - **自主方案探索**：

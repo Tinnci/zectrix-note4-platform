@@ -39,6 +39,12 @@ indicator; crossing a page requests Quality. Short pages expand their rows.
 An empty catalog shows **NO APPS AVAILABLE** and preserves shutdown. Tile labels
 and UTF-8 book names are shortened to fit their bounds.
 
+E1.6 centers the neutral **HOME** title below the status bar; multi-page counts
+remain at the right. Seven original 16 x 16 monochrome glyphs identify the
+catalog icons, including a distinct wrench for Tools. Their bitmap rows occupy
+224 bytes of constant data. Each icon is vertically centered beside its label
+and uses the tile's foreground color, including white on a focused black tile.
+
 The overview shows the local date and a copied bookmark name/progress. An
 unset calendar says **DATE NOT SET** and points to Clock. Unavailable reading
 history has its own message. Home reads bookmarks once on entry and never
@@ -76,6 +82,11 @@ recent-reading entry and bounded pagination, Biscuit's grouping, and Flipper
 Zero's retained scene state and viewport invalidation. It is original Note4
 code using existing assets and fonts.
 
+E1.6 also references CrossPoint's [HomeActivity](https://github.com/crosspoint-reader/crosspoint-reader/blob/develop/src/activities/home/HomeActivity.cpp)
+for bounded header composition and [GfxRenderer](https://github.com/crosspoint-reader/crosspoint-reader/blob/develop/lib/GfxRenderer/GfxRenderer.cpp)
+for pixel-aligned icons beside text. The Note4 glyphs are original; the existing
+clipped canvas draws them without an asset decoder or another buffer.
+
 Home and Tools use deferred SceneManager transitions. One foreground owner
 draws the existing canvas and coalesces status/content into one DisplayService
 commit. Focus requests Fast; scene/page changes and failed-frame recovery
@@ -105,7 +116,7 @@ inspection artifacts. The measured adjacent-tile focus update transfers
 **3,456 bytes** of panel RAM data; unchanged submissions transfer none. This
 measures driver traffic, not physical button latency or panel ghosting.
 
-Verification passed all 32 Host targets, reader ASan/UBSan with connectivity
+The E1.2 iteration passed all 32 Host targets, reader ASan/UBSan with connectivity
 enabled and disabled, ShellCheck and both ESP-IDF 5.5.2 firmware builds. Visual
 inspection confirmed focus, title truncation and status/footer separation in
 the generated Home variants.
@@ -120,3 +131,10 @@ The existing profile runner writes logs and `report.json` under
 defaults belonging to excluded IDF components; compilation and source-exclusion
 checks pass. Device smoke was not run for this UI change. Physical display
 contrast, ghosting and button latency remain panel measurements.
+
+E1.6 passed all 33 Host targets, focused display integration, reader ASan/UBSan
+with connectivity enabled and disabled, and Full/Minimal ESP32-S3 builds.
+Rendered Full/Minimal and multi-page Home screens, focused icons, both reader
+sizes, sleep covers, preview controls and blank privacy output were inspected.
+The local previews are under `build-ui-e1-6/after/`; no device smoke or physical
+low-light readability measurement was performed for this UI iteration.

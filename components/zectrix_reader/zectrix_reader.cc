@@ -175,7 +175,8 @@ struct Engine::Impl {
                 work.glyphs[work.count++] = {cp, static_cast<uint16_t>(x), static_cast<uint16_t>(y)};
             x += GlyphWidth(cp, work.font);
         }
-        if (printed) y += FontHeight(work.font) + 4;
+        // Use the spare body height for a wider CJK gap while retaining seven large-font rows.
+        if (printed) y += FontHeight(work.font) + (work.font == FontSize::Large ? 8 : 4);
         std::move(line.begin() + count, line.begin() + line_size, line.begin());
         line_size -= count;
         MeasureLine();

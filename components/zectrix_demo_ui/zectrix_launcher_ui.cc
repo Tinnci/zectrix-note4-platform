@@ -9,50 +9,58 @@
 
 namespace {
 
-void DrawIcon(ZectrixCanvas& canvas, zectrix::app::ApplicationIcon icon, int x, int y, bool black) {
-    using Icon = zectrix::app::ApplicationIcon;
+using Icon = zectrix::app::ApplicationIcon;
+using IconGlyph = std::array<uint16_t, 16>;
+
+// Original 16x16 glyphs. Rows are MSB-first; set bits use the tile's ink color.
+constexpr IconGlyph kAppIcon = {
+    0x0000, 0x0000, 0x3e7c, 0x3e7c, 0x366c, 0x3e7c, 0x3e7c, 0x0000,
+    0x0000, 0x3e7c, 0x3e7c, 0x366c, 0x3e7c, 0x3e7c, 0x0000, 0x0000,
+};
+constexpr IconGlyph kBookIcon = {
+    0x0000, 0x0000, 0xfe3f, 0xff7f, 0xc1c3, 0xc083, 0xcc9b, 0xc083,
+    0xc083, 0xcc9b, 0xc083, 0xc083, 0xfcbf, 0xffff, 0x0080, 0x0000,
+};
+constexpr IconGlyph kTransferIcon = {
+    0x0000, 0x0000, 0x1818, 0x3c18, 0x3c18, 0x7e18, 0x1818, 0x1818,
+    0x1818, 0x1818, 0x187e, 0x183c, 0x183c, 0x1818, 0x0000, 0x0000,
+};
+constexpr IconGlyph kClockIcon = {
+    0x0000, 0x03c0, 0x0ff0, 0x1c38, 0x318c, 0x318c, 0x6186, 0x6186,
+    0x61f6, 0x61f6, 0x300c, 0x300c, 0x1c38, 0x0ff0, 0x03c0, 0x0000,
+};
+constexpr IconGlyph kSleepIcon = {
+    0x0000, 0x0200, 0x0c00, 0x1c00, 0x3c00, 0x3c00, 0x7c00, 0x7e00,
+    0x7f00, 0x7f80, 0x3fc0, 0x3ffc, 0x1ff8, 0x0ff0, 0x03c0, 0x0000,
+};
+constexpr IconGlyph kSettingsIcon = {
+    0x0000, 0x0f00, 0x79fe, 0x79fe, 0x0f00, 0x0000, 0x0078, 0x7fce,
+    0x7fce, 0x0078, 0x0000, 0x0f00, 0x79fe, 0x79fe, 0x0f00, 0x0000,
+};
+constexpr IconGlyph kToolsIcon = {
+    0x0000, 0x01e0, 0x03c0, 0x0780, 0x07c2, 0x07e6, 0x07fc, 0x03fc,
+    0x07f0, 0x0fe0, 0x1f00, 0x3e00, 0x7c00, 0x5800, 0x7000, 0x0000,
+};
+
+const IconGlyph& GlyphForIcon(Icon icon) {
     switch (icon) {
-        case Icon::Book:
-            canvas.Rect(x + 2, y + 3, 10, 18, black);
-            canvas.Rect(x + 12, y + 3, 10, 18, black);
-            canvas.Line(x + 5, y + 7, x + 8, y + 7, black);
-            canvas.Line(x + 15, y + 7, x + 18, y + 7, black);
-            break;
-        case Icon::Transfer:
-            canvas.Line(x + 7, y + 3, x + 7, y + 21, black);
-            canvas.Line(x + 3, y + 7, x + 7, y + 3, black);
-            canvas.Line(x + 11, y + 7, x + 7, y + 3, black);
-            canvas.Line(x + 17, y + 3, x + 17, y + 21, black);
-            canvas.Line(x + 13, y + 17, x + 17, y + 21, black);
-            canvas.Line(x + 21, y + 17, x + 17, y + 21, black);
-            break;
-        case Icon::Clock:
-        case Icon::Sleep:
-            for (int row = 1; row < 23; ++row) {
-                for (int col = 1; col < 23; ++col) {
-                    const int radius = (row - 12) * (row - 12) + (col - 12) * (col - 12);
-                    const int cutout = (row - 8) * (row - 8) + (col - 17) * (col - 17);
-                    if (radius <= 100 && (icon == Icon::Clock ? radius >= 81 : cutout > 100))
-                        canvas.Pixel(x + col, y + row, black);
-                }
-            }
-            if (icon == Icon::Clock) {
-                canvas.Line(x + 12, y + 6, x + 12, y + 12, black);
-                canvas.Line(x + 12, y + 12, x + 17, y + 15, black);
-            }
-            break;
-        case Icon::Settings:
-            for (int row = 0; row < 3; ++row) {
-                canvas.Line(x + 2, y + 5 + row * 7, x + 21, y + 5 + row * 7, black);
-                canvas.Rect(x + (row == 1 ? 14 : 5), y + 3 + row * 7, 5, 5, black);
-            }
-            break;
-        case Icon::App:
-        case Icon::Tools:
-            for (int row = 0; row < 2; ++row)
-                for (int col = 0; col < 2; ++col)
-                    canvas.Rect(x + 3 + col * 11, y + 3 + row * 11, 8, 8, black);
-            break;
+        case Icon::Book: return kBookIcon;
+        case Icon::Transfer: return kTransferIcon;
+        case Icon::Clock: return kClockIcon;
+        case Icon::Sleep: return kSleepIcon;
+        case Icon::Settings: return kSettingsIcon;
+        case Icon::Tools: return kToolsIcon;
+        case Icon::App: return kAppIcon;
+    }
+    return kAppIcon;
+}
+
+void DrawIcon(ZectrixCanvas& canvas, zectrix::app::ApplicationIcon icon, int x, int y, bool black) {
+    const auto& glyph = GlyphForIcon(icon);
+    for (int row = 0; row < 16; ++row) {
+        for (int col = 0; col < 16; ++col) {
+            if (glyph[row] & (0x8000U >> col)) canvas.Pixel(x + col, y + row, black);
+        }
     }
 }
 
@@ -132,7 +140,8 @@ esp_err_t ZectrixDemoUi::ShowLauncher(const zectrix::app::LauncherController& la
     const char* footer = "UP/DOWN Move  OK Open  Hold DOWN Off";
     if (launcher.overview_selected()) footer = reading.state == zectrix::app::ReadingOverview::State::Saved
         ? "UP/DOWN Move  OK Read  Hold DOWN Off" : "UP/DOWN Move  OK Library  Hold DOWN Off";
-    DrawFrame("ZECTRIX | HOME", footer);
+    DrawFrame("", footer);
+    canvas_.TextCentered(26, "HOME", 1, true);
     DrawOverview(canvas_, clock, reading, launcher.overview_selected());
     const auto tiles = count - launcher.tile_offset();
     if (tiles == 0) {
@@ -152,7 +161,7 @@ esp_err_t ZectrixDemoUi::ShowLauncher(const zectrix::app::LauncherController& la
             const bool active = index == launcher.selected();
             canvas_.FillRect(x, y, 184, height, active);
             canvas_.Rect(x, y, 184, height);
-            DrawIcon(canvas_, entry.icon, x + 8, y + (height - 24) / 2, !active);
+            DrawIcon(canvas_, entry.icon, x + 12, y + (height - 16) / 2, !active);
             DrawFittedText(canvas_, x + 40, y + (height - 16) / 2, entry.label, 136, active);
         }
         if (tiles > per_page) {
