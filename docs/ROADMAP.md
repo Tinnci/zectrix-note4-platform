@@ -244,8 +244,8 @@ retention and standby current remain follow-up measurements.
 
 ## E1 — Daily-use UI and host communication
 
-Status: E1.1–E1.7 implemented in [PR #54](https://github.com/Tinnci/zectrix-note4-platform/pull/54),
-pending integration into main at the G1.1 review. These iterations deliver the
+Status: E1.1–E1.10 delivered through [PR #54](https://github.com/Tinnci/zectrix-note4-platform/pull/54)
+and the G1.2 synchronization. The first seven iterations deliver the
 firmware study, Home dashboard, responsive display scheduling, unified navigation,
 radio arbitration, visual refinement and system Chinese/English support.
 See [Home](HOME.md), [navigation](NAVIGATION.md), [radio arbitration](RADIO_ARBITER.md)
@@ -259,6 +259,11 @@ listing and common settings. The architecture study compares MSC, MTP and
 serial access; USB-OTG classes and an Android/browser client remain possible
 extensions. Real transfer throughput and physical interaction remain device
 qualification work.
+
+E1.9 supplies the native [Pocket Tools](UTILITIES.md), while E1.10 replaces
+status text with compact [radio and battery icons](STATUS_BAR.md). G1.2 records
+current GitHub delivery/qualification status in [GITHUB_TRIAGE.md](GITHUB_TRIAGE.md)
+and prepares the [v1.2 preview downloads](RELEASE_PREPARATION.md).
 
 ## E2 — Dynamic applications
 

@@ -1,3 +1,58 @@
+# G1.2 GitHub synchronization and delivery review
+
+Reviewed on **2026-09-12**. G1.2 synchronizes the 35 local commits accumulated
+after remote `main` at `c8d4e56`, plus the packaging/CI/documentation changes in
+this iteration, through [PR #54](https://github.com/Tinnci/zectrix-note4-platform/pull/54).
+The PR now covers E1.1–E1.10, E2.1/E2.2, R1.3/R1.4 and D1.4/D1.5.
+
+The existing required Host, Android and firmware checks, strict branch status,
+linear history and review-conversation rules remain in place. Rebase merging
+preserves the individual changes under the repository's linear-history policy.
+GitHub regenerates commit IDs during that merge; release manifests retain the
+actual source commit used for the builds.
+
+## Delivery and open qualification
+
+| Object | G1.2 result |
+| --- | --- |
+| PR #54 | Updated from its E1.1–E1.7 description to the complete terminal scope. The failed-candidate destructor review is fixed by D1.5's callback guard and 4,096-cycle regression; centralized render retry also covers the Settings/Gallery/Device Info findings. |
+| #58 and E1 milestone 13 | E1.8's transport study and USB books/settings management are implemented in `36f903c`, extended with Lua app transfer in E2.2. #54 closes the design/delivery issue; the E1 milestone records E1.1–E1.10 completion. |
+| #40, #44–#47 and D1 milestone 8 | D1.4 now provides the missing copied status commands, input mirror and confirmed maintenance; D1.5 adds foreground health/recovery. Their broader real USB/confirmation/stream/sleep evidence remains open. |
+| #42/#43 | Existing transport/owner implementation remains delivered. Original real reconnect and clean-build/device transcript criteria are retained. |
+| #56/#57 | D1.5 adds fault injection and health supervision; R1.4 adds display telemetry/modeling. Simulated faults and normal boot/feeding evidence do not close physical interrupted OTA, optical/power, transfer, sleep or RTC measurements. |
+| Research milestone 6 | E2.1 research and E2.2 restricted Lua pilots replace the old deferred-only description. Compiled Wasm/native loading and E2.3 packaging remain future work. |
+| R1 milestone 9 | Software scope now includes typography, compact fonts and parameterized display-physics observations/scheduling. Instrument measurements remain #57. |
+| C1 milestone 7 | Existing Android/BLE/NFC and RF/current evidence in #29, #34–#39 and #48 remains open. |
+| #55 | The draft firmware downloads support preparation; a trusted user-facing firmware delivery/update workflow remains outstanding. |
+
+The bodies and acceptance conditions of the physical follow-ups are preserved.
+Issue comments and milestone descriptions record the delivered software and
+the precise remaining observations. No retrospective Issue or new release gate
+is needed for the existing tracked work.
+
+## Verification and release preparation
+
+The local 40-target Host suite includes the package regression in its existing
+firmware-budget target. Full/Minimal artifacts use the qualified ESP-IDF v5.5.2
+builds and the existing profile comparison. See
+[RELEASE_PREPARATION.md](RELEASE_PREPARATION.md) for ZIP/application downloads,
+source manifests, licenses, download checksums and installation scope.
+
+The first updated remote CI run exposed GCC's missing explicit `<cstring>` in
+the Platform fixture and a missing `uv` executable in the firmware container.
+Both are corrected without relaxing the existing checks. The Android JVM/debug
+build passed that run; subsequent CI validates the corrected branch.
+
+The `v1.2.0-preview.1` release remains a draft. Its source revision and binaries
+are preparation artifacts; production publication and the final user handbook
+remain R2.1. D1.5 hardware evidence is carried forward with its stated limits;
+G1.2 does not claim a new flash or physical soak.
+
+The dated G1.1 review below remains the historical inventory. Its statements
+about pending E1.8/D1 implementations are superseded by this G1.2 review.
+
+---
+
 # G1.1 GitHub Issues and Milestones review
 
 Reviewed on **2026-09-10** for

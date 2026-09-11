@@ -1,4 +1,5 @@
 #include "zectrix_platform.h"
+#include <cstring>
 #include "sdkconfig.h"
 #include "zectrix_boot_esp.h"
 #include "zectrix_health_esp.h"

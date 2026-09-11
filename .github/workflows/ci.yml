@@ -135,7 +135,9 @@ jobs:
             -e CCACHE_DIR=/root/.ccache
           command: >-
             apt-get update &&
-            apt-get install --yes --no-install-recommends jq &&
+            apt-get install --yes --no-install-recommends jq curl ca-certificates &&
+            curl --fail --silent --show-error --location https://astral.sh/uv/install.sh |
+            env UV_UNMANAGED_INSTALL=/usr/local/bin sh &&
             tools/build-firmware.sh --clean &&
             idf.py size > build/size-report.txt &&
             cat build/size-report.txt &&
