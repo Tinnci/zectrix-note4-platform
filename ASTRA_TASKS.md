@@ -400,13 +400,17 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Verified all 40 Host targets, focused ASan/UBSan, 4,096 application recovery cycles, 1,024 Wi-Fi and Lua fault/restart cycles, 120 HTTP cancellations, 256 recovery/sleep UI cycles per language and seven simulated days of health progress. Corrected packed-font subset generation and checked recovery previews in English/Chinese.
   - Full/Minimal builds and profile comparison passed at 2,495,312 / 521,648 bytes (+2,736 / +1,344); static internal RAM is unchanged. Connected ESP32-S3 Full flash/boot and 95.15 seconds of continuous watchdog feeding passed. Physical interrupted OTA and separate endurance/power measurements remain tracked by #56/#57.
 
-- [ ] **G1.2: 远端代码同步与 GitHub 状态治理闭环 (Remote Git Sync & GitHub Governance)**
+- [x] **G1.2: 远端代码同步与 GitHub 状态治理闭环 (Remote Git Sync & GitHub Governance)**
   - **背景与愿景**：
     - 本地主线已积累了大量高质量原子 Commit（含 E1.8、E2.1 及后续成果），需要将这一阶段性重大成果与远端 GitHub 保持同步，并治理关联的 GitHub Issues。
   - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
     1. *远端分支对齐与 PR 治理*：检查本地与远端分支状态，审查 PR #54 或更新相关 PR，确保提交历史干净规范；
     2. *Issue 状态同步*：使用 `gh` CLI 审查并更新远端 GitHub Issue（特别是已由 E1.8 完整解决的 Issue #58 与关联 Milestone 13），更新验证记录；
     3. *阶段性版本固件打包准备*：准备 v1.2 阶段性 Release 资产（如 Full / Minimal 固件二进制与校验哈希）。
+  - Synchronized the accumulated E1.1–E1.10, E2.1/E2.2, R1.3/R1.4 and D1.4/D1.5 delivery through PR #54. Updated its scope and resolved the failed-candidate/retry review using D1.5's guarded cleanup and regression evidence, preserving the existing linear-history and CI rules.
+  - Reconciled #58/E1 milestone 13 with delivered USB books/settings/app management. Updated the D1, runtime-research and R1 records; retained the original USB, RF/Android, interrupted-OTA and display/sleep/RTC physical criteria. See [docs/GITHUB_TRIAGE.md](docs/GITHUB_TRIAGE.md).
+  - Added segmented Full/Minimal ZIP and application-image packaging with source/build manifests, license notices and download SHA256SUMS. Uploaded the assets to a `v1.2.0-preview.1` draft and verified a downloaded copy; production release publication remains R2.1. See [docs/RELEASE_PREPARATION.md](docs/RELEASE_PREPARATION.md).
+  - Verified all 40 local Host targets, ShellCheck, package extraction/address/data-preservation/failure tests, native image descriptors, Full/Minimal builds and profile comparison. Fixed the GCC fixture include and firmware-container uv dependency exposed by remote CI; Host, Android and ESP32-S3 jobs pass. Draft images remain 2,495,312 / 521,648 bytes, with unchanged static RAM.
 
 - [ ] **E2.3: 极客应用分发与打包工具链探索 (`.zapp` Package Specification & CLI Toolchain)**
   - **背景与愿景**：

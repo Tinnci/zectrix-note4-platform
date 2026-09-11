@@ -87,3 +87,12 @@ seven days on physical hardware.
 
 The GitHub draft uses `v1.2.0-preview.1` and the source commit in the manifests.
 Drafting and attaching the downloads does not publish a production release.
+
+The G1.2 candidate was built from clean `c4014868a6d18525a8606886b132dd6fb9da9ea2`.
+Its native version is `v1.0.0-129-gc401486`. Full/Minimal application sizes are
+2,495,312 / 521,648 bytes; static internal RAM is 201,815 / 108,323 bytes. Both
+archives passed extraction and byte/address checks. The candidate's
+[CI run](https://github.com/Tinnci/zectrix-note4-platform/actions/runs/34652131070)
+passed Host/static checks, Android and ESP32-S3 builds. The assets are attached
+to the [draft release](https://github.com/Tinnci/zectrix-note4-platform/releases/tag/untagged-f5a3e8f7c85ed84e2c08).
+The uploaded set was downloaded again and verified against SHA256SUMS.

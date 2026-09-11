@@ -41,12 +41,21 @@ source manifests, licenses, download checksums and installation scope.
 The first updated remote CI run exposed GCC's missing explicit `<cstring>` in
 the Platform fixture and a missing `uv` executable in the firmware container.
 Both are corrected without relaxing the existing checks. The Android JVM/debug
-build passed that run; subsequent CI validates the corrected branch.
+build passed that run; [CI run 34652131070](https://github.com/Tinnci/zectrix-note4-platform/actions/runs/34652131070)
+passed all three jobs on the corrected source `c401486`.
 
 The `v1.2.0-preview.1` release remains a draft. Its source revision and binaries
 are preparation artifacts; production publication and the final user handbook
 remain R2.1. D1.5 hardware evidence is carried forward with its stated limits;
 G1.2 does not claim a new flash or physical soak.
+
+The [draft release](https://github.com/Tinnci/zectrix-note4-platform/releases/tag/untagged-f5a3e8f7c85ed84e2c08)
+contains six downloads built from clean source `c401486`: two profile ZIPs,
+two application binaries, the combined manifest and SHA256SUMS. Full/Minimal
+remain 2,495,312 / 521,648 bytes, with 201,815 / 108,323 bytes of static internal
+RAM. The native descriptors agree with `v1.0.0-129-gc401486`; the preview label
+does not rewrite the embedded Git-derived version.
+All six uploaded assets were downloaded again and passed the checksum list.
 
 The dated G1.1 review below remains the historical inventory. Its statements
 about pending E1.8/D1 implementations are superseded by this G1.2 review.
