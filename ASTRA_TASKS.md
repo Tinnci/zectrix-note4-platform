@@ -269,12 +269,43 @@ Each iteration picks the top unfinished task, implements production code, verifi
     2. *低频常显与功耗哲学*：微工具在前台运行或待机锁屏时，如何合理运用局部刷新与休眠调度，既保持即时信息可读性，又守住低功耗底线？
     3. *模块化裁剪一致性*：新增的原生小工具如何与 `components/zectrix_app`、Kconfig 与 ServiceRegistry 优雅结合，保持极小固件（Minimal Profile）下随时可一键裁剪的纯洁度？
 
-- [ ] **D1.4: 维护终端指令集补全与系统级状态反射 (Maintenance CLI Completeness & System Reflection)**
+- [ ] **D1.4: 维护终端指令集补全、系统级状态反射与多源时钟同步演进 (Maintenance CLI Completeness, System Reflection & Multi-Source Clock Synchronization)**
   - **背景与愿景**：
-    - 针对前期治理遗留的维护终端指令缺口（对标 GitHub Issue #44），进一步充实 USB Maintenance CLI 的只读与状态观测能力。
+    - 针对前期治理遗留的维护终端能力缺口（对标 GitHub Issue #44, #45, #46），全面充实 USB Maintenance CLI 的全景状态反射、无损观测与安全防护能力。
+    - 解决随身墨水屏终端在离线长待机与异构无线环境下的系统时钟准确性与 PCF8563 硬件 RTC 持久化问题。
   - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
-    1. *指令集覆盖与设计*：如何通过 ServiceRegistry 安全获取底层状态？例如：电源与电量状态（`power status`）、高精度时间与 RTC 读数（`time get`）、射频工作模式（`connectivity status`）、已注册微应用目录与前台栈（`app list` / `app current`）等；
-    2. *并发安全与无阻塞原则*：在终端查询期间，如何确保不阻塞墨水屏主线程与 USB 数据通道，全链路坚持只读快照机制。
+    1. *全景状态反射与无阻塞快照 (System Status Reflection - Issue #44)*：
+       - 如何通过 ServiceRegistry 安全获取各硬件子系统状态并格式化输出？例如：
+         - 电源子系统 (`power status`)：电池 ADC 采样电压、充放电状态引脚、阶梯低电量阈值与待机估算；
+         - 射频网络 (`connectivity status`)：2.4GHz Arbiter 仲裁模式、Wi-Fi (STA/AP/Off) SSID/RSSI/IP/MAC、BLE 连接与广播状态；
+         - 应用与场景栈 (`app list` / `app current` / `scene dump`)：前台 SceneManager 栈层级、视图拓扑以及动态微应用（WAMR/Lua）资源配额与堆消耗；
+       - *并发安全原则*：在终端查询时，如何坚持零等待、只读快照机制，确保不长时间持有模块互斥锁，绝不阻塞墨水屏主刷新循环。
+    2. *观测流与无损事件监听 (Observation Streams & Non-consuming Input Tap - Issue #45)*：
+       - *物理三键监听*：如何在不截断、不吞噬前台 App 正常事件分发的前提下，实现类似 Linux `evtest` 的轻量非侵入按键镜像 (`input watch`)？
+       - *背压与内存防护*：在日志高频突发或主机消费缓慢时，环形缓冲区（RingBuffer）应采用何种策略，确保绝不拖垮 ESP32-S3 堆内存与主系统稳定性？
+    3. *确认性状态变更与安全性边界 (Confirmed Mutations & Safety Boundaries - Issue #46)*：
+       - 对重启 (`reboot`)、休眠 (`sleep`)、存储抹除 (`storage wipe`) 与出厂重置 (`factory reset`) 等破坏性操作，如何设计确认防线？
+       - 权衡终端两阶段交互式确认与“屏幕物理按键确认（Physical Ownership Proof，如屏幕弹出提示由机身实体按键短按放行）”的安全体验与防呆效果。
+    4. *射频物理现实下的多源时钟同步与 RTC 硬件防护 (Multi-Source Clock Sync & RTC Hardening)*：
+       - *同步范式权衡*：结合 ESP32-S3 射频事实（Wi-Fi Beacon TSF 仅为 AP 相对开机计数而非绝对 UTC，BLE 广播无标准化 UTC），在“低功耗离线优先、杜绝额外射频待机开销”的前提下，权衡主动定时连网与“机会主义/寄生式对时（Opportunistic Piggybacking，在 Web 传书、OTA、微应用 HTTP 访问或伴侣连接时顺带校准）”；
+       - *异构时钟源仲裁*：面对 LwIP SNTP、HTTP 响应头 Date、BLE CTS (0x1805)、Companion Hello TLV 与 NFC，如何设计统一的优先级裁决模型与时区/UTC 解耦；
+       - *RTC 原子写与跳变平滑*：如何确保 PCF8563 I2C 寄存器写入时进位不出现脏数据？外部时钟偏移时如何防御跳变（Step vs Slew）对前台调度器的冲击？
+       - *维护终端指令*：设计 `time status` / `time sync` 等状态探查与手动校准指令。
+
+- [ ] **R1.3: 算法点阵排版样式引擎与墨水屏富文本渲染 (Algorithmic Typography Engine & Rich Text Rendering)**
+  - **背景与愿景**：
+    - 当前系统（UI、Reader、Micro-Apps）仅支持单一常规体（Regular）点阵渲染，缺乏粗体、斜体与层级样式表现力。
+    - 坚持“零 Flash 膨胀、零动态堆分配”的嵌入式哲学，不额外引入膨胀的多字重字库，探索纯算法实时点阵合成（Algorithmic Styling）的排版演进路径。
+  - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
+    1. *样式契约与 API 架构*：
+       - 如何在 Canvas 绘制层与 SDK 接口中优雅引入无开销的样式抽象（如 `TextStyle` 紧凑位掩码：Bold、Italic、Dim、Underline、Keycap 等）？
+       - 评估在 Reader 或文本展示层支持轻量 Markdown / 富文本行内标记的解析可行性与边界。
+    2. *几何变换与度量联动 (Metrics & Reflow Consistency)*：
+       - 算法形变（如横向加粗 +1px、剪切倾斜 Slant）如何与 `TextWidth()`、`GlyphWidth()` 及 Reader 分页排版引擎协同，杜绝度量偏差引起的文本截断与排版错位？
+    3. *中西文非对称表现与容错降级 (CJK vs ASCII Asymmetry)*：
+       - 针对 16px/24px 汉字笔画密集易粘连的物理现实，如何权衡中文字符的粗体膨胀量与斜体倾斜度？是否存在最适合低分辨率汉字的点阵防粘连规则？
+    4. *墨水屏物理友好型样式落地*：
+       - 权衡并实现 1~2 种高实用性墨水屏专属样式：如利用 Bayer 网点掩码模拟次要文字（免灰阶刷新延迟）、大标题空心字（防微胶囊过度翻转与残影）、实体按键键帽提示框（`[OK]`）等。
 
 - [ ] **D1.5: 系统故障注入、容灾自愈与长周期浸润可靠性 (Fault Injection, Self-Healing & Health Supervisor)**
   - **背景与愿景**：
