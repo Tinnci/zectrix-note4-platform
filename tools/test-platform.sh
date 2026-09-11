@@ -10,6 +10,7 @@ fi
 common=(
   -I"$root_dir/tools/host_include" \
   -I"$root_dir/components/zectrix_app/include" \
+  -I"$root_dir/components/zectrix_board/include" \
   -I"$root_dir/components/zectrix_platform/include" \
   -I"$root_dir/components/zectrix_display/include" \
   -I"$root_dir/components/zectrix_input/include" \
@@ -43,6 +44,7 @@ for profile in full minimal connectivity cli usb-host update; do
             "$root_dir/components/zectrix_platform/zectrix_platform_diagnostics.cc"
             "$root_dir/components/zectrix_cli/zectrix_cli_core.cc"
             "$root_dir/components/zectrix_cli/zectrix_cli_control.cc"
+            "$root_dir/components/zectrix_time/zectrix_time_sync.cc"
             "$root_dir/components/zectrix_cli/zectrix_cli_diagnostics.cc"
             "$root_dir/components/zectrix_cli/zectrix_cli_log.cc")
     fi

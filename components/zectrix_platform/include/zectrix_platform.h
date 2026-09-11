@@ -13,6 +13,7 @@ namespace zectrix::storage { class StorageService; }
 namespace zectrix::system { class SystemService; }
 namespace zectrix::time { class TimeService; }
 namespace zectrix::update { class BootGuard; class UpdateService; }
+namespace zectrix::cli { class MaintenanceDelegate; }
 
 namespace zectrix {
 
@@ -34,6 +35,10 @@ public:
     // Application-owner safe points and shutdown admission control.
     void PollMaintenance();
     void StopMaintenance();
+    void SetMaintenanceDelegate(cli::MaintenanceDelegate* delegate);
+    // The shell has exited its foreground before either operation is called.
+    esp_err_t ResetUserData(bool factory);
+    [[noreturn]] void Reboot();
     // Called by the application owner after its final display update. Releases
     // service-owned peripherals before PowerService cuts rails and sleeps.
     [[noreturn]] void Shutdown();

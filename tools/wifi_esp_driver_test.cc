@@ -353,8 +353,13 @@ void TestBurstPowersDownBeforeResult() {
         assert((cleanup == std::vector<std::string>{"http", "tls", "wifi-stop",
             "wifi-deinit", "wifi-handler", "ip-handler", "default-handlers", "netif"}));
         assert(backend.TakeOutcome(&outcome));
+        zectrix::time::TimeSample sample;
+        assert(driver.TakeClockSample(&sample) == (mode == 0));
+        if (mode == 0) assert(sample.unix_ms == 1709179200000 && sample.received_us == 1000000);
+        assert(!driver.TakeClockSample(&sample));
         assert(outcome.operation == expected[mode] && outcome.stop == WifiStopResult::kSuccess);
         assert(outcome.body_size == (mode == 0 ? 5u : 0u));
+        assert(driver.CachedSnapshot().mode == WifiMode::Off);
         assert(diagnostic.StartScan() == WifiDriverResult::kPending);
         assert(diagnostic.StopStation() == WifiDriverResult::kReady);
     }
@@ -487,6 +492,13 @@ esp_err_t esp_wifi_scan_start(const wifi_scan_config_t* config, bool block) {
     assert(wifi_started && !block && std::strcmp(reinterpret_cast<const char*>(config->ssid), "test-ap") == 0);
     return ESP_OK;
 }
+esp_err_t esp_wifi_get_mac(wifi_interface_t, uint8_t* mac) {
+    const uint8_t value[] = {2, 1, 2, 3, 4, 5};
+    std::memcpy(mac, value, sizeof(value));
+    return ESP_OK;
+}
+esp_err_t esp_wifi_sta_get_ap_info(wifi_ap_record_t* ap) { ap->rssi = -52; return ESP_OK; }
+
 esp_err_t esp_wifi_scan_get_ap_num(uint16_t* count) { *count = 1; return ESP_OK; }
 esp_err_t esp_wifi_scan_get_ap_records(uint16_t*, wifi_ap_record_t* record) {
     *record = {};
@@ -554,6 +566,11 @@ WifiDriverResult WifiHttpClient::Poll(std::size_t* size) {
         *size = 5;
     }
     return http_result;
+}
+bool WifiHttpClient::ClockSample(time::TimeSample* sample) const {
+    if (!impl_ || !sample) return false;
+    *sample = {1709179200000, 1000000, 0, time::SyncSource::HttpsDate, false};
+    return true;
 }
 void WifiHttpClient::Close() {
     if (impl_ == nullptr) return;

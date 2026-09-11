@@ -29,6 +29,8 @@ enum class ExecuteStatus : uint8_t {
     kBusy,
     kTimeout,
     kBinary,
+    kDenied,
+    kUnknownOutcome,
 };
 
 // An explicit command lends the transport to one bounded binary session.
@@ -49,6 +51,7 @@ public:
     // Pending commands produce at most one bounded chunk per poll.
     virtual ExecuteStatus Poll(BoundedOutput*) { return ExecuteStatus::kOk; }
     virtual void Cancel() {}
+    virtual ExecuteStatus CancelStatus() { Cancel(); return ExecuteStatus::kOk; }
     virtual CliBinarySession* BinarySession() { return nullptr; }
 };
 

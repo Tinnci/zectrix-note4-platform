@@ -19,6 +19,7 @@ public:
         : owner_(&owner), scenes_(handlers_, std::size(handlers_), this) {}
 
     sdk::Status Enter(sdk::ApplicationContext& context) override {
+        owner_->BindScenes(scenes_);
         ReadTime();
         const auto started = scenes_.Start(kClock);
         if (!sdk::IsOk(started)) return started;

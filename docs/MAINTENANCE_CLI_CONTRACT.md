@@ -1,8 +1,8 @@
 # Maintenance CLI contract
 
-Status: D1.1 USB transport/session, D1.2 read-only platform diagnostics and
-log observation, and D1.3 interactive host simulation are implemented. Input
-tracing and confirmed maintenance mutations remain future slices. E1.8 adds
+Status: D1.1–D1.4 implement USB transport/session, bounded diagnostics and
+observation, interactive Host simulation, system reflection and confirmed
+maintenance operations. E1.8 adds
 `host start 1` and the separate foreground-owned book/settings session described
 in [USB_HOST.md](USB_HOST.md). Real USB transfer qualification remains open.
 
@@ -138,23 +138,31 @@ system tasks
 system uptime
 power status
 time get
+time status
+time sync [unix-ms offset-seconds]
 connectivity status
-connectivity pair
-connectivity forget
 display status
 app list
 app current
+scene dump
 log follow [error|warn|info|debug]
 log stats
 input watch
+reboot
+sleep
+storage wipe
+factory reset
+confirm <token>
 ```
 
-Implemented commands are `help [command]`, `version`, `system info`,
-`system heap`, `system tasks`, `system uptime`, `display status`,
-`log follow [error|warn|info|debug]` and `log stats`. The flat aliases are
-`sysinfo`, `heap`, `tasks`, `uptime`, `epd-inspect` and `log-stream`.
-Other commands in the list above are future work. `app open` is not in D1
-because runtime switching must use the existing deferred lifecycle path.
+All commands above are implemented. The flat aliases remain `sysinfo`,
+`heap`, `tasks`, `uptime`, `epd-inspect` and `log-stream`. `app open` is not a
+maintenance operation; navigation uses the existing deferred lifecycle path.
+Pairing and individual bond removal remain physical actions on the device's
+Connectivity screen. D1.4 deliberately does not add USB `connectivity pair` or
+`connectivity forget` shortcuts: terminal confirmation is not proof of a
+physical pairing action. Factory reset is a separate, explicit USB recovery
+operation that also clears bonds.
 
 E1.8's `host start 1` lends transport ownership to a bounded binary handler
 when the user has opened USB Manager. It changes the transport mode only;
@@ -179,8 +187,11 @@ Requests arriving during a synchronous display refresh wait for its completion.
 The dispatcher has one request slot, matching the single active command limit.
 ID and generation checks reject old tickets. A request expires after 30 seconds.
 Cancellation or timeout during inspection discards its result and keeps the
-slot occupied until the owner finishes. Only read-only inspections execute in
-D1.2; the mutation outcome and confirmation rules above apply to future work.
+slot occupied until the owner finishes. D1.4 also admits the confirmed operations
+below. The owner uses a try-lock to claim the slot and retries at subsequent safe
+points after contention.
+A completed result remains readable after its request deadline; a timeout
+during a mutation reports `UnknownOutcome`.
 Shutdown closes admission before stopping USB, then destroys the dispatcher
 before the platform services. Power-off explicitly stops maintenance first.
 
@@ -245,6 +256,108 @@ including input larger than the RX queue. Shell syntax is not parsed by the CLI.
 0 disables periodic logs. `--log-burst N` emits 0 to 10000 startup records to
 exercise overflow. Defaults are 0 ms owner delay, 1000 ms log interval and no
 startup burst. Delayed requests do not delay cancellation, reconnect or exit.
+
+## D1.4 reflection and input observation
+
+`power status` copies the last foreground power sample and its age; it does
+not trigger an ADC read. It reports voltage, percentage, validity, external
+power and charge/full/fault/absent flags. The existing radio policy requires
+20% battery unless external power is present. Standby time is explicitly
+unavailable without a measured discharge model; no new battery cutoff is
+invented for diagnostics.
+
+`connectivity status` uses typed ServiceRegistry lookup and zero-timeout BLE
+and resource locks. Contention returns Busy. The result separates radio
+arbitration, Wi-Fi transfer state, STA/AP/Off mode and BLE encryption, bonding,
+protocol negotiation and peer authorization. SSID, IP, MAC and RSSI are cached
+by the existing radio owner. RSSI is an association sample, not a fresh scan;
+AP mode has no station RSSI. Non-printable/non-ASCII SSID bytes become `?` in
+text output. No credentials, passkeys, bond secrets or peripheral handles are
+copied into the CLI result.
+
+`app list` copies at most 16 compiled catalog entries; `app current` includes
+foreground ID, generation, lifecycle and last SDK error. `scene dump` adds the
+eight-entry private scene stack, per-scene state and four viewport regions
+with enable/dirty/quality flags. Numeric scene IDs belong to that foreground
+application. Lifecycle values are Absent=0, Creating=1, Entering=2, Active=3,
+Exiting=4, Failsafe=5 and Stopped=6. SDK error values follow `sdk::Status`.
+
+Each SceneManager publishes into shell-owned storage on its owner task.
+Manager destruction clears its target; application creation clears previous
+scene and guest data. The shell lends the runtime adapter only during its
+runtime lifetime. Apps without private SceneManagers report depth zero. Lua
+Apps also publish guest name, live/peak/rejected allocation counts, the
+128 KiB heap limit and 10,000-instruction callback limit. Inspection does not
+call guest code, allocate a framebuffer or retain application pointers.
+
+`input watch` starts at the current producer cursor. The board mirrors click
+and long-press events before delivery into an independent 16-record ring,
+including monotonic microseconds, sequence and admission result. `queued=1`
+means the application queue admitted the event, not that it was delivered:
+Back/shutdown priority can later displace it. Internal maintenance wakeups
+never enter this ring. Observation copies at most four records per owner
+request and outputs at most one record per CLI poll. Further requests wait
+at least 50 ms. Slow consumers lose the oldest trace records and receive an
+explicit `lost` count. They cannot consume or reorder foreground input.
+The ring is compiled out when USB CLI is disabled. Ctrl+C, reconnect, TX
+failure and binary handoff retire the observer; no background reader runs.
+
+## D1.4 confirmed operations
+
+Issue an operation, read its scope, then enter the displayed `confirm <token>`
+within 15 seconds. The executor retains the exact typed arguments and USB
+origin. Any other command, malformed command, Ctrl+C, reset, disconnect or TX
+failure retires the pending confirmation. Tokens increase across sessions;
+there is no persistent authorization or automatic retry. The dispatcher and
+owner both reject an unconfirmed mutation or a Companion-origin mutation.
+
+| Operation | Effect after confirmation |
+| --- | --- |
+| `time sync <unix-ms> <offset-seconds>` | Set UTC for this boot and attempt RTC persistence; report persistence separately |
+| `reboot` | Exit the foreground, stop services and restart the selected firmware |
+| `sleep` | Exit the foreground, present the configured sleep cover and use normal rail-off/deep sleep |
+| `storage wipe` | Clear the entire books store, including micro-apps and interrupted uploads, then reboot; retain settings |
+| `factory reset` | Clear that store and the default NVS partition, including settings, Wi-Fi configuration and bonds, then reboot |
+
+Reboot/sleep/reset inspection only schedules an action. The shell waits for
+SDK callbacks to unwind, allows one second for an acceptance reply, then
+calls runtime Stop. Foreground Exit closes readers, guest files, USB leases
+and transfer activity before the action. A physical shutdown takes priority.
+The USB reply proves acceptance, not completion. Once the owner accepts the
+handoff it cannot be cancelled through Ctrl+C. Executing cancellation,
+shutdown or timeout with no provable result reports unknown outcome; inspect
+the device before explicitly trying again.
+
+Data reset stops maintenance and Connectivity before touching storage.
+BookStorage rejects a wipe while a reader, management lease or upload remains
+open. Only the explicit wipe path may format an unreadable books filesystem;
+ordinary mounting still never formats on failure. NVS erasure follows file
+cleanup and successful NVS deinitialization. Cleanup failures are logged and
+the device reboots without claiming a complete reset. Power loss can leave a
+partial reset; it is not a transaction spanning files and NVS. Firmware slots,
+OTA metadata and boot confirmation/rollback protections are preserved. The
+external RTC calendar is retained, but factory reset clears its offset, so
+Clock setup is needed before using that local calendar as UTC.
+
+This follows CrossPoint's deferred activity/streamed storage cleanup and
+Flipper's private scene/ViewPort ownership discussed in [NAVIGATION.md](NAVIGATION.md).
+It adds no refresh, radio connection or VM callback to a status query. The
+current runtime and shared 15,000-byte canvas remain the foreground owners.
+
+D1.4 Host tests cover copied snapshots, input overflow/non-consumption,
+zero-wait dispatch collisions, confirmation expiry/argument binding/replay,
+queued and executing cancellation, reconnect, unknown outcomes, file leases
+and reset stop order. The POSIX simulator provides synthetic reflection/input
+and simulates maintenance effects without changing Host files, clock or power.
+Physical USB reconnection, power-off retention and destructive recovery on a
+spare device remain hardware qualification; this iteration does not close
+Issues #44–#46's separate device acceptance.
+
+Local verification passed all 37 Host targets, including 13 CLI PTY scenarios,
+CLI/Platform/Time ASan/UBSan and ShellCheck. Full and Minimal ESP32-S3 builds
+and profile comparison passed at 3,139,120 and 565,392 bytes respectively. Full
+retains 6,608 bytes in the existing 3 MiB application slot; this iteration does
+not change partitions or flash a device.
 
 ## Non-goals
 
@@ -316,7 +429,6 @@ commands cannot execute a valid prefix. Device qualification must establish
 which cable and terminal close/reopen events the USB Serial/JTAG connection
 signal reports.
 
-Future input tracing, mutations and local confirmation need the corresponding
-event isolation, request/origin/deadline binding and unknown-outcome tests.
-Hardware qualification must prove USB reconnect, prompt recovery, `Ctrl+C`,
+D1.4 adds input isolation, request/origin/deadline binding and mutation
+unknown-outcome tests. Hardware qualification must prove USB reconnect, prompt recovery, `Ctrl+C`,
 sleep/wake and shutdown without panic, watchdog or unexpected reset.

@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "zectrix_wifi_backend.h"
+#include "zectrix_time_sync.h"
 
 namespace zectrix::connectivity {
 
@@ -29,6 +30,7 @@ public:
 
     bool Begin(WifiHttpStream& stream, uint8_t* body, std::size_t capacity);
     WifiDriverResult Poll(std::size_t* body_size);
+    bool ClockSample(time::TimeSample* sample) const;
     void Close();
 
 private:
@@ -44,9 +46,10 @@ public:
     static constexpr std::size_t kMaximumHeaderLineBytes = 512;
 
     bool Begin(uint8_t* body, std::size_t capacity);
-    WifiDriverResult Feed(const uint8_t* data, std::size_t size);
+    WifiDriverResult Feed(const uint8_t* data, std::size_t size, int64_t received_us = 0);
     WifiDriverResult EndOfStream();
     std::size_t BodySize() const { return body_size_; }
+    bool ClockSample(time::TimeSample* sample) const;
 
 private:
     enum class State : uint8_t {
@@ -72,6 +75,9 @@ private:
     bool content_type_seen_ = false;
     bool length_seen_ = false;
     bool chunked_ = false;
+    time::TimeSample clock_{};
+    int64_t received_us_ = 0;
+    bool date_seen_ = false, date_invalid_ = false;
 };
 
 }  // namespace zectrix::connectivity

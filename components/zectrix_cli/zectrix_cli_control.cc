@@ -20,9 +20,11 @@ bool PlatformControlDispatcher::Matches(ControlTicket ticket) const {
 
 ControlStatus PlatformControlDispatcher::Submit(const ControlRequest& request,
                                                ControlTicket* ticket) {
-    if (ticket == nullptr || request.operation > ControlOperation::kDisplay) {
+    if (ticket == nullptr || request.operation > ControlOperation::kFactoryReset) {
         return ControlStatus::kInvalidArgument;
     }
+    if (IsMutation(request.operation) && (!request.confirmed || request.origin != Origin::kUsbLocal))
+        return ControlStatus::kDenied;
     std::lock_guard<std::mutex> lock(mutex_);
     if (closing_) return ControlStatus::kUnavailable;
     if (state_ != State::kIdle) return ControlStatus::kQueueFull;
@@ -44,10 +46,11 @@ ControlStatus PlatformControlDispatcher::Take(ControlTicket ticket,
     if (result == nullptr) return ControlStatus::kInvalidArgument;
     std::lock_guard<std::mutex> lock(mutex_);
     if (!Matches(ticket) || abandoned_) return ControlStatus::kUnavailable;
-    if (!closing_ && clock_() - submitted_ms_ >= kOwnerRequestTimeoutMs) {
+    if (state_ != State::kComplete && !closing_ && clock_() - submitted_ms_ >= kOwnerRequestTimeoutMs) {
+        const bool unknown = state_ == State::kExecuting && IsMutation(request_.operation);
         if (state_ == State::kExecuting) abandoned_ = true;
         else state_ = State::kIdle;
-        return ControlStatus::kTimeout;
+        return unknown ? ControlStatus::kUnknownOutcome : ControlStatus::kTimeout;
     }
     if (state_ != State::kComplete) return ControlStatus::kPending;
     if (status_ == ControlStatus::kOk) *result = result_;
@@ -55,17 +58,20 @@ ControlStatus PlatformControlDispatcher::Take(ControlTicket ticket,
     return status_;
 }
 
-void PlatformControlDispatcher::Cancel(ControlTicket ticket) {
+ControlStatus PlatformControlDispatcher::Cancel(ControlTicket ticket) {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!Matches(ticket)) return;
+    if (!Matches(ticket)) return ControlStatus::kUnavailable;
+    const bool unknown = IsMutation(request_.operation) &&
+        (state_ == State::kExecuting || (state_ == State::kComplete && status_ == ControlStatus::kOk));
     if (state_ == State::kExecuting) abandoned_ = true;
     else state_ = State::kIdle;
+    return unknown ? ControlStatus::kUnknownOutcome : ControlStatus::kCancelledBeforeStart;
 }
 
 bool PlatformControlDispatcher::Dispatch() {
     if (!owner_.IsCurrentTaskOwner()) return false;
-    std::unique_lock<std::mutex> lock(mutex_);
-    if (closing_ || state_ != State::kQueued) return false;
+    std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
+    if (!lock || closing_ || state_ != State::kQueued) return false;
     if (clock_() - submitted_ms_ >= kOwnerRequestTimeoutMs) {
         status_ = ControlStatus::kTimeout;
         state_ = State::kComplete;
@@ -77,7 +83,7 @@ bool PlatformControlDispatcher::Dispatch() {
     result_ = {};
     const ControlStatus status = owner_.Inspect(request, &result_);
     lock.lock();
-    status_ = closing_ ? ControlStatus::kUnavailable : status;
+    status_ = closing_ ? (IsMutation(request.operation) ? ControlStatus::kUnknownOutcome : ControlStatus::kUnavailable) : status;
     state_ = abandoned_ ? State::kIdle : State::kComplete;
     idle_.notify_all();
     return true;
@@ -87,7 +93,8 @@ void PlatformControlDispatcher::Shutdown() {
     std::unique_lock<std::mutex> lock(mutex_);
     closing_ = true;
     if (state_ == State::kQueued || state_ == State::kComplete) {
-        status_ = ControlStatus::kUnavailable;
+        status_ = state_ == State::kComplete && IsMutation(request_.operation)
+            ? ControlStatus::kUnknownOutcome : ControlStatus::kUnavailable;
         state_ = State::kComplete;
     }
     idle_.wait(lock, [this] { return state_ != State::kExecuting; });

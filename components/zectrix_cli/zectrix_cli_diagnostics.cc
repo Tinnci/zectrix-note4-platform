@@ -1,6 +1,8 @@
 #include "zectrix_cli_diagnostics.h"
 
+#include <algorithm>
 #include <cstdarg>
+#include <charconv>
 #include <cstdio>
 #include <cstring>
 #include <iterator>
@@ -10,8 +12,9 @@ namespace {
 
 constexpr CommandDescriptor Leaf(const char* name, const char* help,
                                   const char* usage, Handler handler,
-                                  Execution execution = Execution::kOwnerRequest) {
-    return {name, help, usage, Access::kReadOnly, execution, true, nullptr, 0, handler};
+                                  Execution execution = Execution::kOwnerRequest,
+                                  Access access = Access::kReadOnly) {
+    return {name, help, usage, access, execution, true, nullptr, 0, handler};
 }
 
 constexpr CommandDescriptor kSystem[] = {
@@ -33,6 +36,25 @@ constexpr CommandDescriptor kHost[] = {
     Leaf("start", "Enter USB management; open USB MANAGER on the device first",
          "host start 1", Handler::kHostStart, Execution::kImmediate),
 };
+constexpr CommandDescriptor kPower[] = {Leaf("status", "Cached battery and charge state", "power status", Handler::kPower)};
+constexpr CommandDescriptor kTime[] = {
+    Leaf("get", "Local calendar, UTC and RTC state", "time get", Handler::kTime),
+    Leaf("status", "Clock authority and persistence", "time status", Handler::kTime),
+    Leaf("sync", "Inspect opportunistic sync, or confirm manual UTC and offset", "time sync [unix-ms offset-seconds]",
+         Handler::kTimeSync, Execution::kOwnerRequest, Access::kConfirm),
+};
+constexpr CommandDescriptor kConnectivity[] = {
+    Leaf("status", "Cached radio and authorized peer state", "connectivity status", Handler::kConnectivity),
+};
+constexpr CommandDescriptor kApps[] = {
+    Leaf("list", "Compiled application catalog", "app list", Handler::kApps),
+    Leaf("current", "Foreground lifecycle and generation", "app current", Handler::kCurrentApp),
+};
+constexpr CommandDescriptor kScene[] = {Leaf("dump", "Private scene stack, viewports and guest quotas", "scene dump", Handler::kScenes)};
+constexpr CommandDescriptor kInput[] = {Leaf("watch", "Observe physical input without consuming it; Ctrl+C stops", "input watch", Handler::kInputWatch, Execution::kStream)};
+constexpr CommandDescriptor kStorage[] = {Leaf("wipe", "Delete all books and micro-app files, then reboot; keep settings", "storage wipe", Handler::kStorageWipe, Execution::kOwnerRequest, Access::kConfirm)};
+constexpr CommandDescriptor kFactory[] = {Leaf("reset", "Erase user files, settings and bonds, then reboot; keep firmware", "factory reset", Handler::kFactoryReset, Execution::kOwnerRequest, Access::kConfirm)};
+#define GROUP(name, children) {name, "Use help for a subcommand", name, Access::kReadOnly, Execution::kImmediate, false, children, std::size(children)}
 constexpr CommandDescriptor kCommands[] = {
     Leaf("help", "List commands or show command usage", "help [command]",
          Handler::kHelp, Execution::kImmediate),
@@ -46,6 +68,12 @@ constexpr CommandDescriptor kCommands[] = {
      Execution::kImmediate, false, kLog, std::size(kLog)},
     {"host", "USB book and settings session", "host start 1", Access::kReadOnly,
      Execution::kImmediate, false, kHost, std::size(kHost)},
+    GROUP("power", kPower), GROUP("time", kTime), GROUP("connectivity", kConnectivity),
+    GROUP("app", kApps), GROUP("scene", kScene), GROUP("input", kInput),
+    GROUP("storage", kStorage), GROUP("factory", kFactory),
+    Leaf("reboot", "Exit the foreground and restart firmware", "reboot", Handler::kReboot, Execution::kOwnerRequest, Access::kConfirm),
+    Leaf("sleep", "Exit the foreground, show its sleep cover and power down", "sleep", Handler::kSleep, Execution::kOwnerRequest, Access::kConfirm),
+    Leaf("confirm", "Confirm the exact pending USB operation within 15 seconds", "confirm <token>", Handler::kConfirm, Execution::kImmediate),
     Leaf("sysinfo", "Alias for system info", "sysinfo", Handler::kSystemInfo),
     Leaf("heap", "Alias for system heap", "heap", Handler::kHeap),
     Leaf("tasks", "Alias for system tasks", "tasks", Handler::kTasks),
@@ -54,6 +82,14 @@ constexpr CommandDescriptor kCommands[] = {
     Leaf("log-stream", "Alias for log follow", "log-stream [error|warn|info|debug]",
          Handler::kLogFollow, Execution::kStream),
 };
+#undef GROUP
+
+template <typename T> bool Number(const char* text, T* result) {
+    if (!text || !*text) return false;
+    const auto end = text + std::strlen(text);
+    const auto parsed = std::from_chars(text, end, *result);
+    return parsed.ec == std::errc{} && parsed.ptr == end;
+}
 
 void Format(BoundedOutput* output, const char* format, ...) {
     char text[kMaximumOutputSize + 1]{};
@@ -72,6 +108,8 @@ ExecuteStatus MapStatus(ControlStatus status) {
         case ControlStatus::kQueueFull:
         case ControlStatus::kBusy: return ExecuteStatus::kBusy;
         case ControlStatus::kTimeout: return ExecuteStatus::kTimeout;
+        case ControlStatus::kDenied: return ExecuteStatus::kDenied;
+        case ControlStatus::kUnknownOutcome: return ExecuteStatus::kUnknownOutcome;
         default: return ExecuteStatus::kUnavailable;
     }
 }
@@ -119,12 +157,11 @@ const CommandDescriptor* DiagnosticCommands(std::size_t* count) {
 ExecuteStatus DiagnosticExecutor::Help(const Invocation& invocation,
                                        BoundedOutput* output) {
     if (invocation.count == 1) {
-        output->Append("help [command], version\r\n"
-                       "system <info|heap|tasks|uptime>, display status\r\n"
-                       "log follow [error|warn|info|debug], log stats\r\n"
-                       "Aliases: sysinfo, heap, tasks, uptime, epd-inspect, log-stream\r\n"
-                       "Ctrl+C cancels; host start 1 enters USB management.");
-        return ExecuteStatus::kOk;
+        active_ = Handler::kHelp;
+        cancellation_.Reset();
+        result_ready_ = true;
+        page_ = 0;
+        return FormatResult(output);
     }
     const CommandDescriptor* commands = kCommands;
     std::size_t count = std::size(kCommands);
@@ -150,12 +187,22 @@ ExecuteStatus DiagnosticExecutor::Execute(const Invocation& invocation,
                                           BoundedOutput* output) {
     if (output == nullptr || invocation.count == 0) return ExecuteStatus::kInvalidArguments;
     if (active_ != Handler::kNone) return ExecuteStatus::kBusy;
+    if (std::strcmp(invocation[0], "confirm") != 0) confirmation_token_ = 0;
     Resolution resolution;
     const auto resolved = Resolve(kCommands, std::size(kCommands), invocation, &resolution);
     if (resolved == ResolveStatus::kIncompleteCommand) return ExecuteStatus::kInvalidArguments;
     if (resolved != ResolveStatus::kOk) return ExecuteStatus::kUnknownCommand;
     const auto& command = *resolution.command;
     const std::size_t arguments = invocation.count - resolution.argument_index;
+    if (command.handler == Handler::kConfirm) {
+        uint64_t token = 0;
+        const bool valid = arguments == 1 && Number(invocation[resolution.argument_index], &token) &&
+            token != 0 && token == confirmation_token_ && clock_() < confirmation_deadline_;
+        confirmation_token_ = 0;
+        if (!valid) return ExecuteStatus::kDenied;
+        confirmation_.confirmed = true;
+        return Submit(confirmation_handler_, confirmation_);
+    }
     if (command.handler == Handler::kHelp) return Help(invocation, output);
     if (command.handler == Handler::kHostStart) {
         if (arguments != 1 || std::strcmp(invocation[resolution.argument_index], "1") != 0)
@@ -163,11 +210,11 @@ ExecuteStatus DiagnosticExecutor::Execute(const Invocation& invocation,
         return binary_ != nullptr && binary_->Start(output) ? ExecuteStatus::kBinary
                                                           : ExecuteStatus::kUnavailable;
     }
-    if (command.handler != Handler::kLogFollow && arguments != 0) {
+    if (command.handler != Handler::kLogFollow && command.handler != Handler::kTimeSync && arguments != 0) {
         return ExecuteStatus::kInvalidArguments;
     }
     if (command.handler == Handler::kVersion) {
-        output->Append("zectrix maintenance CLI D1.2");
+        output->Append("zectrix maintenance CLI D1.4");
         return ExecuteStatus::kOk;
     }
     if (command.handler == Handler::kLogStats) {
@@ -197,17 +244,58 @@ ExecuteStatus DiagnosticExecutor::Execute(const Invocation& invocation,
     }
 
     ControlRequest request;
+    Handler handler = command.handler;
     switch (command.handler) {
         case Handler::kSystemInfo: request.operation = ControlOperation::kSystemInfo; break;
         case Handler::kHeap: request.operation = ControlOperation::kHeap; break;
         case Handler::kTasks: request.operation = ControlOperation::kTasks; break;
         case Handler::kUptime: request.operation = ControlOperation::kUptime; break;
         case Handler::kDisplayInspect: request.operation = ControlOperation::kDisplay; break;
+        case Handler::kPower: request.operation = ControlOperation::kPower; break;
+        case Handler::kTime: request.operation = ControlOperation::kTime; break;
+        case Handler::kConnectivity: request.operation = ControlOperation::kConnectivity; break;
+        case Handler::kApps:
+        case Handler::kCurrentApp: request.operation = ControlOperation::kApps; break;
+        case Handler::kScenes: request.operation = ControlOperation::kScenes; break;
+        case Handler::kInputWatch:
+            request.operation = ControlOperation::kInput;
+            input_cursor_ = next_input_poll_ms_ = 0;
+            break;
+        case Handler::kTimeSync:
+            if (arguments == 0) { request.operation = ControlOperation::kTime; handler = Handler::kTime; break; }
+            if (arguments != 2 || !Number(invocation[resolution.argument_index], &request.unix_ms) ||
+                !Number(invocation[resolution.argument_index + 1], &request.offset_seconds) ||
+                request.unix_ms < 946634400000LL || request.unix_ms > 4102495199999LL ||
+                request.offset_seconds < -50400 || request.offset_seconds > 50400)
+                return ExecuteStatus::kInvalidArguments;
+            request.operation = ControlOperation::kTimeSync;
+            break;
+        case Handler::kReboot: request.operation = ControlOperation::kReboot; break;
+        case Handler::kSleep: request.operation = ControlOperation::kSleep; break;
+        case Handler::kStorageWipe: request.operation = ControlOperation::kStorageWipe; break;
+        case Handler::kFactoryReset: request.operation = ControlOperation::kFactoryReset; break;
         default: return ExecuteStatus::kUnavailable;
     }
+    if (IsMutation(request.operation)) {
+        confirmation_ = request;
+        confirmation_handler_ = handler;
+        confirmation_token_ = ++next_token_;
+        if (!confirmation_token_) confirmation_token_ = ++next_token_;
+        confirmation_deadline_ = clock_() + 15000;
+        if (handler == Handler::kTimeSync)
+            Format(output, "Set UTC=%lld ms offset=%ld s. ", static_cast<long long>(request.unix_ms), static_cast<long>(request.offset_seconds));
+        else Format(output, "%s. ", command.help);
+        Format(output, "Type confirm %llu within 15 s; any other command or Ctrl+C cancels.",
+               static_cast<unsigned long long>(confirmation_token_));
+        return ExecuteStatus::kOk;
+    }
+    return Submit(handler, request);
+}
+
+ExecuteStatus DiagnosticExecutor::Submit(Handler handler, const ControlRequest& request) {
     const auto submitted = dispatcher_.Submit(request, &ticket_);
     if (submitted != ControlStatus::kOk) return MapStatus(submitted);
-    active_ = command.handler;
+    active_ = handler;
     cancellation_.Reset();
     page_ = 0;
     result_ready_ = false;
@@ -218,6 +306,7 @@ ExecuteStatus DiagnosticExecutor::Poll(BoundedOutput* output) {
     if (output == nullptr) return ExecuteStatus::kInvalidArguments;
     if (cancellation_.IsCancelled() || active_ == Handler::kNone) return ExecuteStatus::kOk;
     if (active_ == Handler::kLogFollow) return PollLog(output);
+    if (active_ == Handler::kInputWatch) return PollInput(output);
     if (!result_ready_) {
         const auto status = dispatcher_.Take(ticket_, &result_);
         if (status == ControlStatus::kPending) return ExecuteStatus::kPending;
@@ -232,16 +321,30 @@ ExecuteStatus DiagnosticExecutor::Poll(BoundedOutput* output) {
 }
 
 void DiagnosticExecutor::Cancel() {
+    CancelStatus();
+}
+
+ExecuteStatus DiagnosticExecutor::CancelStatus() {
     cancellation_.Cancel();
-    if (ticket_.id != 0) dispatcher_.Cancel(ticket_);
+    const auto status = ticket_.id != 0 ? dispatcher_.Cancel(ticket_) : ControlStatus::kOk;
+    confirmation_token_ = 0;
     ticket_ = {};
     active_ = Handler::kNone;
     result_ready_ = false;
+    return status == ControlStatus::kUnknownOutcome ? ExecuteStatus::kUnknownOutcome : ExecuteStatus::kOk;
 }
 
 ExecuteStatus DiagnosticExecutor::FormatResult(BoundedOutput* output) {
     bool more = false;
-    if (active_ == Handler::kSystemInfo) {
+    if (active_ == Handler::kHelp) {
+        constexpr const char* pages[] = {
+            "help [command], version\r\nsystem <info|heap|tasks|uptime>, display status\r\npower status, connectivity status\r\ntime <get|status|sync [unix-ms offset-seconds]>",
+            "app <list|current>, scene dump, input watch\r\nlog follow [error|warn|info|debug], log stats\r\nreboot, sleep, storage wipe, factory reset, confirm <token>",
+            "Aliases: sysinfo, heap, tasks, uptime, epd-inspect, log-stream\r\nCtrl+C cancels; host start 1 enters USB management.\r\nPairing and bond removal use the device's Connectivity screen."
+        };
+        output->Append(pages[page_]);
+        more = page_ + 1 < std::size(pages);
+    } else if (active_ == Handler::kSystemInfo) {
         const auto& s = result_.system;
         if (page_ == 0) {
             Format(output, "project=%.31s version=%.31s\r\nIDF=%.31s build=%.15s %.15s",
@@ -328,6 +431,58 @@ ExecuteStatus DiagnosticExecutor::FormatResult(BoundedOutput* output) {
         }
         more = page_ < 2 || (d.framebuffer_valid && page_ < 6);
     }
+    if (active_ == Handler::kPower) {
+        const auto& p = result_.power;
+        if (page_ == 0) Format(output, "battery_valid=%u mv=%u percent=%u age_ms=%lld\r\nexternal=%u charging=%u full=%u fault=%u absent=%u",
+            p.valid, p.millivolts, p.percent, static_cast<long long>(p.age_ms), p.external, p.charging, p.full, p.fault, p.absent);
+        else output->Append("Wi-Fi battery minimum=20%; external power permits Wi-Fi.\r\nStandby estimate unavailable; no measured discharge model.");
+        more = page_ == 0;
+    } else if (active_ == Handler::kTime || active_ == Handler::kTimeSync) {
+        const auto& t = result_.time;
+        if (page_ == 0) Format(output, "calendar_valid=%u local=%04d-%02d-%02d %02d:%02d:%02d\r\nunix_seconds=%lld offset_seconds=%ld offset_known=%u",
+            t.calendar_valid, t.local[0], t.local[1], t.local[2], t.local[3], t.local[4], t.local[5],
+            static_cast<long long>(t.unix_seconds), static_cast<long>(t.offset_seconds), t.offset_known);
+        else if (page_ == 1) Format(output, "rtc_available=%u rtc_saved=%u save_pending=%u error=%ld\r\nsource=%s result=%s age_ms=%lld correction_ms=%lld rejected=%lu",
+            t.rtc_available, t.persisted, t.pending, static_cast<long>(t.error), time::SyncSourceName(t.sync.source), time::SyncResultName(t.sync.result),
+            static_cast<long long>(t.accepted_age_ms), static_cast<long long>(t.sync.correction_ms), static_cast<unsigned long>(t.sync.rejected));
+        else output->Append("Automatic sync uses existing authorized Companion/verified HTTPS traffic.\r\nNo extra connection; schedulers use monotonic time.");
+        more = page_ < 2;
+    } else if (active_ == Handler::kConnectivity) {
+        const auto& c = result_.connectivity;
+        if (page_ == 0) Format(output, "radio=%.23s wifi=%.23s mode=%s resource_busy=%u book_transfer=%u\r\nssid=%.32s ip=%.15s",
+            c.radio.data(), c.wifi.data(), c.mode == 2 ? "AP" : c.mode == 1 ? "STA" : "Off", c.busy, c.transfer,
+            c.ssid.data(), c.address[0] ? c.address.data() : "unavailable");
+        else if (page_ == 1) Format(output, "mac_valid=%u mac=%02x:%02x:%02x:%02x:%02x:%02x\r\nrssi_valid=%u rssi_dbm=%d (association sample)",
+            c.mac_valid, c.mac[0], c.mac[1], c.mac[2], c.mac[3], c.mac[4], c.mac[5], c.rssi_valid, c.rssi);
+        else Format(output, "ble=%.23s session=%lu pairing=%u\r\nencrypted=%u authenticated=%u bonded=%u negotiated=%u peer_authorized=%u",
+            c.ble.data(), static_cast<unsigned long>(c.session), c.pairing, c.encrypted, c.authenticated, c.bonded, c.negotiated, c.authorized);
+        more = page_ < 2;
+    } else if (active_ == Handler::kApps || active_ == Handler::kCurrentApp) {
+        const auto& a = result_.apps;
+        if (active_ == Handler::kCurrentApp || page_ == 0) Format(output, "applications=%u foreground=%.31s generation=%lu lifecycle=%u error=%u",
+            a.count, a.foreground.data(), static_cast<unsigned long>(a.generation), a.lifecycle, a.error);
+        else if (page_ <= a.count && page_ <= a.entries.size())
+            Format(output, "%.31s  %.31s", a.entries[page_ - 1].id.data(), a.entries[page_ - 1].label.data());
+        more = active_ == Handler::kApps && page_ < a.count && page_ < a.entries.size();
+    } else if (active_ == Handler::kScenes) {
+        const auto& s = result_.scenes;
+        const auto depth = std::min<std::size_t>(s.depth, s.scenes.size());
+        if (page_ == 0) Format(output, "foreground=%.31s generation=%lu scene_depth=%zu transitioning=%u view_slots=%zu guest=%u",
+            result_.apps.foreground.data(), static_cast<unsigned long>(result_.apps.generation), depth, s.transitioning, s.views.size(), s.guest);
+        else if (page_ <= depth) Format(output, "scene[%zu] id=%u state=%lu%s", page_ - 1, s.scenes[page_ - 1].id,
+            static_cast<unsigned long>(s.scenes[page_ - 1].state), page_ == depth ? " current" : "");
+        else if (page_ <= depth + s.views.size()) {
+            const auto index = page_ - depth - 1;
+            const auto& v = s.views[index];
+            Format(output, "view[%zu] configured=%u enabled=%u rect=%d,%d %dx%d dirty=%u quality=%u",
+                index, v.configured, v.enabled, v.x, v.y, v.width, v.height, v.dirty, v.quality);
+        } else Format(output, "guest=%.63s heap_live=%lu peak=%lu limit=%lu rejected=%lu instructions_per_callback=%lu",
+            s.guest_name.data(), static_cast<unsigned long>(s.heap_live), static_cast<unsigned long>(s.heap_peak),
+            static_cast<unsigned long>(s.heap_limit), static_cast<unsigned long>(s.heap_rejected), static_cast<unsigned long>(s.instruction_limit));
+        more = page_ < depth + s.views.size() + (s.guest ? 1 : 0);
+    } else if (active_ == Handler::kReboot || active_ == Handler::kSleep || active_ == Handler::kStorageWipe || active_ == Handler::kFactoryReset) {
+        output->Append("Accepted; cannot cancel after owner handoff. Execution follows foreground Exit. USB may disconnect; do not retry automatically.");
+    }
     ++page_;
     if (!more) active_ = Handler::kNone;
     return more ? ExecuteStatus::kPending : ExecuteStatus::kOk;
@@ -353,6 +508,43 @@ ExecuteStatus DiagnosticExecutor::PollLog(BoundedOutput* output) {
         output->Append(record.text.data());
         break;
     }
+    return ExecuteStatus::kPending;
+}
+
+ExecuteStatus DiagnosticExecutor::PollInput(BoundedOutput* output) {
+    if (!ticket_.id && !result_ready_) {
+        if (clock_() < next_input_poll_ms_) return ExecuteStatus::kPending;
+        ControlRequest request;
+        request.operation = ControlOperation::kInput;
+        request.cursor = input_cursor_;
+        const auto status = dispatcher_.Submit(request, &ticket_);
+        if (status != ControlStatus::kOk) return MapStatus(status);
+    }
+    if (!result_ready_) {
+        const auto status = dispatcher_.Take(ticket_, &result_);
+        if (status == ControlStatus::kPending) return ExecuteStatus::kPending;
+        ticket_ = {};
+        if (status != ControlStatus::kOk) { active_ = Handler::kNone; return MapStatus(status); }
+        result_ready_ = true;
+        page_ = 0;
+    }
+    auto& batch = result_.input;
+    if (!input_cursor_) {
+        output->Append("Watching physical input; queued=1 means admitted, not necessarily delivered. Ctrl+C stops.");
+    } else if (batch.lost) {
+        Format(output, "input: lost=%llu (oldest trace records overwritten)", static_cast<unsigned long long>(batch.lost));
+        batch.lost = 0;
+        return ExecuteStatus::kPending;
+    } else if (page_ < batch.count && page_ < batch.records.size()) {
+        const auto& r = batch.records[page_++];
+        Format(output, "input seq=%llu us=%lld button=%s action=%s queued=%u",
+            static_cast<unsigned long long>(r.sequence), static_cast<long long>(r.timestamp_us),
+            r.button == 0 ? "UP" : r.button == 1 ? "DOWN" : "OK", r.action == 0 ? "click" : "long", r.queued);
+        if (page_ < batch.count && page_ < batch.records.size()) return ExecuteStatus::kPending;
+    }
+    input_cursor_ = batch.cursor;
+    result_ready_ = false;
+    next_input_poll_ms_ = clock_() + 50;
     return ExecuteStatus::kPending;
 }
 

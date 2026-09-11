@@ -4,6 +4,7 @@
 
 #include "esp_err.h"
 #include "zectrix_calendar.h"
+#include "zectrix_time_sync.h"
 
 class ZectrixBoard;
 namespace zectrix::storage { class StorageService; }
@@ -49,6 +50,11 @@ public:
     // without a known offset may be displayed, but cannot initialize UTC/TLS.
     ClockSnapshot Now() const;
     ClockStatus Status() const { return status_; }
+    SyncStatus Synchronization() const { return sync_; }
+    int64_t UnixSeconds() const;
+    // Automatic sources preserve timezone unless they explicitly carry one.
+    // Only the foreground owner applies a copied, already authorized sample.
+    SyncResult ApplySample(const TimeSample& sample);
     // ESP_OK means UTC was set for this boot. Status reports RTC persistence
     // separately; failed saves are retried by Poll() and must not be shown as
     // durable. Only the foreground owner may calibrate, initialize or poll.
@@ -65,9 +71,11 @@ private:
     explicit TimeService(ZectrixBoard& board) : board_(&board) {}
     esp_err_t Restore();
     esp_err_t Persist();
+    esp_err_t Calibrate(int64_t unix_milliseconds, int32_t utc_offset_seconds, bool offset_known);
     ZectrixBoard* board_;
     storage::StorageService* storage_ = nullptr;
     ClockStatus status_{};
+    SyncStatus sync_{};
     ClockSource system_source_ = ClockSource::System;
     int64_t local_rtc_seconds_ = 0;
     int64_t local_rtc_sample_us_ = 0;

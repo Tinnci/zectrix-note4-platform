@@ -67,6 +67,7 @@ public:
 
     BleState State() const;
     BleSnapshot Snapshot() const;
+    bool TrySnapshot(BleSnapshot* snapshot) const;
     bool TakePairingPasskey(uint32_t* passkey);
     // Wait for a link-state change or a complete received frame. Events can
     // coalesce; callers must inspect the current state and drain available
@@ -87,6 +88,7 @@ public:
                                      const std::function<void()>& action);
 
 private:
+    bool ReadSnapshot(BleSnapshot* snapshot, bool wait) const;
     Impl* impl_ = nullptr;
 };
 

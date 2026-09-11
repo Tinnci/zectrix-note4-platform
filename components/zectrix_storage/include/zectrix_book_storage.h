@@ -80,6 +80,8 @@ public:
     esp_err_t OpenManaged(const char* name, BookFile* file);
     BookWriteResult BeginUpload(const char* name, uint32_t size, BookUpload* upload);
     BookWriteResult Remove(const char* name);
+    // Explicit maintenance only. Readers, uploads and management must exit first.
+    esp_err_t Wipe();
 
 private:
     friend class BookFile;

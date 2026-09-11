@@ -323,13 +323,32 @@ void ZectrixBoard::ButtonTask() {
 }
 
 void ZectrixBoard::QueueButtonEvent(const ZectrixButtonEvent& event) {
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+    const auto timestamp = esp_timer_get_time();
+#endif
     portENTER_CRITICAL(&button_lock_);
     const bool accepted = button_events_.Push(event);
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+    if (event.action != ZectrixButtonAction::kWake)
+        input_trace_.Push(timestamp, static_cast<uint8_t>(event.button), static_cast<uint8_t>(event.action), accepted);
+#endif
     portEXIT_CRITICAL(&button_lock_);
     if (accepted) {
         const uint8_t signal = 1;
         xQueueSend(button_queue_, &signal, 0);
     }
+}
+
+zectrix::input::TraceBatch ZectrixBoard::ReadInputTrace(uint64_t cursor) {
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+    portENTER_CRITICAL(&button_lock_);
+    const auto batch = input_trace_.Read(cursor);
+    portEXIT_CRITICAL(&button_lock_);
+    return batch;
+#else
+    (void)cursor;
+    return {};
+#endif
 }
 
 bool ZectrixBoard::WaitButton(ZectrixButtonEvent* event, TickType_t timeout) {

@@ -22,6 +22,7 @@ public:
     explicit ConnectivityApplication(TerminalApp& owner) : owner_(&owner) {}
 
     sdk::Status Enter(sdk::ApplicationContext& context) override {
+        owner_->BindScenes(controller_);
         status_ = Tr(Text::SelectAction);
         passkey_[0] = '\0';
         displayed_state_ = owner_->connectivity_->State();

@@ -10,6 +10,7 @@ enum class BookTransferDecision : uint8_t { None, RenderFast, RenderQuality, Hot
 
 class BookTransferController {
 public:
+    void ObserveScenes(SceneSnapshot* snapshot) { scenes_.ObserveScenes(snapshot); }
     sdk::Status Start();
     void Stop();
     BookTransferDecision Handle(const sdk::InputEvent& input);

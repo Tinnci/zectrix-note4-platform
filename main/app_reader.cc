@@ -16,6 +16,7 @@ public:
           continue_reading_(owner.reader_continue_requested_) {}
 
     sdk::Status Enter(sdk::ApplicationContext& context) override {
+        owner_->BindScenes(controller_);
         const auto result = controller_.Start(continue_reading_);
         if (!sdk::IsOk(result)) return result;
         owner_->reader_busy_ = controller_.busy();

@@ -23,13 +23,15 @@ public:
     bool IsCurrentTaskOwner() const override {
         return std::this_thread::get_id() == owner_thread;
     }
-    void Wake() override { ++wakes; }
+    void Wake() override { ++wakes; if (on_wake) on_wake(); }
     ControlStatus Inspect(const ControlRequest& request, ControlResult* output) override {
         assert(IsCurrentTaskOwner());
         ++calls;
         last_operation = request.operation;
+        last_request = request;
         if (on_inspect) on_inspect();
         *output = sample;
+        if (request.operation == ControlOperation::kInput && trace) output->input = trace->Read(request.cursor);
         return status;
     }
 
@@ -37,9 +39,12 @@ public:
     std::atomic<unsigned> wakes{0};
     unsigned calls = 0;
     ControlOperation last_operation = ControlOperation::kSystemInfo;
+    ControlRequest last_request{};
+    zectrix::input::InputTrace* trace = nullptr;
     ControlResult sample;
     ControlStatus status = ControlStatus::kOk;
     std::function<void()> on_inspect;
+    std::function<void()> on_wake;
 };
 
 Invocation Parse(const char* text) {
@@ -147,7 +152,7 @@ void TestCommands() {
     assert(Run(executor, dispatcher, "help").find("log-stream") != std::string::npos);
     assert(Run(executor, dispatcher, "help system").find("system <info|heap|tasks|uptime>") != std::string::npos);
     assert(Run(executor, dispatcher, "help log follow").find("[error|warn|info|debug]") != std::string::npos);
-    assert(Run(executor, dispatcher, "version").find("D1.2") != std::string::npos);
+    assert(Run(executor, dispatcher, "version").find("D1.4") != std::string::npos);
     assert(Run(executor, dispatcher, "log stats").find("queued=0/32") != std::string::npos);
     assert(owner.calls == calls);
 
@@ -195,7 +200,39 @@ void TestDispatcherLifetime() {
     assert(dispatcher.Submit({}, &first) == ControlStatus::kUnavailable);
 }
 
-void TestExecutingCancellationAndShutdown(bool timeout, bool shutdown) {
+void TestNonblockingOwnerRetry() {
+    Owner owner;
+    PlatformControlDispatcher dispatcher(owner, Clock);
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool woke = false, release = false;
+    // Model a sender preempted just after waking the owner, while it still
+    // holds the slot lock. The owner must retain work without waiting on it.
+    owner.on_wake = [&] {
+        std::unique_lock<std::mutex> lock(mutex);
+        woke = true;
+        changed.notify_all();
+        changed.wait(lock, [&] { return release; });
+    };
+    ControlTicket ticket;
+    std::thread submitter([&] { assert(dispatcher.Submit({}, &ticket) == ControlStatus::kOk); });
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        changed.wait(lock, [&] { return woke; });
+    }
+    assert(!dispatcher.Dispatch() && owner.calls == 0);
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        release = true;
+        changed.notify_all();
+    }
+    submitter.join();
+    assert(dispatcher.Dispatch() && owner.calls == 1);
+    ControlResult result;
+    assert(dispatcher.Take(ticket, &result) == ControlStatus::kOk);
+}
+
+void TestExecutingCancellationAndShutdown(bool timeout, bool shutdown, bool mutation = false) {
     now_ms = 0;
     Owner owner;
     PlatformControlDispatcher dispatcher(owner, Clock);
@@ -211,7 +248,9 @@ void TestExecutingCancellationAndShutdown(bool timeout, bool shutdown) {
     };
     ControlTicket ticket, next;
     ControlResult result;
-    assert(dispatcher.Submit({}, &ticket) == ControlStatus::kOk);
+    ControlRequest request;
+    if (mutation) { request.operation = ControlOperation::kTimeSync; request.confirmed = true; }
+    assert(dispatcher.Submit(request, &ticket) == ControlStatus::kOk);
     std::thread worker([&] {
         owner.owner_thread = std::this_thread::get_id();
         assert(dispatcher.Dispatch());
@@ -222,9 +261,9 @@ void TestExecutingCancellationAndShutdown(bool timeout, bool shutdown) {
     }
     if (timeout) {
         now_ms += kOwnerRequestTimeoutMs;
-        assert(dispatcher.Take(ticket, &result) == ControlStatus::kTimeout);
+        assert(dispatcher.Take(ticket, &result) == (mutation ? ControlStatus::kUnknownOutcome : ControlStatus::kTimeout));
     } else if (!shutdown) {
-        dispatcher.Cancel(ticket);
+        assert(dispatcher.Cancel(ticket) == (mutation ? ControlStatus::kUnknownOutcome : ControlStatus::kCancelledBeforeStart));
     }
     assert(dispatcher.Submit({}, &next) == ControlStatus::kQueueFull);
     std::atomic<bool> stopped{false};
@@ -248,7 +287,7 @@ void TestExecutingCancellationAndShutdown(bool timeout, bool shutdown) {
     if (shutdown) {
         stopper.join();
         assert(stopped.load());
-        assert(dispatcher.Take(ticket, &result) == ControlStatus::kUnavailable);
+        assert(dispatcher.Take(ticket, &result) == (mutation ? ControlStatus::kUnknownOutcome : ControlStatus::kUnavailable));
     } else {
         assert(dispatcher.Take(ticket, &result) == ControlStatus::kUnavailable);
         owner.owner_thread = std::this_thread::get_id();
@@ -257,6 +296,123 @@ void TestExecutingCancellationAndShutdown(bool timeout, bool shutdown) {
         assert(dispatcher.Take(ticket, &result) == ControlStatus::kUnavailable);
         assert(dispatcher.Take(next, &result) == ControlStatus::kOk);
     }
+}
+
+std::string Confirmation(DiagnosticExecutor& executor, const char* command) {
+    BoundedOutput output;
+    assert(executor.Execute(Parse(command), &output) == ExecuteStatus::kOk);
+    assert(!output.truncated());
+    const std::string text = output.data();
+    const auto start = text.find("Type confirm ");
+    assert(start != std::string::npos);
+    const auto value = start + std::strlen("Type ");
+    return text.substr(value, text.find(" within", value) - value);
+}
+
+void TestReflectionAndConfirmation() {
+    now_ms = 0;
+    Owner owner;
+    PlatformControlDispatcher dispatcher(owner, Clock);
+    LogBuffer logs;
+    DiagnosticExecutor executor(dispatcher, logs, nullptr, Clock);
+    owner.sample.power = {250, 3890, 71, true, false, false, false, false, false};
+    owner.sample.time.local = {2024, 2, 29, 12, 0, 0};
+    owner.sample.time.sync.source = zectrix::time::SyncSource::Companion;
+    owner.sample.apps.count = 16;
+    std::strcpy(owner.sample.apps.foreground.data(), "micro-apps");
+    std::strcpy(owner.sample.apps.entries[15].id.data(), "last-native-app");
+    owner.sample.scenes.depth = 8;
+    owner.sample.scenes.scenes[7] = {42, 7};
+    owner.sample.scenes.guest = true;
+    owner.sample.scenes.heap_limit = 131072;
+    owner.sample.scenes.instruction_limit = 10000;
+    assert(Run(executor, dispatcher, "power status").find("mv=3890") != std::string::npos);
+    assert(Run(executor, dispatcher, "time get").find("2024-02-29") != std::string::npos);
+    assert(Run(executor, dispatcher, "time sync").find("source=companion") != std::string::npos);
+    assert(Run(executor, dispatcher, "connectivity status").find("peer_authorized=0") != std::string::npos);
+    assert(Run(executor, dispatcher, "app list").find("last-native-app") != std::string::npos);
+    assert(Run(executor, dispatcher, "app current").find("foreground=micro-apps") != std::string::npos);
+    const auto scenes = Run(executor, dispatcher, "scene dump");
+    assert(scenes.find("scene[7] id=7 state=42 current") != std::string::npos);
+    assert(scenes.find("view[3]") != std::string::npos && scenes.find("limit=131072") != std::string::npos);
+    BoundedOutput output;
+    for (const char* invalid : {"sleep now", "storage wipe all", "time sync 123", "time sync 1709179200000 50401",
+             "time sync 1709179200000x 0", "time sync 99999999999999999999999999999 0", "time sync 0 0"}) {
+        output.Clear();
+        assert(executor.Execute(Parse(invalid), &output) == ExecuteStatus::kInvalidArguments);
+        assert(!dispatcher.Dispatch());
+    }
+    ControlTicket ticket;
+    ControlRequest request;
+    request.operation = ControlOperation::kFactoryReset;
+    assert(dispatcher.Submit(request, &ticket) == ControlStatus::kDenied);
+    request.confirmed = true;
+    request.origin = Origin::kAuthorizedCompanion;
+    assert(dispatcher.Submit(request, &ticket) == ControlStatus::kDenied);
+
+    auto confirmation = Confirmation(executor, "factory reset");
+    assert(!dispatcher.Dispatch());
+    output.Clear();
+    assert(executor.Execute(Parse("confirm 99999"), &output) == ExecuteStatus::kDenied);
+    assert(executor.Execute(Parse(confirmation.c_str()), &output) == ExecuteStatus::kDenied);
+    confirmation = Confirmation(executor, "reboot");
+    now_ms += 15000;
+    assert(executor.Execute(Parse(confirmation.c_str()), &output) == ExecuteStatus::kDenied);
+    confirmation = Confirmation(executor, "sleep");
+    Run(executor, dispatcher, "version");
+    assert(executor.Execute(Parse(confirmation.c_str()), &output) == ExecuteStatus::kDenied);
+    confirmation = Confirmation(executor, "storage wipe");
+    executor.Cancel();
+    assert(executor.Execute(Parse(confirmation.c_str()), &output) == ExecuteStatus::kDenied);
+    confirmation = Confirmation(executor, "time sync 1709179200123 28800");
+    assert(executor.Execute(Parse(confirmation.c_str()), &output) == ExecuteStatus::kPending);
+    assert(executor.CancelStatus() == ExecuteStatus::kOk && !dispatcher.Dispatch());
+
+    confirmation = Confirmation(executor, "time sync 1709179200123 28800");
+    const auto calls = owner.calls;
+    Run(executor, dispatcher, confirmation.c_str());
+    assert(owner.calls == calls + 1 && owner.last_operation == ControlOperation::kTimeSync);
+    assert(owner.last_request.unix_ms == 1709179200123 && owner.last_request.offset_seconds == 28800);
+    assert(owner.last_request.confirmed && owner.last_request.origin == Origin::kUsbLocal);
+    assert(executor.Execute(Parse(confirmation.c_str()), &output) == ExecuteStatus::kDenied);
+    for (const auto* command : {"reboot", "sleep", "storage wipe", "factory reset"}) {
+        confirmation = Confirmation(executor, command);
+        assert(Run(executor, dispatcher, confirmation.c_str()).find("Accepted") != std::string::npos);
+    }
+    confirmation = Confirmation(executor, "reboot");
+    assert(executor.Execute(Parse(confirmation.c_str()), &output) == ExecuteStatus::kPending);
+    assert(dispatcher.Dispatch());
+    assert(executor.CancelStatus() == ExecuteStatus::kUnknownOutcome);
+    assert(!dispatcher.Dispatch());
+}
+
+void TestInputStream() {
+    now_ms = 0;
+    Owner owner;
+    zectrix::input::InputTrace trace;
+    owner.trace = &trace;
+    PlatformControlDispatcher dispatcher(owner, Clock);
+    LogBuffer logs;
+    DiagnosticExecutor executor(dispatcher, logs, nullptr, Clock);
+    BoundedOutput output;
+    assert(executor.Execute(Parse("input watch"), &output) == ExecuteStatus::kPending);
+    assert(dispatcher.Dispatch());
+    assert(executor.Poll(&output) == ExecuteStatus::kPending && executor.streaming());
+    for (unsigned i = 0; i < 40; ++i) trace.Push(i * 1000, i % 3, i % 2, true);
+    std::string text;
+    for (int i = 0; i < 40; ++i) {
+        now_ms += 50;
+        output.Clear();
+        assert(executor.Poll(&output) == ExecuteStatus::kPending);
+        assert(!output.truncated());
+        text += output.data();
+        dispatcher.Dispatch();
+    }
+    assert(text.find("lost=24") != std::string::npos);
+    assert(text.find("seq=25") != std::string::npos && text.find("seq=40") != std::string::npos);
+    assert(trace.Read(1).lost == 24 && trace.Read(1).records[0].sequence == 25);
+    executor.Cancel();
+    assert(!executor.streaming() && !dispatcher.Dispatch());
 }
 
 void TestLogs() {
@@ -387,7 +543,25 @@ void TestAsyncSession() {
     session.Poll();
     transport.Send("version\r");
     session.Poll();
-    assert(transport.output.find("D1.2\r\nzectrix> ") != std::string::npos);
+    assert(transport.output.find("D1.4\r\nzectrix> ") != std::string::npos);
+    transport.Send("reboot\r");
+    session.Poll();
+    assert(transport.output.find("Type confirm 1") != std::string::npos && !dispatcher.Dispatch());
+    transport.connected = false;
+    session.Poll();
+    transport.connected = true;
+    session.Poll();
+    transport.Send("confirm 1\r");
+    session.Poll();
+    assert(transport.output.find("confirmation denied") != std::string::npos && !dispatcher.Dispatch());
+    transport.Send("storage wipe\r");
+    session.Poll();
+    assert(transport.output.find("Type confirm 2") != std::string::npos);
+    transport.Send("\x03");
+    session.Poll();
+    transport.Send("confirm 2\r");
+    session.Poll();
+    assert(!dispatcher.Dispatch());
     session.Reset();
 }
 
@@ -396,9 +570,15 @@ void TestAsyncSession() {
 int main() {
     TestCommands();
     TestDispatcherLifetime();
+    TestNonblockingOwnerRetry();
     TestExecutingCancellationAndShutdown(false, false);
     TestExecutingCancellationAndShutdown(true, false);
     TestExecutingCancellationAndShutdown(false, true);
+    TestExecutingCancellationAndShutdown(false, false, true);
+    TestExecutingCancellationAndShutdown(true, false, true);
+    TestExecutingCancellationAndShutdown(false, true, true);
+    TestReflectionAndConfirmation();
+    TestInputStream();
     TestLogs();
     TestAsyncSession();
 }

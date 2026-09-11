@@ -14,6 +14,7 @@ public:
         : owner_(&owner), controller_(owner.applications_), resume_parent_(owner.launcher_back_requested_) {}
 
     sdk::Status Enter(sdk::ApplicationContext& context) override {
+        owner_->BindScenes(controller_);
         uint32_t stored = zectrix::app::kAutoShowcaseDefault;
         const esp_err_t read = owner_->storage_->GetUInt32(
             zectrix::app::kAutoShowcaseSettingKey, &stored);

@@ -32,7 +32,7 @@ for connectivity in 1 0; do
     uv run --no-project "$root_dir/tools/generate-reader-fixtures.py" "$fixture_dir"
     optional=()
     if [ "$connectivity" = 1 ]; then
-        optional+=(-I"$root_dir/components/zectrix_connectivity/include"
+        optional+=(-I"$root_dir/components/zectrix_time/include" -I"$root_dir/components/zectrix_connectivity/include"
             -I"$root_dir/components/zectrix_companion/include"
             "$root_dir/components/zectrix_companion/zectrix_sync_engine.cc"
             "$root_dir/components/zectrix_companion/zectrix_companion_protocol.cc")

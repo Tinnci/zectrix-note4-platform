@@ -45,6 +45,7 @@ enum class SleepCoverDecision : uint8_t { None, RenderFast, RenderQuality, Choos
 
 class SleepCoverController {
 public:
+    void ObserveScenes(SceneSnapshot* snapshot) { scenes_.ObserveScenes(snapshot); }
     sdk::Status Start(SleepCoverStyle selected);
     void Stop();
     SleepCoverDecision Handle(const sdk::InputEvent& input);

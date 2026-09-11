@@ -4,6 +4,7 @@
 #include <new>
 
 #include "esp_sleep.h"
+#include "esp_timer.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -32,6 +33,8 @@ PowerSnapshot PowerService::ReadSnapshot() const {
     snapshot.charge_full = board_snapshot.charge.full;
     snapshot.charge_fault = board_snapshot.charge.fault;
     snapshot.battery_absent = board_snapshot.charge.no_battery;
+    cached_ = snapshot;
+    sampled_us_ = esp_timer_get_time();
     return snapshot;
 }
 

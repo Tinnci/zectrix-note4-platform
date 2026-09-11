@@ -9,6 +9,7 @@ enum class GalleryDecision : uint8_t { None, RenderFast, RenderQuality, Back, Sh
 
 class GalleryController {
 public:
+    void ObserveScenes(SceneSnapshot* snapshot) { scenes_.ObserveScenes(snapshot); }
     explicit GalleryController(bool automatic = false, uint32_t selected = 0);
     GalleryController(const GalleryController&) = delete;
     GalleryController& operator=(const GalleryController&) = delete;

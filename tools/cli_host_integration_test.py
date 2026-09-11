@@ -17,7 +17,7 @@ import unittest
 
 BINARY = os.path.abspath(sys.argv.pop(1))
 PROMPT = b"\r\nzectrix> "
-VERSION = b"zectrix maintenance CLI D1.2"
+VERSION = b"zectrix maintenance CLI D1.4"
 
 
 class Terminal:
@@ -156,6 +156,42 @@ class HostIntegrationTest(unittest.TestCase):
             self.assertIn(VERSION, terminal.command(b"version\r"))
             terminal.send(b"\x04")
             terminal.finish(self)
+
+    def test_reflection_input_and_session_confirmations(self):
+        with Terminal("--log-interval-ms", "0") as terminal:
+            terminal.until(PROMPT)
+            for command, expected in [(b"power status\r", b"mv=3920"),
+                                      (b"time status\r", b"source=rtc"),
+                                      (b"connectivity status\r", b"ble=advertising"),
+                                      (b"app list\r", b"CLOCK"),
+                                      (b"app current\r", b"foreground=launcher"),
+                                      (b"scene dump\r", b"view[1]")]:
+                self.assertIn(expected, terminal.command(command))
+            terminal.send(b"input watch\r")
+            terminal.until(b"Watching physical input")
+            terminal.until(b"input seq=")
+            terminal.send(b"\x03")
+            terminal.until(PROMPT)
+            self.assertIn(b"foreground=launcher", terminal.command(b"app current\r"))
+
+            def challenge(command):
+                reply = terminal.command(command)
+                return re.search(rb"Type (confirm [0-9]+) within", reply)[1]
+
+            token = challenge(b"reboot\r")
+            terminal.send(b"\x12")
+            terminal.until(PROMPT)
+            self.assertIn(b"denied", terminal.command(token + b"\r"))
+            token = challenge(b"factory reset\r")
+            terminal.send(b"\x03")
+            terminal.until(PROMPT)
+            self.assertIn(b"denied", terminal.command(token + b"\r"))
+            token = challenge(b"time sync 1709179200123 28800\r")
+            self.assertIn(b"source=manual", terminal.command(token + b"\r"))
+            self.assertIn(b"denied", terminal.command(token + b"\r"))
+            token = challenge(b"storage wipe\r")
+            self.assertIn(b"Accepted", terminal.command(token + b"\r"))
+            self.assertIn(b"mv=3920", terminal.command(b"power status\r"))
 
     def test_log_filtering_and_overflow(self):
         with Terminal("--log-interval-ms", "0", "--log-burst", "80") as terminal:

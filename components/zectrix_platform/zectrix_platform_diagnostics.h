@@ -5,6 +5,7 @@
 #include "zectrix_cli_diagnostics.h"
 
 namespace zectrix {
+class ServiceRegistry;
 namespace display { class DisplayService; }
 namespace input { class InputService; }
 namespace system { class SystemService; }
@@ -13,7 +14,7 @@ namespace time { class TimeService; }
 // This adapter belongs to Platform, not to the CLI task or public SDK.
 class PlatformDiagnostics final : public cli::ControlOwner {
 public:
-    PlatformDiagnostics(system::SystemService& system,
+    PlatformDiagnostics(const ServiceRegistry& services, system::SystemService& system,
                         display::DisplayService& display,
                         input::InputService& input, time::TimeService& time,
                         cli::CliBinarySession* binary = nullptr);
@@ -21,6 +22,7 @@ public:
     void Poll();
     void Shutdown();
     cli::CliExecutor& executor() { return executor_; }
+    void SetDelegate(cli::MaintenanceDelegate* delegate) { delegate_ = delegate; }
 
     bool IsCurrentTaskOwner() const override;
     void Wake() override;
@@ -28,6 +30,9 @@ public:
 
 private:
     static void OnWait(void* context);
+    void ReadTime(cli::TimeInspection* result) const;
+    const ServiceRegistry& services_;
+    cli::MaintenanceDelegate* delegate_ = nullptr;
     system::SystemService& system_;
     display::DisplayService& display_;
     input::InputService& input_;

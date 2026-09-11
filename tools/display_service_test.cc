@@ -1087,6 +1087,10 @@ void TestViewPorts() {
     assert(ports.Configure(0, {{0, 24, 400, 276}, draw, &content_draws}));
     assert(ports.Configure(1, {{0, 0, 400, 24}, draw, &status_draws}));
     assert(ports.Enable(1, false));
+    const auto copied_views = ports.Inspect();
+    assert(copied_views[0].configured && copied_views[0].enabled && copied_views[0].bounds.y == 24);
+    assert(copied_views[0].dirty && !copied_views[1].enabled && !copied_views[2].configured);
+    assert(content_draws == 0 && status_draws == 0);
     const auto saved_clip = ZectrixCanvas::Clip{10, 30, 80, 60};
     canvas.SetClip(saved_clip);
     auto update = ports.Compose(canvas);
@@ -1096,6 +1100,7 @@ void TestViewPorts() {
     assert(Bit(canvas.data(), 50, 0, 0) && !Bit(canvas.data(), 50, 0, 24));
     ports.Complete(true);
     assert(!ports.Compose(canvas).pending);
+    assert(!ports.Inspect()[0].dirty && copied_views[0].dirty);
     assert(ports.Enable(1, true));
     assert(ports.Invalidate(0, true));
     update = ports.Compose(canvas);

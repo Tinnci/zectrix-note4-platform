@@ -98,7 +98,8 @@ bool WifiHttpResponse::Begin(uint8_t* body, std::size_t capacity) {
     return true;
 }
 
-WifiDriverResult WifiHttpResponse::Feed(const uint8_t* data, std::size_t size) {
+WifiDriverResult WifiHttpResponse::Feed(const uint8_t* data, std::size_t size, int64_t received_us) {
+    received_us_ = received_us;
     if (data == nullptr && size != 0) Fail();
     for (std::size_t index = 0; index < size && state_ != State::kFailed; ++index) {
         const uint8_t value = data[index];
@@ -206,7 +207,16 @@ void WifiHttpResponse::ProcessHeader(bool trailer) {
     }
     const View name = line.substr(0, colon);
     const View value = Trim(line.substr(colon + 1));
-    if (Equal(name, "content-type")) {
+    if (Equal(name, "date")) {
+        if (trailer || date_seen_ || !time::ParseHttpDate(value.data(), value.size(), &clock_.unix_ms))
+            date_invalid_ = true;
+        date_seen_ = true;
+        clock_.received_us = received_us_;
+        clock_.source = time::SyncSource::HttpsDate;
+    } else if (Equal(name, "age")) {
+        // A cache's Date is not the time at which this response was received.
+        date_invalid_ = true;
+    } else if (Equal(name, "content-type")) {
         if (trailer || content_type_seen_ || !PlainText(value)) Fail();
         else content_type_seen_ = true;
     } else if (Equal(name, "content-length")) {
@@ -233,6 +243,12 @@ void WifiHttpResponse::ProcessHeader(bool trailer) {
 void WifiHttpResponse::Complete() {
     if (body_size_ == 0 || !Utf8(body_, body_size_)) Fail();
     else state_ = State::kDone;
+}
+
+bool WifiHttpResponse::ClockSample(time::TimeSample* sample) const {
+    if (!sample || state_ != State::kDone || !date_seen_ || date_invalid_) return false;
+    *sample = clock_;
+    return true;
 }
 
 void WifiHttpResponse::Fail(WifiDriverResult result) {

@@ -33,6 +33,7 @@ bool LauncherDateChanged(const time::ClockSnapshot& before, const time::ClockSna
 
 class LauncherController {
 public:
+    void ObserveScenes(SceneSnapshot* snapshot) { scenes_.ObserveScenes(snapshot); }
     static constexpr std::size_t kTilesPerPage = 6;
     explicit LauncherController(const ApplicationCatalog& catalog);
     sdk::Status Start(LauncherSelection selection = {});

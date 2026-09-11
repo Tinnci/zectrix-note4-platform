@@ -97,6 +97,44 @@ BookStorage::~BookStorage() {
 #endif
 }
 
+esp_err_t BookStorage::Wipe() {
+    std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
+    if (!lock || readers_ || managing_ || uploading_) return ESP_ERR_INVALID_STATE;
+    if (!root_[0]) return ESP_ERR_INVALID_ARG;
+#ifdef ESP_PLATFORM
+    if (!mounted_) {
+        esp_vfs_spiffs_conf_t config{};
+        config.base_path = root_.data();
+        config.partition_label = "books";
+        config.max_files = 2;
+        // Only this explicitly confirmed operation may recover a broken mount.
+        config.format_if_mount_failed = true;
+        const auto result = esp_vfs_spiffs_register(&config);
+        if (result != ESP_OK) return result;
+        mounted_ = true;
+    }
+    return esp_spiffs_format("books");
+#else
+    DIR* directory = opendir(root_.data());
+    if (!directory) return ESP_FAIL;
+    esp_err_t result = ESP_OK;
+    for (;;) {
+        errno = 0;
+        const auto* entry = readdir(directory);
+        if (!entry) { if (errno) result = ESP_FAIL; break; }
+        if (!std::strcmp(entry->d_name, ".") || !std::strcmp(entry->d_name, "..")) continue;
+        // The device store is flat. Never traverse directories or symlinks on Host.
+        char path[512];
+        const int length = std::snprintf(path, sizeof(path), "%s/%s", root_.data(), entry->d_name);
+        struct stat info{};
+        if (length < 0 || static_cast<std::size_t>(length) >= sizeof(path) ||
+            lstat(path, &info) != 0 || S_ISDIR(info.st_mode) || unlink(path) != 0) { result = ESP_FAIL; break; }
+    }
+    closedir(directory);
+    return result;
+#endif
+}
+
 esp_err_t BookStorage::Mount() {
     if (mounted_) return ESP_OK;
     if (!root_[0]) return ESP_ERR_INVALID_ARG;

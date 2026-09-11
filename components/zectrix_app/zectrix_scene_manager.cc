@@ -2,6 +2,16 @@
 
 namespace zectrix::app {
 
+void SceneManager::Publish() {
+    if (!snapshot_) return;
+    snapshot_->depth = static_cast<uint8_t>(depth_);
+    snapshot_->transitioning = busy_;
+    for (std::size_t i = 0; i < depth_; ++i) {
+        snapshot_->stack[i] = stack_[i];
+        snapshot_->states[i] = state(stack_[i]);
+    }
+}
+
 sdk::Status SceneManager::Start(SceneId root) {
     if (busy_ || depth_) return sdk::Status::InvalidState;
     if (!handlers_ || count_ == 0 || count_ > kCapacity || root >= count_)
@@ -10,20 +20,24 @@ sdk::Status SceneManager::Start(SceneId root) {
     stack_[depth_++] = root;
     Enter();
     busy_ = false;
+    Publish();
     return sdk::Status::Ok;
 }
 
 void SceneManager::Enter() {
+    Publish();
     if (handlers_[current()].enter) handlers_[current()].enter(context_, current());
 }
 
 void SceneManager::Exit() {
+    Publish();
     if (handlers_[current()].exit) handlers_[current()].exit(context_, current());
 }
 
 bool SceneManager::Dispatch(const SceneEvent& event) {
     if (busy_ || !depth_) return false;
     busy_ = in_event_ = true;
+    Publish();
     const auto handler = handlers_[current()].event;
     bool consumed = handler && handler(context_, event);
     if (!consumed && event.type == SceneEvent::Type::Back && depth_ > 1) {
@@ -34,6 +48,7 @@ bool SceneManager::Dispatch(const SceneEvent& event) {
     consumed = consumed || pending_ != Transition::None;
     Apply();
     busy_ = false;
+    Publish();
     return consumed;
 }
 
@@ -75,6 +90,7 @@ void SceneManager::Stop() {
     depth_ = 0;
     pending_ = Transition::None;
     busy_ = false;
+    Publish();
 }
 
 uint32_t SceneManager::state(SceneId scene) const {
@@ -84,6 +100,7 @@ uint32_t SceneManager::state(SceneId scene) const {
 bool SceneManager::SetState(SceneId scene, uint32_t value) {
     if (scene >= count_ || scene >= kCapacity) return false;
     states_[scene] = value;
+    Publish();
     return true;
 }
 

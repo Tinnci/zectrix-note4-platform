@@ -55,7 +55,9 @@ void TestScenes() {
     std::array<SceneHandler, SceneManager::kCapacity> handlers;
     handlers.fill({Harness::Enter, Harness::Event, Harness::Exit});
     Harness h;
+    SceneSnapshot snapshot;
     SceneManager scenes(handlers.data(), handlers.size(), &h);
+    scenes.ObserveScenes(&snapshot);
     h.manager = &scenes;
     assert(scenes.Start(8) == Status::InvalidArgument);
     assert(scenes.Start(0) == Status::Ok);
@@ -63,6 +65,7 @@ void TestScenes() {
     assert(scenes.Push(1) == Status::InvalidState);
     assert(!scenes.Dispatch({SceneEvent::Type::Back}));
     assert(scenes.SetState(0, 7));
+    assert(snapshot.depth == 1 && snapshot.stack[0] == 0 && snapshot.states[0] == 7 && !snapshot.transitioning);
     assert(!scenes.SetState(8, 1));
 
     h.action = Harness::Action::Push;
@@ -71,11 +74,14 @@ void TestScenes() {
     assert(scenes.Dispatch({}));
     assert((h.calls == std::vector<int>{100, 200, 101}));
     assert(scenes.current() == 1 && scenes.depth() == 2);
+    const auto copied = snapshot;
+    assert(copied.depth == 2 && copied.stack[1] == 1);
     h.conflict = false;
     h.action = Harness::Action::Replace;
     h.target = 2;
     scenes.Dispatch({});
     assert(scenes.current() == 2 && scenes.depth() == 2);
+    assert(snapshot.stack[1] == 2 && copied.stack[1] == 1);
     h.action = Harness::Action::None;
     assert(scenes.Dispatch({SceneEvent::Type::Back}));
     assert(scenes.current() == 0 && scenes.state(0) == 7);

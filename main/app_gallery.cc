@@ -25,6 +25,7 @@ public:
         : owner_(&owner), controller_(automatic, owner.gallery_selection_) {}
 
     sdk::Status Enter(sdk::ApplicationContext& context) override {
+        owner_->BindScenes(controller_);
         const auto result = controller_.Start();
         if (!sdk::IsOk(result)) return result;
         context.RequestRender({0, 24, 400, 276}, sdk::RenderIntent::Quality);

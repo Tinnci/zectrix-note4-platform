@@ -31,6 +31,9 @@ public:
     esp_err_t SetBlob(const char* key, const void* value, std::size_t length);
     esp_err_t GetBlob(const char* key, void* value, std::size_t* length) const;
     esp_err_t Erase(const char* key);
+    esp_err_t WipeUserFiles();
+    // All NVS consumers must stop first; reboot after this operation, including failure.
+    esp_err_t ResetSettings();
 
     esp_err_t ListBooks(BookEntry* entries, std::size_t capacity,
                         std::size_t* count, bool* truncated);

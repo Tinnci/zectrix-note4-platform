@@ -33,6 +33,7 @@ idf_component_register(
         zectrix_companion
         zectrix_nfc_service
         zectrix_storage
+        zectrix_time
     PRIV_REQUIRES ${private_requires}
     KCONFIG_PROJBUILD "${CMAKE_CURRENT_LIST_DIR}/../../cmake/Kconfig.empty"
 )

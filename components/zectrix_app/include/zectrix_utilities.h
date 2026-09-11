@@ -60,6 +60,7 @@ enum class UtilityDecision : uint8_t { None, RenderFast, RenderQuality, Back, Sh
 
 class UtilityController {
 public:
+    void ObserveScenes(SceneSnapshot* snapshot) { scenes_.ObserveScenes(snapshot); }
     explicit UtilityController(UtilitySession& session) : session_(session) {}
     sdk::Status Start(int64_t now_us, const time::ClockSnapshot& clock);
     void Stop();

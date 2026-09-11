@@ -127,6 +127,8 @@ struct EspWifiBackendDriver::Impl
     DnsQuery* dns = nullptr;
     WifiHttpClient http;
     bool http_started = false;
+    time::TimeSample clock_sample{};
+    bool clock_pending = false, clock_captured = false;
 #endif
     std::atomic<WifiDriverResult> link_error{WifiDriverResult::kPending};
     std::atomic<bool> station_ready{false};
@@ -142,6 +144,7 @@ struct EspWifiBackendDriver::Impl
     bool ap_mode = false;
     bool scan_requested = false;
     std::array<char, kMaximumWifiSsidBytes + 1> scan_target{};
+    WifiLinkSnapshot link{};
 
 #if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
     int Read(uint8_t* data, std::size_t capacity) override {
@@ -200,6 +203,12 @@ struct EspWifiBackendDriver::Impl
             return WifiDriverResult::kUnavailable;
         }
         claimed = true;
+        link = {};
+        link.mode = access_point ? WifiMode::AccessPoint : WifiMode::Station;
+        if (credentials) link.ssid = credentials->ssid;
+#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
+        clock_pending = clock_captured = false;
+#endif
         stopping.store(false);
         station_ready.store(false);
         associated.store(false);
@@ -266,6 +275,7 @@ struct EspWifiBackendDriver::Impl
         if (error == ESP_OK) {
             error = esp_wifi_start();
             wifi_started = error == ESP_OK;
+            if (wifi_started) link.mac_valid = esp_wifi_get_mac(ap_mode ? WIFI_IF_AP : WIFI_IF_STA, link.mac.data()) == ESP_OK;
         }
         if (error != ESP_OK) link_error.store(WifiDriverResult::kUnavailable);
         // Once the radio is claimed, even a partial start is accepted so that
@@ -331,6 +341,7 @@ struct EspWifiBackendDriver::Impl
         connect_requested = false;
         scan_requested = false;
         claimed = false;
+        link = {};
         radio_claimed.store(false, std::memory_order_release);
         return WifiDriverResult::kReady;
     }
@@ -377,7 +388,9 @@ bool EspWifiBackendDriver::LocalAddress(char* output, std::size_t capacity) cons
     if (!impl_ || !impl_->netif || !output || capacity < 16) return false;
     esp_netif_ip_info_t info{};
     if (esp_netif_get_ip_info(impl_->netif, &info) != ESP_OK || !info.ip.addr) return false;
-    return esp_ip4addr_ntoa(&info.ip, output, capacity) != nullptr;
+    if (!esp_ip4addr_ntoa(&info.ip, impl_->link.address.data(), impl_->link.address.size())) return false;
+    std::strcpy(output, impl_->link.address.data());
+    return true;
 }
 
 WifiDriverResult EspWifiBackendDriver::PollAssociation() {
@@ -392,6 +405,13 @@ WifiDriverResult EspWifiBackendDriver::PollAssociation() {
             return WifiDriverResult::kUnavailable;
         }
     }
+    if (impl_->associated.load() && !impl_->link.rssi_valid) {
+        wifi_ap_record_t ap{};
+        if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) {
+            impl_->link.rssi = ap.rssi;
+            impl_->link.rssi_valid = true;
+        }
+    }
     return impl_->associated.load() ? WifiDriverResult::kReady
                                     : WifiDriverResult::kPending;
 }
@@ -400,6 +420,10 @@ WifiDriverResult EspWifiBackendDriver::PollIp() {
     if (impl_ == nullptr) return WifiDriverResult::kUnavailable;
     const auto result = impl_->LinkResult();
     if (result != WifiDriverResult::kPending) return result;
+    if (impl_->has_ip.load() && impl_->link.address[0] == '\0') {
+        char address[16];
+        LocalAddress(address, sizeof(address));
+    }
     return impl_->has_ip.load() ? WifiDriverResult::kReady
                                 : WifiDriverResult::kPending;
 }
@@ -478,7 +502,12 @@ WifiDriverResult EspWifiBackendDriver::Fetch(
         if (!impl_->http.Begin(*impl_, body, capacity)) return WifiDriverResult::kUnavailable;
         impl_->http_started = true;
     }
-    return impl_->http.Poll(body_size);
+    const auto result = impl_->http.Poll(body_size);
+    if (result == WifiDriverResult::kReady && !impl_->clock_captured) {
+        impl_->clock_pending = impl_->http.ClockSample(&impl_->clock_sample);
+        impl_->clock_captured = true;
+    }
+    return result;
 }
 
 #else
@@ -497,6 +526,27 @@ WifiDriverResult EspWifiBackendDriver::Fetch(companion::ResourceCapability, uint
 
 WifiDriverResult EspWifiBackendDriver::StopStation() {
     return impl_ == nullptr ? WifiDriverResult::kReady : impl_->Stop();
+}
+
+bool EspWifiBackendDriver::TakeClockSample(time::TimeSample* sample) {
+#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
+    if (!sample || !impl_ || !impl_->clock_pending) return false;
+    *sample = impl_->clock_sample;
+    impl_->clock_pending = false;
+    return true;
+#else
+    (void)sample;
+    return false;
+#endif
+}
+
+WifiLinkSnapshot EspWifiBackendDriver::CachedSnapshot() const {
+    if (!impl_ || !impl_->claimed) return {};
+    auto snapshot = impl_->link;
+    snapshot.associated = impl_->associated.load();
+    if (!impl_->ap_mode && !snapshot.associated) snapshot.rssi_valid = false;
+    if (!impl_->ap_mode && !impl_->has_ip.load()) snapshot.address = {};
+    return snapshot;
 }
 
 WifiDriverResult EspWifiBackendDriver::StartScan() {

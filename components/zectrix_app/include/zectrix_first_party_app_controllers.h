@@ -22,6 +22,7 @@ enum class ConnectivityDecision : uint8_t {
 
 class ConnectivityController {
 public:
+    void ObserveScenes(SceneSnapshot* snapshot) { scenes_.ObserveScenes(snapshot); }
     sdk::Status Start();
     void Stop();
     ConnectivityDecision Handle(const sdk::InputEvent& event);
@@ -69,6 +70,7 @@ struct SettingsResult {
 
 class SettingsController {
 public:
+    void ObserveScenes(SceneSnapshot* snapshot) { scenes_.ObserveScenes(snapshot); }
     explicit SettingsController(bool auto_showcase, i18n::Language language = i18n::CurrentLanguage())
         : auto_showcase_(auto_showcase), language_(language) {}
 
@@ -121,6 +123,7 @@ struct DiagnosticsResult {
 
 class DiagnosticsController {
 public:
+    void ObserveScenes(SceneSnapshot* snapshot) { scenes_.ObserveScenes(snapshot); }
     static constexpr std::size_t kTestCount = 7;
 
     sdk::Status Start();

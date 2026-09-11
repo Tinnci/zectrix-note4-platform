@@ -123,6 +123,7 @@ public:
         return result;
     }
     WifiDriverResult Stop() override { return driver_.StopStation(); }
+    WifiLinkSnapshot Snapshot() const { return driver_.CachedSnapshot(); }
 private:
     EspWifiBackendDriver driver_;
 };
@@ -1200,8 +1201,22 @@ ConnectivityState ConnectivityService::State() const {
 
 ConnectivitySnapshot ConnectivityService::Snapshot() const {
     ConnectivitySnapshot snapshot{};
-    if (impl_ == nullptr) return snapshot;
-    const BleSnapshot ble = impl_->ble.Snapshot();
+    ReadSnapshot(&snapshot, true);
+    return snapshot;
+}
+
+bool ConnectivityService::TrySnapshot(ConnectivitySnapshot* snapshot) const {
+    return ReadSnapshot(snapshot, false);
+}
+
+bool ConnectivityService::ReadSnapshot(ConnectivitySnapshot* output, bool wait) const {
+    if (!output) return false;
+    *output = {};
+    if (!impl_) return true;
+    BleSnapshot ble;
+    if (wait) ble = impl_->ble.Snapshot();
+    else if (!impl_->ble.TrySnapshot(&ble)) return false;
+    auto& snapshot = *output;
     snapshot.session_id = ble.session_id;
     snapshot.local_pairing_active = ble.local_pairing_active;
     snapshot.encrypted = ble.encrypted;
@@ -1217,14 +1232,18 @@ ConnectivitySnapshot ConnectivityService::Snapshot() const {
         impl_->peer_authorized.load() &&
         impl_->peer_authorized_session_id.load() == ble.session_id;
     if (impl_->resource_mutex != nullptr && impl_->resource_client != nullptr) {
-        xSemaphoreTake(impl_->resource_mutex, portMAX_DELAY);
+        if (xSemaphoreTake(impl_->resource_mutex, wait ? portMAX_DELAY : 0) != pdTRUE) return false;
         snapshot.wifi_credentials_available = impl_->resource_conditions.wifi_credentials_available;
         snapshot.resource_busy = impl_->resource_client->Busy();
         snapshot.wifi_state = impl_->resource_client->WifiState();
         snapshot.radio_mode = impl_->radio_arbiter.Mode();
+#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
+        snapshot.wifi = impl_->wifi_driver.CachedSnapshot();
+#endif
 #if CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
         snapshot.book_transfer_active = impl_->BookBusy();
         if (snapshot.book_transfer_active) {
+            snapshot.wifi = impl_->book_share->radio.Snapshot();
             const auto& books = impl_->book_status;
             snapshot.wifi_state = books.state == BookTransferState::Sharing ? WifiBackendState::kTransferring :
                 books.state == BookTransferState::Stopping ?
@@ -1255,7 +1274,7 @@ ConnectivitySnapshot ConnectivityService::Snapshot() const {
         case BleState::kFault: snapshot.state = ConnectivityState::kFault; break;
         default: snapshot.state = ConnectivityState::kStopped; break;
     }
-    return snapshot;
+    return true;
 }
 
 bool ConnectivityService::TakePairingPasskey(uint32_t* passkey) {
@@ -1363,6 +1382,19 @@ bool ConnectivityService::TakeClockSample(companion::ClockSample* sample) {
     if (!current) impl_->clock_mailbox.Clear();
     xSemaphoreGive(impl_->resource_mutex);
     return received;
+}
+
+bool ConnectivityService::TakeNetworkClockSample(time::TimeSample* sample) {
+#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
+    if (!sample || !impl_ || !impl_->initialized.load() || impl_->stop_session_task.load() ||
+        !impl_->resource_mutex || xSemaphoreTake(impl_->resource_mutex, 0) != pdTRUE) return false;
+    const bool received = impl_->wifi_driver.TakeClockSample(sample);
+    xSemaphoreGive(impl_->resource_mutex);
+    return received;
+#else
+    (void)sample;
+    return false;
+#endif
 }
 
 bool ConnectivityService::TakeResourceResponse(ResourceResponse* response) {

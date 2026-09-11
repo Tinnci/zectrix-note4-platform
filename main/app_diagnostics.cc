@@ -17,6 +17,7 @@ public:
     explicit DiagnosticsApplication(TerminalApp& owner) : owner_(&owner) {}
 
     sdk::Status Enter(sdk::ApplicationContext& context) override {
+        owner_->BindScenes(controller_);
         owner_->test_states_.fill(ZectrixTestState::kWait);
         const auto started = controller_.Start();
         return sdk::IsOk(started) ? Apply(controller_.Tick(), context) : started;

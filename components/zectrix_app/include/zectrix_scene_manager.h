@@ -25,6 +25,13 @@ struct SceneHandler {
     void (*exit)(void* context, SceneId scene) = nullptr;
 };
 
+struct SceneSnapshot {
+    std::array<SceneId, 8> stack{};
+    std::array<uint32_t, 8> states{};
+    uint8_t depth = 0;
+    bool transitioning = false;
+};
+
 // App-private navigation stays on the application owner task. Handler tables
 // and context must outlive the manager; no application IDs or heap are needed.
 class SceneManager {
@@ -34,6 +41,7 @@ public:
 
     SceneManager(const SceneHandler* handlers, std::size_t count, void* context)
         : handlers_(handlers), count_(count), context_(context) {}
+    ~SceneManager() { if (snapshot_) *snapshot_ = {}; }
 
     SceneManager(const SceneManager&) = delete;
     SceneManager& operator=(const SceneManager&) = delete;
@@ -50,6 +58,8 @@ public:
     std::size_t depth() const { return depth_; }
     uint32_t state(SceneId scene) const;
     bool SetState(SceneId scene, uint32_t value);
+    // Owner-only copied observation; the target must outlive this manager.
+    void ObserveScenes(SceneSnapshot* snapshot) { snapshot_ = snapshot; Publish(); }
 
 private:
     enum class Transition : uint8_t { None, Push, Replace, Pop };
@@ -57,6 +67,7 @@ private:
     void Apply();
     void Enter();
     void Exit();
+    void Publish();
 
     const SceneHandler* handlers_;
     std::size_t count_;
@@ -68,6 +79,7 @@ private:
     bool in_event_ = false;
     Transition pending_ = Transition::None;
     SceneId target_ = kInvalidScene;
+    SceneSnapshot* snapshot_ = nullptr;
 };
 
 }  // namespace zectrix::app

@@ -94,6 +94,18 @@ stops transfer before the shell captures the sleep cover, stops services and
 releases peripherals. No later foreground frame is rendered after shutdown.
 See [SLEEP_COVER.md](SLEEP_COVER.md) and [M3_APPLICATION_CONTRACT.md](M3_APPLICATION_CONTRACT.md).
 
+## Maintenance observation
+
+D1.4's `app list`, `app current` and `scene dump` copy the foreground catalog,
+generation, private scene stack, viewport regions and Lua memory quotas at an
+owner safe point. SceneManager publishes to shell-owned storage; destruction
+clears that copy. USB formatting never holds a manager, application or VM
+pointer. `input watch` observes the board's separate trace ring and cannot
+consume the events used here. Confirmed maintenance shutdown/reboot/reset
+waits until SDK callbacks unwind and runs normal foreground Exit first.
+See [MAINTENANCE_CLI_CONTRACT.md](MAINTENANCE_CLI_CONTRACT.md) for commands,
+confirmation scope and the distinct accepted/unknown outcomes.
+
 ## References and verification
 
 This follows CrossPoint's [deferred activity transitions][activities],

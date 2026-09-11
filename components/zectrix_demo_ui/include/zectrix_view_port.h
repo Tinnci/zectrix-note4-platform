@@ -29,6 +29,18 @@ public:
     bool Enable(std::size_t id, bool enabled);
     Update Compose(ZectrixCanvas& canvas);
     void Complete(bool success);
+    struct Inspection {
+        ZectrixCanvas::Clip bounds{};
+        bool configured = false, enabled = false, dirty = false, quality = false;
+    };
+    std::array<Inspection, kCapacity> Inspect() const {
+        std::array<Inspection, kCapacity> result{};
+        for (std::size_t i = 0; i < slots_.size(); ++i) {
+            const auto& s = slots_[i];
+            result[i] = {s.viewport.bounds, s.configured, s.enabled, s.dirty, s.quality};
+        }
+        return result;
+    }
 
 private:
     struct Slot {
