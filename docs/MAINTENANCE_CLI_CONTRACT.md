@@ -136,6 +136,7 @@ system info
 system heap
 system tasks
 system uptime
+system health
 power status
 time get
 time status
@@ -346,7 +347,8 @@ Data reset stops maintenance and Connectivity before touching storage.
 BookStorage rejects a wipe while a reader, management lease or upload remains
 open. Only the explicit wipe path may format an unreadable books filesystem;
 ordinary mounting still never formats on failure. NVS erasure follows file
-cleanup and successful NVS deinitialization. Cleanup failures are logged and
+cleanup and successful NVS deinitialization (or an already-uninitialized NVS
+partition after failed startup). Cleanup failures are logged and
 the device reboots without claiming a complete reset. Power loss can leave a
 partial reset; it is not a transaction spanning files and NVS. Firmware slots,
 OTA metadata and boot confirmation/rollback protections are preserved. The
@@ -357,6 +359,16 @@ This follows CrossPoint's deferred activity/streamed storage cleanup and
 Flipper's private scene/ViewPort ownership discussed in [NAVIGATION.md](NAVIGATION.md).
 It adds no refresh, radio connection or VM callback to a status query. The
 current runtime and shared 15,000-byte canvas remain the foreground owners.
+
+D1.5 adds read-only `system health`. Its copied snapshot reports the configured
+90-second runtime watchdog, armed/expired flags, last completed progress time,
+largest completion gap, heartbeat/error/recovery-request counters, consecutive
+foreground failures, last SDK error, native NVS startup error and recovery-boot/
+automatic-app suppression flags. Counters saturate and reset on boot. The query
+does not feed a watchdog or run a guest callback. Existing `system info`, `system
+heap` and `system tasks` retain reset reason, memory and stack observations.
+Failsafe keeps inspection and the existing confirmed reboot/sleep/reset commands
+available. It adds no production fault-injection command or new approval flow.
 
 D1.4 Host tests cover copied snapshots, input overflow/non-consumption,
 zero-wait dispatch collisions, confirmation expiry/argument binding/replay,

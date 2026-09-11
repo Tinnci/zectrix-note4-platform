@@ -182,6 +182,9 @@ public:
     // a bounded input burst with Step() or Idle() before waiting for new input.
     Status DispatchInput(const InputEvent& event);
     Status Idle();
+    // Owner-only fault recovery releases the broken app before allocating Home.
+    // A failing Home enters Failsafe; calling again there explicitly retries Home.
+    Status Recover(Status reason);
     Status Stop();
 
     LifecycleState state() const { return state_; }

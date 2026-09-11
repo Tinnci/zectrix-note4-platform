@@ -101,6 +101,7 @@ Result EspBootBackend::ArmBootWatchdog(uint32_t timeout_ms) {
     wdt_hal_context_t context = RWDT_HAL_CONTEXT_DEFAULT();
     wdt_hal_write_protect_disable(&context);
     wdt_hal_config_stage(&context, WDT_STAGE0, static_cast<uint32_t>(ticks), WDT_STAGE_ACTION_RESET_RTC);
+    wdt_hal_feed(&context);
     // This hardware deadline works even if initialization or scheduling stalls.
     wdt_hal_enable(&context);
     wdt_hal_write_protect_enable(&context);

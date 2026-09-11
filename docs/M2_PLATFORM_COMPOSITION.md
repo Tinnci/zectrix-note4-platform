@@ -28,16 +28,16 @@ existing Platform implementation allocation. Details are in
 
 `Platform::Initialize()` performs these operations:
 
-1. Validate boot layout and arm trial-boot protection; expose the optional firmware writer.
+1. Validate boot layout and arm trial-boot protection; hand known-good boots to runtime health and expose the optional firmware writer.
 2. Initialize board support and attach the NFC enrollment adapter when Connectivity is selected.
 3. Attach InputService.
 4. Attach PowerService.
-5. Create and initialize StorageService.
+5. Create StorageService; report NVS initialization failure as degraded settings without erasing data.
 6. Attach TimeService and restore RTC wall time using the stored offset; an unset/failed RTC is nonfatal.
-7. Attach SystemService.
+7. Attach SystemService and sample the reset reason for recovery-boot policy.
 8. Create DisplayService.
 9. Create Diagnostics with typed references to the services.
-10. Create and initialize Connectivity with Storage/NFC dependencies when selected.
+10. Create Connectivity with Storage/NFC dependencies when selected; keep its facade stopped when settings are unavailable or the reset reason is panic/watchdog.
 11. Create the maintenance executor and start the USB CLI when selected.
 
 The registry runs each provider's `Init()` and `Start()`, publishes its
@@ -45,7 +45,7 @@ interface, then advances to the next provider. S1.3 starts Storage before Time
 so UTC is restored before networking. Display remains after core board services
 and before its consumers. Time is released before its borrowed Storage handle.
 
-If an operation fails, `Platform` destroys each service that it already created.
+If a required operation fails, `Platform` destroys each service that it already created.
 It withdraws interfaces and stops attempted providers in reverse order,
 including a provider whose initialization only partly completed. Power and
 Input handles remain with the owner until final board cleanup. It does not
@@ -72,6 +72,12 @@ The registry retires each interface before its stop callback releases it, then
 clears all borrowed bindings before Platform destroys its implementation.
 Stopping Update aborts an unfinished writer without confirming a trial image or
 disarming its unconfirmed boot watchdog.
+
+The foreground health supervisor remains armed during service/board cleanup.
+PowerService's final owner hook disarms the runtime watchdog only after devices
+have been released and button wake prepared, before cutting battery power or
+sleeping. Reboot disarms it after services stop, immediately before reset.
+Ordinary destruction and failed initialization never disarm either watchdog.
 
 `PowerService::Shutdown()` first calls `ZectrixBoard::ShutdownPeripherals()`.
 The board joins button sampling, closes audio, stops NFC field processing,

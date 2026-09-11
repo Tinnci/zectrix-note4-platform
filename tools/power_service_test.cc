@@ -11,13 +11,14 @@ esp_sleep_wakeup_cause_t wake_cause = ESP_SLEEP_WAKEUP_UNDEFINED;
 TickType_t delays[2] = {};
 std::size_t delay_count = 0;
 std::jmp_buf shutdown_jump;
+bool power_ready = false;
 }
 
 esp_sleep_wakeup_cause_t esp_sleep_get_wakeup_cause() { return wake_cause; }
 int64_t esp_timer_get_time() { return 1234567; }
 const char* esp_err_to_name(esp_err_t error) { return error == ESP_OK ? "ESP_OK" : "ESP_FAIL"; }
 void vTaskDelay(TickType_t ticks) { delays[delay_count++] = ticks; }
-[[noreturn]] void esp_deep_sleep_start() { std::longjmp(shutdown_jump, 1); }
+[[noreturn]] void esp_deep_sleep_start() { assert(power_ready); std::longjmp(shutdown_jump, 1); }
 
 int main() {
     using namespace zectrix::power;
@@ -64,7 +65,12 @@ int main() {
         board.power_event_count = delay_count = 0;
         board.peripheral_shutdown_result = cleanup_result;
         board.power_wake_result = cleanup_result;
-        if (setjmp(shutdown_jump) == 0) service->Shutdown();
+        power_ready = false;
+        if (setjmp(shutdown_jump) == 0) service->Shutdown([](void* context) {
+            const auto& board = *static_cast<ZectrixBoard*>(context);
+            assert(!power_ready && board.power_event_count == 4 && board.power_events[3] == 7);
+            power_ready = true;
+        }, &board);
         assert(board.power_event_count == 5);
         assert(board.power_events[0] == 6);
         assert(board.power_events[1] == 2);

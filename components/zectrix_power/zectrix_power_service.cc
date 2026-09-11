@@ -50,7 +50,7 @@ WakeReason PowerService::GetWakeReason() const {
     }
 }
 
-[[noreturn]] void PowerService::Shutdown() {
+[[noreturn]] void PowerService::Shutdown(void (*ready)(void*), void* context) {
     if (board_ != nullptr) {
         board_->ShutdownPeripherals();
         board_->SetPowerLed(false);
@@ -58,6 +58,9 @@ WakeReason PowerService::GetWakeReason() const {
         vTaskDelay(pdMS_TO_TICKS(100));
         const auto wake = board_->PreparePowerButtonWake();
         if (wake != ESP_OK) ESP_LOGW("zectrix_power", "power-button wake unavailable: %s", esp_err_to_name(wake));
+    }
+    if (ready != nullptr) ready(context);
+    if (board_ != nullptr) {
         board_->CutBatteryPower();
         vTaskDelay(pdMS_TO_TICKS(100));
     }

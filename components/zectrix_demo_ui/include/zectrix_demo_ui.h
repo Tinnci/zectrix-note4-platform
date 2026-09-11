@@ -42,6 +42,7 @@ public:
                              const uint8_t* pixels, size_t size);
 
     esp_err_t ShowSplash();
+    esp_err_t ShowRecovery();
     esp_err_t ShowLauncher(const zectrix::app::LauncherController& launcher,
                            const zectrix::time::ClockSnapshot& clock,
                            const zectrix::app::ReadingOverview& reading, bool full_refresh);

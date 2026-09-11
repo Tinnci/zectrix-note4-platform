@@ -1864,6 +1864,38 @@ void TestBookTransferComposition() {
     SavePreview(ui.canvas(), "books-power-error");
 }
 
+void TestRecoveryComposition() {
+    Reset();
+    auto service = CreateService();
+    ZectrixDemoUi ui(service.get());
+    std::array<uint8_t, DisplayService::kFrameBytes4Bpp> gray{};
+    assert(ui.ShowImage4Bpp(gray.data(), gray.size()) == ESP_OK);
+    const auto allocated = heap_allocations;
+    const auto live = allocations.size();
+    const auto objects = nothrow_allocations;
+    fail_allocation_at = objects + 1;
+    fail_heap_at = allocated + 1;
+    zectrix::app::SleepCoverSnapshot cover;
+    for (unsigned cycle = 0; cycle < 256; ++cycle) {
+        ClearTraffic();
+        fail_command = 0xe9;
+        assert(ui.ShowRecovery() == ESP_FAIL);
+        fail_command = -1;
+        assert(ui.RefreshPending() == ESP_OK && Inspect(*service).bits_per_pixel == 1);
+        if (cycle == 0) SavePreview(ui.canvas(), "system-recovery");
+        assert(ui.ShowClock({2026, 9, 12, 6, 8, static_cast<int>(cycle % 60), 0}, true) == ESP_OK);
+        assert(ui.ShowSleepCover(cover, zectrix::app::SleepCoverStyle::Blank) == ESP_OK);
+        ClearTraffic();
+        assert(ui.RefreshPending() == ESP_OK && packets.empty());
+        assert(allocations.size() == live && heap_allocations == allocated && nothrow_allocations == objects);
+        assert(!service->IsPowered());
+    }
+    assert(ui.ShowRecovery() == ESP_OK);
+    SavePreview(ui.canvas(), "system-recovery");
+    fail_allocation_at = fail_heap_at = 0;
+    std::printf("PASS: 256 recovery/clock/sleep UI cycles with display I/O faults and no drawing allocations.\n");
+}
+
 void TestSleepCoverComposition() {
     using namespace zectrix::app;
     Reset();
@@ -2099,6 +2131,7 @@ int main() {
     TestBookTransferComposition();
     TestUsbManagerComposition();
     TestUtilitiesComposition();
+    TestRecoveryComposition();
     TestSleepCoverComposition();
     Reset();
 }

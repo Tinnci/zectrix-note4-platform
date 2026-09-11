@@ -50,7 +50,8 @@ public:
 
     // Platform stops peripheral consumers before calling this final transition.
     // Releases devices, arms a released power button, turns off rails and sleeps.
-    [[noreturn]] void Shutdown();
+    // The optional owner hook runs after cleanup/wake setup, before cutting power.
+    [[noreturn]] void Shutdown(void (*ready)(void*) = nullptr, void* context = nullptr);
 
 private:
     explicit PowerService(ZectrixBoard& board) : board_(&board) {}

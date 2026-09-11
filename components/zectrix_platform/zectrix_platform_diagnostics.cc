@@ -3,6 +3,7 @@
 #include "zectrix_display_service.h"
 #include "zectrix_input_service.h"
 #include "zectrix_system_service.h"
+#include "zectrix_health_supervisor.h"
 #include "zectrix_time_service.h"
 #include "zectrix_power_service.h"
 #include "zectrix_service_registry.h"
@@ -20,8 +21,9 @@ PlatformDiagnostics::PlatformDiagnostics(const ServiceRegistry& services, system
                                          display::DisplayService& display,
                                          input::InputService& input,
                                          time::TimeService& time,
+                                         system::HealthSupervisor& health,
                                          cli::CliBinarySession* binary)
-    : services_(services), system_(system), display_(display), input_(input), time_(time),
+    : services_(services), system_(system), display_(display), input_(input), time_(time), health_(health),
       owner_task_(xTaskGetCurrentTaskHandle()), dispatcher_(*this),
       executor_(dispatcher_, cli::MaintenanceLogs(), binary) {
     input_.SetWaitHook(OnWait, this);
@@ -73,6 +75,10 @@ cli::ControlStatus PlatformDiagnostics::Inspect(const cli::ControlRequest& reque
     switch (request.operation) {
         case cli::ControlOperation::kSystemInfo:
             err = system_.ReadSnapshot(&result->system);
+            break;
+        case cli::ControlOperation::kHealth:
+            result->health = health_.Snapshot();
+            err = ESP_OK;
             break;
         case cli::ControlOperation::kHeap:
             err = system_.ReadHeap(&result->heap);

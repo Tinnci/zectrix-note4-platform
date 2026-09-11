@@ -22,6 +22,7 @@ common=(
   "$root_dir/components/zectrix_platform/zectrix_platform.cc" \
   "$root_dir/components/zectrix_platform/zectrix_service_registry.cc" \
   "$root_dir/components/zectrix_system/zectrix_boot_guard.cc" \
+  "$root_dir/components/zectrix_system/zectrix_health_supervisor.cc" \
   "$root_dir/tools/platform_test.cc"
 )
 for profile in full minimal connectivity cli usb-host update; do

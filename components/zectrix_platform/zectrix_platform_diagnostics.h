@@ -8,7 +8,7 @@ namespace zectrix {
 class ServiceRegistry;
 namespace display { class DisplayService; }
 namespace input { class InputService; }
-namespace system { class SystemService; }
+namespace system { class SystemService; class HealthSupervisor; }
 namespace time { class TimeService; }
 
 // This adapter belongs to Platform, not to the CLI task or public SDK.
@@ -17,6 +17,7 @@ public:
     PlatformDiagnostics(const ServiceRegistry& services, system::SystemService& system,
                         display::DisplayService& display,
                         input::InputService& input, time::TimeService& time,
+                        system::HealthSupervisor& health,
                         cli::CliBinarySession* binary = nullptr);
     ~PlatformDiagnostics();
     void Poll();
@@ -37,6 +38,7 @@ private:
     display::DisplayService& display_;
     input::InputService& input_;
     time::TimeService& time_;
+    system::HealthSupervisor& health_;
     TaskHandle_t owner_task_;
     cli::PlatformControlDispatcher dispatcher_;
     cli::DiagnosticExecutor executor_;

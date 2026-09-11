@@ -196,7 +196,9 @@ bash tools/build-firmware.sh --profile minimal
 
 The runtime tests exercise both real pilots, malformed/binary source, nested
 parser limits, initialization/event/render loops, allocator exhaustion at
-multiple limits, text/geometry/command bounds and 100 VM lifetimes. Controller
+multiple limits, text/geometry/command bounds and 1,024 VM fault/restart lifetimes.
+Each repeated pilot run alternates instruction-limit or heap-exhaustion faults
+and verifies that live guest allocation returns to zero before reopening. Controller
 tests use real file storage for namespace isolation, forward/backward paging,
 loading cancellation, truncated reads, guest/system exits, retry without guest
 reexecution, clipped drawing and 100 foreground lifetimes. They write

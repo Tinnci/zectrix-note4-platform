@@ -1,4 +1,5 @@
 #include "zectrix_update_esp.h"
+#include "zectrix_health_esp.h"
 #include "update_test_fixture.h"
 
 #include <cassert>
@@ -250,6 +251,7 @@ uint32_t configured_flash = 16 * 1024 * 1024, physical_flash = configured_flash;
 uint32_t slow_clock_hz = 32768, watchdog_ticks = 0;
 int64_t now_us = 0;
 unsigned active_iterators = 0, state_reads = 0, confirmations = 0;
+unsigned watchdog_feeds = 0;
 bool watchdog_enabled = false, watchdog_unlocked = false;
 bool rollback_available = true;
 std::vector<uint8_t> native_flash;
@@ -285,6 +287,7 @@ void ResetNative(PartitionKind running = PartitionKind::kFactory) {
     configured_flash = physical_flash = 16 * 1024 * 1024;
     slow_clock_hz = 32768;
     watchdog_ticks = state_reads = confirmations = 0;
+    watchdog_feeds = 0;
     now_us = 0;
     watchdog_enabled = watchdog_unlocked = false;
     rollback_available = true;
@@ -295,6 +298,29 @@ void ResetNative(PartitionKind running = PartitionKind::kFactory) {
     image_reads = image_selections = fail_write_at = fail_read_at = 0;
     metadata_reads = 0;
     change_boot_on_end = select_before_error = false;
+}
+
+void TestEspHealthHandoff() {
+    using namespace zectrix::system;
+    ResetNative(PartitionKind::kOtaA);
+    native_state = ESP_OTA_IMG_PENDING_VERIFY;
+    EspBootBackend backend;
+    BootGuard boot(backend);
+    EspHealthWatchdog watchdog;
+    HealthSupervisor health(watchdog);
+    assert(boot.BeginBoot() == Result::kOk && watchdog_ticks == 60 * slow_clock_hz);
+    const auto feeds = watchdog_feeds;
+    health.Progress();
+    assert(watchdog_feeds == feeds && watchdog_enabled);
+    assert(boot.ConfirmBoot() == Result::kOk && !watchdog_enabled);
+    assert(health.Start() == ESP_OK && watchdog_enabled && !watchdog_unlocked);
+    assert(watchdog_ticks == 90 * slow_clock_hz && watchdog_feeds == feeds + 1);
+    now_us = 60000000;
+    assert(health.Progress() && watchdog_feeds == feeds + 2 && !watchdog_unlocked);
+    now_us += 90000000;
+    assert(!health.Progress() && watchdog_feeds == feeds + 2 && watchdog_enabled);
+    health.DisarmForPowerTransition();
+    assert(!watchdog_enabled && !watchdog_unlocked);
 }
 
 void TestEspDriver() {
@@ -771,6 +797,7 @@ void wdt_hal_config_stage(wdt_hal_context_t*, wdt_stage_t stage, uint32_t ticks,
     watchdog_ticks = ticks;
 }
 void wdt_hal_enable(wdt_hal_context_t*) { assert(watchdog_unlocked); watchdog_enabled = true; }
+void wdt_hal_feed(wdt_hal_context_t*) { assert(watchdog_unlocked); ++watchdog_feeds; }
 void wdt_hal_disable(wdt_hal_context_t*) { assert(watchdog_unlocked); watchdog_enabled = false; }
 
 int main(int argc, char** argv) {
@@ -784,6 +811,7 @@ int main(int argc, char** argv) {
     TestFailedAndUnconfirmedBoots();
     TestRecoveryAndKnownGoodBoots();
     TestEspDriver();
+    TestEspHealthHandoff();
     TestFirmwareCrc();
     for (auto running : {PartitionKind::kFactory, PartitionKind::kOtaA, PartitionKind::kOtaB}) {
         for (auto chunk : {1u, 23u, 287u, 288u, 289u, 4096u}) {

@@ -355,15 +355,22 @@ void TestResourceAndPhoneOwnership() {
         conditions.user_policy = UserConnectivityPolicy::kWifiOnly;
         driver.fail_stop = scenario == 1;
         assert(client.Begin(1, {}, 0));
-        for (uint32_t now = 0; now <= 1000; now += 10) {
+        for (uint32_t now = 0; now <= 1000 + WifiBackend::kStopTimeoutMs; now += 10) {
             if (scenario == 2 && now >= 30) conditions.battery_percent = 5;
             client.Poll(conditions, now);
             peers.arbiter.Update(client.WifiState(), {}, driver.claimed, now);
             peers.Tick(now, client.AwaitingPhone());
+            if (scenario == 1 && now == 1000) {
+                ResourceResponse pending;
+                assert(!client.TakeResponse(&pending));
+                assert(client.Busy() && driver.claimed);
+                assert(peers.arbiter.Mode() == RadioMode::kWifiStopping);
+            }
         }
         ResourceResponse response;
         assert(client.TakeResponse(&response));
         assert(response.wifi_operation == (scenario == 2 ? WifiOperationResult::kCancelled : WifiOperationResult::kSuccess));
+        assert(response.wifi_stop == (scenario == 1 ? WifiStopResult::kFailure : WifiStopResult::kSuccess));
         assert(peers.device_session.Converged());
         assert(peers.arbiter.Mode() == (scenario == 1 ? RadioMode::kWifiStopping : RadioMode::kCompanion));
         assert(driver.claimed == (scenario == 1));

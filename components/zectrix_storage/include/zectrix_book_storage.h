@@ -41,6 +41,7 @@ private:
     std::FILE* file_ = nullptr;
     std::array<char, 256> target_{}, temporary_{};
     uint32_t expected_ = 0, received_ = 0;
+    BookWriteResult error_ = BookWriteResult::Ok;
 };
 
 class BookFile {

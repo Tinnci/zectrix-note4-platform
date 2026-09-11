@@ -304,6 +304,20 @@ Success, failure, timeout and cancellation all use the station stop path before
 publishing a direct result. The result carries transfer and stop status
 separately. Product shutdown stops connectivity before the power transition.
 
+D1.5 retries idempotent ESP stop/deinit/handler cleanup failures within the
+existing two-second stop deadline. Ownership and the pending outcome remain
+with the current burst until cleanup succeeds. At the deadline, `StopFailed`
+still retains the radio claim and reports failed cleanup; another owner cannot
+reuse uncertain resources. The operation timeout/cancellation result is kept
+separate from cleanup success. This does not add automatic request retries.
+
+When NVS initialization fails, or the boot follows panic/watchdog reset, Platform
+keeps an allocated but uninitialized Connectivity facade. Radio operations
+report unavailable/invalid state and no BLE/Wi-Fi startup runs. Basic UI, file
+access and USB maintenance remain usable. A subsequent normal reboot restores
+networking if settings initialize successfully. No saved policy or bond is
+rewritten by this recovery mode. See [RELIABILITY.md](RELIABILITY.md).
+
 TLS requires a configured UTC system clock. `TimeService` can initialize it from
 a valid RTC reading and an explicit UTC offset; RTC calendar fields retain their
 local-time meaning. S1.3 restores it during Platform startup, before Connectivity,

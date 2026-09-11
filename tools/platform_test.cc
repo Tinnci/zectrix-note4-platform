@@ -1,6 +1,7 @@
 #include "zectrix_platform.h"
 #include "sdkconfig.h"
 #include "zectrix_boot_esp.h"
+#include "zectrix_health_esp.h"
 #include "zectrix_board.h"
 #if CONFIG_ZECTRIX_ENABLE_USB_HOST
 #include "zectrix_host_channel.h"
@@ -52,6 +53,10 @@ bool pending_clock_sample = false;
 #endif
 int64_t applied_clock_ms = 0;
 bool boot_watchdog_armed = false;
+uint32_t watchdog_timeout_ms = 0;
+uint64_t health_now_ms = 0;
+unsigned health_feeds = 0;
+zectrix::system::ResetReason reset_reason = zectrix::system::ResetReason::PowerOn;
 bool pending_boot = false;
 bool boot_confirmed = false;
 unsigned boot_probe_count = 0;
@@ -112,14 +117,16 @@ Result EspBootBackend::ReadBootInfo(BootInfo* info) {
     if (pending_boot && !boot_confirmed) info->image_state = ImageState::kPendingVerify;
     return Result::kOk;
 }
-uint64_t EspBootBackend::Milliseconds() const { return 0; }
+uint64_t EspBootBackend::Milliseconds() const { return health_now_ms; }
 Result EspBootBackend::ArmBootWatchdog(uint32_t timeout_ms) {
     assert(timeout_ms == kBootConfirmationTimeoutMs);
     boot_watchdog_armed = true;
+    watchdog_timeout_ms = timeout_ms;
     return Result::kOk;
 }
 void EspBootBackend::DisarmBootWatchdog() { boot_watchdog_armed = false; }
 Result EspBootBackend::ConfirmRunningImage(const Partition&) {
+    if (fail_at == "confirm") return Result::kIoError;
     boot_confirmed = true;
     return Result::kOk;
 }
@@ -161,8 +168,11 @@ PowerSnapshot PowerService::ReadSnapshot() const {
     return cached_;
 }
 PowerService::~PowerService() { AssertWithdrawn<PowerService>(); events.emplace_back("delete:power"); }
-[[noreturn]] void PowerService::Shutdown() {
+[[noreturn]] void PowerService::Shutdown(void (*ready)(void*), void* context) {
     AssertWithdrawn<PowerService>();
+    assert(boot_watchdog_armed);
+    if (ready != nullptr) ready(context);
+    assert(!boot_watchdog_armed);
     events.emplace_back("shutdown:power");
     throw SleepEntered{};
 }
@@ -212,6 +222,16 @@ StorageService::~StorageService() {
 }
 }
 namespace zectrix::system {
+uint64_t EspHealthWatchdog::Milliseconds() const { return health_now_ms; }
+esp_err_t EspHealthWatchdog::Arm(uint32_t timeout_ms) {
+    assert(!boot_watchdog_armed && timeout_ms == kForegroundWatchdogMs);
+    if (fail_at == "health") return ESP_FAIL;
+    boot_watchdog_armed = true;
+    watchdog_timeout_ms = timeout_ms;
+    return ESP_OK;
+}
+void EspHealthWatchdog::Feed() { assert(boot_watchdog_armed); ++health_feeds; }
+void EspHealthWatchdog::Disarm() { boot_watchdog_armed = false; }
 esp_err_t SystemService::Attach(ZectrixBoard& board, SystemService** output) {
     const esp_err_t result = Result("system");
     if (result == ESP_OK) *output = new SystemService(board);
@@ -221,6 +241,7 @@ SystemService::~SystemService() { AssertWithdrawn<SystemService>(); events.empla
 esp_err_t SystemService::ReadSnapshot(SystemSnapshot* result) const {
     ++inspections;
     *result = {};
+    result->reset_reason = reset_reason;
     return ESP_OK;
 }
 esp_err_t SystemService::ReadHeap(HeapSnapshot* result) const {
@@ -356,11 +377,69 @@ void TestUnsetClockDoesNotBlockStartup() {
     time_polls = 0;
 }
 
+void TestDegradedStorageAndHealth() {
+    fail_at = "storage-init";
+    reset_reason = zectrix::system::ResetReason::Watchdog;
+    {
+        zectrix::Platform platform;
+        assert(platform.Initialize() == ESP_OK);
+        const auto health = platform.Health().Snapshot();
+        assert(health.storage_error == ESP_FAIL && health.recovery_boot && health.watchdog_armed);
+        assert(!platform.Health().AutomaticAppsAllowed());
+        assert(platform.Services().Get<zectrix::storage::StorageService>());
+        assert(std::count(events.begin(), events.end(), "create:connectivity-init") == 0);
+        assert((platform.Services().Get<zectrix::connectivity::ConnectivityService>() != nullptr) ==
+               (CONFIG_ZECTRIX_ENABLE_CONNECTIVITY != 0));
+        const auto feeds = health_feeds;
+        platform.Poll();
+        platform.PollMaintenance();
+        assert(health_feeds == feeds);
+        assert(platform.Health().CompleteForeground(0, 1) == false && health_feeds == feeds + 1);
+        assert(platform.ConfirmBoot() == zectrix::update::Result::kOk);
+        assert(boot_watchdog_armed && watchdog_timeout_ms == zectrix::system::kForegroundWatchdogMs);
+        try { platform.Shutdown(); } catch (const SleepEntered&) {}
+        assert(!boot_watchdog_armed);
+    }
+    fail_at.clear();
+    for (const auto reason : {zectrix::system::ResetReason::Panic, zectrix::system::ResetReason::Watchdog}) {
+        events.clear();
+        reset_reason = reason;
+        zectrix::Platform platform;
+        assert(platform.Initialize() == ESP_OK);
+        assert(platform.Health().Snapshot().storage_error == ESP_OK);
+        assert(platform.Health().Snapshot().recovery_boot && !platform.Health().AutomaticAppsAllowed());
+        assert(std::count(events.begin(), events.end(), "create:connectivity-init") == 0);
+    }
+    fail_at = "health";
+    {
+        zectrix::Platform platform;
+        assert(platform.Initialize() == ESP_FAIL);
+        AssertNoServices(platform);
+    }
+    fail_at = "confirm";
+    pending_boot = true;
+    {
+        zectrix::Platform platform;
+        assert(platform.Initialize() == ESP_OK);
+        assert(!platform.Health().Snapshot().watchdog_armed);
+        platform.Health().Progress();
+        assert(platform.ConfirmBoot() == zectrix::update::Result::kIoError);
+        assert(!boot_confirmed && boot_watchdog_armed && watchdog_timeout_ms == 60000);
+    }
+    assert(boot_watchdog_armed);
+    pending_boot = false;
+    reset_reason = zectrix::system::ResetReason::PowerOn;
+    fail_at.clear();
+    events.clear();
+    inspections = time_polls = 0;
+}
+
 #if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY && CONFIG_ZECTRIX_ENABLE_USB_CLI && CONFIG_ZECTRIX_ENABLE_UPDATE
 int main() {
     host_current_task = reinterpret_cast<void*>(1);
     TestUnsetClockDoesNotBlockStartup();
     TestMaintenanceReset();
+    TestDegradedStorageAndHealth();
     {
         zectrix::Platform platform;
         inspected_registry = &platform.Services();
@@ -393,7 +472,7 @@ int main() {
         assert(registry.Get<ZectrixSelfTest>() == &platform.Diagnostics());
         assert(registry.Get<zectrix::cli::CliUsbService>());
         assert(!registry.Get<zectrix::nfc::NfcService>());
-        assert(!boot_watchdog_armed);
+        assert(boot_watchdog_armed && platform.Health().Snapshot().watchdog_armed);
         assert((events == std::vector<std::string>{
             "init:board", "create:input", "create:power",
             "create:storage", "create:storage-init", "create:time", "init:time", "create:system",
@@ -401,6 +480,7 @@ int main() {
             "create:connectivity-init", "create:cli"}));
         zectrix::cli::Invocation invocation;
         zectrix::cli::BoundedOutput output;
+        inspections = 0;
         assert(zectrix::cli::ParseLine("uptime", 6, &invocation) == zectrix::cli::ParseStatus::kOk);
         assert(cli_executor->Execute(invocation, &output) == zectrix::cli::ExecuteStatus::kPending);
         assert(inspections == 0);
@@ -428,6 +508,7 @@ int main() {
             return text;
         };
         platform.Power().ReadSnapshot();
+        assert(query("system health").find("watchdog_armed=1") != std::string::npos);
         assert(query("power status").find("mv=3888") != std::string::npos);
         assert(query("display telemetry").find("frames=0") != std::string::npos);
         assert(query("display model").find("weights_q8") != std::string::npos);
@@ -510,9 +591,9 @@ int main() {
         assert(trial.Initialize() == ESP_OK);
         assert(boot_watchdog_armed);
         assert(!boot_confirmed);
-        assert(trial.Boot().ConfirmBoot() == zectrix::update::Result::kOk);
+        assert(trial.ConfirmBoot() == zectrix::update::Result::kOk);
         assert(boot_confirmed);
-        assert(!boot_watchdog_armed);
+        assert(boot_watchdog_armed && trial.Health().Snapshot().watchdog_armed);
     }
     pending_boot = boot_confirmed = false;
 
@@ -557,17 +638,6 @@ int main() {
         "delete:power", "delete:input"}));
 
     events.clear();
-    fail_at = "storage-init";
-    zectrix::Platform failed_storage_init;
-    assert(failed_storage_init.Initialize() == ESP_FAIL);
-    assert(!failed_storage_init.IsInitialized());
-    AssertNoServices(failed_storage_init);
-    assert((events == std::vector<std::string>{
-        "init:board", "create:input", "create:power",
-        "create:storage", "create:storage-init", "delete:storage",
-        "delete:power", "delete:input"}));
-
-    events.clear();
     fail_at = "cli";
     zectrix::Platform failed_cli;
     assert(failed_cli.Initialize() == ESP_FAIL);
@@ -584,7 +654,7 @@ int main() {
     // Exercise every adapter failure with NFC already attached by the board.
     ZectrixNfc nfc;
     ZectrixBoard::nfc_device = &nfc;
-    for (const char* failure : {"input", "power", "time", "storage", "storage-init",
+    for (const char* failure : {"input", "power", "time", "storage",
                                "system", "display", "connectivity", "connectivity-init", "cli"}) {
         events.clear();
         fail_at = failure;
@@ -617,6 +687,7 @@ int main() {
     host_current_task = reinterpret_cast<void*>(1);
     TestUnsetClockDoesNotBlockStartup();
     TestMaintenanceReset();
+    TestDegradedStorageAndHealth();
     ZectrixNfc nfc;
     ZectrixBoard::nfc_device = &nfc;
     {
@@ -634,7 +705,7 @@ int main() {
                (CONFIG_ZECTRIX_ENABLE_USB_CLI != 0));
         assert((registry.Get<zectrix::update::UpdateService>() != nullptr) ==
                (CONFIG_ZECTRIX_ENABLE_UPDATE != 0));
-        assert(!boot_watchdog_armed);
+        assert(boot_watchdog_armed && platform.Health().Snapshot().watchdog_armed);
         assert(std::count(events.begin(), events.end(), "create:nfc") == CONFIG_ZECTRIX_ENABLE_CONNECTIVITY);
         platform.Poll();
         platform.StopMaintenance();
@@ -661,7 +732,7 @@ int main() {
     }
     assert(boot_watchdog_armed && !boot_confirmed);
     events.clear();
-    fail_at = "storage-init";
+    fail_at = "system";
     {
         zectrix::Platform failed;
         assert(failed.Initialize() == ESP_FAIL);
@@ -673,8 +744,8 @@ int main() {
         zectrix::Platform trial;
         assert(trial.Initialize() == ESP_OK);
         assert(boot_watchdog_armed && !boot_confirmed);
-        assert(trial.Boot().ConfirmBoot() == zectrix::update::Result::kOk);
-        assert(boot_confirmed && !boot_watchdog_armed);
+        assert(trial.ConfirmBoot() == zectrix::update::Result::kOk);
+        assert(boot_confirmed && boot_watchdog_armed && trial.Health().Snapshot().watchdog_armed);
     }
     events.clear();
     fail_at = "boot";

@@ -200,7 +200,7 @@ void TestCommands() {
 
     const auto calls = owner.calls;
     assert(Run(executor, dispatcher, "help").find("log-stream") != std::string::npos);
-    assert(Run(executor, dispatcher, "help system").find("system <info|heap|tasks|uptime>") != std::string::npos);
+    assert(Run(executor, dispatcher, "help system").find("system <info|heap|tasks|uptime|health>") != std::string::npos);
     assert(Run(executor, dispatcher, "help log follow").find("[error|warn|info|debug]") != std::string::npos);
     assert(Run(executor, dispatcher, "version").find("D1.4") != std::string::npos);
     assert(Run(executor, dispatcher, "log stats").find("queued=0/32") != std::string::npos);
@@ -217,6 +217,28 @@ void TestCommands() {
     assert(executor.Execute(Parse("heap"), &output) == ExecuteStatus::kPending);
     assert(dispatcher.Dispatch());
     assert(executor.Poll(&output) == ExecuteStatus::kUnavailable);
+}
+
+void TestHealthCommand() {
+    Owner owner;
+    PlatformControlDispatcher dispatcher(owner, Clock);
+    LogBuffer logs;
+    DiagnosticExecutor executor(dispatcher, logs);
+    auto& health = owner.sample.health;
+    health.watchdog_armed = health.watchdog_expired = health.recovery_boot = true;
+    health.automatic_apps_suppressed = true;
+    health.last_progress_ms = health.maximum_gap_ms = UINT64_MAX;
+    health.heartbeats = health.failures = health.recoveries = UINT32_MAX;
+    health.consecutive_failures = 3;
+    health.last_error = health.storage_error = INT32_MIN;
+    const auto output = Run(executor, dispatcher, "system health");
+    assert(owner.last_operation == ControlOperation::kHealth && !IsMutation(owner.last_operation));
+    assert(output.find("watchdog_armed=1 expired=1 timeout_ms=90000") != std::string::npos);
+    assert(output.find("last_progress_ms=18446744073709551615") != std::string::npos);
+    assert(output.find("recoveries=4294967295 consecutive=3") != std::string::npos);
+    assert(output.find("storage_error=-2147483648 recovery_boot=1 automatic_apps_suppressed=1") != std::string::npos);
+    BoundedOutput chunk;
+    assert(executor.Execute(Parse("system health reset"), &chunk) == ExecuteStatus::kInvalidArguments);
 }
 
 void TestDispatcherLifetime() {
@@ -619,6 +641,7 @@ void TestAsyncSession() {
 
 int main() {
     TestCommands();
+    TestHealthCommand();
     TestDisplayTelemetryCommands();
     TestDispatcherLifetime();
     TestNonblockingOwnerRetry();

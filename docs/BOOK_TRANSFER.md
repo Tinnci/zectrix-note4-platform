@@ -78,6 +78,12 @@ never formats the partition. A new or damaged partition displays a storage
 error. Use the explicit USB installation procedure when initialization or
 replacement is intended.
 
+D1.5 latches any short write, flush/sync/close/rename error on the upload handle.
+Subsequent Write/Commit calls return that error until Abort releases the staging
+file and a new upload begins. Retrying a partially accepted chunk can no longer
+publish duplicated or truncated bytes. The file partition remains independent
+of settings initialization; NVS failure does not erase or disable local books.
+
 Deleting a file preserves its recent reading position. Give a different edition
 a new filename, even if its byte length matches the old file. Reader identity
 uses filename and length, as described in [READER.md](READER.md#saved-positions-and-phone-sync).

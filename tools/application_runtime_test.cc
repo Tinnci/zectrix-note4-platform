@@ -3,6 +3,7 @@
 #include "zectrix_foreground_dispatch.h"
 
 #include <cassert>
+#include <cstdio>
 #include <deque>
 #include <new>
 #include <string>
@@ -19,6 +20,7 @@ void CheckReentry(sdk::ApplicationRuntime* runtime) {
     assert(runtime->Step(&event) == sdk::Status::InvalidState);
     assert(runtime->DispatchInput(event) == sdk::Status::InvalidState);
     assert(runtime->Idle() == sdk::Status::InvalidState);
+    assert(runtime->Recover(sdk::Status::IoError) == sdk::Status::InvalidState);
     assert(runtime->Stop() == sdk::Status::InvalidState);
 }
 
@@ -36,6 +38,10 @@ struct Behavior {
     bool open_on_ok_only = false;
     bool idle_home = false;
     bool factory_returns_null = false;
+    bool allocate_before_failure = false;
+    int live_count = 0;
+    int allocation_count = 0;
+    int exit_count = 0;
     int create_count = 0;
     int destroy_count = 0;
     int render_count = 0;
@@ -53,10 +59,11 @@ sdk::ApplicationContext* retained_context = nullptr;
 class TestApplication final : public sdk::Application {
 public:
     TestApplication(const char* name, Behavior& behavior)
-        : name_(name), behavior_(&behavior) {}
+        : name_(name), behavior_(&behavior) { ++behavior.live_count; ++behavior.allocation_count; }
     ~TestApplication() override {
         CheckReentry(behavior_->reenter);
         ++behavior_->destroy_count;
+        --behavior_->live_count;
         events.push_back(std::string("destroy:") + name_);
     }
 
@@ -112,6 +119,7 @@ public:
 
     sdk::Status Exit() override {
         CheckReentry(behavior_->reenter);
+        ++behavior_->exit_count;
         events.push_back(std::string("exit:") + name_);
         return behavior_->exit_result;
     }
@@ -135,6 +143,7 @@ public:
         events.push_back(std::string("factory:") + name_);
         CheckReentry(behavior_->reenter);
         if (!sdk::IsOk(behavior_->factory_result)) {
+            if (behavior_->allocate_before_failure) *output = new TestApplication(name_, *behavior_);
             return behavior_->factory_result;
         }
         if (behavior_->factory_returns_null) return sdk::Status::Ok;
@@ -181,9 +190,77 @@ void Reset(Behavior& launcher, Behavior& clock, Behavior& broken) {
     retained_context = nullptr;
 }
 
+void TestRecoverySoak() {
+    Behavior home, reader;
+    Factory home_factory("launcher", home), reader_factory("reader", reader);
+    const sdk::ApplicationDescriptor apps[] = {{"launcher", "Home", &home_factory}, {"reader", "Reader", &reader_factory}};
+    Delegate delegate;
+    sdk::ApplicationRuntime runtime(apps, 2, "launcher", delegate);
+    home.reenter = reader.reenter = delegate.reenter = &runtime;
+    assert(runtime.Recover(sdk::Status::IoError) == sdk::Status::InvalidState);
+    assert(runtime.Start() == sdk::Status::Ok);
+    const sdk::InputEvent input{sdk::Button::Ok, sdk::InputAction::Click};
+
+    // Persistent Home rendering failure retains the render request and provides
+    // an explicit retry path without allocating a second broken Home object.
+    home.render_result = sdk::Status::IoError;
+    for (unsigned i = 0; i < 3; ++i) assert(runtime.Idle() == sdk::Status::IoError);
+    assert(home.render_count == 3);
+    assert(runtime.Recover(sdk::Status::IoError) == sdk::Status::IoError);
+    assert(runtime.state() == sdk::LifecycleState::Failsafe && home.live_count == 0);
+    home.factory_result = sdk::Status::NoMemory;
+    assert(runtime.Recover(sdk::Status::IoError) == sdk::Status::NoMemory);
+    assert(runtime.state() == sdk::LifecycleState::Failsafe && !runtime.HasForeground());
+    home.factory_result = home.render_result = sdk::Status::Ok;
+    assert(runtime.Recover(sdk::Status::NoMemory) == sdk::Status::Ok);
+    assert(runtime.Step() == sdk::Status::Ok);
+    home.event_open = "reader";
+
+    constexpr unsigned cycles = 4096;
+    for (unsigned cycle = 0; cycle < cycles; ++cycle) {
+        events.clear();
+        reader.factory_result = sdk::Status::NoMemory;
+        reader.allocate_before_failure = true;
+        assert(runtime.Step(&input) == sdk::Status::NoMemory);
+        assert(IsForeground(runtime, "launcher") && home.live_count == 1 && reader.live_count == 0);
+        reader.factory_result = sdk::Status::Ok;
+        reader.render_result = cycle % 3 == 0 ? sdk::Status::IoError : sdk::Status::Ok;
+        reader.idle_result = cycle % 3 == 1 ? sdk::Status::Timeout : sdk::Status::Ok;
+        reader.event_result = cycle % 3 == 2 ? sdk::Status::InternalError : sdk::Status::Ok;
+        reader.exit_result = cycle % 5 == 0 ? sdk::Status::IoError : sdk::Status::Ok;
+        runtime.Step(&input);
+        assert(IsForeground(runtime, "reader") && home.live_count == 0 && reader.live_count == 1);
+        const auto generation = runtime.foreground_generation();
+        for (unsigned i = 0; i < 3; ++i)
+            assert(!sdk::IsOk(cycle % 3 == 2 ? runtime.Step(&input) : runtime.Idle()));
+        events.clear();
+        if (cycle % 17 == 0) home.factory_result = sdk::Status::NoMemory;
+        const auto result = runtime.Recover(runtime.last_error());
+        // Fault cleanup must release resources before the recovery allocation.
+        assert(events[0] == "exit:reader" && events[1] == "destroy:reader" && events[2] == "factory:launcher");
+        if (cycle % 17 == 0) {
+            assert(result == sdk::Status::NoMemory && runtime.state() == sdk::LifecycleState::Failsafe);
+            assert(home.live_count == 0 && reader.live_count == 0);
+            home.factory_result = sdk::Status::Ok;
+            assert(runtime.Recover(sdk::Status::NoMemory) == sdk::Status::Ok);
+        } else assert(result == sdk::Status::Ok);
+        assert(runtime.foreground_generation() == generation + 1);
+        assert(runtime.Step() == sdk::Status::Ok && IsForeground(runtime, "launcher"));
+        assert(home.live_count == 1 && reader.live_count == 0);
+    }
+    assert(runtime.Stop() == sdk::Status::Ok && runtime.Stop() == sdk::Status::Ok);
+    assert(runtime.Recover(sdk::Status::IoError) == sdk::Status::InvalidState);
+    assert(home.live_count == 0 && reader.live_count == 0 && delegate.shutdown_count == 1);
+    assert(home.destroy_count == home.allocation_count && reader.destroy_count == reader.allocation_count);
+    assert(home.exit_count == home.destroy_count && reader.exit_count == static_cast<int>(cycles));
+    std::printf("PASS: %u foreground fault/recovery cycles; all app allocations released.\n", cycles);
+    events.clear();
+}
+
 }  // namespace
 
 int main() {
+    TestRecoverySoak();
     Behavior launcher;
     Behavior clock;
     Behavior broken;

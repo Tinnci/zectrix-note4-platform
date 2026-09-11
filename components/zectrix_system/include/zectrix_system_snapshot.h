@@ -10,6 +10,25 @@ enum class ResetReason : uint8_t {
     Unknown, PowerOn, Software, Panic, Watchdog, DeepSleep, Brownout, External,
 };
 
+// A diagnostic item may wait for physical input for up to 60 seconds.
+inline constexpr uint32_t kForegroundWatchdogMs = 90000;
+inline constexpr uint8_t kForegroundFailureLimit = 3;
+
+struct HealthSnapshot {
+    uint64_t last_progress_ms = 0;
+    uint64_t maximum_gap_ms = 0;
+    uint32_t heartbeats = 0;
+    uint32_t failures = 0;
+    uint32_t recoveries = 0;
+    int32_t last_error = 0;  // SDK status from the foreground owner.
+    int32_t storage_error = 0;  // Native NVS initialization result.
+    uint8_t consecutive_failures = 0;
+    bool watchdog_armed = false;
+    bool watchdog_expired = false;
+    bool recovery_boot = false;
+    bool automatic_apps_suppressed = false;
+};
+
 struct FirmwareIdentity {
     std::array<char, 32> project_name = {};
     std::array<char, 32> version = {};
