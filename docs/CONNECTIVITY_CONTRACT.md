@@ -379,6 +379,13 @@ release. Failed cleanup retains ownership for retry. A completed browser batch,
 local cancellation, idle timeout or 15-minute absolute deadline ends the session.
 The application reads final upload counts after the server joins.
 
+E1.10 adds copied `ble_data_active` and `wifi_data_active` observations for the
+[status bar](STATUS_BAR.md). BLE reads its existing in-flight transmission and
+complete receive queue under the link lock. Wi-Fi reports a resource transfer
+or a Sharing session's `client_active` upload flag under the resource lock.
+An idle server leaves activity false. These observations add no radio work,
+timers or authorization decisions and may miss work completed between samples.
+
 See [BOOK_TRANSFER.md](BOOK_TRANSFER.md) for the API, exact time/memory limits,
 content initialization, local-network security and Host verification. Real
 association, radio current and BLE/Wi-Fi coexistence remain hardware measurements.

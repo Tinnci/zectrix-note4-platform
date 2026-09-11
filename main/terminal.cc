@@ -1,4 +1,5 @@
 #include "terminal_internal.h"
+#include "terminal_status.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -86,11 +87,7 @@ void TerminalApp::UpdateSystemStatus() {
 #if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
         if (connectivity_) connectivity_->UpdatePower(power_snapshot_);
 #endif
-        status_.battery_valid = power_snapshot_.battery_valid && !power_snapshot_.battery_absent;
-        status_.battery_percent = std::min<uint8_t>(power_snapshot_.battery_percent, 100);
-        status_.charging = power_snapshot_.charging;
-        status_.external_power = power_snapshot_.external_power_present;
-        status_.charge_fault = power_snapshot_.charge_fault;
+        CopyPowerStatus(status_, power_snapshot_);
         next_power_sample_us_ = now + 5000000;
     }
     if (now >= next_clock_sample_us_) {
@@ -103,29 +100,7 @@ void TerminalApp::UpdateSystemStatus() {
     }
 #if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
     const auto link = connectivity_ ? connectivity_->Snapshot() : zectrix::connectivity::ConnectivitySnapshot{};
-    using Indicator = zectrix::ui::RadioIndicator;
-    using Ble = zectrix::connectivity::ConnectivityState;
-    switch (link.state) {
-        case Ble::kStopped: status_.ble = Indicator::Off; break;
-        case Ble::kIdle:
-        case Ble::kAdvertising: status_.ble = Indicator::Ready; break;
-        case Ble::kPairing:
-        case Ble::kSecuring: status_.ble = Indicator::Busy; break;
-        case Ble::kSecure:
-        case Ble::kLinkReady:
-        case Ble::kProtocolNegotiatedLocal: status_.ble = Indicator::Connected; break;
-        case Ble::kFault: status_.ble = Indicator::Fault; break;
-    }
-    using Wifi = zectrix::connectivity::WifiBackendState;
-    switch (link.wifi_state) {
-        case Wifi::kStopped:
-        case Wifi::kLoadingCredentials: status_.wifi = Indicator::Off; break;
-        case Wifi::kResolving:
-        case Wifi::kOpeningTls:
-        case Wifi::kTransferring: status_.wifi = Indicator::Connected; break;
-        case Wifi::kStopFailed: status_.wifi = Indicator::Fault; break;
-        default: status_.wifi = Indicator::Busy; break;
-    }
+    CopyRadioStatus(status_, link);
 #endif
     ui_.UpdateStatus(status_);
 }

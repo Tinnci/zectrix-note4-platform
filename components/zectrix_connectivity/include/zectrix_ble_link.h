@@ -35,6 +35,8 @@ struct BleSnapshot {
     bool authenticated = false;
     bool bonded = false;
     bool notifications_enabled = false;
+    // A frame is in flight or a complete received frame awaits consumption.
+    bool data_active = false;
 };
 
 class BleLink final : public companion::ConnectivityLink {

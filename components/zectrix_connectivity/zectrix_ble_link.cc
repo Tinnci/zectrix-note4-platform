@@ -908,6 +908,8 @@ bool BleLink::ReadSnapshot(BleSnapshot* output, bool wait) const {
     snapshot.authenticated = impl_->authenticated;
     snapshot.bonded = impl_->bonded;
     snapshot.notifications_enabled = impl_->subscribed;
+    snapshot.data_active = impl_->state == BleState::kTransportReady &&
+        (impl_->transmit_active || impl_->received_count != 0);
     xSemaphoreGive(impl_->lock);
     return true;
 }

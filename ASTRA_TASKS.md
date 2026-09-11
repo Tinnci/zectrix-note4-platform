@@ -361,7 +361,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Added owner-dispatched `display telemetry` / `display model`, typed CSV capture conversion and 24,576-update Host simulations. Small status changes remain partial beyond eight frames; concentrated, dense and cold updates clean sooner. See [docs/DISPLAY_PHYSICS.md](docs/DISPLAY_PHYSICS.md).
   - Verified all 39 Host targets, focused display/model ASan/UBSan, ShellCheck, Full/Minimal builds and profile comparison, connected-device Full flash/boot and real telemetry-to-CSV export. Firmware is 2,492,240 / 520,096 bytes; static internal RAM is unchanged. Optical ghosting, transient voltage sag and energy calibration remain instrument measurements.
 
-- [ ] **E1.10: 状态栏微型图标系统与微观视觉重塑 (Status Bar Micro-Icon System: Bluetooth, Wi-Fi & Multi-State Battery Polish)**
+- [x] **E1.10: 状态栏微型图标系统与微观视觉重塑 (Status Bar Micro-Icon System: Bluetooth, Wi-Fi & Multi-State Battery Polish)**
   - **背景与愿景**：
     - 随身墨水屏终端在 24px 高度的常显顶部状态栏中，当前蓝牙、Wi-Fi 与电池主要采用初级线段绘制结合文本状态字（如“开/关/连”）标记，不仅占据较多横向空间，且在 1-bit 单色低分辨率墨水屏上缺乏精致度与微观视觉层次。
     - 借鉴经典掌上终端（如 Flipper Zero、Kindle、Pebble、CrossPoint 等）在单色微型点阵下的图形设计造诣，全面重塑状态栏的微型图标系统。
@@ -382,6 +382,10 @@ Each iteration picks the top unfinished task, implements production code, verifi
        - 确保全套图标系统对 ROM/Flash 增加控制在数十至数百字节以内，绘制流水线零动态堆分配、零浮点开销，保持对 Minimal Profile 极限裁剪的绝对友好。
     5. *自动化验证与微观视觉回归 (Visual Previews & Headless Verification)*：
        - 如何在 Host 测试套件中生成状态栏在各种电量百分比（0%, 5%, 20%, 50%, 80%, 100%）、充电状态与射频组合下的 ASCII/点阵预览快照，确保任何改动均有清晰的回归基线与可追溯性？
+  - Replaced radio text with original five-state BLE/Wi-Fi graphics and a 20 x 10 five-cell battery. Charger-full, charging, external power, low/fault and unknown/absent states retain readable charge levels. The 198-byte masks support clipped inverse rendering with no drawing allocation or floating-point work.
+  - Wired existing power flags and sampled radio work through the foreground adapter. Idle book servers show no transfer activity; hidden or clamped values do not invalidate the status viewport. Existing scene ownership, gray-image recovery and static sleep covers remain intact.
+  - Added seventeen normal/inverse pixel and ASCII preview cases, state-source integration and three-profile allocation/clipping checks. Verified all 39 Host targets, display/localization ASan/UBSan, Full/Minimal builds/profile comparison and connected ESP32-S3 Full flash/boot. See [docs/STATUS_BAR.md](docs/STATUS_BAR.md).
+  - Full/Minimal firmware is 2,492,576 / 520,304 bytes (+336 / +208); static internal RAM is unchanged / +8 bytes. Tested minute changes still transfer 44 native RAM bytes; a radio activity mark change transfers 14 bytes without changing content pixels.
 
 - [ ] **D1.5: 系统故障注入、容灾自愈与长周期浸润可靠性 (Fault Injection, Self-Healing & Health Supervisor)**
   - **背景与愿景**：
