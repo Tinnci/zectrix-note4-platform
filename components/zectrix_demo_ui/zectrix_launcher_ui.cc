@@ -173,7 +173,7 @@ esp_err_t ZectrixDemoUi::ShowLauncher(const zectrix::app::LauncherController& la
                            Tr(entry.label_text, entry.label), 136, active);
         }
         if (tiles > per_page) {
-            char pages[16];
+            char pages[24];
             std::snprintf(pages, sizeof(pages), "%u/%u", static_cast<unsigned>(page + 1),
                           static_cast<unsigned>((tiles + per_page - 1) / per_page));
             canvas_.Text(388 - canvas_.TextWidth(pages), 26, pages, 1, true);

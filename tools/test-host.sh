@@ -16,6 +16,7 @@ host_tests=(
     test-display-state.sh
     test-enrollment-ndef.sh
     test-first-party-app-controllers.sh
+    test-firmware-budget.sh
     test-input-event.sh
     test-localization.sh
     test-module-config.sh
@@ -24,6 +25,7 @@ host_tests=(
     test-power-service.sh
     test-radio-arbiter.sh
     test-reader.sh
+    test-reader-font.sh
     test-resource-client.sh
     test-resource-gateway.sh
     test-runtime.sh

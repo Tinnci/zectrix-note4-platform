@@ -64,4 +64,6 @@ if [ "$actual_target" != "$IDF_TARGET" ]; then
     exit 1
 fi
 
+uv run --no-project "$repo_dir/tools/firmware_budget.py" "$build_dir" \
+    --output "$build_dir/firmware-budget.json"
 printf 'PASS: firmware build target=%s profile=%s ccache=enabled\n' "$actual_target" "${profile:-local}"

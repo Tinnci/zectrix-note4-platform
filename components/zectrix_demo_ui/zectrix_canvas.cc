@@ -16,19 +16,27 @@ namespace {
 struct Glyph {
     int width;
     const uint16_t* ascii = nullptr;
+#if CONFIG_ZECTRIX_ENABLE_READER
+    zectrix::reader::BitmapGlyph unicode{};
+#else
     const uint8_t* unicode = nullptr;
+#endif
     uint16_t Row(int row) const {
+#if CONFIG_ZECTRIX_ENABLE_READER
+        return ascii ? ascii[row] : unicode.Row(row);
+#else
         return ascii ? ascii[row] : static_cast<uint16_t>(unicode[1 + row * 2]) << 8 |
                                      unicode[2 + row * 2];
+#endif
     }
 };
 
 Glyph UiGlyph(uint32_t cp) {
     if (cp >= 32 && cp < 127)
-        return {kZectrixAsciiFontWidths[cp - 32], kZectrixAsciiFont8x16[cp - 32], nullptr};
+        return {kZectrixAsciiFontWidths[cp - 32], kZectrixAsciiFont8x16[cp - 32], {}};
 #if CONFIG_ZECTRIX_ENABLE_READER
-    const auto* bitmap = zectrix::reader::GlyphBitmap(cp);
-    return {bitmap[0], nullptr, bitmap};
+    const auto bitmap = zectrix::reader::GlyphBitmap(cp);
+    return {bitmap.width, nullptr, bitmap};
 #elif CONFIG_ZECTRIX_ENABLE_UI_CHINESE
     const auto* first = std::begin(kUiChineseCodepoints);
     const auto* last = std::end(kUiChineseCodepoints);
@@ -38,7 +46,7 @@ Glyph UiGlyph(uint32_t cp) {
         return {bitmap[0], nullptr, bitmap};
     }
 #endif
-    return {kZectrixAsciiFontWidths['?' - 32], kZectrixAsciiFont8x16['?' - 32], nullptr};
+    return {kZectrixAsciiFontWidths['?' - 32], kZectrixAsciiFont8x16['?' - 32], {}};
 }
 
 void PaintGlyph(ZectrixCanvas& canvas, int x, int y, const Glyph& glyph, int scale, bool inverted) {

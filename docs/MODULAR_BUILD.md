@@ -163,6 +163,13 @@ ccache remain reusable. The ordinary `build/` and root `sdkconfig` are not
 changed. For interactive customization, use the separate-build example above
 instead of editing these reproducible profile configurations.
 
+Production defaults now select `-Os`. Saved local configurations retain their
+own optimization choice. Every firmware build prints application-slot headroom
+and writes `firmware-budget.json` from the generated partition table, linked
+font symbol and application image. Minimal excludes the packed reader font
+and its row-access code. See [FIRMWARE_BUDGET.md](FIRMWARE_BUDGET.md) for current
+measurements and the partition/asset tradeoffs.
+
 The Host suite runs once and includes actual Full/Minimal Platform builds,
 the Kconfig profile checks, reduced Launcher/runtime navigation, and the
 existing offline/connected Reader cases. Optional component unit tests still

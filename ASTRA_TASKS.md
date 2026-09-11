@@ -299,7 +299,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Unified Manual > authorized Companion > verified HTTPS Date > RTC clock authority, with ten-minute priority holdoff, stale-sample rejection and bounded HTTPS corrections. Existing HTTPS traffic supplies optional validated Date samples without another connection; UTC and offset remain separate, sub-two-second automatic corrections avoid writes, and RTC persistence retains the STOP/calendar/resume protection. Schedulers remain monotonic. See [docs/TIME.md](docs/TIME.md) and [docs/MAINTENANCE_CLI_CONTRACT.md](docs/MAINTENANCE_CLI_CONTRACT.md).
   - Verified all 37 Host targets, 13 CLI PTY scenarios, CLI/Platform/Time ASan/UBSan and ShellCheck. Full/Minimal firmware and profile comparison passed at 3,139,120 / 565,392 bytes; Full adds 19,104 bytes and leaves 6,608 bytes in the existing slot. No hardware flash or partition change was performed; physical USB/power/RTC recovery qualification remains separate.
 
-- [ ] **S1.2: 固件空间治理、Flash 分区重构与静态资源解耦推演 (Firmware Budget Governance, Partition Topology & Asset Decoupling)**
+- [x] **S1.2: 固件空间治理、Flash 分区重构与静态资源解耦推演 (Firmware Budget Governance, Partition Topology & Asset Decoupling)**
   - **背景与愿景**：
     - 实机烧录实测显示，当前 Full 固件已达 3,139,024 字节，距离 3MB 分区硬上限仅剩 6.7KB（0.2% 空间），固件面临空间耗尽风险。
     - 结合板载 16MB 物理 Flash 中尚有约 2.9MB 完全闲置未分配、且固件内嵌字库占据 1.33MB 的客观现实，开展系统性固件预算治理与架构推演。
@@ -313,6 +313,10 @@ Each iteration picks the top unfinished task, implements production code, verifi
        - 评估 LTO 链接时优化、未使用 C++ 虚表/模板裁剪以及 mbedtls/NimBLE 配置微调对纯代码段的实际缩减效果。
     4. *平滑迁移与测试套件自愈*：
        - 确保任何分区变动均能平滑穿透 `partitions.csv`、`tools/build-firmware.sh`、`tools/device-smoke-test.sh` 及 Host 自动化回归，杜绝实机烧录错位。
+  - Selected production `-Os` and lossless 8x8 font-tile sharing after measuring compiler, DEFLATE and tile alternatives. The complete 40,181-glyph Unifont subset shrinks from 1,325,973 to 824,959 bytes. Widths and rows read immutable Flash directly with no heap, decode workspace or shared mutable cache; 16px/24px rendering and SDK behavior are preserved.
+  - Retained the existing factory/A/B slots, NVS and 4 MiB book store. Evaluated equal `0x3f0000` slots, asymmetric recovery/OTA images, external font banks and LTO in [docs/FIRMWARE_BUDGET.md](docs/FIRMWARE_BUDGET.md). The selected reduction restores useful capacity without a data migration or new asset/rollback dependency.
+  - Added per-build `firmware-budget.json` from the generated native partition table, linked font symbol and actual application image. Hardware smoke now matches boot partition addresses/sizes to that report. Current, expanded and asymmetric layout tests remove dependence on a second set of hardcoded offsets; no new size gate or saved baseline is added.
+  - Verified all 39 Host targets, Font/Reader ASan/UBSan, every original glyph pixel, upstream BDF regeneration, English/Chinese renderers, actual Full-image Host OTA streaming and ShellCheck. Full/Minimal builds and profile comparison passed at 2,482,208 / 514,528 bytes. Full saves 656,912 bytes and leaves 663,520 bytes (21.1%) in each existing slot; static internal RAM is 201,815 / 108,315 bytes. No hardware flash was needed.
 
 - [ ] **R1.3: 算法点阵排版样式引擎与墨水屏富文本渲染 (Algorithmic Typography Engine & Rich Text Rendering)**
   - **背景与愿景**：
