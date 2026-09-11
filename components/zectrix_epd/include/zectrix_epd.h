@@ -17,6 +17,9 @@ extern "C" {
 #define ZECTRIX_EPD_PANEL_HEIGHT 300
 #define ZECTRIX_EPD_1BPP_FRAME_BYTES 15000
 #define ZECTRIX_EPD_4BPP_FRAME_BYTES 60000
+#define ZECTRIX_EPD_TILE_COLUMNS 5
+#define ZECTRIX_EPD_TILE_ROWS 4
+#define ZECTRIX_EPD_TILE_COUNT (ZECTRIX_EPD_TILE_COLUMNS * ZECTRIX_EPD_TILE_ROWS)
 
 /** Opaque driver instance. All public operations are synchronous. */
 typedef struct zectrix_epd_t* zectrix_epd_handle_t;
@@ -29,9 +32,26 @@ typedef struct {
 } zectrix_epd_rect_t;
 
 typedef struct {
+    uint16_t black_to_white;
+    uint16_t white_to_black;
+} zectrix_epd_transitions_t;
+
+typedef struct {
     zectrix_epd_rect_t dirty;
     uint32_t changed_pixels;
+    zectrix_epd_transitions_t tiles[ZECTRIX_EPD_TILE_COUNT];
 } zectrix_epd_diff_t;
+
+/** Cumulative completed SPI bytes and observed BUSY waits; no extra I/O. */
+typedef struct {
+    uint64_t spi_bytes;
+    uint64_t ram_bytes;
+    uint64_t busy_us;
+    uint64_t refresh_busy_us;
+    uint32_t refresh_triggers;
+    int16_t temperature_centi_c;
+    int64_t temperature_sampled_us;  /**< -1 when unavailable. */
+} zectrix_epd_metrics_t;
 
 typedef struct {
     spi_host_device_t spi_host;
@@ -65,6 +85,9 @@ esp_err_t zectrix_epd_power_off(zectrix_epd_handle_t handle);
 
 /** True after power_on and before power_off. */
 bool zectrix_epd_is_powered(zectrix_epd_handle_t handle);
+
+/** Copy counters under the existing driver mutex without accessing the panel. */
+esp_err_t zectrix_epd_read_metrics(zectrix_epd_handle_t handle, zectrix_epd_metrics_t* metrics);
 
 /** Copy a bounded range of the existing 1bpp shadow without powering the panel. */
 esp_err_t zectrix_epd_copy_shadow(zectrix_epd_handle_t handle, size_t offset,

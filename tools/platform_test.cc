@@ -429,6 +429,8 @@ int main() {
         };
         platform.Power().ReadSnapshot();
         assert(query("power status").find("mv=3888") != std::string::npos);
+        assert(query("display telemetry").find("frames=0") != std::string::npos);
+        assert(query("display model").find("weights_q8") != std::string::npos);
         assert(query("time status").find("unix_seconds=1709179200") != std::string::npos);
         assert(query("connectivity status").find("ssid=bad?ssid") != std::string::npos);
         fail_at = "snapshot-busy";

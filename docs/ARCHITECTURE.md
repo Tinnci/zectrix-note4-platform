@@ -42,8 +42,8 @@ Applications submit display intent such as `AUTO`, `FAST`, `QUALITY` or
 For automatic 1bpp updates, the driver compares the submitted pixels against
 its existing 15,000-byte shadow and computes exact changed bounds. The service
 skips unchanged submissions and applies its partial-refresh budget and full
-recovery policy. The budget includes both a maximum of eight partial frames
-and accumulated black/white transitions. Large contrast changes select the
+recovery policy. R1.4 uses [spatial debt](DISPLAY_PHYSICS.md), directional
+transitions and aged temperature/supply observations for that budget. Large contrast changes select the
 existing full OTP operation immediately. The driver reports actual changed
 pixels and owns byte alignment and old/new pixel encoding.
 The demo UI submits the full canvas, which removes its separate 15,000-byte

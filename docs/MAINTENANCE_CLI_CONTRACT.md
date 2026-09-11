@@ -142,6 +142,8 @@ time status
 time sync [unix-ms offset-seconds]
 connectivity status
 display status
+display telemetry [after-sequence]
+display model
 app list
 app current
 scene dump
@@ -205,14 +207,26 @@ enables the FreeRTOS trace facility needed for this inspection.
 
 `epd-inspect` reports panel power, batch state, refresh attempts/failures, last
 error and duration, partial-refresh state and dirty region. It includes the
-partial frame count, accumulated changed pixels and the single-update contrast
-threshold. `partial_pixels` counts transitions across successful partial
+partial frame count, accumulated changed pixels, spatial debt/budgets and the
+single-update contrast threshold. Frame/pixel totals no longer set refresh
+deadlines. `partial_pixels` counts transitions across successful partial
 refreshes; repeated changes to the same pixels count again. Its hex dump is the
 first 64 bytes of the last successful 1bpp or 4bpp frame. Partial updates copy
 the existing driver shadow; full updates copy the submitted frame before its
 caller releases it. Errors invalidate the preview. This command neither
 retains caller buffers nor allocates an additional full framebuffer, and it
 does not claim to read the physical panel pixels.
+
+R1.4 adds `display telemetry [after-sequence]` and `display model`. The owner
+copies at most four of the latest sixteen physical-attempt records into the
+existing dispatcher result. The CLI formats that immutable copy as three typed
+CSV rows per frame, with an exclusive continuation cursor and an overwritten
+record count. `display model` reports the active coefficient dictionary and
+energy calibration flags. Neither command refreshes, samples hardware or changes
+model state. Records include failed attempts, actual SPI/BUSY observations and
+sample ages; missing samples and uncalibrated energy remain explicit. See
+[DISPLAY_PHYSICS.md](DISPLAY_PHYSICS.md) and `tools/display-telemetry.py` for the
+model, capture fields and CSV conversion.
 
 While USB maintenance runs, the ESP log callback formats into a local bounded
 buffer and sends records to a 32-record ring without terminal I/O. The ring

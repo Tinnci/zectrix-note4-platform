@@ -25,6 +25,9 @@ constexpr CommandDescriptor kSystem[] = {
 };
 constexpr CommandDescriptor kDisplay[] = {
     Leaf("status", "Refresh state and framebuffer preview", "display status", Handler::kDisplayInspect),
+    Leaf("telemetry", "Copy up to four frame observations as typed CSV rows",
+         "display telemetry [after-sequence]", Handler::kDisplayTelemetry),
+    Leaf("model", "Inspect fixed-point coefficients and calibration", "display model", Handler::kDisplayModel),
 };
 constexpr CommandDescriptor kLog[] = {
     Leaf("follow", "Observe logs until Ctrl+C", "log follow [error|warn|info|debug]",
@@ -62,7 +65,7 @@ constexpr CommandDescriptor kCommands[] = {
          Handler::kVersion, Execution::kImmediate),
     {"system", "System diagnostics", "system <info|heap|tasks|uptime>",
      Access::kReadOnly, Execution::kImmediate, false, kSystem, std::size(kSystem)},
-    {"display", "Display diagnostics", "display status", Access::kReadOnly,
+    {"display", "Display diagnostics", "display <status|telemetry|model>", Access::kReadOnly,
      Execution::kImmediate, false, kDisplay, std::size(kDisplay)},
     {"log", "Log observation", "log <follow|stats>", Access::kReadOnly,
      Execution::kImmediate, false, kLog, std::size(kLog)},
@@ -210,7 +213,8 @@ ExecuteStatus DiagnosticExecutor::Execute(const Invocation& invocation,
         return binary_ != nullptr && binary_->Start(output) ? ExecuteStatus::kBinary
                                                           : ExecuteStatus::kUnavailable;
     }
-    if (command.handler != Handler::kLogFollow && command.handler != Handler::kTimeSync && arguments != 0) {
+    if (command.handler != Handler::kLogFollow && command.handler != Handler::kTimeSync &&
+        command.handler != Handler::kDisplayTelemetry && arguments != 0) {
         return ExecuteStatus::kInvalidArguments;
     }
     if (command.handler == Handler::kVersion) {
@@ -251,6 +255,12 @@ ExecuteStatus DiagnosticExecutor::Execute(const Invocation& invocation,
         case Handler::kTasks: request.operation = ControlOperation::kTasks; break;
         case Handler::kUptime: request.operation = ControlOperation::kUptime; break;
         case Handler::kDisplayInspect: request.operation = ControlOperation::kDisplay; break;
+        case Handler::kDisplayTelemetry:
+            if (arguments > 1 || (arguments == 1 && !Number(invocation[resolution.argument_index], &request.cursor)))
+                return ExecuteStatus::kInvalidArguments;
+            request.operation = ControlOperation::kDisplayTelemetry;
+            break;
+        case Handler::kDisplayModel: request.operation = ControlOperation::kDisplayModel; break;
         case Handler::kPower: request.operation = ControlOperation::kPower; break;
         case Handler::kTime: request.operation = ControlOperation::kTime; break;
         case Handler::kConnectivity: request.operation = ControlOperation::kConnectivity; break;
@@ -407,29 +417,89 @@ ExecuteStatus DiagnosticExecutor::FormatResult(BoundedOutput* output) {
                    static_cast<unsigned long>(d.failed_refresh_count),
                    static_cast<long>(d.last_error), static_cast<unsigned long long>(d.last_duration_us));
         } else if (page_ == 1) {
-            Format(output, "baseline=%s partial_count=%lu/%lu dirty=%u rect=%d,%d %dx%d\r\n"
-                   "partial_pixels=%lu/%lu high_contrast_pixels=%lu",
+            Format(output, "baseline=%s partial_count=%lu dirty=%u rect=%d,%d %dx%d\r\n"
+                   "partial_pixels=%lu high_contrast_pixels=%lu",
                    d.state.baseline == display::BaselineState::Valid1Bpp ? "valid-1bpp" : "unknown",
                    static_cast<unsigned long>(d.state.partial_refresh_count),
-                   static_cast<unsigned long>(display::StateModel::kPartialRefreshLimit),
                    d.state.has_dirty_region, d.state.dirty_region.x, d.state.dirty_region.y,
                    d.state.dirty_region.width, d.state.dirty_region.height,
                    static_cast<unsigned long>(d.state.partial_changed_pixels),
-                   static_cast<unsigned long>(display::StateModel::kPartialPixelLimit),
                    static_cast<unsigned long>(display::StateModel::kHighContrastPixelLimit));
         } else if (page_ == 2) {
+            Format(output, "model_revision=%lu reason=%u debt_q16: mean=%lu/%lu peak=%lu/%lu\r\n"
+                   "Counts are observations; scheduling uses spatial debt. Use display telemetry and display model.",
+                   static_cast<unsigned long>(d.model_revision), static_cast<unsigned>(d.last_reason),
+                   static_cast<unsigned long>(d.debt_mean_q16), static_cast<unsigned long>(d.global_limit_q16),
+                   static_cast<unsigned long>(d.debt_peak_q16), static_cast<unsigned long>(d.local_limit_q16));
+        } else if (page_ == 3) {
             Format(output, "framebuffer: bpp=%u bytes=%lu valid=%u\r\n%s",
                    d.bits_per_pixel, static_cast<unsigned long>(d.framebuffer_bytes),
                    d.framebuffer_valid,
                    d.framebuffer_valid ? "First 64 bytes of the last successful frame:" : "Framebuffer preview unavailable.");
         } else {
-            const std::size_t offset = (page_ - 3) * 16;
+            const std::size_t offset = (page_ - 4) * 16;
             Format(output, "%04zx:", offset);
             for (std::size_t index = offset; index < offset + 16; ++index) {
                 Format(output, " %02x", d.preview[index]);
             }
         }
-        more = page_ < 2 || (d.framebuffer_valid && page_ < 6);
+        more = page_ < 3 || (d.framebuffer_valid && page_ < 7);
+    } else if (active_ == Handler::kDisplayTelemetry) {
+        const auto& batch = result_.display_telemetry;
+        const auto count = std::min<std::size_t>(batch.count, batch.frames.size());
+        if (page_ == 0) {
+            Format(output, "# epd next=%llu latest=%llu lost=%llu frames=%zu",
+                   static_cast<unsigned long long>(batch.next), static_cast<unsigned long long>(batch.latest),
+                   static_cast<unsigned long long>(batch.lost), count);
+        } else if ((page_ - 1) / 3 < count) {
+            const auto& f = batch.frames[(page_ - 1) / 3];
+            const auto sequence = static_cast<unsigned long long>(f.sequence);
+            if ((page_ - 1) % 3 == 0) {
+                Format(output, "frame,%llu,%llu,%u,%u,%ld,%u,%d,%d,%d,%d,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%u",
+                    sequence, static_cast<unsigned long long>(f.started_us), static_cast<unsigned>(f.kind),
+                    static_cast<unsigned>(f.reason), static_cast<long>(f.error), f.flags,
+                    f.window.x, f.window.y, f.window.width, f.window.height,
+                    static_cast<unsigned long>(f.black_to_white), static_cast<unsigned long>(f.white_to_black),
+                    static_cast<unsigned long>(f.duration_us), static_cast<unsigned long>(f.busy_us),
+                    static_cast<unsigned long>(f.refresh_busy_us), static_cast<unsigned long>(f.spi_bytes),
+                    static_cast<unsigned long>(f.ram_bytes), f.waveform_triggers);
+            } else if ((page_ - 1) % 3 == 1) {
+                Format(output, "env,%llu,%d,%lu,%u,%lu,%d,%u", sequence,
+                    f.environment.temperature_centi_c, static_cast<unsigned long>(f.environment.temperature_age_ms),
+                    f.environment.battery_mv, static_cast<unsigned long>(f.environment.battery_age_ms),
+                    f.panel_temperature_centi_c, f.gain_q8);
+            } else {
+                Format(output, "debt,%llu,%lu,%lu,%lu,%lu,%lu,%lu", sequence,
+                    static_cast<unsigned long>(f.model_revision), static_cast<unsigned long>(f.projected_mean_q16),
+                    static_cast<unsigned long>(f.projected_peak_q16), static_cast<unsigned long>(f.committed_mean_q16),
+                    static_cast<unsigned long>(f.committed_peak_q16), static_cast<unsigned long>(f.energy_uj));
+            }
+        }
+        more = page_ < count * 3;
+    } else if (active_ == Handler::kDisplayModel) {
+        const auto& p = result_.display_model;
+        if (page_ == 0) Format(output, "revision=%lu tiles=5x4 tile_pixels=6000 debt_one=65536\r\n"
+            "weights_q8: window=%u flip=%u concentration=%u memory=%u",
+            static_cast<unsigned long>(p.revision), p.window_weight_q8, p.flip_weight_q8,
+            p.concentration_weight_q8, p.memory_weight_q8);
+        else if (page_ == 1) Format(output, "limits_q16: global=%lu local=%lu\r\n"
+            "memory_tau_ms=%lu debt_tau_ms=%lu sample_max_age_ms=%lu (tau=0 disables decay)",
+            static_cast<unsigned long>(p.global_limit_q16), static_cast<unsigned long>(p.local_limit_q16),
+            static_cast<unsigned long>(p.memory_tau_ms), static_cast<unsigned long>(p.debt_tau_ms),
+            static_cast<unsigned long>(p.sample_max_age_ms));
+        else if (page_ == 2) Format(output, "temperature_gain_q8 at C=-10,0,10,25,40: %u,%u,%u,%u,%u\r\n"
+            "unknown_temperature_gain_q8=%u low_battery_mv=%u low_battery_gain_q8=%u",
+            p.temperature_gain_q8[0], p.temperature_gain_q8[1], p.temperature_gain_q8[2],
+            p.temperature_gain_q8[3], p.temperature_gain_q8[4], p.unknown_temperature_gain_q8,
+            p.low_battery_mv, p.low_battery_gain_q8);
+        else {
+            const auto& e = p.energy[page_ - 2];
+            Format(output, "energy mode=%zu calibrated=%u fixed_uj=%lu busy_power_uw=%lu\r\n"
+                "spi_nj_per_byte=%u black_to_white_nj=%u white_to_black_nj=%u", page_ - 2, e.calibrated,
+                static_cast<unsigned long>(e.fixed_uj), static_cast<unsigned long>(e.busy_power_uw),
+                e.spi_nj_per_byte, e.black_to_white_nj, e.white_to_black_nj);
+        }
+        more = page_ < 5;
     }
     if (active_ == Handler::kPower) {
         const auto& p = result_.power;

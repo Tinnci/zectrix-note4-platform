@@ -22,6 +22,7 @@ mkdir -p "$(dirname "$output")"
     "$repo_root/components/zectrix_cli/zectrix_cli_diagnostics.cc" \
     "$repo_root/components/zectrix_cli/zectrix_cli_log.cc" \
     "$repo_root/components/zectrix_display/zectrix_display_state.cc" \
+    "$repo_root/components/zectrix_display/zectrix_display_physics.cc" \
     "$repo_root/tools/cli_host/stdio_transport.cc" \
     "$repo_root/tools/cli_host/simulated_platform.cc" \
     "$repo_root/tools/cli_host/main.cc" \

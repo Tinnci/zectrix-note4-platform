@@ -103,22 +103,52 @@ ControlStatus SimulatedPlatform::Inspect(const ControlRequest& request, ControlR
         static_cast<int16_t>(date.tm_min), static_cast<int16_t>(date.tm_sec)};
     *result = snapshot_;
     if (request.operation == ControlOperation::kInput) result->input = input_trace_.Read(request.cursor);
+    if (request.operation == ControlOperation::kDisplayTelemetry) result->display_telemetry = display_telemetry_.Read(request.cursor);
+    if (request.operation == ControlOperation::kDisplayModel) result->display_model = display_physics_.parameters();
     return ControlStatus::kOk;
 }
 
 void SimulatedPlatform::Refresh() {
     auto& frame = snapshot_.display;
     constexpr uint32_t changed_pixels = 16 * 8;
-    if (!display_state_.CanUsePartial() || display_state_.ShouldRequestFullClean(changed_pixels)) {
+    display::FrameTelemetry telemetry;
+    telemetry.started_us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - started_).count();
+    telemetry.environment = {2500, 3920, 0, 0};
+    display::FrameActivity activity;
+    activity.valid = display_state_.CanUsePartial();
+    activity.window = {0, 0, 16, 8};
+    activity.tiles[0].white_to_black = changed_pixels;
+    const auto prediction = display_physics_.Predict(activity, telemetry.environment, telemetry.started_us);
+    if (prediction.RequiresFull()) {
         display_state_.OnFull1BppSuccess();
+        display_physics_.Clean(telemetry.started_us);
         frame.last_refresh = display::RefreshKind::kFull1Bpp;
         frame.last_duration_us = 250000;
     } else {
         display_state_.OnPartial1BppSuccess({0, 0, 16, 8}, changed_pixels);
+        display_physics_.Commit(prediction, telemetry.started_us);
         frame.last_refresh = display::RefreshKind::kPartial1Bpp;
         frame.last_duration_us = 50000;
     }
     frame.state = display_state_.state();
+    frame.last_reason = prediction.reason;
+    frame.debt_mean_q16 = display_physics_.state().Mean();
+    frame.debt_peak_q16 = display_physics_.state().Peak();
+    frame.global_limit_q16 = display_physics_.parameters().global_limit_q16;
+    frame.local_limit_q16 = display_physics_.parameters().local_limit_q16;
+    telemetry.kind = frame.last_refresh;
+    telemetry.reason = prediction.reason;
+    telemetry.duration_us = frame.last_duration_us;
+    telemetry.window = prediction.RequiresFull() ? display::Rect{0, 0, 400, 300} : activity.window;
+    telemetry.white_to_black = activity.valid ? changed_pixels : 0;
+    // Timing and payload values in the host terminal are explicitly synthetic.
+    telemetry.flags = activity.valid ? display::TransitionsKnown : 0;
+    telemetry.gain_q8 = prediction.gain_q8;
+    telemetry.projected_mean_q16 = prediction.next.Mean();
+    telemetry.projected_peak_q16 = prediction.next.Peak();
+    telemetry.committed_mean_q16 = frame.debt_mean_q16;
+    telemetry.committed_peak_q16 = frame.debt_peak_q16;
+    display_telemetry_.Record(telemetry);
     ++frame.refresh_count;
     input_trace_.Push(std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - started_).count(),
         static_cast<uint8_t>(frame.refresh_count % 3), 0, true);

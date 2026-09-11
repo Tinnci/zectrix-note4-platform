@@ -39,6 +39,8 @@ private:
     input::InputTrace input_trace_;
     int64_t unix_base_ms_ = 1709179200000;
     display::StateModel display_state_;
+    display::PhysicsModel display_physics_;
+    display::TelemetryRecorder display_telemetry_;
     Clock::time_point started_ = Clock::now();
     uint32_t log_sequence_ = 0;
     std::mutex mutex_;

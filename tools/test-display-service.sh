@@ -4,13 +4,17 @@ root_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 work_dir=$(mktemp -d)
 test_binary="$work_dir/display_service_test"
 trap 'rm -rf "$work_dir"' EXIT
+flags=(-std=c++17 -Wall -Wextra -Werror)
+if [ "${ZECTRIX_DISPLAY_SANITIZE:-0}" = 1 ]; then
+  flags+=(-O1 -g "-fsanitize=address,undefined" -fno-omit-frame-pointer)
+fi
 reader_dir="$root_dir/components/zectrix_reader"
 uv run --no-project "$root_dir/tools/generate-reader-fixtures.py" "$work_dir/fixtures"
 "${CC:-cc}" -std=c99 -I"$reader_dir/third_party/miniz" \
   -c "$reader_dir/third_party/miniz/miniz_tinfl.c" -o "$work_dir/inflate.o"
 "${CC:-cc}" -DZECTRIX_READER_FONT_PATH="\"$reader_dir/font/reader_font.bin\"" \
   -c "$reader_dir/zectrix_reader_font_data.S" -o "$work_dir/font.o"
-"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+"${CXX:-c++}" "${flags[@]}" \
   -I"$root_dir/tools/epd_host_include" \
   -I"$root_dir/tools/host_include" \
   -I"$root_dir/components/zectrix_display/include" \
@@ -31,6 +35,7 @@ uv run --no-project "$root_dir/tools/generate-reader-fixtures.py" "$work_dir/fix
   -I"$root_dir/components/zectrix_system/include" \
   -I"$root_dir/components/zectrix_time/include" \
   "$root_dir/components/zectrix_display/zectrix_display_state.cc" \
+  "$root_dir/components/zectrix_display/zectrix_display_physics.cc" \
   "$root_dir/components/zectrix_display/zectrix_display_service.cc" \
   "$root_dir/components/zectrix_epd/zectrix_epd.cc" \
   "$root_dir/components/zectrix_demo_ui/zectrix_canvas.cc" \

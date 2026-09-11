@@ -56,6 +56,8 @@ bool fail_power_off = false, timeout_refresh = false, fail_lock = false;
 int64_t now_us = 0;
 int64_t refresh_busy_us = 0, busy_until_us = 0;
 unsigned refresh_triggers = 0, stuck_refresh = 0;
+uint8_t panel_temperature = 25;
+unsigned received_bytes = 0;
 bool busy_stuck = false;
 std::function<void()> during_delay;
 
@@ -72,11 +74,19 @@ void Reset() {
     now_us = 0;
     refresh_busy_us = busy_until_us = 0;
     refresh_triggers = stuck_refresh = 0;
+    panel_temperature = 25;
+    received_bytes = 0;
     busy_stuck = false;
     during_delay = {};
 }
 
-void ClearTraffic() { packets.clear(); gpio_writes = 0; }
+void ClearTraffic() { packets.clear(); gpio_writes = 0; received_bytes = 0; }
+
+uint32_t SpiBytes() {
+    uint32_t count = packets.size() + received_bytes;
+    for (const auto& packet : packets) count += packet.data.size();
+    return count;
+}
 
 const Packet& PacketFor(uint8_t command) {
     const Packet* result = nullptr;
@@ -141,6 +151,26 @@ zectrix_epd_rect_t ReferenceDirty(const Frame& before, const zectrix_epd_rect_t&
     }
     return right < left ? zectrix_epd_rect_t{} :
         zectrix_epd_rect_t{left, top, right - left + 1, bottom - top + 1};
+}
+
+void CheckTransitions(const Frame& before, const zectrix_epd_rect_t& source,
+                      const uint8_t* pixels, const zectrix_epd_diff_t& difference) {
+    std::array<PixelTransitions, kPhysicsTiles> reference{};
+    for (int y = 0; y < source.height; ++y) for (int x = 0; x < source.width; ++x) {
+        const bool old = Bit(before.data(), 50, source.x + x, source.y + y);
+        const bool next = Bit(pixels, (source.width + 7) / 8, x, y);
+        if (old == next) continue;
+        auto& tile = reference[((source.y + y) / 75) * 5 + (source.x + x) / 80];
+        if (next) ++tile.black_to_white;
+        else ++tile.white_to_black;
+    }
+    uint32_t flips = 0;
+    for (std::size_t tile = 0; tile < reference.size(); ++tile) {
+        assert(reference[tile].black_to_white == difference.tiles[tile].black_to_white);
+        assert(reference[tile].white_to_black == difference.tiles[tile].white_to_black);
+        flips += reference[tile].black_to_white + reference[tile].white_to_black;
+    }
+    assert(flips == difference.changed_pixels);
 }
 
 template <typename Left, typename Right>
@@ -273,11 +303,12 @@ void TestAutomaticRefreshAndBudget() {
     const auto attempts = Inspect(*service).refresh_count;
     Present(*service, frame);
     assert(packets.empty() && gpio_writes == 0 && Inspect(*service).refresh_count == attempts);
+    const auto before_ninth = frame;
     PutBit(frame.data(), 50, 0, 0, false);
     Present(*service, frame);
-    CheckFull(frame);
-    assert(service->state().partial_refresh_count == 0 && !service->state().has_dirty_region);
-    assert(service->state().partial_changed_pixels == 0);
+    CheckPartial(before_ninth, {0, 0, 400, 300}, frame.data());
+    assert(service->state().partial_refresh_count == 9 && service->state().has_dirty_region);
+    assert(service->state().partial_changed_pixels == 10);
     assert(Inspect(*service).preview[0] == 0x7f);
     frame[0] = 0xff;
     assert(Inspect(*service).preview[0] == 0x7f);
@@ -405,7 +436,7 @@ void TestDriverDiffAndWindow() {
     zectrix_epd_rect_t dirty{1, 2, 3, 4};
     assert(zectrix_epd_find_dirty_1bpp(handle, &full, before.data(), before.size(), &dirty) == ESP_ERR_INVALID_STATE);
     SameRect(dirty, zectrix_epd_rect_t{});
-    zectrix_epd_diff_t difference{{1, 2, 3, 4}, 17};
+    zectrix_epd_diff_t difference{{1, 2, 3, 4}, 17, {}};
     assert(zectrix_epd_analyze_1bpp(handle, &full, before.data(), before.size(), &difference) == ESP_ERR_INVALID_STATE);
     SameRect(difference.dirty, zectrix_epd_rect_t{});
     assert(difference.changed_pixels == 0);
@@ -416,7 +447,7 @@ void TestDriverDiffAndWindow() {
     const auto allocation_count = heap_allocations;
     for (int x = 0; x < 400; ++x) {
         for (int width = 1; width <= std::min(17, 400 - x); ++width) {
-            for (int y : {0, 157, 299}) {
+            for (int y : {0, 74, 149, 157, 224, 299}) {
                 const zectrix_epd_rect_t source{x, y, width, std::min(3, 300 - y)};
                 auto pixels = Crop(before, source);
                 assert(zectrix_epd_find_dirty_1bpp(handle, &source, pixels.data(), pixels.size(), &dirty) == ESP_OK);
@@ -435,6 +466,7 @@ void TestDriverDiffAndWindow() {
                 assert(zectrix_epd_analyze_1bpp(handle, &source, pixels.data(), pixels.size(), &difference) == ESP_OK);
                 SameRect(difference.dirty, ReferenceDirty(before, source, pixels.data()));
                 assert(difference.changed_pixels == static_cast<uint32_t>(width * source.height - 1));
+                CheckTransitions(before, source, pixels.data(), difference);
             }
         }
     }
@@ -476,6 +508,7 @@ void TestDriverDiffAndWindow() {
     assert(zectrix_epd_analyze_1bpp(handle, &full, inverted.data(), inverted.size(), &difference) == ESP_OK);
     SameRect(difference.dirty, full);
     assert(difference.changed_pixels == 120000);
+    CheckTransitions(expected, full, inverted.data(), difference);
     const zectrix_epd_rect_t invalid{1, 1, INT_MAX, INT_MAX};
     assert(zectrix_epd_refresh_partial_1bpp(handle, &invalid, pixels.data(), pixels.size()) == ESP_ERR_INVALID_ARG);
     assert(zectrix_epd_find_dirty_1bpp(handle, &full, expected.data(), SIZE_MAX, &dirty) == ESP_ERR_INVALID_SIZE);
@@ -558,6 +591,129 @@ void TestBatchAndGray() {
     ClearTraffic();
     Present(*service, frame);
     CheckFull(frame);
+}
+
+FrameTelemetry Latest(const DisplayService& service) {
+    const auto sequence = Inspect(service).refresh_count;
+    const auto batch = service.ReadTelemetry(sequence - 1);
+    assert(batch.count == 1 && batch.frames[0].sequence == sequence);
+    return batch.frames[0];
+}
+
+void TestPhysicsTelemetry() {
+    Reset();
+    auto service = CreateService();
+    const auto allocated = heap_allocations;
+    Frame frame;
+    frame.fill(0xff);
+    refresh_busy_us = 80000;
+    service->ObserveBattery(3850, now_us);
+    ClearTraffic();
+    Present(*service, frame);
+    auto sample = Latest(*service);
+    assert(sample.reason == RefreshReason::Recovery && sample.kind == RefreshKind::kFull1Bpp);
+    assert((sample.flags & (DriverMetricsKnown | PanelTemperatureRead)) == (DriverMetricsKnown | PanelTemperatureRead));
+    assert(!(sample.flags & (TransitionsKnown | EnergyEstimated)));
+    assert(sample.ram_bytes == 30000 && sample.spi_bytes == SpiBytes());
+    assert(sample.busy_us == 80000 && sample.refresh_busy_us == 80000 && sample.waveform_triggers == 1);
+    assert(sample.duration_us > sample.busy_us && sample.panel_temperature_centi_c == 2500);
+    assert(sample.environment.temperature_age_ms == UINT32_MAX && sample.gain_q8 == 384);
+    assert(sample.environment.battery_mv == 3850 && sample.environment.battery_age_ms == 0);
+    now_us += 1000000;
+    const auto before = frame;
+    PutBit(frame.data(), 50, 19, 31, false);
+    PutBit(frame.data(), 50, 28, 38, false);
+    ClearTraffic();
+    Present(*service, frame);
+    sample = Latest(*service);
+    assert(sample.ram_bytes == CheckPartial(before, {0, 0, 400, 300}, frame.data()));
+    assert(sample.spi_bytes == SpiBytes());
+    assert(sample.black_to_white == 0 && sample.white_to_black == 2 && (sample.flags & TransitionsKnown));
+    assert(!(sample.flags & PanelTemperatureRead) && sample.environment.temperature_centi_c == 2500);
+    assert(sample.environment.temperature_age_ms >= 1000 && sample.gain_q8 == 256);
+    assert(sample.committed_peak_q16 > 0 && sample.committed_peak_q16 == sample.projected_peak_q16);
+    const auto sequence = sample.sequence;
+    ClearTraffic();
+    Present(*service, frame);
+    assert(service->ReadTelemetry(sequence).count == 0 && packets.empty() && gpio_writes == 0);
+    // A cache timestamp is never relabeled as a fresh sensor measurement.
+    now_us += 61000000;
+    frame[0] ^= 0x80;
+    Present(*service, frame);
+    sample = Latest(*service);
+    assert(sample.environment.temperature_age_ms > 60000 && sample.environment.battery_age_ms > 60000);
+    assert(sample.gain_q8 == 384);
+    panel_temperature = 255;
+    Present(*service, frame, DisplayIntent::FullClean);
+    assert(!(Latest(*service).flags & PanelTemperatureRead));
+    frame[0] ^= 0x80;
+    Present(*service, frame);
+    assert(Latest(*service).environment.temperature_age_ms == UINT32_MAX);
+    panel_temperature = 0;
+    Present(*service, frame, DisplayIntent::FullClean);
+    assert((Latest(*service).flags & PanelTemperatureRead) && Latest(*service).panel_temperature_centi_c == 0);
+    frame[0] ^= 0x80;
+    service->ObserveBattery(3300, now_us);
+    Present(*service, frame);
+    assert(Latest(*service).gain_q8 == 640);
+    service->ObserveBattery(0, now_us);
+    frame[0] ^= 0x80;
+    Present(*service, frame);
+    assert(Latest(*service).gain_q8 == 512 && Latest(*service).environment.battery_age_ms == UINT32_MAX);
+
+    auto parameters = service->physics_parameters();
+    parameters.revision = 42;
+    parameters.energy[2] = {100, 20000, 0, 0, 0, true};
+    assert(service->SetPhysicsParameters(parameters));
+    frame[0] ^= 0x80;
+    Present(*service, frame);
+    sample = Latest(*service);
+    assert(sample.model_revision == 42 && (sample.flags & EnergyEstimated) && sample.energy_uj == 1700);
+    const auto committed = sample.committed_peak_q16;
+    frame[0] ^= 0x80;
+    fail_power_off = true;
+    assert(service->Present1Bpp(DisplayIntent::Auto, frame.data(), frame.size()) == ESP_FAIL);
+    sample = Latest(*service);
+    assert(sample.error == ESP_FAIL && !(sample.flags & EnergyEstimated));
+    assert(sample.committed_peak_q16 == committed && sample.projected_peak_q16 > committed);
+    assert(!service->CanUsePartial());
+    Present(*service, frame);
+    sample = Latest(*service);
+    assert(sample.reason == RefreshReason::Recovery && sample.committed_peak_q16 == 0);
+    assert(!(sample.flags & TransitionsKnown));
+    // Failed BUSY waits are measured too, without committing speculative debt.
+    frame[0] ^= 0x80;
+    timeout_refresh = true;
+    assert(service->Present1Bpp(DisplayIntent::Auto, frame.data(), frame.size()) == ESP_ERR_TIMEOUT);
+    sample = Latest(*service);
+    assert(sample.busy_us == 2000000 && sample.refresh_busy_us == 2000000);
+    assert(sample.error == ESP_ERR_TIMEOUT && sample.committed_peak_q16 == 0);
+    timeout_refresh = false;
+    Present(*service, frame);
+
+    std::array<uint8_t, DisplayService::kFrameBytes4Bpp> gray{};
+    ClearTraffic();
+    assert(service->BeginBatch() == ESP_OK);
+    ClearTraffic();
+    assert(service->Present4Bpp(DisplayIntent::Quality, gray.data(), gray.size()) == ESP_OK);
+    sample = Latest(*service);
+    assert(sample.kind == RefreshKind::kFull4Bpp && sample.reason == RefreshReason::Gray);
+    assert(sample.flags & PowerBatch);
+    assert(!(sample.flags & TransitionsKnown));
+    assert(sample.waveform_triggers == ssd2683_waveform::kVendorGray16RenderPassCount + 1);
+    assert(sample.ram_bytes == 30000 * sample.waveform_triggers && sample.spi_bytes == SpiBytes());
+    assert(sample.busy_us == sample.refresh_busy_us && sample.duration_us > sample.busy_us);
+    assert(service->EndBatch() == ESP_OK);
+    Present(*service, frame);
+    for (unsigned step = 0; step < 40; ++step) {
+        ClearTraffic();
+        frame[0] ^= 0x80;
+        Present(*service, frame);
+    }
+    ClearTraffic();
+    const auto batch = service->ReadTelemetry();
+    assert(batch.count == 4 && batch.lost == batch.latest - kTelemetryCapacity);
+    assert(packets.empty() && gpio_writes == 0 && heap_allocations == allocated);
 }
 
 void TestGrayTimeoutRecovery() {
@@ -1739,7 +1895,8 @@ esp_err_t spi_bus_remove_device(spi_device_handle_t device) { --devices; delete 
 esp_err_t spi_device_polling_transmit(spi_device_handle_t, spi_transaction_t* transaction) {
     assert(pins[GPIO_NUM_11] == 0 && pins[GPIO_NUM_6] == 1);
     if (transaction->flags & SPI_TRANS_USE_RXDATA) {
-        transaction->rx_data[0] = 25;
+        transaction->rx_data[0] = panel_temperature;
+        ++received_bytes;
         return ESP_OK;
     }
     const auto* bytes = transaction->flags & SPI_TRANS_USE_TXDATA ? transaction->tx_data :
@@ -1776,6 +1933,7 @@ int main() {
     TestFailuresRecoverWithFullFrame();
     TestBatchAndGray();
     TestGrayTimeoutRecovery();
+    TestPhysicsTelemetry();
     TestForegroundDisplayScheduling();
     TestShutdownReleasesSpi();
     TestUiTraffic();

@@ -21,16 +21,12 @@ struct State {
 
 class StateModel {
 public:
-    static constexpr uint32_t kPartialRefreshLimit = 8;
     static constexpr uint32_t kPanelPixels = 400 * 300;
-    // Full cleanup starts at 25% changed pixels in one update, or 50% summed
-    // across partial updates including the pending frame. Repeated flips count.
+    // Retain the large single-update cleanup rule alongside the physics model.
     static constexpr uint32_t kHighContrastPixelLimit = kPanelPixels / 4;
-    static constexpr uint32_t kPartialPixelLimit = kPanelPixels / 2;
 
     const State& state() const { return state_; }
     bool CanUsePartial() const;
-    bool ShouldRequestFullClean(uint32_t changed_pixels = 0) const;
     void OnFull1BppSuccess();
     void OnPartial1BppSuccess(const Rect& region, uint32_t changed_pixels);
     void OnFull4BppSuccess();

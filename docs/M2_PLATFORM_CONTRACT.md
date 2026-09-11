@@ -78,8 +78,8 @@ support. They are not application API.
 - An unchanged `Auto` or `Fast` submission with a valid baseline does not refresh or change counters.
 - Successful 4bpp refresh makes the baseline unknown.
 - A refresh error or timeout makes the baseline unknown.
-- After eight partial refreshes, the next changed submission requests a full clean refresh.
-- Large single-frame changes or accumulated pixel transitions can require a full refresh sooner.
+- R1.4 selects cleanup from projected spatial debt, temperature and supply observations.
+- Large single-frame changes retain the 30,000-pixel full-refresh rule.
 - Actual changed pixel bounds are unioned until a full refresh or error clears them.
 
 The pure state model and host tests implement M2.1a. `DisplayService` provides
@@ -102,8 +102,8 @@ including the header and footer, without a separate patch buffer.
 
 An unchanged `Auto` or `Fast` submission returns without panel power changes,
 refresh operations, inspection-counter changes or partial-budget use. This
-also applies after eight partial refreshes. An unknown service state or an
-invalid driver shadow requires recovery with the supplied full frame, even
+also applies when accumulated debt is near its cleanup budget. An unknown
+service state or invalid driver shadow requires recovery with the supplied full frame, even
 when the pixels appear unchanged. `Quality` and `FullClean` always use the
 full 1bpp path. A 4bpp frame accepts `Quality` only. The service owns panel power
 for each refresh. Driver or panel-power failures invalidate the baseline.
@@ -114,39 +114,32 @@ refresh method, or `EndBatch()` concurrently. A future multi-task consumer must
 first add service-level transaction ownership; the driver mutex alone is not a
 service transaction lock.
 
-## R1.2 adaptive full refresh policy
+## R1.4 adaptive full refresh policy
 
-`Auto` and `Fast` use the same policy. Once a valid 1bpp image exists, a changed
-submission uses the full OTP path if any of these conditions hold:
+R1.4 supersedes R1.2's eight-frame and 60,000-accumulated-pixel thresholds.
+`Auto` and `Fast` predict a proposed partial update using twenty 80 x 75 tiles,
+actual directional flips, driven-window exposure, local concentration and
+signed transition memory. Freshness-aware temperature and battery gains adjust
+nonnegative Q16.16 debt. A projected mean of 0.75 units or local peak of 4 units
+selects the existing full OTP path. At least 30,000 transitions in one pending
+submission still requires full cleanup. Explicit Quality/FullClean, unknown
+baseline recovery and grayscale behavior retain their existing paths.
 
-| Condition | Threshold on the 400 x 300 panel |
-| --- | --- |
-| Completed partial refreshes since the last full refresh | 8 |
-| Black/white transitions in the pending submission | At least 30,000 pixels (25%) |
-| Transitions from successful partial refreshes plus the pending submission | At least 60,000 pixels (50%) |
+Only successful physical completion, including owned power cleanup, commits
+the prediction. Failed frames retain old debt but invalidate the image
+baseline; full recovery resets it. Diagnostic frame/pixel totals saturate at
+UINT32_MAX and never schedule a refresh. Identical submissions neither refresh
+nor relax debt. Default debt relaxation is disabled, so idle time alone cannot
+justify forgetting a ghost. Packed patches retain their supplied full fallback.
 
-The driver counts actual changed bits in both directions. The policy does not
-use bounding-box area as a substitute: two distant changed pixels still count
-as two. Repeated flips of the same pixel each contribute to the accumulated
-count, including changes that restore an earlier image. For example, updates
-that each flip 12,000 pixels perform four partial refreshes, then a full
-refresh for the fifth update. Small clock updates can use the full eight-frame
-allowance. Unchanged submissions consume neither budget and do not trigger a
-scheduled cleanup.
-
-Only successful partial operations add to the counters. A successful full
-refresh resets both counters and the dirty-region union. A refresh or power
-failure clears the counters and invalidates the baseline; the next 1bpp
-submission must recover with a full frame. Grayscale also invalidates the
-1bpp baseline. Explicit packed-patch calls use their supplied full frame for
-adaptive cleanup, just as they do for the frame-count limit and recovery.
-
-`epd-inspect` exposes `partial_count`, `partial_pixels` and
-`high_contrast_pixels` for observation. The pixel thresholds are initial policy
-defaults; Host tests verify selection and state recovery. Physical ghosting,
-temperature sensitivity, latency and energy still need panel measurement.
-The policy uses the existing OTP full-refresh operation and does not change
-waveforms, BUSY handling or power sequencing.
+The parameter dictionary, mathematical assumptions, sampling limits and export
+format are described in [DISPLAY_PHYSICS.md](DISPLAY_PHYSICS.md). Sixteen bounded
+frame records reuse the driver's actual SPI/BUSY operations and the shell's
+existing battery samples. The recorder and CLI copies remain foreground-owned.
+No waveform change, extra framebuffer, sensor polling task or periodic wake is
+introduced. Model scores are uncalibrated optical-risk proxies; energy estimates
+require caller-supplied calibration. `display status`, `display telemetry` and
+`display model` inspect this state without triggering hardware work.
 
 ## Other platform services
 

@@ -73,7 +73,9 @@ esp_err_t ValidatePatch(const zectrix_epd_rect_t* rect, const uint8_t* pixels,
 }  // namespace
 
 struct zectrix_epd_t {
-    explicit zectrix_epd_t(const zectrix_epd_config_t& value) : config(value) {}
+    explicit zectrix_epd_t(const zectrix_epd_config_t& value) : config(value) {
+        metrics.temperature_sampled_us = -1;
+    }
 
     zectrix_epd_config_t config = {};
     spi_device_handle_t spi = nullptr;
@@ -87,12 +89,14 @@ struct zectrix_epd_t {
     bool controller_ready = false;
     bool internal_power_on = false;
     bool shadow_valid = false;
+    zectrix_epd_metrics_t metrics{};
 
     zectrix_epd_diff_t Analyze(const zectrix_epd_rect_t& rect,
-                              const uint8_t* pixels) const {
+                              const uint8_t* pixels, bool count_transitions = true) const {
         const size_t stride = static_cast<size_t>((rect.width + 7) / 8);
         const unsigned shift = rect.x & 7;
         uint32_t changed_pixels = 0;
+        zectrix_epd_diff_t result{};
         int left = rect.width, right = -1, top = rect.height, bottom = -1;
         for (int y = 0; y < rect.height; ++y) {
             const auto* old_row = shadow + static_cast<size_t>(rect.y + y) * kBwStride;
@@ -109,6 +113,20 @@ struct zectrix_epd_t {
                 const uint8_t difference = (old_bits ^ new_row[column]) & mask;
                 if (difference == 0) continue;
                 changed_pixels += __builtin_popcount(static_cast<unsigned>(difference));
+                if (count_transitions) {
+                    // A packed byte can cross one 80-pixel tile boundary.
+                    for (int bit = 0; bit < valid_bits;) {
+                        const int absolute_x = rect.x + x + bit;
+                        const int bits = std::min(valid_bits - bit, 80 - absolute_x % 80);
+                        const auto segment = static_cast<uint8_t>(0xffu << (8 - bits)) >> bit;
+                        const unsigned changed = difference & segment;
+                        auto& tile = result.tiles[((rect.y + y) / 75) * ZECTRIX_EPD_TILE_COLUMNS + absolute_x / 80];
+                        const auto rising = __builtin_popcount(changed & new_row[column]);
+                        tile.black_to_white += rising;
+                        tile.white_to_black += __builtin_popcount(changed) - rising;
+                        bit += bits;
+                    }
+                }
                 // Skip equal bytes, then resolve the two horizontal pixel edges.
                 int first = 0, last = valid_bits - 1;
                 while ((difference & (0x80u >> first)) == 0) ++first;
@@ -120,8 +138,9 @@ struct zectrix_epd_t {
             }
         }
         if (right < left) return {};
-        return {{rect.x + left, rect.y + top, right - left + 1, bottom - top + 1},
-                changed_pixels};
+        result.dirty = {rect.x + left, rect.y + top, right - left + 1, bottom - top + 1};
+        result.changed_pixels = changed_pixels;
+        return result;
     }
 
     void SetCs(int level) { gpio_set_level(config.pin_cs, level); }
@@ -183,7 +202,7 @@ struct zectrix_epd_t {
         return ESP_OK;
     }
 
-    esp_err_t Transmit(const uint8_t* data, size_t size) {
+    esp_err_t Transmit(const uint8_t* data, size_t size, bool ram = false) {
         if (spi == nullptr || data == nullptr || size == 0) {
             return ESP_ERR_INVALID_STATE;
         }
@@ -206,6 +225,8 @@ struct zectrix_epd_t {
             if (err != ESP_OK) {
                 return err;
             }
+            metrics.spi_bytes += chunk;
+            if (ram) metrics.ram_bytes += chunk;
             offset += chunk;
         }
         return ESP_OK;
@@ -227,10 +248,10 @@ struct zectrix_epd_t {
         return err;
     }
 
-    esp_err_t SendBytes(const uint8_t* data, size_t size) {
+    esp_err_t SendBytes(const uint8_t* data, size_t size, bool ram = false) {
         SetDc(1);
         SetCs(0);
-        const esp_err_t err = Transmit(data, size);
+        const esp_err_t err = Transmit(data, size, ram);
         SetCs(1);
         return err;
     }
@@ -251,25 +272,31 @@ struct zectrix_epd_t {
         err = spi_device_polling_transmit(spi, &transaction);
         if (err == ESP_OK) {
             *value = transaction.rx_data[0];
+            ++metrics.spi_bytes;
         }
         SetCs(1);
         const esp_err_t restore_err = ConfigureSpi(false);
         return err != ESP_OK ? err : restore_err;
     }
 
-    esp_err_t WaitBusy(const char* operation, int64_t timeout_us = -1) {
+    esp_err_t WaitBusy(const char* operation, int64_t timeout_us = -1, bool refresh = false) {
         if (timeout_us < 0) {
             timeout_us = static_cast<int64_t>(config.busy_timeout_ms) * 1000;
         }
         const int64_t start = esp_timer_get_time();
+        esp_err_t result = ESP_OK;
         while (gpio_get_level(config.pin_busy) == 0) {
             if (esp_timer_get_time() - start >= timeout_us) {
                 ESP_LOGE(kTag, "BUSY timeout during %s", operation);
-                return ESP_ERR_TIMEOUT;
+                result = ESP_ERR_TIMEOUT;
+                break;
             }
             vTaskDelay(std::max<TickType_t>(1, pdMS_TO_TICKS(10)));
         }
-        return ESP_OK;
+        const auto duration = std::max<int64_t>(0, esp_timer_get_time() - start);
+        metrics.busy_us += duration;
+        if (refresh) metrics.refresh_busy_us += duration;
+        return result;
     }
 
     esp_err_t HardwareReset() {
@@ -357,6 +384,12 @@ struct zectrix_epd_t {
         uint8_t temperature = 25;
         if (err == ESP_OK && owns_bus) {
             err = ReadData(&temperature);
+            if (err == ESP_OK) {
+                // Keep the established OTP encoding. Unqualified negative/error
+                // byte encodings are unknown observations, never a fake 25 C.
+                metrics.temperature_centi_c = temperature <= 85 ? temperature * 100 : 0;
+                metrics.temperature_sampled_us = temperature <= 85 ? esp_timer_get_time() : -1;
+            }
         }
         if (err == ESP_ERR_NOT_SUPPORTED) {
             temperature = 25;
@@ -389,7 +422,10 @@ struct zectrix_epd_t {
         }
         if (err == ESP_OK) err = SendCommand(0x12);
         if (err == ESP_OK) err = SendData(0x00);
-        if (err == ESP_OK) err = WaitBusy("display refresh");
+        if (err == ESP_OK) {
+            ++metrics.refresh_triggers;
+            err = WaitBusy("display refresh", -1, true);
+        }
         if (err != ESP_OK) {
             // Do not issue 0x02 while BUSY is still asserted. Mark the
             // controller unusable so power_off() cuts the external rail.
@@ -428,7 +464,7 @@ struct zectrix_epd_t {
                 line[static_cast<size_t>(source_byte) * 2] = first;
                 line[static_cast<size_t>(source_byte) * 2 + 1] = second;
             }
-            err = SendBytes(line.data(), line.size());
+            err = SendBytes(line.data(), line.size(), true);
         }
         if (err == ESP_OK) err = TriggerOtpRefresh();
         return err;
@@ -440,7 +476,7 @@ struct zectrix_epd_t {
         esp_err_t err = SetTemperatureForOtp();
         if (err == ESP_OK) err = SendCommand(0x10);
         for (int y = 0; err == ESP_OK && y < kHeight; ++y) {
-            err = SendBytes(white_line.data(), white_line.size());
+            err = SendBytes(white_line.data(), white_line.size(), true);
         }
         if (err == ESP_OK) err = TriggerOtpRefresh();
         return err;
@@ -538,7 +574,7 @@ struct zectrix_epd_t {
                 }
                 line[byte_x] = packed;
             }
-            err = SendBytes(line.data(), line.size());
+            err = SendBytes(line.data(), line.size(), true);
         }
         return err;
     }
@@ -553,9 +589,12 @@ struct zectrix_epd_t {
         }
         if (err == ESP_OK) err = SendCommand(0x12);
         if (err == ESP_OK) err = SendData(0x00);
-        if (err == ESP_OK) vTaskDelay(pdMS_TO_TICKS(10));
         if (err == ESP_OK) {
-            err = WaitBusy("external display refresh", kExternalRefreshTimeoutUs);
+            ++metrics.refresh_triggers;
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        if (err == ESP_OK) {
+            err = WaitBusy("external display refresh", kExternalRefreshTimeoutUs, true);
         }
         return err;
     }
@@ -710,6 +749,14 @@ extern "C" bool zectrix_epd_is_powered(zectrix_epd_handle_t handle) {
     return guard.locked() && handle->powered;
 }
 
+extern "C" esp_err_t zectrix_epd_read_metrics(zectrix_epd_handle_t handle, zectrix_epd_metrics_t* metrics) {
+    if (handle == nullptr || metrics == nullptr) return ESP_ERR_INVALID_ARG;
+    MutexGuard guard(handle->mutex);
+    if (!guard.locked()) return ESP_ERR_TIMEOUT;
+    *metrics = handle->metrics;
+    return ESP_OK;
+}
+
 extern "C" esp_err_t zectrix_epd_copy_shadow(zectrix_epd_handle_t handle,
                                               size_t offset,
                                               uint8_t* destination,
@@ -787,7 +834,7 @@ extern "C" esp_err_t zectrix_epd_refresh_partial_1bpp(
     if (!handle->powered || !handle->controller_ready || !handle->shadow_valid) {
         return ESP_ERR_INVALID_STATE;
     }
-    const auto dirty = handle->Analyze(*rect, pixels).dirty;
+    const auto dirty = handle->Analyze(*rect, pixels, false).dirty;
     if (dirty.width == 0) return ESP_OK;
 
     esp_err_t err = handle->PrepareOtpRefresh();
@@ -829,7 +876,7 @@ extern "C" esp_err_t zectrix_epd_refresh_partial_1bpp(
             line[static_cast<size_t>(relative_x / 4)] |=
                 static_cast<uint8_t>(transition << (6 - (relative_x & 3) * 2));
         }
-        err = handle->SendBytes(line.data(), static_cast<size_t>(output_stride));
+        err = handle->SendBytes(line.data(), static_cast<size_t>(output_stride), true);
     }
     if (err == ESP_OK) err = handle->TriggerOtpRefresh();
     if (err == ESP_OK) {
