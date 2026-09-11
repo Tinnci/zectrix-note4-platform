@@ -67,8 +67,18 @@ struct Page {
 
 int FontHeight(FontSize size);
 int GlyphWidth(uint32_t codepoint, FontSize size);
-// Each glyph has 16 big-endian, left-aligned bitmap rows after a width byte.
-const uint8_t* GlyphBitmap(uint32_t codepoint);
+// Immutable flash views stay valid across later glyph lookups. No cache or
+// decompression buffer is needed; each row combines two shared 8x8 tiles.
+struct BitmapGlyph {
+    std::array<const uint8_t*, 4> tiles{};
+    uint8_t width = 0;
+    uint16_t Row(unsigned row) const {
+        if (row >= 16 || width == 0) return 0;
+        const unsigned pair = (row / 8) * 2;
+        return static_cast<uint16_t>(tiles[pair][row % 8]) << 8 | tiles[pair + 1][row % 8];
+    }
+};
+BitmapGlyph GlyphBitmap(uint32_t codepoint);
 bool IsCjk(uint32_t codepoint);
 
 class Engine {

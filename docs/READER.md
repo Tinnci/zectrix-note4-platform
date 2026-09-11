@@ -122,6 +122,12 @@ Encrypted ZIP members and EPUBs with `META-INF/encryption.xml` are rejected,
 including font-obfuscated EPUBs. Other unsupported Unicode glyphs use the
 replacement bitmap. See the [font notice](../components/zectrix_reader/font/README.md).
 
+The built-in font uses shared 8x8 bitmap tiles. It preserves all 40,181 glyph
+slots while reducing font Flash from 1,325,973 to 824,959 bytes. Width and row
+lookups read immutable Flash data without a cache, allocation or file access.
+Pagination, 16px/24px rendering and saved anchors keep their existing behavior.
+See [FIRMWARE_BUDGET.md](FIRMWARE_BUDGET.md).
+
 ## Saved positions and phone sync
 
 The filename is the book ID; source length also has to match when restoring a

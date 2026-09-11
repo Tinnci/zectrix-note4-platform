@@ -35,7 +35,7 @@ bash "${build_args[@]}"
 printf 'Flashing firmware to %s...\n' "$port"
 idf.py --ccache -B "$build_dir" -p "$port" flash
 printf 'Capturing serial boot logs for 6 seconds...\n'
-python3 - "$port" "$build_dir" <<'PYEOF'
+python3 - "$port" "$build_dir" "$repo_dir/tools" <<'PYEOF'
 import json
 import re
 import sys
@@ -45,8 +45,12 @@ from pathlib import Path
 import serial
 from esptool.reset import HardReset
 
+sys.path.insert(0, sys.argv[3])
+from firmware_budget import boot_partition_matches
+
 build_dir = Path(sys.argv[2])
 config = json.loads((build_dir / "config/sdkconfig.json").read_text())
+partitions = json.loads((build_dir / "firmware-budget.json").read_text())["partitions"]
 # Count the mandatory catalog and the service-backed optional destinations.
 expected_apps = 9 + sum(bool(config.get(f"ZECTRIX_ENABLE_{module}"))
                         for module in ("CONNECTIVITY", "READER", "BOOK_TRANSFER", "USB_HOST", "RUNTIME", "UTILITIES"))
@@ -80,8 +84,8 @@ checks = {
     "8 MiB PSRAM": "Found 8MB PSRAM device" in output,
     "Octal PSRAM": "octal_psram:" in output,
     "eFuse revision": "efuse block revision:" in output,
-    "partition table": all(re.search(rf"boot:.*\b{name}\b", output)
-                           for name in ("factory", "ota_0", "ota_1", "otadata", "books")),
+    "partition table addresses and sizes": all(boot_partition_matches(output, partition)
+                                               for partition in partitions),
     "application initialization": "heap M2-equivalent platform:" in output,
     "application runtime": "heap M3 runtime active:" in output,
     "first Launcher frame and boot confirmation": ready is not None,

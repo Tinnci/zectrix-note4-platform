@@ -1364,9 +1364,9 @@ void TestReaderComposition() {
     const auto small = reader.engine().page().count;
     const auto glyph = reader.engine().page().glyphs[0];
     assert(glyph.codepoint == U'第');
-    const auto* bitmap = GlyphBitmap(glyph.codepoint);
+    const auto bitmap = GlyphBitmap(glyph.codepoint);
     for (int row = 0; row < 16; ++row) {
-        const uint16_t bits = static_cast<uint16_t>(bitmap[row * 2 + 1]) << 8 | bitmap[row * 2 + 2];
+        const uint16_t bits = bitmap.Row(row);
         for (int col = 0; col < 16; ++col)
             assert(Bit(ui.canvas().data(), 50, 8 + glyph.x + col, 48 + glyph.y + row) == !(bits & (0x8000 >> col)));
     }

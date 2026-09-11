@@ -10,13 +10,12 @@ namespace zectrix::ui {
 using namespace zectrix::reader;
 
 void DrawGlyph(ZectrixCanvas& canvas, int x, int y, uint32_t cp, FontSize font, bool inverted) {
-    const auto* bitmap = GlyphBitmap(cp);
+    const auto bitmap = GlyphBitmap(cp);
     const int height = FontHeight(font);
-    const int width = GlyphWidth(cp, font);
+    const int width = bitmap.width * height / 16;
     for (int row = 0; row < height; ++row) {
         const int source_row = row * 16 / height;
-        const uint16_t bits = static_cast<uint16_t>(bitmap[1 + source_row * 2]) << 8 |
-                              bitmap[2 + source_row * 2];
+        const uint16_t bits = bitmap.Row(source_row);
         for (int col = 0; col < width; ++col)
             if (bits & (0x8000 >> (col * 16 / height))) canvas.Pixel(x + col, y + row, !inverted);
     }

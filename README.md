@@ -159,6 +159,11 @@ render within the boot confirmation window. See
 rollback behavior, the streamed CRC/header verification API and the
 fresh-configuration build command.
 
+Production profiles use `-Os` and a shared-tile reader font. Builds report
+remaining application capacity in `firmware-budget.json`. See
+[docs/FIRMWARE_BUDGET.md](docs/FIRMWARE_BUDGET.md) for measured savings and the
+partition/asset tradeoffs.
+
 ## Book reader
 
 Open **BOOK READER**, choose a book with UP/DOWN, and press OK. While reading,

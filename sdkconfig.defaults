@@ -3,6 +3,9 @@ CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
 
+# Production builds favor size while retaining assertions and debug symbols.
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+
 # L1.2 permits UTF-8 book names up to 63 bytes plus the SPIFFS path prefix.
 CONFIG_SPIFFS_OBJ_NAME_LEN=96
 # Measured parser and bookmark call chains need headroom above the 3584-byte default.
