@@ -1,4 +1,5 @@
 #include "zectrix_reader.h"
+#include "zectrix_typography.h"
 
 extern "C" const uint8_t zectrix_reader_font_data[];
 
@@ -46,12 +47,11 @@ BitmapGlyph GlyphBitmap(uint32_t codepoint) {
 }
 
 int FontHeight(FontSize size) { return size == FontSize::Large ? 24 : 16; }
-int GlyphWidth(uint32_t codepoint, FontSize size) {
-    return Width(GlyphIndex(codepoint)) * FontHeight(size) / 16;
+int GlyphWidth(uint32_t codepoint, FontSize size, TextStyle style) {
+    return text::MeasureGlyph(codepoint, Width(GlyphIndex(codepoint)), FontHeight(size), style).advance;
 }
-bool IsCjk(uint32_t cp) {
-    return (cp >= 0x2e80 && cp <= 0x9fff) || (cp >= 0xac00 && cp <= 0xd7ff) ||
-        (cp >= 0xf900 && cp <= 0xfaff) || (cp >= 0xff00 && cp <= 0xffef) ||
-        (cp >= 0x20000 && cp <= 0x323af);
+int GlyphHeight(uint32_t codepoint, FontSize size, TextStyle style) {
+    return text::MeasureGlyph(codepoint, Width(GlyphIndex(codepoint)), FontHeight(size), style).height;
 }
+bool IsCjk(uint32_t cp) { return text::IsCjk(cp); }
 }  // namespace zectrix::reader

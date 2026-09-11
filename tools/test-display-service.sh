@@ -5,6 +5,7 @@ work_dir=$(mktemp -d)
 test_binary="$work_dir/display_service_test"
 trap 'rm -rf "$work_dir"' EXIT
 reader_dir="$root_dir/components/zectrix_reader"
+uv run --no-project "$root_dir/tools/generate-reader-fixtures.py" "$work_dir/fixtures"
 "${CC:-cc}" -std=c99 -I"$reader_dir/third_party/miniz" \
   -c "$reader_dir/third_party/miniz/miniz_tinfl.c" -o "$work_dir/inflate.o"
 "${CC:-cc}" -DZECTRIX_READER_FONT_PATH="\"$reader_dir/font/reader_font.bin\"" \
@@ -17,7 +18,7 @@ reader_dir="$root_dir/components/zectrix_reader"
   -I"$root_dir/components/zectrix_epd/private_include" \
   -I"$root_dir/components/zectrix_demo_ui/include" \
   -I"$root_dir/components/zectrix_demo_ui/font" \
-  -I"$root_dir/components/zectrix_app/include" \
+  -I"$root_dir/components/zectrix_app/include" -I"$root_dir/components/zectrix_text/include" \
   -I"$root_dir/components/zectrix_runtime/include" \
   -I"$root_dir/components/zectrix_host/include" \
   -I"$root_dir/components/zectrix_storage/include" \
@@ -60,6 +61,6 @@ reader_dir="$root_dir/components/zectrix_reader"
   "$reader_dir/zectrix_reader_text.cc" "$reader_dir/zectrix_reader_font.cc" \
   "$reader_dir/zectrix_reader_bookmarks.cc" \
   "$root_dir/tools/display_service_test.cc" "$work_dir/inflate.o" "$work_dir/font.o" -o "$test_binary"
-ZECTRIX_UI_LANGUAGE=en "$test_binary"
-ZECTRIX_UI_LANGUAGE=zh "$test_binary"
+ZECTRIX_READER_FIXTURES="$work_dir/fixtures" ZECTRIX_UI_LANGUAGE=en "$test_binary"
+ZECTRIX_READER_FIXTURES="$work_dir/fixtures" ZECTRIX_UI_LANGUAGE=zh "$test_binary"
 echo 'PASS: display service, dirty regions, SSD2683 transfers and UI integration tests.'

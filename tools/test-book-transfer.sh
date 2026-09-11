@@ -14,7 +14,7 @@ fi
     -I"$root_dir/tools/host_include" -I"$connectivity/include" \
     -I"$root_dir/components/zectrix_storage/include" \
     -I"$root_dir/components/zectrix_companion/include" \
-    -I"$root_dir/components/zectrix_app/include" \
+    -I"$root_dir/components/zectrix_app/include" -I"$root_dir/components/zectrix_text/include" \
     "$connectivity/zectrix_book_web.cc" "$connectivity/zectrix_book_transfer.cc" "$connectivity/zectrix_wifi_backend.cc" \
     "$root_dir/components/zectrix_storage/zectrix_book_storage.cc" \
     "$root_dir/components/zectrix_app/zectrix_scene_manager.cc" \

@@ -97,7 +97,7 @@ esp_err_t ZectrixDemoUi::ShowReader(const zectrix::app::ReaderController& reader
             canvas_.Text(392 - canvas_.TextWidth(progress), 26, progress, 1, true);
             for (std::size_t i = 0; i < page.count; ++i)
                 DrawGlyph(canvas_, 8 + page.glyphs[i].x, 48 + page.glyphs[i].y,
-                          page.glyphs[i].codepoint, page.font);
+                          page.glyphs[i].codepoint, page.font, false, page.glyphs[i].style);
             if (!page.count) canvas_.TextCentered(128, Tr(Text::BookNoText));
         } else {
             canvas_.TextCentered(120, ReaderMessage(reader.result()));

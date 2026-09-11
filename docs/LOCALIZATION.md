@@ -60,6 +60,12 @@ an ellipsis and stays inside its requested width. Titles, tile labels and
 physical-key hints retain their existing 400 x 300 layout bounds. Reader body
 glyphs and its 20/32px line advances keep their existing streaming layout.
 
+R1.3 adds [shared text styles](TYPOGRAPHY.md) without additional font assets.
+System headings use Bold, expressed as an underline for dense CJK. All three
+font compositions share style-aware fitting, inversion and clipping; Dim uses
+ordinary 1bpp Bayer ink. Reader decorators can move a bottom line to the next
+page when its measured height would exceed the body.
+
 When changing Chinese copy, run
 `uv run --no-project tools/generate-ui-font.py`. The generator extracts the
 required characters from the committed GNU Unifont reader data; see the

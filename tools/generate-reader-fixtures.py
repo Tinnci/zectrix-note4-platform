@@ -37,6 +37,17 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     epub(output / "stored.epub", zipfile.ZIP_STORED)
     epub(output / "deflated.epub", zipfile.ZIP_DEFLATED)
+    styled = '<html><body><h1>Title 标题</h1><p>Regular <strong>Bold <em>Both中</em> Bold</strong> '
+    styled += '<i>Italic</i> <u>Underlined</u> <small>Secondary</small> text.</p>'
+    styled += '<p><strong>' + 'Dense中文 &amp; Latin <em>slanted</em> words. ' * 140 + '</strong></p>'
+    styled += '<p>' + 'word' * 160 + '<em>' + 'long' * 160 + '</em></p>'
+    styled += '<p>Regular end.</p></body></html>'
+    epub(output / "styled.epub", zipfile.ZIP_DEFLATED,
+         [styled, '<html><body><p>Next chapter.</p></body></html>'])
+    (output / "styled.xhtml").write_text(styled, encoding="utf-8")
+    bottom = '<html><body>' + '<p>Regular line.</p>' * 10
+    bottom += '<p>Bottom <u>underline中</u> and continuation.</p></body></html>'
+    epub(output / "styled-bottom.epub", zipfile.ZIP_DEFLATED, [bottom])
     epub(output / "long-hidden.epub", zipfile.ZIP_DEFLATED,
          ['<html><head><style>' + 'x' * 200000 + '</style></head><body><p>VISIBLE</p></body></html>'])
     epub(output / "empty-chapter.epub", zipfile.ZIP_DEFLATED,

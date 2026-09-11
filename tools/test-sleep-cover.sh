@@ -9,7 +9,7 @@ if [ "${ZECTRIX_SLEEP_SANITIZE:-0}" = 1 ]; then
 fi
 "${CXX:-c++}" -std=c++17 "${flags[@]}" \
     -I"$root_dir/tools/host_include" \
-    -I"$root_dir/components/zectrix_app/include" \
+    -I"$root_dir/components/zectrix_app/include" -I"$root_dir/components/zectrix_text/include" \
     -I"$root_dir/components/zectrix_reader/include" \
     -I"$root_dir/components/zectrix_power/include" \
     -I"$root_dir/components/zectrix_time/include" \

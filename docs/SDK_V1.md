@@ -1,6 +1,6 @@
 # Zectrix SDK v1
 
-Status: Source-stable version 1.1.1.
+Status: Source-stable version 1.2.0.
 
 ## Scope
 
@@ -11,8 +11,8 @@ API, dynamic loader, binary application format, or binary ABI.
 
 The optional [Lua micro-app pilot](MICRO_APPS.md) is a private native Apps
 adapter using this lifecycle. Its script functions, quota allocator and copied
-frame interface are separate from SDK v1; the public C++ headers and version
-remain unchanged.
+frame interface are separate from SDK v1. Version 1.2 adds a shared style
+vocabulary for text; application lifecycle signatures retain their behavior.
 
 Include the umbrella header:
 
@@ -36,13 +36,14 @@ The exact source-stable header set is:
 zectrix/sdk/application.h
 zectrix/sdk/input.h
 zectrix/sdk/status.h
+zectrix/sdk/text_style.h
 zectrix/sdk/version.h
 zectrix/zectrix_sdk.h
 ```
 
 ## Version policy
 
-SDK v1 uses semantic version 1.1.1.
+SDK v1 uses semantic version 1.2.0.
 
 - Increment `major` for a source-breaking change.
 - Increment `minor` for an additive source-compatible feature.
@@ -53,6 +54,22 @@ SDK v1 uses semantic version 1.1.1.
 
 SDK version numbers do not describe firmware image compatibility, persistent
 data format, OTA compatibility, or a binary application ABI.
+
+## Text style vocabulary
+
+Version 1.2 adds the one-byte `TextStyle` enum: `Regular`, `Bold`, `Italic`,
+`Dim`, `Underline` and `Keycap`, with constexpr `|`, `&` and `HasStyle` helpers.
+`HasStyle(value, flags)` tests whether any requested bit is present.
+Styles describe intent; dense CJK can express emphasis through underlining.
+Applications must measure with the same style they draw. See
+[TYPOGRAPHY.md](TYPOGRAPHY.md) for the first-party rendering rules.
+
+`text_style.h` is in `components/zectrix_text/include/zectrix/sdk/`; the other
+public headers remain in `components/zectrix_app/include/`. ESP-IDF propagates
+both include roots through the app component dependency. Standalone consumers
+add both include roots, as `tools/test-sdk-v1.sh` demonstrates. The SDK umbrella
+includes the vocabulary, without exposing a UI toolkit or making rendering
+implementation headers source-stable.
 
 ## Ownership and lifetime
 

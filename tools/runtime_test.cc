@@ -39,6 +39,21 @@ int main(int argc, char** argv) {
     engine.Stop();
     assert(engine.heap().live == 0);
 
+    assert(Start(engine, "function on_render() for s=0,31 do note4.text(0,0,'styled',1,s) end "
+                         "note4.text(0,0,'default'); note4.rect(0,0,2,2) end"));
+    assert(engine.Draw() && engine.frame().count == 34);
+    for (unsigned flags = 0; flags < 32; ++flags)
+        assert(static_cast<unsigned>(engine.frame().commands[flags].style) == flags);
+    assert(engine.frame().commands[32].style == zectrix::sdk::TextStyle::Regular);
+    assert(engine.frame().commands[33].style == zectrix::sdk::TextStyle::Regular);
+    const auto copied = engine.frame();
+    engine.Stop();
+    assert(copied.commands[3].style == (zectrix::sdk::TextStyle::Bold | zectrix::sdk::TextStyle::Italic));
+    for (const char* flags : {"-1", "32", "256", "1099511627776"}) {
+        assert(Start(engine, std::string("function on_render() note4.text(0,0,'bad',1,") + flags + ") end"));
+        assert(!engine.Draw() && engine.error() == Error::Drawing && engine.heap().live == 0);
+    }
+
     const auto cards = Read(std::string(argv[1]) + "/Flashcards.lua");
     for (int i = 0; i < 100; ++i) {
         assert(Start(engine, cards) && engine.Draw());

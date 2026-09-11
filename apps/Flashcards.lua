@@ -18,10 +18,10 @@ function on_event(key)
 end
 
 function on_render()
-    note4.text(4, 4, "CARD " .. index .. " / " .. #cards)
+    note4.text(4, 4, "CARD " .. index .. " / " .. #cards, 1, note4.DIM)
     note4.rect(0, 32, note4.width, 107)
-    note4.text(12, 59, cards[index][1])
-    if revealed then note4.text(12, 102, cards[index][2])
-    else note4.text(12, 102, "OK: reveal answer") end
+    note4.text(12, 59, cards[index][1], 1, note4.BOLD)
+    if revealed then note4.text(12, 102, cards[index][2], 1, note4.ITALIC)
+    else note4.text(12, 100, "OK: reveal answer", 1, note4.KEYCAP) end
     note4.text(4, 163, "UP/DOWN: card   OK: flip")
 end

@@ -9,7 +9,7 @@ if [ "${ZECTRIX_PLATFORM_SANITIZE:-0}" = 1 ]; then
 fi
 common=(
   -I"$root_dir/tools/host_include" \
-  -I"$root_dir/components/zectrix_app/include" \
+  -I"$root_dir/components/zectrix_app/include" -I"$root_dir/components/zectrix_text/include" \
   -I"$root_dir/components/zectrix_board/include" \
   -I"$root_dir/components/zectrix_platform/include" \
   -I"$root_dir/components/zectrix_display/include" \

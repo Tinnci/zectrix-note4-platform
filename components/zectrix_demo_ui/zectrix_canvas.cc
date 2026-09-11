@@ -1,9 +1,11 @@
 #include "zectrix_canvas.h"
 
 #include <algorithm>
+#include <climits>
 #include <cstdlib>
 
 #include "zectrix_ascii_font_8x16.h"
+#include "zectrix_styled_glyph.h"
 #include "zectrix_utf8.h"
 #include "sdkconfig.h"
 #if CONFIG_ZECTRIX_ENABLE_READER
@@ -13,6 +15,12 @@
 #endif
 
 namespace {
+using zectrix::sdk::TextStyle;
+using zectrix::sdk::HasStyle;
+using zectrix::text::MeasureGlyph;
+using zectrix::ui::detail::FillClipped;
+using zectrix::ui::detail::PaintGlyph;
+
 struct Glyph {
     int width;
     const uint16_t* ascii = nullptr;
@@ -49,14 +57,48 @@ Glyph UiGlyph(uint32_t cp) {
     return {kZectrixAsciiFontWidths['?' - 32], kZectrixAsciiFont8x16['?' - 32], {}};
 }
 
-void PaintGlyph(ZectrixCanvas& canvas, int x, int y, const Glyph& glyph, int scale, bool inverted) {
-    if (inverted) canvas.FillRect(x, y, glyph.width * scale, 16 * scale, true);
-    for (int row = 0; row < 16; ++row) {
-        const auto bits = glyph.Row(row);
-        for (int col = 0; col < glyph.width; ++col) {
-            const bool set = bits & (0x8000U >> col);
-            if (set || inverted)
-                canvas.FillRect(x + col * scale, y + row * scale, scale, scale, inverted ? !set : true);
+struct RunMetrics { int width = 0, height = 0; };
+
+RunMetrics MeasureRun(const char* text, const char* end, const char* suffix,
+                      int scale, TextStyle style) {
+    RunMetrics result;
+    if (!text || scale < 1 || scale > 16) return result;
+    for (const char* span : {text, suffix}) {
+        for (const char* p = span; p && *p && (span != text || p != end);) {
+            const auto cp = zectrix::ui::NextUtf8(p);
+            const auto glyph = MeasureGlyph(cp, UiGlyph(cp).width, 16 * scale, style);
+            result.width += std::min(INT_MAX - result.width, glyph.advance);
+            result.height = std::max(result.height, glyph.height);
+        }
+    }
+    if (result.height && HasStyle(style, TextStyle::Keycap)) {
+        result.width += std::min(INT_MAX - result.width, 6 * scale);
+        result.height += 4 * scale;
+    }
+    return result;
+}
+
+void PaintRun(ZectrixCanvas& canvas, int x, int y, const char* text, const char* end,
+              const char* suffix, int scale, bool inverted, TextStyle style) {
+    const auto metrics = MeasureRun(text, end, suffix, scale, style);
+    if (!metrics.height) return;
+    if (inverted) FillClipped(canvas, x, y, metrics.width, metrics.height, true);
+    int64_t cursor = x, top = y;
+    if (HasStyle(style, TextStyle::Keycap)) {
+        FillClipped(canvas, x, y, metrics.width, 1, !inverted);
+        FillClipped(canvas, x, static_cast<int64_t>(y) + metrics.height - 1, metrics.width, 1, !inverted);
+        FillClipped(canvas, x, y, 1, metrics.height, !inverted);
+        FillClipped(canvas, static_cast<int64_t>(x) + metrics.width - 1, y, 1, metrics.height, !inverted);
+        cursor += 3 * scale;
+        top += 2 * scale;
+    }
+    for (const char* span : {text, suffix}) {
+        for (const char* p = span; p && *p && (span != text || p != end);) {
+            const auto cp = zectrix::ui::NextUtf8(p);
+            const auto glyph = UiGlyph(cp);
+            PaintGlyph(canvas, cursor, top, cp, glyph, 16 * scale, style, inverted);
+            cursor += MeasureGlyph(cp, glyph.width, 16 * scale, style).advance;
+            if (cursor >= canvas.clip().x + canvas.clip().width) break;
         }
     }
 }
@@ -139,43 +181,36 @@ void ZectrixCanvas::Line(int x0, int y0, int x1, int y1, bool black) {
 }
 
 void ZectrixCanvas::Text(int x, int y, const char* text, int scale,
-                         bool inverted) {
-    if (text == nullptr || scale <= 0) {
-        return;
-    }
-    while (*text) {
-        const auto glyph = UiGlyph(zectrix::ui::NextUtf8(text));
-        PaintGlyph(*this, x, y, glyph, scale, inverted);
-        x += glyph.width * scale;
-    }
+                         bool inverted, TextStyle style) {
+    PaintRun(*this, x, y, text, nullptr, nullptr, scale, inverted, style);
 }
 
 void ZectrixCanvas::TextCentered(int y, const char* text, int scale,
-                                 bool inverted) {
-    Text((kWidth - TextWidth(text, scale)) / 2, y, text, scale, inverted);
+                                 bool inverted, TextStyle style) {
+    Text((kWidth - TextWidth(text, scale, style)) / 2, y, text, scale, inverted, style);
 }
 
-int ZectrixCanvas::TextWidth(const char* text, int scale) const {
-    if (text == nullptr || scale <= 0) {
-        return 0;
-    }
-
-    int width = 0;
-    while (*text) width += UiGlyph(zectrix::ui::NextUtf8(text)).width * scale;
-    return width;
+int ZectrixCanvas::TextWidth(const char* text, int scale, TextStyle style) const {
+    return MeasureRun(text, nullptr, nullptr, scale, style).width;
+}
+int ZectrixCanvas::TextHeight(const char* text, int scale, TextStyle style) const {
+    return MeasureRun(text, nullptr, nullptr, scale, style).height;
 }
 
-void ZectrixCanvas::TextFitted(int x, int y, const char* text, int max_width, bool inverted) {
+void ZectrixCanvas::TextFitted(int x, int y, const char* text, int max_width, bool inverted, TextStyle style) {
     if (!text || max_width <= 0) return;
-    if (TextWidth(text) <= max_width) { Text(x, y, text, 1, inverted); return; }
-    const int ellipsis = TextWidth("...");
+    if (TextWidth(text, 1, style) <= max_width) { Text(x, y, text, 1, inverted, style); return; }
+    const int ellipsis = TextWidth("...", 1, style);
     if (max_width < ellipsis) return;
-    while (*text) {
-        const auto glyph = UiGlyph(zectrix::ui::NextUtf8(text));
-        if (glyph.width + ellipsis > max_width) break;
-        PaintGlyph(*this, x, y, glyph, 1, inverted);
-        x += glyph.width;
-        max_width -= glyph.width;
+    const char* end = text;
+    int used = 0;
+    while (*end) {
+        const char* next = end;
+        const auto cp = zectrix::ui::NextUtf8(next);
+        const auto advance = MeasureGlyph(cp, UiGlyph(cp).width, 16, style).advance;
+        if (advance > max_width - used - ellipsis) break;
+        used += advance;
+        end = next;
     }
-    Text(x, y, "...", 1, inverted);
+    PaintRun(*this, x, y, text, end, "...", 1, inverted, style);
 }

@@ -14,7 +14,7 @@ fi
     -c "$reader_dir/zectrix_reader_font_data.S" -o "$work_dir/font.o"
 common=(
     -I"$reader_dir/include" -I"$reader_dir/private" -I"$reader_dir/third_party/miniz"
-    -I"$root_dir/components/zectrix_app/include"
+    -I"$root_dir/components/zectrix_app/include" -I"$root_dir/components/zectrix_text/include"
     -I"$root_dir/tools/host_include"
     -I"$root_dir/components/zectrix_storage/include"
     "$reader_dir/zectrix_reader.cc" "$reader_dir/zectrix_reader_zip.cc"

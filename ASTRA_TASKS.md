@@ -318,7 +318,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Added per-build `firmware-budget.json` from the generated native partition table, linked font symbol and actual application image. Hardware smoke now matches boot partition addresses/sizes to that report. Current, expanded and asymmetric layout tests remove dependence on a second set of hardcoded offsets; no new size gate or saved baseline is added.
   - Verified all 39 Host targets, Font/Reader ASan/UBSan, every original glyph pixel, upstream BDF regeneration, English/Chinese renderers, actual Full-image Host OTA streaming and ShellCheck. Full/Minimal builds and profile comparison passed at 2,482,208 / 514,528 bytes. Full saves 656,912 bytes and leaves 663,520 bytes (21.1%) in each existing slot; static internal RAM is 201,815 / 108,315 bytes. No hardware flash was needed.
 
-- [ ] **R1.3: 算法点阵排版样式引擎与墨水屏富文本渲染 (Algorithmic Typography Engine & Rich Text Rendering)**
+- [x] **R1.3: 算法点阵排版样式引擎与墨水屏富文本渲染 (Algorithmic Typography Engine & Rich Text Rendering)**
   - **背景与愿景**：
     - 当前系统（UI、Reader、Micro-Apps）仅支持单一常规体（Regular）点阵渲染，缺乏粗体、斜体与层级样式表现力。
     - 坚持“零 Flash 膨胀、零动态堆分配”的嵌入式哲学，不额外引入膨胀的多字重字库，探索纯算法实时点阵合成（Algorithmic Styling）的排版演进路径。
@@ -332,6 +332,10 @@ Each iteration picks the top unfinished task, implements production code, verifi
        - 针对 16px/24px 汉字笔画密集易粘连的物理现实，如何权衡中文字符的粗体膨胀量与斜体倾斜度？是否存在最适合低分辨率汉字的点阵防粘连规则？
     4. *墨水屏物理友好型样式落地*：
        - 权衡并实现 1~2 种高实用性墨水屏专属样式：如利用 Bayer 网点掩码模拟次要文字（免灰阶刷新延迟）、大标题空心字（防微胶囊过度翻转与残影）、实体按键键帽提示框（`[OK]`）等。
+  - Added SDK 1.2's one-byte TextStyle vocabulary, shared measurement/raster geometry, Latin dilation/shear and CJK underline fallback. Canvas fitting, centering, inversion and clipping account for styled extents; Bayer secondary ink and whole-run keycaps use the existing 1bpp surface without new font assets or rendering allocations.
+  - Preserved streamed EPUB headings, bold, emphasis, underline and secondary text with sixteen bounded style entries. Page glyphs remain eight bytes; bottom-line decoration, backward turns, chapter replay and font reflow preserve source-byte anchors. TXT remains literal. See [docs/TYPOGRAPHY.md](docs/TYPOGRAPHY.md) for markup boundaries and measured costs.
+  - Applied styles to system headings, Home and both Lua pilots; optional copied style flags retain old script behavior and existing quotas. Guest drawing now intersects the caller's viewport clip, including keycap borders and glyph expansion.
+  - Verified all 39 Host targets, Reader/Localization/Runtime ASan/UBSan, English/Chinese previews and Full/Minimal firmware/profile comparison. Full/Minimal are 2,486,256 / 516,528 bytes (+4,048 / +2,000); font assets and static internal RAM are unchanged. Full retains 659,472 bytes (21.0%) per slot. No hardware flash was needed.
 
 - [ ] **R1.4: 墨水屏物理特性观测、分析建模底座与自适应调度 (Display Physics Telemetry, Analytical Modeling Foundation & Adaptive Scheduling)**
   - **背景与愿景**：

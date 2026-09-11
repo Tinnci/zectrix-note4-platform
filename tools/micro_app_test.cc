@@ -281,6 +281,29 @@ static void Faults(const fs::path& root, const fs::path& previews) {
     assert(books.BeginManagement() == ESP_OK && books.EndManagement() == ESP_OK);
 }
 
+static void StyledViewport() {
+    runtime::Frame frame;
+    std::strcpy(frame.text.data(), "OK");
+    frame.count = 2;
+    frame.commands[0] = {runtime::DrawKind::Text, 2, 0, 0, 0, 0, 0,
+        sdk::TextStyle::Bold | sdk::TextStyle::Italic | sdk::TextStyle::Keycap};
+    frame.commands[1] = {runtime::DrawKind::Text, 2, 375, 191, 0, 0, 0, sdk::TextStyle::Keycap};
+    ZectrixCanvas canvas, clipped;
+    canvas.Clear(); clipped.Clear();
+    ui::DrawMicroAppFrame(canvas, frame);
+    clipped.SetClip({18, 70, 24, 12});
+    ui::DrawMicroAppFrame(clipped, frame);
+    assert(clipped.clip().x == 18 && clipped.clip().y == 70 && clipped.clip().width == 24);
+    for (int y = 0; y < 300; ++y) for (int x = 0; x < 400; ++x) {
+        const auto ink = [&](const ZectrixCanvas& image) {
+            return !(image.data()[y * 50 + x / 8] & (0x80 >> (x & 7)));
+        };
+        const bool inside = x >= 18 && x < 42 && y >= 70 && y < 82;
+        assert(ink(clipped) == (inside && ink(canvas)));
+        if (x < 12 || x >= 388 || y < 66 || y >= 258) assert(!ink(canvas));
+    }
+}
+
 int main(int argc, char** argv) {
     assert(argc == 3);
     char pattern[] = "/tmp/note4-micro-apps-XXXXXX";
@@ -290,6 +313,7 @@ int main(int argc, char** argv) {
     Storage(root);
     Scenes(root, argv[1], argv[2]);
     Faults(root / "faults", argv[2]);
+    StyledViewport();
     fs::remove_all(root);
     std::cout << "Micro-apps: storage isolation, paging, pilots, exit, recovery, clipped views and 100 lifetimes passed.\n";
 }

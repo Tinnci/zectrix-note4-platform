@@ -10,7 +10,7 @@ idf_component_register(
          "third_party/miniz/miniz_tinfl.c"
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "private" "third_party/miniz"
-    REQUIRES zectrix_storage
+    REQUIRES zectrix_storage zectrix_text
     PRIV_REQUIRES ${private_requires}
     KCONFIG_PROJBUILD "${CMAKE_CURRENT_LIST_DIR}/../../cmake/Kconfig.empty"
 )

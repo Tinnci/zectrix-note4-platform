@@ -46,7 +46,7 @@ function on_render()
         note4.rect(x[field] - 5, 44, 32, 43)
         note4.text(4, 124, field == 8 and "OK: calculate" or "Choose digits and an operator")
     else
-        note4.text(4, 112, "Result: " .. answer)
-        note4.text(4, 153, "OK: edit again")
+        note4.text(4, 112, "Result: " .. answer, 1, note4.BOLD)
+        note4.text(4, 153, "OK: edit again", 1, note4.KEYCAP)
     end
 end

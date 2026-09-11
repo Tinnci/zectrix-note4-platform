@@ -78,11 +78,19 @@ word boundaries; a word wider than a line splits at Unicode scalar boundaries.
 Paragraphs use a two-character indent. TXT accepts LF and CRLF. Invalid UTF-8
 uses replacement glyphs without splitting valid characters.
 
+R1.3 preserves EPUB `b`/`strong`/headings, `i`/`em`, `u` and `small` as Bold,
+Italic, Underline and Dim. Mixed styles share the same width calculation for
+pagination and painting. Dense CJK emphasis becomes an underline to preserve
+stroke gaps. TXT remains literal. See [TYPOGRAPHY.md](TYPOGRAPHY.md) for nesting,
+geometry, fallback and API details.
+
 The page body is 384 by 216 pixels below the status/title bars. E1.6 gives 24px
 text an 8px inter-line gap, increasing line advance from 28px to 32px while
 retaining seven rows. The 16px size retains its 4px gap and eleven rows. The
 larger gap uses the body's spare height without changing glyphs or source
-anchors. Initial pages and scene changes request Quality; page turns request
+anchors. R1.3 decorations can move the pending bottom line to the next page
+when its extra two pixels do not fit; regular pages retain eleven/seven rows.
+Initial pages and scene changes request Quality; page turns request
 Fast. DisplayService decides whether a partial or full refresh is needed.
 Unchanged idle callbacks do not redraw. Status-only updates preserve book content.
 
@@ -101,6 +109,11 @@ most 1045 bytes. Inflate consumes one input block per call, including when a
 stream contains many empty blocks. Container/OPF metadata is limited to 256 KiB
 each, XHTML chapters to 16 MiB of uncompressed bytes, paths to 191 bytes, and
 tags to 1023 bytes. These are parser memory/work bounds.
+
+Style state uses sixteen tag IDs and a nesting overflow counter. Each glyph
+packs its style beside its Unicode scalar and remains eight bytes; styling
+adds no page buffer, DOM, glyph cache or allocation call. Chapter replay
+reconstructs styles for byte-offset bookmarks and font changes.
 
 TXT resume and cached backward turns reconstruct context near the requested
 UTF-8 offset. EPUB seeks replay the containing compressed chapter. Backward

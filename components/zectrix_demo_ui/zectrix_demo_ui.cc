@@ -65,7 +65,7 @@ void ZectrixDemoUi::UpdateStatus(const zectrix::ui::StatusBarState& state) {
 void ZectrixDemoUi::DrawFrame(const char* title, const char* footer) {
     BeginContent();
     canvas_.FillRect(0, kStatusHeight, 400, kHeaderHeight - kStatusHeight, true);
-    canvas_.TextFitted(10, kStatusHeight + 2, title, 380, true);
+    canvas_.TextFitted(10, kStatusHeight + 2, title, 380, true, ZectrixCanvas::TextStyle::Bold);
     canvas_.Line(0, 269, 399, 269);
     canvas_.TextFitted(8, 277, footer, 384);
 }
