@@ -247,3 +247,36 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Reviewed 47 existing Issues and eight Milestones with gh; added delivery/evidence updates to all 16 open Issues. Closed the completed M5 architecture decision #7 and recorded completed R1/Q1/L1/S1 delivery in #59–#62 and their Milestones.
   - Resolved the R1 research/display naming collision, added E1 tracking and updated PR #54 to its actual E1.1–E1.7 scope. Preserved the new E1.8 plan in #58 and retained unfinished C1/D1 implementation and physical acceptance work. Existing OTA and device-measurement follow-ups are explicit in #55–#57.
   - Verified all 34 Host targets and read back GitHub states, assignments and PR metadata. Updated README/roadmap and recorded the scope mapping in [docs/GITHUB_TRIAGE.md](docs/GITHUB_TRIAGE.md). No firmware or hardware change was needed for this governance iteration.
+
+- [ ] **E2.2: 动态应用运行时原型落地与微应用试点 (Dynamic Application Runtime Prototype & Micro-App Pilot)**
+  - **背景与愿景**：
+    - 承接 E2.1 架构预研与基准测量结论（[docs/DYNAMIC_APPLICATION_RESEARCH.md](docs/DYNAMIC_APPLICATION_RESEARCH.md)），将动态应用从“纯理论调研与隔离探针”推向“最小可用工程原型（Minimum Viable Prototype）”。
+    - 让 Note4 启动器初步具备发现并载入独立沙箱微应用的能力，使极客用户能在不重新编译/烧录整机固件的前提下探索第三方扩展。
+  - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
+    1. *宿主运行时边界与首选适配器落地*：根据 E2.1 中针对 WAMR（经典解释器、指令配额计量）与受限 Lua 5.4 的优劣权衡，选择最可控且符合当前固件预算的路径构建可选的沙箱适配组件（如 `zectrix_runtime`），解决内存对齐或初始化边界问题。
+    2. *极简系统调用接口设计*：为沙箱暴露哪些必要的轻量 Native 宿主功能？如何通过零分配/只读快照将物理按键事件输入、单色 15KB 画布绘制以及退出返回控制以最小摩擦暴露给动态应用？
+    3. *端侧动态发现与运行生命周期*：如何在 Launcher 引入分页式“Apps”磁贴或动态入口？如何确保应用异常崩溃、配额耗尽或用户长按退出时，沙箱能够干净回收内存并恢复系统前台状态？
+    4. *示范微应用原型验证*：自主设计并实现 1~2 个小巧实用的独立微应用示例（如计算器、简易备忘、卡片复习等），验证端到端闭环。
+
+- [ ] **E1.9: 原生随身极客实用工具集演进 (Native Geek Utility Pack)**
+  - **背景与愿景**：
+    - 汲取 Flipper Zero、Biscuit 等优秀开源固件的实用性设计，进一步挖掘 400x300 双周长续航墨水屏与三键交互作为“日常随身数字挂件/极客终端”的潜力。
+  - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
+    1. *工具选型与使用场景*：在墨水屏与三键限制下，哪些原生离线工具最能体现随身设备的价值？例如专注番茄钟（Pomodoro Timer）、离线万年历与节气卡片（Perpetual Calendar）、极简便签/闪卡（Memo/Flashcards）或其他实用小工具？
+    2. *低频常显与功耗哲学*：微工具在前台运行或待机锁屏时，如何合理运用局部刷新与休眠调度，既保持即时信息可读性，又守住低功耗底线？
+    3. *模块化裁剪一致性*：新增的原生小工具如何与 `components/zectrix_app`、Kconfig 与 ServiceRegistry 优雅结合，保持极小固件（Minimal Profile）下随时可一键裁剪的纯洁度？
+
+- [ ] **D1.4: 维护终端指令集补全与系统级状态反射 (Maintenance CLI Completeness & System Reflection)**
+  - **背景与愿景**：
+    - 针对前期治理遗留的维护终端指令缺口（如 GitHub Issue #44），进一步充实 USB Maintenance CLI 的只读与状态观测能力。
+  - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
+    1. *指令集覆盖与设计*：如何通过 ServiceRegistry 安全获取底层状态？例如：电源与电量状态（`power status`）、高精度时间与 RTC 读数（`time get`）、射频工作模式（`connectivity status`）、已注册微应用目录与前台栈（`app list` / `app current`）等；
+    2. *并发安全与无阻塞原则*：在终端查询期间，如何确保不阻塞墨水屏主线程与 USB 数据通道，全链路坚持只读快照机制。
+
+- [ ] **G1.2: 远端代码同步与 GitHub 状态治理闭环 (Remote Git Sync & GitHub Governance)**
+  - **背景与愿景**：
+    - 本地主线已积累了包含 E1.8 与 E2.1 在内的高质量原子 Commit，需要将这一阶段性重大成果与远端 GitHub 保持同步，并治理关联的 GitHub Issues。
+  - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
+    1. *远端分支对齐与 PR 治理*：检查本地与远端分支状态，审查 PR #54 或更新相关 PR，确保提交历史干净规范；
+    2. *Issue 状态同步*：使用 `gh` CLI 审查并更新远端 GitHub Issue（特别是已由 E1.8 完整解决的 Issue #58 与关联 Milestone 13），更新验证记录；
+    3. *阶段性版本固件打包准备*：准备 v1.2 阶段性 Release 资产（如 Full / Minimal 固件二进制与校验哈希）。
