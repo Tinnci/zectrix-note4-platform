@@ -5,6 +5,7 @@
 #include "zectrix_book_transfer_controller.h"
 #include "zectrix_host_books.h"
 #include "zectrix_sleep_cover.h"
+#include "zectrix_utilities.h"
 #include "zectrix_reader_controller.h"
 #include "zectrix_launcher_controller.h"
 #include "zectrix_reading_overview.h"
@@ -817,6 +818,99 @@ void TestUsbManagerComposition() {
     SavePreview(ui.canvas(), "usb-cancelled");
 }
 
+void TestUtilitiesComposition() {
+    using namespace zectrix::app;
+    using namespace zectrix::sdk;
+    Reset();
+    auto service = CreateService();
+    ZectrixDemoUi ui(service.get());
+    zectrix::ui::StatusBarState status;
+    status.time_valid = status.battery_valid = true;
+    status.hour = 12; status.minute = 30; status.battery_percent = 80;
+    ui.UpdateStatus(status);
+    UtilitySession session;
+    UtilityController controller(session);
+    zectrix::time::ClockSnapshot clock{{2026, 3, 31, 0, 12, 30, 0}, zectrix::time::ClockSource::Rtc};
+    constexpr InputEvent up{Button::Up, InputAction::Click}, down{Button::Down, InputAction::Click},
+        ok{Button::Ok, InputAction::Click}, back{Button::Ok, InputAction::LongPress};
+    constexpr int64_t minute = FocusTimer::kMinuteUs;
+    const auto allocated = heap_allocations;
+    const auto draw = [&](UtilityDecision decision) {
+        assert(decision == UtilityDecision::RenderQuality || decision == UtilityDecision::RenderFast);
+        assert(ui.ShowUtilities(controller, decision == UtilityDecision::RenderQuality) == ESP_OK);
+        controller.Presented(true);
+    };
+    assert(controller.Start(0, clock) == Status::Ok);
+    draw(controller.Tick(0, clock));
+    SavePreview(ui.canvas(), "utilities-menu");
+    draw(controller.Handle(ok, 0, clock));
+    SavePreview(ui.canvas(), "utilities-focus-ready");
+    draw(controller.Handle(ok, 0, clock));
+    SavePreview(ui.canvas(), "utilities-focus-running");
+    Frame before;
+    std::memcpy(before.data(), ui.canvas().data(), before.size());
+    ClearTraffic();
+    assert(controller.Tick(minute - 1, clock) == UtilityDecision::None);
+    assert(ui.ShowUtilities(controller, false) == ESP_OK && packets.empty());
+    draw(controller.Tick(minute, clock));
+    assert(std::memcmp(before.data(), ui.canvas().data(), 24 * 50) == 0);
+    const auto dirty = ReferenceDirty(before, {0, 0, 400, 300}, ui.canvas().data());
+    assert(dirty.y >= 111 && dirty.y + dirty.height <= 175);
+    const auto timer_bytes = CheckPartial(before, {0, 0, 400, 300}, ui.canvas().data());
+    std::printf("MEASURE: utility minute update RAM payload=%zu bytes; no sub-minute refresh.\n", timer_bytes);
+    SavePreview(ui.canvas(), "utilities-focus-minute");
+    assert(controller.Tick(2 * minute, clock) == UtilityDecision::RenderFast);
+    fail_command = 0xe9;
+    assert(ui.ShowUtilities(controller, false) == ESP_FAIL);
+    controller.Presented(false);
+    draw(controller.Tick(2 * minute + 1, clock));
+    assert(controller.Tick(2 * minute + 2, clock) == UtilityDecision::None);
+    draw(controller.Handle(ok, 2 * minute + 2, clock));
+    SavePreview(ui.canvas(), "utilities-focus-paused");
+    assert(controller.Tick(3 * minute, clock) == UtilityDecision::None);
+    draw(controller.Handle(ok, 3 * minute, clock));
+    draw(controller.Tick(100 * minute, clock));
+    SavePreview(ui.canvas(), "utilities-focus-complete");
+    draw(controller.Handle(ok, 100 * minute, clock));
+    SavePreview(ui.canvas(), "utilities-break");
+    draw(controller.Handle(back, 100 * minute, clock));
+    draw(controller.Handle(down, 100 * minute, clock));
+    draw(controller.Handle(ok, 100 * minute, clock));
+    assert(controller.page() == UtilityPage::Calendar);
+    assert(!Bit(ui.canvas().data(), 50, 75, 221));
+    SavePreview(ui.canvas(), "utilities-calendar-six-weeks");
+    clock.value.month = 4; clock.value.day = 1;
+    draw(controller.Tick(100 * minute + 1, clock));
+    assert(Bit(ui.canvas().data(), 50, 75, 221));
+    draw(controller.Handle(down, 100 * minute + 1, clock));
+    SavePreview(ui.canvas(), "utilities-calendar-today");
+    clock.source = zectrix::time::ClockSource::Uptime;
+    draw(controller.Tick(100 * minute + 2, clock));
+    SavePreview(ui.canvas(), "utilities-calendar-unset");
+    draw(controller.Handle(ok, 100 * minute + 2, clock));
+    SavePreview(ui.canvas(), "utilities-calendar-options");
+    draw(controller.Handle(ok, 100 * minute + 2, clock));
+    SavePreview(ui.canvas(), "utilities-calendar-jump");
+    draw(controller.Handle(back, 100 * minute + 2, clock));
+    draw(controller.Handle(back, 100 * minute + 2, clock));
+    draw(controller.Handle(down, 100 * minute + 2, clock));
+    draw(controller.Handle(ok, 100 * minute + 2, clock));
+    assert(controller.page() == UtilityPage::Counter);
+    for (int i = 0; i < 17; ++i) controller.Handle(up, 100 * minute + 2, clock);
+    assert(ui.ShowUtilities(controller, false) == ESP_OK);
+    SavePreview(ui.canvas(), "utilities-counter");
+    draw(controller.Handle(ok, 100 * minute + 2, clock));
+    SavePreview(ui.canvas(), "utilities-counter-reset");
+    draw(controller.Handle(ok, 100 * minute + 2, clock));
+    assert(session.count == 17);
+    std::memcpy(before.data(), ui.canvas().data(), before.size());
+    ++status.minute;
+    ui.UpdateStatus(status);
+    assert(ui.RefreshPending() == ESP_OK);
+    assert(std::memcmp(before.data() + 1200, ui.canvas().data() + 1200, before.size() - 1200) == 0);
+    assert(heap_allocations == allocated);
+}
+
 void TestLauncherComposition() {
     using namespace zectrix::app;
     using namespace zectrix::sdk;
@@ -834,6 +928,8 @@ void TestLauncherComposition() {
     assert(full.Add("launcher", "Launcher", factory));
     assert(full.Add("reader", "BOOK READER", factory, {Icon::Book, true, zectrix::i18n::Text::BookReader}));
     assert(full.Add("book-transfer", "SEND BOOKS", factory, {Icon::Transfer, true, zectrix::i18n::Text::SendBooks}));
+    assert(full.Add("apps", "APPS", factory, {Icon::App, true, zectrix::i18n::Text::Apps}));
+    assert(full.Add("utilities", "POCKET TOOLS", factory, {Icon::App, true, zectrix::i18n::Text::PocketTools}));
     assert(full.Add("clock", "CLOCK", factory, {Icon::Clock, true, zectrix::i18n::Text::Clock}));
     assert(full.Add("sleep-cover", "SLEEP COVER", factory, {Icon::Sleep, true, zectrix::i18n::Text::SleepCover}));
     assert(full.Add("settings", "SETTINGS", factory, {Icon::Settings, true, zectrix::i18n::Text::Settings}));
@@ -1618,6 +1714,7 @@ int main() {
     TestReaderComposition();
     TestBookTransferComposition();
     TestUsbManagerComposition();
+    TestUtilitiesComposition();
     TestSleepCoverComposition();
     Reset();
 }

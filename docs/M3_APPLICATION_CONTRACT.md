@@ -27,6 +27,12 @@ The USB worker has no application or Storage pointers. Settings use the same
 foreground language/sleep-cover state as local controls. Binary sessions select
 a one-tick shell wait; normal idle waits remain 250 ms. See [USB_HOST.md](USB_HOST.md).
 
+E1.9 adds optional Pocket Tools with six private scenes for a focus timer,
+calendar and counter. A small shell-owned RAM session survives foreground
+replacement without a background application. It uses the existing TimeService
+and shared canvas, with minute-only timer invalidation and no alarm or sleep
+wake. Shutdown clears the session. See [UTILITIES.md](UTILITIES.md).
+
 ## Scope
 
 M3 runs statically linked applications through one lifecycle. The runtime owns

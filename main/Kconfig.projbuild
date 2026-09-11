@@ -1,4 +1,12 @@
 menu "Zectrix modules"
+    config ZECTRIX_ENABLE_UTILITIES
+        bool "Native pocket tools"
+        default y
+        help
+            Include the offline focus timer, browsable calendar and tally
+            counter. They share the existing time service and foreground UI;
+            no network, storage writes or background task is required.
+
     rsource "../components/zectrix_demo_ui/Kconfig.projbuild"
     rsource "../components/zectrix_connectivity/Kconfig.projbuild"
     rsource "../components/zectrix_reader/Kconfig.projbuild"

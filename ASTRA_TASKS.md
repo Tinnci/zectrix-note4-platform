@@ -261,13 +261,16 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Added Calculator and Flashcards as independent scripts, plus USB app-list/app-put/app-get/app-remove. AppStorage shares the existing mount, exclusive lease, staging and no-overwrite commit while preserving TXT/EPUB name validation. Documented the pilot API, installation and limits in [docs/MICRO_APPS.md](docs/MICRO_APPS.md); packaging remains E2.3.
   - Verified all 36 Host targets, strict runtime and USB ASan/UBSan, eight USB client/integration scenarios, 100 VM/foreground lifetimes, clipped pilot previews and ShellCheck. Full/Minimal firmware builds passed at 3,112,640 / 563,872 bytes; the profile comparison passed with an 81.9% Minimal reduction. Full retains 33,088 bytes in the existing 3 MiB slot. No hardware flash or partition change was needed.
 
-- [ ] **E1.9: 原生随身极客实用工具集演进 (Native Geek Utility Pack)**
+- [x] **E1.9: 原生随身极客实用工具集演进 (Native Geek Utility Pack)**
   - **背景与愿景**：
     - 汲取 Flipper Zero、Biscuit 等优秀开源固件的实用性设计，进一步挖掘 400x300 双周长续航墨水屏与三键交互作为“日常随身数字挂件/极客终端”的潜力。
   - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
     1. *工具选型与使用场景*：在墨水屏与三键限制下，哪些原生离线工具最能体现随身设备的价值？例如专注番茄钟（Pomodoro Timer）、离线万年历与节气卡片（Perpetual Calendar）、极简便签/闪卡（Memo/Flashcards）或其他实用小工具？
     2. *低频常显与功耗哲学*：微工具在前台运行或待机锁屏时，如何合理运用局部刷新与休眠调度，既保持即时信息可读性，又守住低功耗底线？
     3. *模块化裁剪一致性*：新增的原生小工具如何与 `components/zectrix_app`、Kconfig 与 ServiceRegistry 优雅结合，保持极小固件（Minimal Profile）下随时可一键裁剪的纯洁度？
+  - Added optional Home > Pocket Tools with a 5–120 minute focus timer and manual five-minute breaks, a browsable 1900–2199 Gregorian calendar with Today/year-month jump, and a bounded tally counter with reset undo. English/Chinese controls and six private scenes preserve global Back/shutdown; [docs/UTILITIES.md](docs/UTILITIES.md) records usage and lifecycle.
+  - Reused TimeService, SceneManager and the shared 15,000-byte canvas. Monotonic timing retains exact pause/resume and same-boot state across foreground recreation; visible countdowns update by minute, failed frames retry with Quality, and hidden timers do not redraw unrelated tools. No background task, storage writes, radio work or wake alarm is added; shutdown clears temporary state.
+  - Verified all 37 Host targets, utility ASan/UBSan, both language renderers/previews and ShellCheck. Full/Minimal firmware and profile comparison passed at 3,120,016 / 564,896 bytes; Full adds 7,376 bytes and retains 25,712 bytes in the existing slot. Minimal excludes utility sources and session RAM. The simulated minute update transfers 880 bytes; no hardware flash or partition change was needed.
 
 - [ ] **D1.4: 维护终端指令集补全、系统级状态反射与多源时钟同步演进 (Maintenance CLI Completeness, System Reflection & Multi-Source Clock Synchronization)**
   - **背景与愿景**：

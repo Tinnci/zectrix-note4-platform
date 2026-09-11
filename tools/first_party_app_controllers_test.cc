@@ -25,7 +25,8 @@ void TestLauncher() {
     const InputEvent back{Button::Ok, InputAction::LongPress};
     const InputEvent off{Button::Down, InputAction::LongPress};
 
-    for (bool reader : {false, true}) for (bool transfer : {false, true}) for (bool connection : {false, true}) {
+    for (bool reader : {false, true}) for (bool transfer : {false, true})
+    for (bool connection : {false, true}) for (bool utilities : {false, true}) {
         ApplicationCatalog catalog;
         assert(catalog.Add("launcher", "Launcher", factory));
         std::vector<const char*> home, tools;
@@ -35,6 +36,7 @@ void TestLauncher() {
         };
         if (reader) add("reader", true, Icon::Book);
         if (transfer) add("book-transfer", true, Icon::Transfer);
+        if (utilities) add("utilities", true);
         add("clock", true, Icon::Clock);
         // Interleave groups so grouping cannot rely on contiguous indices.
         if (connection) add("connectivity", false);
@@ -61,7 +63,9 @@ void TestLauncher() {
             assert(!launcher.overview_selected() && launcher.tile_page() == 0);
             const auto result = launcher.Handle(ok);
             assert(result.decision == LauncherDecision::OpenSelected && std::strcmp(result.target, id) == 0);
-            assert(launcher.Handle(down).decision == LauncherDecision::RenderFast);
+            const auto previous_page = launcher.tile_page();
+            const auto moved = launcher.Handle(down).decision;
+            assert(moved == (previous_page == launcher.tile_page() ? LauncherDecision::RenderFast : LauncherDecision::RenderQuality));
         }
         assert(!launcher.EntryAt(launcher.selected()).id);
         assert(launcher.EntryAt(launcher.selected()).icon == Icon::Tools);
@@ -78,7 +82,10 @@ void TestLauncher() {
         assert(launcher.Handle(back).decision == LauncherDecision::RenderQuality);
         assert(launcher.scene() == LauncherScene::Home && launcher.selected() == tools_index);
         assert(launcher.Handle(back).decision == LauncherDecision::None);
-        assert(launcher.Handle(down).decision == LauncherDecision::RenderFast && launcher.selected() == 0);
+        const auto previous_page = launcher.tile_page();
+        const auto wrapped = launcher.Handle(down).decision;
+        assert(wrapped == (previous_page == launcher.tile_page() ? LauncherDecision::RenderFast : LauncherDecision::RenderQuality));
+        assert(launcher.selected() == 0);
         launcher.Handle(up);
         launcher.Handle(ok);
         assert(launcher.selected() == selected_tool);

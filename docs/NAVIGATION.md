@@ -15,6 +15,11 @@ SceneManager and the existing status/content viewports.
 | Hold UP | No action. |
 
 `MapNavigation` maps SDK input to these intents independently of GPIO sampling.
+Pocket Tools keeps its timer/calendar/counter inside private scenes. Focus and
+counter use the actions printed in their footers; Calendar offers month paging,
+Today and a cancellable year/month draft. All retain the same Back/shutdown
+gestures. See [Pocket tools](UTILITIES.md) for the controls and RAM lifetime.
+
 Phone removal is an explicit menu action: Forget opens a child scene with
 **KEEP TRUSTED PHONE** selected. Confirming **FORGET PHONE AND SYNC LINK** uses
 the existing Connectivity and Reader reset operations. Back cancels; holding

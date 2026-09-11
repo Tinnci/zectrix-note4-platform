@@ -252,6 +252,7 @@ Splash
      |    `-- Library -> Reading -> Font / Phone Position / Restart / Save
      |-- Send Books
      |    `-- Hotspot / Home Network -> Transfer Session
+     |-- Pocket Tools -> Focus Timer / Calendar / Counter
      |-- Clock -> View / Edit
      |-- Sleep Cover
      |    `-- Dashboard / Landscape / Blank -> Preview -> Sleep
@@ -269,6 +270,11 @@ Splash
 Hold OK returns one level, including from a tool to its previous Tools row,
 then to Home. Hold DOWN sleeps from every first-party page. See
 [Unified navigation](docs/NAVIGATION.md) for scene and cleanup behavior.
+
+[Pocket Tools](docs/UTILITIES.md) adds a silent focus timer, a browsable
+1900–2199 calendar and a tally counter with reset undo. Timer/count state
+survives returning to Launcher during the same boot and clears on shutdown.
+Full enables the optional pack; Minimal excludes its code and session state.
 
 The 4bpp scene always performs a white 1bpp full refresh first to reduce
 ghosting. The display service allows at most eight partial refreshes between
