@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 MODULES = ("CONNECTIVITY", "WIFI", "WIFI_HTTP", "BOOK_TRANSFER", "READER", "UI_CHINESE",
-           "USB_CLI", "USB_HOST", "UPDATE", "BOOK_STORAGE", "RUNTIME")
+           "USB_CLI", "USB_HOST", "UPDATE", "BOOK_STORAGE", "RUNTIME", "UTILITIES")
 OPTIONAL_COMPONENTS = {
     "zectrix_connectivity", "zectrix_companion", "zectrix_nfc_service",
     "zectrix_reader", "zectrix_cli", "zectrix_host", "zectrix_update", "bt", "esp_wifi",
@@ -23,6 +23,8 @@ CORE_SOURCES = {
     "components/zectrix_time/zectrix_time_service.cc",
 }
 OPTIONAL_SOURCES = {
+    "main/app_utilities.cc", "components/zectrix_app/zectrix_utilities.cc",
+    "components/zectrix_demo_ui/zectrix_utilities_ui.cc",
     "main/app_connectivity.cc", "main/app_reader.cc", "main/app_book_transfer.cc",
     "main/app_usb_manager.cc",
     "main/app_micro_apps.cc",

@@ -44,6 +44,7 @@ reader_dir="$root_dir/components/zectrix_reader"
   "$root_dir/components/zectrix_demo_ui/zectrix_micro_app_view.cc" \
   "$root_dir/components/zectrix_demo_ui/zectrix_unicode_text.cc" \
   "$root_dir/components/zectrix_demo_ui/zectrix_sleep_ui.cc" \
+  "$root_dir/components/zectrix_demo_ui/zectrix_utilities_ui.cc" \
   "$root_dir/components/zectrix_app/zectrix_scene_manager.cc" \
   "$root_dir/components/zectrix_app/zectrix_app_contract.cc" \
   "$root_dir/components/zectrix_app/zectrix_application_runtime.cc" \
@@ -54,6 +55,7 @@ reader_dir="$root_dir/components/zectrix_reader"
   "$root_dir/components/zectrix_app/zectrix_reader_controller.cc" \
   "$root_dir/components/zectrix_app/zectrix_book_transfer_controller.cc" \
   "$root_dir/components/zectrix_app/zectrix_sleep_cover.cc" \
+  "$root_dir/components/zectrix_app/zectrix_utilities.cc" \
   "$reader_dir/zectrix_reader.cc" "$reader_dir/zectrix_reader_zip.cc" \
   "$reader_dir/zectrix_reader_text.cc" "$reader_dir/zectrix_reader_font.cc" \
   "$reader_dir/zectrix_reader_bookmarks.cc" \

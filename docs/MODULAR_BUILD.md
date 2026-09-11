@@ -13,6 +13,7 @@ an `sdkconfig.defaults` overlay for a separate build.
 | `ZECTRIX_ENABLE_BOOK_TRANSFER` | Wi-Fi | Removes the HTTP server, embedded Web page and SEND BOOKS scenes |
 | `ZECTRIX_ENABLE_READER` | None | Removes TXT/EPUB parsing, pagination, reader scenes and the broad CJK reader font |
 | `ZECTRIX_ENABLE_RUNTIME` | None | Removes Lua, the Apps destination and micro-app USB operations; see [Micro-apps](MICRO_APPS.md) |
+| `ZECTRIX_ENABLE_UTILITIES` | Core TimeService only | Removes Pocket Tools, its timer/calendar/counter controllers, renderer and RAM session; see [Pocket tools](UTILITIES.md) |
 | `ZECTRIX_ENABLE_UI_CHINESE` | None | Removes the Chinese UI strings and its small font subset when Reader is also off |
 | `ZECTRIX_ENABLE_USB_CLI` | None | Removes the maintenance component, executor and USB session task; normal ESP-IDF console logs remain |
 | `ZECTRIX_ENABLE_USB_HOST` | USB CLI | Removes the binary book/settings session, USB Manager application and host channel provider |
@@ -49,10 +50,10 @@ idf.py --ccache -B build-offline \
   -D "SDKCONFIG_DEFAULTS=$PWD/sdkconfig.defaults;/tmp/note4-offline.defaults" build
 ```
 
-Set Reader and Runtime to `n` as well for the core Launcher, clock, settings, diagnostics,
+Set Reader, Runtime and Utilities to `n` as well for the core Launcher, clock, settings, diagnostics,
 gallery and sleep covers. Chinese UI remains independently available through
 `ZECTRIX_ENABLE_UI_CHINESE`; set it to `n` to remove its glyph subset too.
-The committed Minimal profile disables both. Set Connectivity to `y` and Wi-Fi to `n` for a BLE
+The committed Minimal profile disables all of these options. Set Connectivity to `y` and Wi-Fi to `n` for a BLE
 companion build. To configure an existing separate build interactively, retain
 its build path: `idf.py -B build-offline menuconfig`.
 

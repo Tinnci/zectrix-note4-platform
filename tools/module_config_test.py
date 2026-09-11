@@ -37,7 +37,7 @@ class ModuleConfigTest(unittest.TestCase):
     def test_fresh_full_build(self):
         options = self.resolve()
         self.assertEqual(set(options), {"CONNECTIVITY", "WIFI", "WIFI_HTTP", "BOOK_TRANSFER",
-                                        "READER", "BOOK_STORAGE", "USB_CLI", "USB_HOST", "UPDATE", "UI_CHINESE", "RUNTIME"})
+                                        "READER", "BOOK_STORAGE", "USB_CLI", "USB_HOST", "UPDATE", "UI_CHINESE", "RUNTIME", "UTILITIES"})
         self.assertTrue(all(options.values()))
         self.assertFalse(self.config.exists())
 
@@ -110,6 +110,7 @@ class ModuleConfigTest(unittest.TestCase):
         defaults = ("CONFIG_ZECTRIX_ENABLE_CONNECTIVITY=\n"
                     "CONFIG_ZECTRIX_ENABLE_READER=\n"
                     "CONFIG_ZECTRIX_ENABLE_RUNTIME=\n"
+                    "CONFIG_ZECTRIX_ENABLE_UTILITIES=\n"
                     "CONFIG_ZECTRIX_ENABLE_UI_CHINESE=\n"
                     "CONFIG_ZECTRIX_ENABLE_USB_CLI=\n"
                     "CONFIG_ZECTRIX_ENABLE_UPDATE=\n",)
@@ -122,7 +123,7 @@ class ModuleConfigTest(unittest.TestCase):
         for enabled in (False, True, False):
             value = "y" if enabled else "n"
             settings = "".join(f"CONFIG_ZECTRIX_ENABLE_{name}={value}\n"
-                               for name in ("CONNECTIVITY", "READER", "USB_CLI", "UPDATE", "UI_CHINESE", "RUNTIME"))
+                               for name in ("CONNECTIVITY", "READER", "USB_CLI", "UPDATE", "UI_CHINESE", "RUNTIME", "UTILITIES"))
             options = self.resolve(settings)
             self.assertTrue(all(value == enabled for value in options.values()))
 
@@ -143,6 +144,12 @@ class ModuleConfigTest(unittest.TestCase):
                                "CONFIG_ZECTRIX_ENABLE_USB_CLI=n\n")
         self.assertTrue(options["RUNTIME"] and options["BOOK_STORAGE"])
         self.assertFalse(options["READER"] or options["USB_HOST"] or options["BOOK_TRANSFER"])
+
+    def test_utilities_need_only_core_services(self):
+        minimal = (ROOT / "tools/profiles/minimal.defaults").read_text()
+        options = self.resolve("CONFIG_ZECTRIX_ENABLE_UTILITIES=y\n", defaults=(minimal,))
+        self.assertTrue(options["UTILITIES"])
+        self.assertFalse(any(value for name, value in options.items() if name != "UTILITIES"))
 
 
 if __name__ == "__main__":

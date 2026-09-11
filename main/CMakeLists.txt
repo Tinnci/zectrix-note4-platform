@@ -6,6 +6,9 @@ set(sources "app_main.cc" "terminal.cc" "application_modules.cc"
 set(requires zectrix_demo_ui zectrix_app zectrix_display zectrix_input
     zectrix_power zectrix_platform zectrix_self_test zectrix_storage
     zectrix_system zectrix_time esp_psram)
+if(CONFIG_ZECTRIX_ENABLE_UTILITIES)
+    list(APPEND sources "app_utilities.cc")
+endif()
 if(CONFIG_ZECTRIX_ENABLE_CONNECTIVITY)
     list(APPEND sources "app_connectivity.cc")
     list(APPEND requires zectrix_connectivity)

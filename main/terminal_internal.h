@@ -11,6 +11,9 @@
 #include "zectrix_demo_ui.h"
 #include "zectrix_platform.h"
 #include "zectrix_sleep_cover.h"
+#if CONFIG_ZECTRIX_ENABLE_UTILITIES
+#include "zectrix_utilities.h"
+#endif
 #if CONFIG_ZECTRIX_ENABLE_USB_HOST
 #include "zectrix_host_channel.h"
 #endif
@@ -58,6 +61,8 @@ private:
     static sdk::Status CreateSleepCover(TerminalApp&, sdk::Application**);
     class ClockApplication;
     static sdk::Status CreateClock(TerminalApp&, sdk::Application**);
+    class UtilitiesApplication;
+    static sdk::Status CreateUtilities(TerminalApp&, sdk::Application**);
     class SettingsApplication;
     static sdk::Status CreateSettings(TerminalApp&, sdk::Application**);
     class ConnectivityApplication;
@@ -108,6 +113,9 @@ private:
                static_cast<size_t>(ZectrixTestId::kCount)> test_states_;
     app::LauncherSelection launcher_selection_{};
     bool launcher_back_requested_ = false;
+#if CONFIG_ZECTRIX_ENABLE_UTILITIES
+    app::UtilitySession utilities_;
+#endif
 #if CONFIG_ZECTRIX_ENABLE_RUNTIME
     bool micro_app_busy_ = false;
 #endif
