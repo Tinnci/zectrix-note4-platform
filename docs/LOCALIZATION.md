@@ -10,8 +10,9 @@ scene without applying an unconfirmed choice. The Settings parent retains its
 selected row. Automatic showcase is a separate row: OK toggles and saves it,
 and a failed save can be retried with OK. Hold DOWN retains global shutdown.
 
-The language changes immediately, including the status bar, and a Quality
-frame replaces the previous language. A failed display commit retries on idle.
+The language changes immediately across application text, and a Quality
+frame replaces the previous language. E1.10's [graphical status bar](STATUS_BAR.md)
+has the same appearance in both languages. A failed display commit retries on idle.
 If saving fails, the choice remains active for this boot and the picker shows
 that it was not saved; OK retries the write. These operations use the existing
 foreground owner, deferred SceneManager and DisplayService refresh policy.
@@ -72,7 +73,7 @@ required characters from the committed GNU Unifont reader data; see the
 [font notice](../components/zectrix_demo_ui/font/README.md). Normal firmware
 builds use the committed subset and need no font download or runtime decoder.
 
-Localized surfaces include Home, status indicators, Settings, Clock, Reader,
+Localized surfaces include Home, system messages, Settings, Clock, Reader,
 Send Books, Connectivity, sleep covers and the system menus for tools and
 diagnostics. Hardware diagnostic measurements, protocol names, book/SSID data,
 CLI output and legal identifiers retain their source representation. The

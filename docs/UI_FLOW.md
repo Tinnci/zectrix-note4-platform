@@ -43,7 +43,7 @@ Minimal has Clock, Sleep Cover, Settings and Tools in two rows and no reading
 focus. More than six tiles use additional pages with a page indicator.
 See [HOME.md](HOME.md) and [MODULAR_BUILD.md](MODULAR_BUILD.md).
 
-E1.7 localizes these labels, status indicators and button hints. Full defaults
+E1.7 localizes these labels, system messages and button hints. Full defaults
 to Simplified Chinese; **设置 / SETTINGS -> 语言 / LANGUAGE** switches between
 Chinese and English. The picker retains the standard UP/DOWN, OK and Back
 controls. See [LOCALIZATION.md](LOCALIZATION.md).
@@ -112,10 +112,10 @@ the next 20 pixels; content and footer stay below the status viewport.
 | Indicator | Source and behavior |
 | --- | --- |
 | `HH:MM` | The shared TimeService snapshot, restored from RTC or calibrated by the user/phone; `--:--` if unset. Seconds do not cause refreshes. |
-| Battery and percentage | Existing calibrated, averaged ADC power snapshot, sampled every five seconds. An unavailable/absent battery shows `--%`. |
-| Lightning / `+` / `!` | Charging, external power without charging, or charger fault respectively. |
-| Bluetooth symbol | `OFF`, `ON` (idle/advertising), `...` (pairing/securing), `LINK` (transport connected), or `ERR`. LINK does not assert peer authorization or sync convergence. |
-| Wi-Fi symbol | `OFF` until station/hotspot startup, `...` while connecting/stopping, `LINK` after IP acquisition or while the book server is available, or `ERR` if radio shutdown fails. Stored credentials alone do not indicate an active radio. |
+| Battery and percentage | Five charge cells in a 20 x 10 silhouette; the existing averaged ADC sample updates every five seconds. Unavailable/absent batteries show `?`/a cross inside the outline and `--%`. |
+| Power mark | Lightning for charging, check for charger-full, plug for external power, exclamation for fault or low battery. Marks preserve the sampled percentage. |
+| Bluetooth symbol | Slash for off, hollow circle for advertising/pairing/securing, solid dot for a connected transport, opposed arrows for sampled frame activity, exclamation for fault. Connection does not assert peer authorization or sync convergence. |
+| Wi-Fi symbol | The same five marks indicate off, startup/listening hotspot, station connection, resource transfer/book upload, or failed shutdown. Stored credentials and an idle book server do not imply transfer activity. |
 
 One owner loop samples state between application callbacks with a 250 ms input
 wait. Only visible changes invalidate the status viewport; an application
@@ -123,6 +123,10 @@ redraw includes pending status in the same commit. Status-only 1bpp updates
 preserve the application canvas and use DisplayService's minimal dirty region.
 Clock remains navigable during RTC failure, labels its fallback source and
 automatically resumes RTC display after recovery.
+
+E1.10's [micro-icon notes and generated previews](STATUS_BAR.md) describe mark
+priority, polarity and the shared radio vocabulary. Icons are static between
+state changes and remain identical across system languages.
 
 ## Refresh policy
 

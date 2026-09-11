@@ -34,6 +34,7 @@ for profile in full chinese-only english-only; do
       "$root_dir/components/zectrix_app/zectrix_scene_manager.cc" \
       "$root_dir/components/zectrix_app/zectrix_first_party_app_controllers.cc" \
       "$root_dir/components/zectrix_demo_ui/zectrix_canvas.cc" \
+      "$root_dir/components/zectrix_demo_ui/zectrix_status_bar.cc" \
       "$root_dir/tools/localization_test.cc" "${sources[@]}" -o "$work_dir/$profile"
     "$work_dir/$profile"
 done

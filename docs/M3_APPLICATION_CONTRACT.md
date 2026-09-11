@@ -235,6 +235,12 @@ invalidates only for visible changes. Sampling and display calls remain on the
 application owner; diagnostic progress callbacks and their existing bounded
 waits also service this status display.
 
+E1.10's [micro-icons](STATUS_BAR.md) render copied charger-full/absent flags and
+sampled BLE/Wi-Fi transfer activity. The application adapter maps snapshots to
+five graphical radio states; an idle book server has no activity arrows. Tiny
+Flash masks share the canvas clip and polarity. Equality compares visible marks
+and percentage, preserving status-only invalidation without animation timers.
+
 M3 does not add light-sleep suspend hooks. Shutdown ends the current application
 lifecycle, so Reader saves/closes before L1.4 captures the latest committed
 position. The owner stops maintenance/connectivity, draws the selected cover

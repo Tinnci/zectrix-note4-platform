@@ -14,6 +14,7 @@
 #include "zectrix_epd.h"
 #include "zectrix_unicode_text.h"
 #include "ssd2683_waveform.h"
+#include "../main/terminal_status.h"
 
 #include <algorithm>
 #include <array>
@@ -945,6 +946,85 @@ void SavePreview(const ZectrixCanvas& canvas, const char* name) {
     assert(std::fclose(output) == 0);
 }
 
+void SaveStatusIconPreviews() {
+    const char* directory = std::getenv("ZECTRIX_UI_PREVIEW_DIR");
+    if (!directory) return;
+    using namespace zectrix::ui;
+    StatusBarState state;
+    state.time_valid = state.battery_valid = true;
+    state.hour = 12;
+    state.minute = 34;
+    std::vector<std::pair<std::string, StatusBarState>> cases;
+    for (const uint8_t percent : {0, 5, 20, 50, 80, 100}) {
+        state.battery_percent = percent;
+        cases.emplace_back("DISCHARGING " + std::to_string(percent) + "%", state);
+    }
+    state.battery_percent = 20;
+    state.external_power = state.charging = true;
+    state.ble = RadioIndicator::Active;
+    state.wifi = RadioIndicator::Connected;
+    cases.emplace_back("USB CHARGING / BLE ACTIVE", state);
+    state.charging = false;
+    state.charge_full = true;
+    state.battery_percent = 98;
+    state.ble = RadioIndicator::Connected;
+    cases.emplace_back("CHARGER FULL / ADC 98%", state);
+    state.charge_full = false;
+    state.battery_percent = 80;
+    cases.emplace_back("EXTERNAL POWER / NOT CHARGING", state);
+    state.charge_fault = true;
+    state.battery_percent = 50;
+    state.ble = state.wifi = RadioIndicator::Fault;
+    cases.emplace_back("CHARGE AND RADIO FAULTS", state);
+    state = {};
+    cases.emplace_back("CLOCK AND BATTERY UNAVAILABLE", state);
+    state.battery_absent = state.external_power = true;
+    cases.emplace_back("USB POWER / BATTERY ABSENT", state);
+    state = {};
+    state.time_valid = state.battery_valid = true;
+    state.hour = 23;
+    state.minute = 59;
+    state.battery_percent = 80;
+    for (const auto& radio : {std::pair{"RADIOS OFF", RadioIndicator::Off},
+            {"RADIOS READY", RadioIndicator::Ready}, {"RADIOS CONNECTED", RadioIndicator::Connected},
+            {"RADIOS ACTIVE", RadioIndicator::Active}, {"RADIOS FAULT", RadioIndicator::Fault}}) {
+        state.ble = state.wifi = radio.second;
+        cases.emplace_back(radio.first, state);
+    }
+
+    char path[1024];
+    const char* prefix = zectrix::i18n::CurrentLanguage() == zectrix::i18n::Language::Chinese ? "zh-" : "";
+    std::snprintf(path, sizeof(path), "%s/%sstatus-icons.pbm", directory, prefix);
+    FILE* pixels = std::fopen(path, "wb");
+    std::snprintf(path, sizeof(path), "%s/%sstatus-icons.txt", directory, prefix);
+    FILE* ascii = std::fopen(path, "w");
+    assert(pixels && ascii);
+    std::fprintf(pixels, "P4\n800 %zu\n", cases.size() * 40);
+    ZectrixCanvas normal, inverse;
+    const auto rows = [&](int height) {
+        for (int y = 0; y < height; ++y) for (const auto* canvas : {&normal, &inverse})
+            for (int x = 0; x < 50; ++x) std::fputc(canvas->data()[y * 50 + x] ^ 0xff, pixels);
+    };
+    for (const auto& preview : cases) {
+        normal.Clear();
+        inverse.Clear();
+        normal.TextFitted(8, 0, preview.first.c_str(), 384);
+        inverse.Text(8, 0, "INVERTED");
+        rows(16);
+        DrawStatusBar(normal, preview.second);
+        DrawStatusBar(inverse, preview.second, true);
+        rows(kStatusBarHeight);
+        std::fprintf(ascii, "%s\n", preview.first.c_str());
+        for (int y = 4; y < 20; ++y) {
+            for (int x = 256; x < 392; ++x)
+                std::fputc(Bit(normal.data(), 50, x, y) ? ' ' : '#', ascii);
+            std::fputc('\n', ascii);
+        }
+        std::fputc('\n', ascii);
+    }
+    assert(std::fclose(pixels) == 0 && std::fclose(ascii) == 0);
+}
+
 void TestTypographyRendering() {
     using zectrix::sdk::TextStyle;
     using namespace zectrix::reader;
@@ -1357,6 +1437,20 @@ void TestStatusAndImageComposition() {
     assert(bytes <= 2400);
     std::printf("MEASURE: status-only minute update RAM payload=%zu bytes.\n", bytes);
 
+    state.wifi = zectrix::ui::RadioIndicator::Ready;
+    ui.UpdateStatus(state);
+    assert(ui.RefreshPending() == ESP_OK);
+    std::memcpy(before.data(), ui.canvas().data(), before.size());
+    ClearTraffic();
+    state.wifi = zectrix::ui::RadioIndicator::Active;
+    ui.UpdateStatus(state);
+    assert(ui.RefreshPending() == ESP_OK);
+    const auto radio_dirty = ReferenceDirty(before, {0, 0, 400, 300}, ui.canvas().data());
+    assert(radio_dirty.x >= 304 && radio_dirty.x + radio_dirty.width <= 309 &&
+        radio_dirty.y >= 8 && radio_dirty.y + radio_dirty.height <= 15);
+    const auto radio_bytes = CheckPartial(before, {0, 0, 400, 300}, ui.canvas().data());
+    std::printf("MEASURE: status-only radio activity RAM payload=%zu bytes.\n", radio_bytes);
+
     std::memcpy(before.data(), ui.canvas().data(), before.size());
     ClearTraffic();
     assert(ui.ShowMenu("ZECTRIX | LAUNCHER", items, std::size(items), 10,
@@ -1454,6 +1548,60 @@ void TestStatusAndImageComposition() {
     assert(!Bit(ui.canvas().data(), 50, 0, 23));
 }
 
+void TestStatusSources() {
+    using namespace zectrix::connectivity;
+    using namespace zectrix::terminal;
+    using Indicator = zectrix::ui::RadioIndicator;
+    zectrix::ui::StatusBarState status;
+    zectrix::power::PowerSnapshot power;
+    power.battery_valid = power.charge_full = power.external_power_present = true;
+    power.battery_percent = 98;
+    CopyPowerStatus(status, power);
+    assert(status.charge_full && status.external_power && status.battery_percent == 98);
+    power.battery_absent = true;
+    CopyPowerStatus(status, power);
+    assert(status.battery_absent);
+
+    ConnectivitySnapshot link;
+    link.wifi_credentials_available = true;
+    CopyRadioStatus(status, link);
+    assert(status.ble == Indicator::Off && status.wifi == Indicator::Off);
+    link.state = ConnectivityState::kAdvertising;
+    link.wifi_state = WifiBackendState::kAssociating;
+    CopyRadioStatus(status, link);
+    assert(status.ble == Indicator::Ready && status.wifi == Indicator::Ready);
+    link.state = ConnectivityState::kProtocolNegotiatedLocal;
+    link.wifi_state = WifiBackendState::kOpeningTls;
+    link.wifi.mode = WifiMode::Station;
+    CopyRadioStatus(status, link);
+    assert(!link.peer_authorized && !link.sync_converged &&
+        status.ble == Indicator::Connected && status.wifi == Indicator::Connected);
+    link.ble_data_active = link.wifi_data_active = true;
+    link.wifi_state = WifiBackendState::kTransferring;
+    CopyRadioStatus(status, link);
+    assert(status.ble == Indicator::Active && status.wifi == Indicator::Active);
+    link.ble_data_active = link.wifi_data_active = false;
+    link.book_transfer_active = true;
+    link.wifi.mode = WifiMode::AccessPoint;
+    CopyRadioStatus(status, link);
+    assert(status.ble == Indicator::Connected && status.wifi == Indicator::Ready);
+    link.wifi_data_active = true;
+    CopyRadioStatus(status, link);
+    assert(status.wifi == Indicator::Active);
+    link.wifi_data_active = false;
+    CopyRadioStatus(status, link);
+    assert(status.wifi == Indicator::Ready);
+    link.state = ConnectivityState::kFault;
+    link.wifi_state = WifiBackendState::kStopFailed;
+    link.ble_data_active = link.wifi_data_active = true;
+    CopyRadioStatus(status, link);
+    assert(status.ble == Indicator::Fault && status.wifi == Indicator::Fault);
+    link.state = ConnectivityState::kStopped;
+    link.wifi_state = WifiBackendState::kStopped;
+    CopyRadioStatus(status, link);
+    assert(status.ble == Indicator::Off && status.wifi == Indicator::Off);
+}
+
 void TestConnectivityComposition() {
     using namespace zectrix::i18n;
     Reset();
@@ -1502,7 +1650,9 @@ void TestSettingsComposition() {
     const auto apply = settings.Handle(ok);
     assert(apply.decision == SettingsDecision::SaveLanguage && SetLanguage(apply.language));
     assert(ui.ShowSettings(settings, Tr(Text::Saved), true) == ESP_OK);
-    assert(std::memcmp(before.data(), ui.canvas().data(), 24 * 50) != 0);
+    // Language changes redraw content; graphical status has no translated labels.
+    assert(std::memcmp(before.data(), ui.canvas().data(), 24 * 50) == 0);
+    assert(std::memcmp(before.data() + 24 * 50, ui.canvas().data() + 24 * 50, before.size() - 24 * 50) != 0);
     SavePreview(ui.canvas(), "language-switched");
     ClearTraffic();
     assert(ui.ShowSettings(settings, Tr(Text::Saved), false) == ESP_OK && packets.empty());
@@ -1939,6 +2089,8 @@ int main() {
     TestUiTraffic();
     TestTypographyRendering();
     TestViewPorts();
+    TestStatusSources();
+    SaveStatusIconPreviews();
     TestLauncherComposition();
     TestStatusAndImageComposition();
     TestConnectivityComposition();

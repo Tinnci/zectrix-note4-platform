@@ -1223,6 +1223,7 @@ bool ConnectivityService::ReadSnapshot(ConnectivitySnapshot* output, bool wait) 
     snapshot.authenticated = ble.authenticated;
     snapshot.bonded = ble.bonded;
     snapshot.notifications_enabled = ble.notifications_enabled;
+    snapshot.ble_data_active = ble.data_active;
     snapshot.protocol_negotiated_local =
         ble.state == BleState::kTransportReady &&
         impl_->protocol_negotiated_local.load() &&
@@ -1236,6 +1237,7 @@ bool ConnectivityService::ReadSnapshot(ConnectivitySnapshot* output, bool wait) 
         snapshot.wifi_credentials_available = impl_->resource_conditions.wifi_credentials_available;
         snapshot.resource_busy = impl_->resource_client->Busy();
         snapshot.wifi_state = impl_->resource_client->WifiState();
+        snapshot.wifi_data_active = snapshot.wifi_state == WifiBackendState::kTransferring;
         snapshot.radio_mode = impl_->radio_arbiter.Mode();
 #if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
         snapshot.wifi = impl_->wifi_driver.CachedSnapshot();
@@ -1245,6 +1247,7 @@ bool ConnectivityService::ReadSnapshot(ConnectivitySnapshot* output, bool wait) 
         if (snapshot.book_transfer_active) {
             snapshot.wifi = impl_->book_share->radio.Snapshot();
             const auto& books = impl_->book_status;
+            snapshot.wifi_data_active = books.state == BookTransferState::Sharing && books.client_active;
             snapshot.wifi_state = books.state == BookTransferState::Sharing ? WifiBackendState::kTransferring :
                 books.state == BookTransferState::Stopping ?
                     (books.error == BookTransferError::Stop ? WifiBackendState::kStopFailed : WifiBackendState::kStopping) :

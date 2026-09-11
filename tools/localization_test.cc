@@ -1,4 +1,5 @@
 #include "zectrix_canvas.h"
+#include "zectrix_status_bar.h"
 #include "zectrix_first_party_app_controllers.h"
 #include "zectrix_language_setting.h"
 #include "zectrix_storage_service.h"
@@ -181,6 +182,113 @@ bool Ink(const ZectrixCanvas& canvas, int x, int y) {
     return !(canvas.data()[y * ZectrixCanvas::kStride + x / 8] & (0x80 >> (x & 7)));
 }
 
+void TestStatusIcons() {
+    using namespace zectrix::ui;
+    StatusBarState state;
+    state.time_valid = state.battery_valid = true;
+    state.hour = 12;
+    state.minute = 34;
+    ZectrixCanvas normal, inverse, clipped;
+    const auto before = allocations;
+    unsigned previous_fill = 0;
+    for (const uint8_t percent : {0, 5, 20, 50, 80, 100}) {
+        state.battery_percent = percent;
+        normal.Clear(false);
+        DrawStatusBar(normal, state);
+        inverse.Clear(false);
+        DrawStatusBar(inverse, state, true);
+        for (int i = 0; i < ZectrixCanvas::kStride * kStatusBarHeight; ++i)
+            assert(normal.data()[i] == static_cast<uint8_t>(~inverse.data()[i]));
+        for (std::size_t i = ZectrixCanvas::kStride * kStatusBarHeight; i < normal.size(); ++i)
+            assert(normal.data()[i] == 0 && inverse.data()[i] == 0);
+        unsigned fill = 0;
+        for (int y = 9; y < 15; ++y) for (int x = 334; x < 348; ++x) fill += Ink(normal, x, y);
+        assert(fill >= previous_fill);
+        if (percent == 0) assert(fill == 0);
+        else assert(fill > 0);
+        if (percent == 100) assert(fill == 60);
+        previous_fill = fill;
+
+        // Power marks must never erase charge cells or the measured percentage.
+        for (unsigned flags = 0; flags < 16; ++flags) {
+            auto power = state;
+            power.charging = flags & 1;
+            power.charge_full = flags & 2;
+            power.external_power = flags & 4;
+            power.charge_fault = flags & 8;
+            DrawStatusBar(inverse, power);
+            for (int y = 0; y < kStatusBarHeight; ++y)
+                for (int x = 332; x < 400; ++x) assert(Ink(normal, x, y) == Ink(inverse, x, y));
+        }
+    }
+    // Every radio mode must remain identifiable in either fixed slot.
+    constexpr RadioIndicator radios[] = {RadioIndicator::Off, RadioIndicator::Ready,
+        RadioIndicator::Connected, RadioIndicator::Active, RadioIndicator::Fault};
+    for (const auto radio : radios) for (const auto other : radios) {
+        state.ble = state.wifi = radio;
+        DrawStatusBar(normal, state);
+        auto changed = state;
+        changed.ble = changed.wifi = other;
+        DrawStatusBar(inverse, changed);
+        for (int left : {256, 288}) {
+            unsigned different = 0;
+            for (int y = 0; y < 23; ++y) for (int x = left; x < left + 24; ++x)
+                different += Ink(normal, x, y) != Ink(inverse, x, y);
+            assert((different == 0) == (radio == other));
+        }
+    }
+    const auto same_visible = [&](const StatusBarState& left, const StatusBarState& right) {
+        assert(left == right);
+        DrawStatusBar(normal, left);
+        DrawStatusBar(inverse, right);
+        assert(std::memcmp(normal.data(), inverse.data(), normal.size()) == 0);
+    };
+    auto hidden = state;
+    hidden.battery_percent = 255;
+    same_visible(state, hidden);
+    state.charge_fault = true;
+    hidden = state;
+    hidden.charging = hidden.charge_full = hidden.external_power = true;
+    same_visible(state, hidden);
+    state = hidden;
+    state.charge_fault = hidden.charge_fault = false;
+    hidden.charging = hidden.external_power = false;
+    same_visible(state, hidden);
+    state.time_valid = state.battery_valid = false;
+    hidden = state;
+    hidden.hour = hidden.minute = hidden.battery_percent = 0;
+    same_visible(state, hidden);
+    state.battery_absent = true;
+    hidden = state;
+    hidden.battery_valid = true;
+    hidden.charging = hidden.charge_full = false;
+    same_visible(state, hidden);
+    hidden.battery_absent = false;
+    assert(!(state == hidden));
+    DrawStatusBar(inverse, hidden);
+    assert(std::memcmp(normal.data(), inverse.data(), 24 * 50) != 0);
+
+    for (bool inverted : {false, true}) {
+        normal.Clear(false);
+        DrawStatusBar(normal, state, inverted);
+        clipped.ResetClip();
+        clipped.Clear(false);
+        clipped.SetClip({300, 8, 44, 8});
+        DrawStatusBar(clipped, state, inverted);
+        assert(clipped.clip().x == 300 && clipped.clip().width == 44);
+        for (int y = 0; y < 300; ++y) for (int x = 0; x < 400; ++x)
+            assert(Ink(clipped, x, y) == (x >= 300 && x < 344 && y >= 8 && y < 16 ? Ink(normal, x, y) : true));
+    }
+    const auto language = CurrentLanguage();
+    SetLanguage(Language::English);
+    DrawStatusBar(normal, state);
+    SetLanguage(Language::Chinese);
+    DrawStatusBar(inverse, state);
+    assert(std::memcmp(normal.data(), inverse.data(), normal.size()) == 0);
+    SetLanguage(language);
+    assert(allocations == before);
+}
+
 void TestTypography() {
     using zectrix::sdk::TextStyle;
     ZectrixCanvas canvas, clipped, expected;
@@ -316,6 +424,7 @@ void TestLanguageScenes() {
 int main() {
     TestCatalogAndGlyphs();
     TestTypography();
+    TestStatusIcons();
     TestLanguagePersistence();
     TestLanguageScenes();
     std::printf("PASS: localization, UTF-8 bounds, zero-allocation drawing, persistence and scenes (reader=%d, Chinese=%d).\n",

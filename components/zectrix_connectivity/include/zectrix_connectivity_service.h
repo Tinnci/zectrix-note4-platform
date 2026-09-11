@@ -46,6 +46,7 @@ struct ConnectivitySnapshot {
     bool authenticated = false;
     bool bonded = false;
     bool notifications_enabled = false;
+    bool ble_data_active = false;
     // The firmware accepted Hello and started HelloAck transport. This does not prove
     // that Android received the response, and it does not authorize the peer.
     bool protocol_negotiated_local = false;
@@ -58,6 +59,8 @@ struct ConnectivitySnapshot {
     bool wifi_credentials_available = false;
     bool resource_busy = false;
     bool book_transfer_active = false;
+    // Transfer work at sampling time, not merely an open book-sharing session.
+    bool wifi_data_active = false;
     WifiBackendState wifi_state = WifiBackendState::kStopped;
     RadioMode radio_mode = RadioMode::kCompanion;
     WifiLinkSnapshot wifi{};
