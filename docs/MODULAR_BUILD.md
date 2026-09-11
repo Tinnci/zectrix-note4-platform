@@ -12,13 +12,14 @@ an `sdkconfig.defaults` overlay for a separate build.
 | `ZECTRIX_ENABLE_WIFI_HTTP` | Wi-Fi | Removes the direct HTTPS client and its TLS transport; phone resource requests remain available |
 | `ZECTRIX_ENABLE_BOOK_TRANSFER` | Wi-Fi | Removes the HTTP server, embedded Web page and SEND BOOKS scenes |
 | `ZECTRIX_ENABLE_READER` | None | Removes TXT/EPUB parsing, pagination, reader scenes and the broad CJK reader font |
+| `ZECTRIX_ENABLE_RUNTIME` | None | Removes Lua, the Apps destination and micro-app USB operations; see [Micro-apps](MICRO_APPS.md) |
 | `ZECTRIX_ENABLE_UI_CHINESE` | None | Removes the Chinese UI strings and its small font subset when Reader is also off |
 | `ZECTRIX_ENABLE_USB_CLI` | None | Removes the maintenance component, executor and USB session task; normal ESP-IDF console logs remain |
 | `ZECTRIX_ENABLE_USB_HOST` | USB CLI | Removes the binary book/settings session, USB Manager application and host channel provider |
 | `ZECTRIX_ENABLE_UPDATE` | None | Removes streamed firmware writing and commit; core boot protection remains |
 
 `ZECTRIX_ENABLE_BOOK_STORAGE` is derived automatically from Reader, Web book
-transfer or USB management. When all three are disabled, SPIFFS and the book storage implementation
+transfer, USB management or the micro-app runtime. When all four are disabled, SPIFFS and the book storage implementation
 leave the build and no library mount is attempted. The partition table and
 stored books remain intact. The explicit `books-flash` target is available
 when book storage is enabled; normal firmware flash still preserves books.
@@ -48,7 +49,7 @@ idf.py --ccache -B build-offline \
   -D "SDKCONFIG_DEFAULTS=$PWD/sdkconfig.defaults;/tmp/note4-offline.defaults" build
 ```
 
-Set Reader to `n` as well for the core Launcher, clock, settings, diagnostics,
+Set Reader and Runtime to `n` as well for the core Launcher, clock, settings, diagnostics,
 gallery and sleep covers. Chinese UI remains independently available through
 `ZECTRIX_ENABLE_UI_CHINESE`; set it to `n` to remove its glyph subset too.
 The committed Minimal profile disables both. Set Connectivity to `y` and Wi-Fi to `n` for a BLE
@@ -133,7 +134,7 @@ RTC before Connectivity starts. See [TIME.md](TIME.md).
 ## Repeatable Full/Minimal regression
 
 S1.4 provides committed profiles in `tools/profiles/`. Full explicitly selects
-every optional module. Minimal disables Connectivity, Reader, USB maintenance
+every optional module. Minimal disables Connectivity, Reader, Runtime, USB maintenance
 and firmware writing, including their network and book-storage dependencies.
 It retains the Launcher, Clock/editor, Sleep Cover, Settings, gallery,
 Diagnostics, device information and mandatory boot protection. SceneManager,

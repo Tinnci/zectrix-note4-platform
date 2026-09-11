@@ -119,7 +119,7 @@ bool Protocol::Receive(cli::CliTransport& transport) {
     if (overflow_ || !DecodeFrame(input_.data(), size_, &frame_) ||
         frame_.session != session_ || frame_.status != Status::Ok ||
         frame_.id == 0 || frame_.id <= last_id_ || frame_.operation == 0 ||
-        frame_.operation > static_cast<uint8_t>(Operation::Close)) {
+        frame_.operation > static_cast<uint8_t>(Operation::AppRemove)) {
         Fail(transport, Status::Invalid);
         return true;
     }

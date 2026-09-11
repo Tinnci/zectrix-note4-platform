@@ -52,6 +52,8 @@ private:
     static sdk::Status CreateBookTransfer(TerminalApp&, sdk::Application**);
     class UsbManagerApplication;
     static sdk::Status CreateUsbManager(TerminalApp&, sdk::Application**);
+    class MicroAppsApplication;
+    static sdk::Status CreateMicroApps(TerminalApp&, sdk::Application**);
     class SleepCoverApplication;
     static sdk::Status CreateSleepCover(TerminalApp&, sdk::Application**);
     class ClockApplication;
@@ -106,6 +108,9 @@ private:
                static_cast<size_t>(ZectrixTestId::kCount)> test_states_;
     app::LauncherSelection launcher_selection_{};
     bool launcher_back_requested_ = false;
+#if CONFIG_ZECTRIX_ENABLE_RUNTIME
+    bool micro_app_busy_ = false;
+#endif
     uint32_t gallery_selection_ = 0;
 #if CONFIG_ZECTRIX_ENABLE_READER
     uint32_t reader_selection_ = 0;

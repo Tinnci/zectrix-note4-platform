@@ -22,6 +22,9 @@ bool TerminalApp::ComposeApplications() {
     if (connectivity_ && storage_ &&
         !AddApplication("book-transfer", "SEND BOOKS", CreateBookTransfer, {Icon::Transfer, true, Text::SendBooks})) return false;
 #endif
+#if CONFIG_ZECTRIX_ENABLE_RUNTIME
+    if (storage_ && !AddApplication("apps", "APPS", CreateMicroApps, {Icon::App, true, Text::Apps})) return false;
+#endif
     if (!AddApplication("clock", "CLOCK", CreateClock, {Icon::Clock, true, Text::Clock}) ||
         !AddApplication("sleep-cover", "SLEEP COVER", CreateSleepCover, {Icon::Sleep, true, Text::SleepCover}) ||
         !AddApplication("settings", "SETTINGS", CreateSettings, {Icon::Settings, true, Text::Settings})) return false;

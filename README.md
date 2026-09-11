@@ -68,13 +68,13 @@ qualification and pull-request integration work.
 | L1 | Implemented | Status bar, scene navigation, streamed TXT/EPUB reader, local Wi-Fi book management and ambient sleep covers; physical sleep/wake and standby-current measurements remain open |
 | S1 | Implemented | Typed service registry, selectable modules, conditional application composition, RTC restoration/editor and Full/Minimal regression; physical RTC retention and standby-current measurements remain open |
 | E1 | Implemented | E1.1–E1.8 deliver Home, navigation, radio arbitration, Chinese/English UI and USB book/settings management; physical USB transfer qualification remains open |
-| E2.1 | Research complete | ELF/Wasm/Lua comparison, executable probes, ESP32-S3 link budgets and proposed binary/storage boundaries; third-party loading remains future implementation |
+| E2 | Lua pilot implemented | E2.1 compares engines and budgets; E2.2 adds Apps discovery, bounded Lua execution, USB script installation and Calculator/Flashcards; packaging remains E2.3 |
 
 The [service registry](docs/SERVICE_REGISTRY.md) provides optional typed lookup,
 ordered startup and failure cleanup with 16 fixed slots and no registry heap
 allocation. Existing Platform accessors use the same service instances.
 The [module build options](docs/MODULAR_BUILD.md) select connectivity, Wi-Fi,
-HTTPS, Web transfer, reading, USB maintenance/management and firmware writing. Core boot
+HTTPS, Web transfer, reading, micro-apps, USB maintenance/management and firmware writing. Core boot
 protection and the clock/sleep UI remain available in trimmed builds.
 Run `bash tools/test-minimal-profile.sh` for the complete Host suite and
 isolated Full/Minimal firmware builds with size and static RAM comparison.
@@ -95,6 +95,10 @@ The [dynamic application study](docs/DYNAMIC_APPLICATION_RESEARCH.md) compares
 native ELF, Wasm3, WAMR and Lua, including measured memory/Flash costs and
 execution limits. It proposes independent app distribution through the existing
 USB/storage owners while retaining the static SDK v1 shell.
+The [Lua micro-app pilot](docs/MICRO_APPS.md) now implements that path: install
+the independent Calculator and Flashcards scripts with `app-put` in USB Manager,
+then open them from the paged Apps destination. Firmware is built once; each
+script can be installed or removed separately.
 
 > [!CAUTION]
 > This project targets the black-and-white ZECTRIX NOTE4 hardware. It is not

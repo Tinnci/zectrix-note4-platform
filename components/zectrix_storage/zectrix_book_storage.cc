@@ -1,4 +1,5 @@
 #include "zectrix_book_storage.h"
+#include "zectrix_app_storage.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -15,10 +16,11 @@
 
 namespace zectrix::storage {
 namespace {
-bool BookName(const char* name) {
+constexpr char kAppPrefix[] = ".app-";
+bool ObjectName(const char* name, std::size_t capacity) {
     if (!name || !*name) return false;
-    const auto length = strnlen(name, BookEntry{}.name.size());
-    if (length >= BookEntry{}.name.size()) return false;
+    const auto length = strnlen(name, capacity);
+    if (length >= capacity) return false;
     for (std::size_t i = 0; i < length; ++i) {
         const auto c = static_cast<uint8_t>(name[i]);
         if (c < 0x20 || c == 0x7f || c == '/' || c == '\\') return false;
@@ -35,9 +37,13 @@ bool BookName(const char* name) {
         if (cp < (extra == 1 ? 0x80U : extra == 2 ? 0x800U : 0x10000U) ||
             cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return false;
     }
+    return true;
+}
+bool BookName(const char* name) {
+    if (!ObjectName(name, BookEntry{}.name.size())) return false;
     const char* suffix = std::strrchr(name, '.');
-    if (!suffix || suffix == name) return false;
-    return strcasecmp(suffix, ".txt") == 0 || strcasecmp(suffix, ".epub") == 0;
+    return suffix && suffix != name &&
+        (strcasecmp(suffix, ".txt") == 0 || strcasecmp(suffix, ".epub") == 0);
 }
 
 bool FileInfo(const char* path, struct stat* info) {
@@ -64,6 +70,11 @@ void BookStorage::ReaderClosed() {
 }
 
 bool BookStorage::ValidName(const char* name) { return BookName(name); }
+bool BookStorage::ValidAppName(const char* name) {
+    if (!ObjectName(name, AppStorage::kNameSize)) return false;
+    const char* suffix = std::strrchr(name, '.');
+    return suffix && suffix != name && strcasecmp(suffix, ".lua") == 0;
+}
 
 bool BookFile::Read(uint32_t offset, void* output, std::size_t size) {
     if (!file_ || offset > size_ || size > size_ - offset || (size && !output)) return false;
@@ -106,15 +117,21 @@ esp_err_t BookStorage::Mount() {
     return ESP_OK;
 }
 
-bool BookStorage::Path(const char* name, char* output, std::size_t capacity) const {
-    if (!BookName(name)) return false;
-    const int size = std::snprintf(output, capacity, "%s/%s", root_.data(), name);
+bool BookStorage::Path(const char* name, char* output, std::size_t capacity, bool application) const {
+    if (!(application ? ValidAppName(name) : BookName(name))) return false;
+    const int size = std::snprintf(output, capacity, "%s/%s%s", root_.data(), application ? kAppPrefix : "", name);
     return size > 0 && static_cast<std::size_t>(size) < capacity;
 }
 
 esp_err_t BookStorage::List(BookEntry* entries, std::size_t capacity,
                           std::size_t* count, bool* truncated, const char* after) {
+    return ListImpl(entries, capacity, count, truncated, after, false);
+}
+
+esp_err_t BookStorage::ListImpl(BookEntry* entries, std::size_t capacity,
+                              std::size_t* count, bool* truncated, const char* after, bool application, bool reverse) {
     if (!entries || !capacity || !count || !truncated) return ESP_ERR_INVALID_ARG;
+    if (application && after && !ValidAppName(after)) return ESP_ERR_INVALID_ARG;
     std::lock_guard<std::mutex> lock(mutex_);
     *count = 0;
     *truncated = false;
@@ -127,19 +144,25 @@ esp_err_t BookStorage::List(BookEntry* entries, std::size_t capacity,
         errno = 0;
         const auto* entry = readdir(directory);
         if (!entry) { if (errno) result = ESP_FAIL; break; }
-        if (after && std::strcmp(entry->d_name, after) <= 0) continue;
+        const char* name = entry->d_name;
+        if (application) {
+            if (std::strncmp(name, kAppPrefix, sizeof(kAppPrefix) - 1)) continue;
+            name += sizeof(kAppPrefix) - 1;
+        }
+        if (after && (reverse ? std::strcmp(name, after) >= 0 : std::strcmp(name, after) <= 0)) continue;
         char path[256];
         struct stat info{};
-        if (!Path(entry->d_name, path, sizeof(path)) || !FileInfo(path, &info) ||
+        if (!Path(name, path, sizeof(path), application) || !FileInfo(path, &info) ||
             !S_ISREG(info.st_mode) || info.st_size < 0 ||
             static_cast<uint64_t>(info.st_size) > LONG_MAX ||
             static_cast<uint64_t>(info.st_size) > UINT32_MAX) continue;
         BookEntry book;
-        std::strcpy(book.name.data(), entry->d_name);
+        std::strcpy(book.name.data(), name);
         book.size = static_cast<uint32_t>(info.st_size);
         // Keep a deterministic bounded prefix even if directory order changes.
         std::size_t index = 0;
-        while (index < *count && std::strcmp(entries[index].name.data(), book.name.data()) < 0) ++index;
+        while (index < *count && (reverse ? std::strcmp(entries[index].name.data(), book.name.data()) > 0
+                                         : std::strcmp(entries[index].name.data(), book.name.data()) < 0)) ++index;
         if (*count == capacity) *truncated = true;
         if (index == capacity) continue;
         if (*count < capacity) ++*count;
@@ -147,6 +170,7 @@ esp_err_t BookStorage::List(BookEntry* entries, std::size_t capacity,
         entries[index] = book;
     }
     closedir(directory);
+    if (reverse) std::reverse(entries, entries + *count);
     return result;
 }
 
@@ -158,20 +182,22 @@ esp_err_t BookStorage::OpenManaged(const char* name, BookFile* file) {
     return OpenImpl(name, file, true);
 }
 
-esp_err_t BookStorage::OpenImpl(const char* name, BookFile* file, bool managed) {
+esp_err_t BookStorage::OpenImpl(const char* name, BookFile* file, bool managed, bool application) {
     if (!file) return ESP_ERR_INVALID_ARG;
     file->Close();
     std::lock_guard<std::mutex> lock(mutex_);
     if (managing_ != managed || uploading_) return ESP_ERR_INVALID_STATE;
     char path[256];
-    if (!Path(name, path, sizeof(path))) return ESP_ERR_INVALID_ARG;
+    if (!Path(name, path, sizeof(path), application)) return ESP_ERR_INVALID_ARG;
     const auto mounted = Mount();
     if (mounted != ESP_OK) return mounted;
     struct stat info{};
     if (!FileInfo(path, &info)) return errno == ENOENT ? ESP_ERR_NOT_FOUND : ESP_FAIL;
     if (!S_ISREG(info.st_mode) || info.st_size < 0 ||
         static_cast<uint64_t>(info.st_size) > LONG_MAX ||
-        static_cast<uint64_t>(info.st_size) > UINT32_MAX) return ESP_ERR_INVALID_SIZE;
+        static_cast<uint64_t>(info.st_size) > UINT32_MAX ||
+        (application && (info.st_size == 0 || static_cast<uint64_t>(info.st_size) > AppStorage::kSourceLimit)))
+        return ESP_ERR_INVALID_SIZE;
     auto* opened = std::fopen(path, "rb");
     if (!opened) return ESP_FAIL;
     file->file_ = opened;
@@ -233,10 +259,15 @@ esp_err_t BookStorage::Space(BookSpace* space) {
 }
 
 BookWriteResult BookStorage::BeginUpload(const char* name, uint32_t size, BookUpload* upload) {
+    return UploadImpl(name, size, upload, false);
+}
+
+BookWriteResult BookStorage::UploadImpl(const char* name, uint32_t size, BookUpload* upload, bool application) {
     if (!upload || upload->owner_) return BookWriteResult::Busy;
     std::lock_guard<std::mutex> lock(mutex_);
     if (!managing_ || uploading_ || readers_) return BookWriteResult::Busy;
-    if (!Path(name, upload->target_.data(), upload->target_.size())) return BookWriteResult::Invalid;
+    if ((application && (!size || size > AppStorage::kSourceLimit)) ||
+        !Path(name, upload->target_.data(), upload->target_.size(), application)) return BookWriteResult::Invalid;
     struct stat info{};
     if (FileInfo(upload->target_.data(), &info)) return BookWriteResult::Exists;
     if (errno != ENOENT) return BookWriteResult::IoError;
@@ -254,10 +285,14 @@ BookWriteResult BookStorage::BeginUpload(const char* name, uint32_t size, BookUp
 }
 
 BookWriteResult BookStorage::Remove(const char* name) {
+    return RemoveImpl(name, false);
+}
+
+BookWriteResult BookStorage::RemoveImpl(const char* name, bool application) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!managing_ || uploading_ || readers_) return BookWriteResult::Busy;
     char path[256];
-    if (!Path(name, path, sizeof(path))) return BookWriteResult::Invalid;
+    if (!Path(name, path, sizeof(path), application)) return BookWriteResult::Invalid;
     struct stat info{};
     if (!FileInfo(path, &info)) return errno == ENOENT ? BookWriteResult::NotFound : BookWriteResult::IoError;
     if (!S_ISREG(info.st_mode)) return BookWriteResult::Invalid;

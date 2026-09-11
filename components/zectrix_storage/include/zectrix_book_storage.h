@@ -23,6 +23,7 @@ struct BookSpace {
 
 enum class BookWriteResult : uint8_t { Ok, Invalid, Busy, Exists, NotFound, NoSpace, IoError };
 class BookStorage;
+class AppStorage;
 
 class BookUpload {
 public:
@@ -83,11 +84,17 @@ public:
 private:
     friend class BookFile;
     friend class BookUpload;
+    friend class AppStorage;
     void ReaderClosed();
-    esp_err_t OpenImpl(const char* name, BookFile* file, bool managed);
+    static bool ValidAppName(const char* name);
+    esp_err_t ListImpl(BookEntry* entries, std::size_t capacity, std::size_t* count,
+                       bool* truncated, const char* after, bool application, bool reverse = false);
+    esp_err_t OpenImpl(const char* name, BookFile* file, bool managed, bool application = false);
+    BookWriteResult UploadImpl(const char* name, uint32_t size, BookUpload* upload, bool application);
+    BookWriteResult RemoveImpl(const char* name, bool application);
     esp_err_t ReadSpace(BookSpace* space);
     esp_err_t Mount();
-    bool Path(const char* name, char* output, std::size_t capacity) const;
+    bool Path(const char* name, char* output, std::size_t capacity, bool application = false) const;
     std::array<char, 192> root_{};
     bool mounted_ = false;
     bool managing_ = false, uploading_ = false;

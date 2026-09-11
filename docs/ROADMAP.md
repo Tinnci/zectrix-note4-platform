@@ -259,7 +259,7 @@ serial access; USB-OTG classes and an Android/browser client remain possible
 extensions. Real transfer throughput and physical interaction remain device
 qualification work.
 
-## E2 — Dynamic application research
+## E2 — Dynamic applications
 
 E2.1 completes the [runtime architecture study](DYNAMIC_APPLICATION_RESEARCH.md)
 with actual Wasm3/WAMR/Lua execution, failure and lifecycle probes, plus isolated
@@ -268,9 +268,12 @@ Lua is a personal-scripting alternative. The report records unbounded Wasm
 initialization and Host sanitizer findings, and proposes versioned host calls,
 bounded app discovery, USB installation and cleanup through existing owners.
 
-This is a research result. SDK v1 remains a source interface for static apps;
-the normal firmware does not load third-party applications. A working guest
-adapter, execution-boundary fixes and object installation are subsequent work.
+E2.2 implements the [restricted Lua pilot](MICRO_APPS.md): an optional runtime,
+five-entry Apps pages, bounded initialization/events, copied clipped drawing,
+USB script installation/export/removal and Calculator/Flashcards examples.
+Guest errors and system exits reclaim the VM through private scenes. SDK v1
+remains the source interface for static native adapters. Compiled Wasm apps
+and `.zapp` packaging remain subsequent work; no new binary ABI is frozen.
 
 ## Deferred implementation
 
@@ -282,5 +285,5 @@ The following work is not a prerequisite for M1–M4:
 - application signing and distribution.
 - custom bootloader.
 
-E2.1 evaluates the runtime/package choices; their implementation and public
-distribution still require separate product decisions.
+E2.1 evaluates these choices and E2.2 supplies a Lua source pilot. E2.3 will
+address packaging and distribution on top of the measured runtime boundary.

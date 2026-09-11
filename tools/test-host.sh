@@ -26,6 +26,7 @@ host_tests=(
     test-reader.sh
     test-resource-client.sh
     test-resource-gateway.sh
+    test-runtime.sh
     test-scene-manager.sh
     test-sdk-v1.sh
     test-service-registry.sh

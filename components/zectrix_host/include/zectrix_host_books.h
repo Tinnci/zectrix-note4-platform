@@ -12,7 +12,7 @@ public:
     virtual Status Set(Setting key, uint32_t value) = 0;
 };
 
-enum class TransferState : uint8_t { Waiting, Ready, Uploading, Downloading, Complete, Cancelled, Failed };
+enum class TransferState : uint8_t { Waiting, Ready, Uploading, Downloading, Complete, Cancelled, Failed, Removed };
 struct Snapshot {
     TransferState state = TransferState::Waiting;
     Status error = Status::Ok;
@@ -37,12 +37,12 @@ public:
 private:
     void ResetTransfer();
     Status Execute();
-    Status List();
-    Status Open(bool upload);
+    Status List(bool application = false);
+    Status Open(bool upload, bool application = false);
     Status Write();
     Status Commit();
     Status Read();
-    bool Name(std::size_t offset, char* output) const;
+    bool Name(std::size_t offset, char* output, bool application = false) const;
     bool Transferring() const;
     Channel& channel_;
     Settings& settings_;

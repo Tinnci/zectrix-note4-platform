@@ -134,6 +134,50 @@ class IntegrationTest(unittest.TestCase):
                                     check=True, capture_output=True, text=True, timeout=10)
             self.assertEqual(result.stdout.strip(), expected)
 
+    def test_micro_app_install_export_remove_and_isolation(self):
+        client = self.device.connect()
+        source = TOOL.parent.parent / "apps/Calculator.lua"
+        content = source.read_bytes()
+        self.assertEqual(client.put(source, application=True), len(content))
+        self.assertEqual((self.device.root / ".app-Calculator.lua").read_bytes(), content)
+        self.assertEqual(list(client.apps()), [{"name": "Calculator.lua", "size": len(content)}])
+        self.assertEqual(list(client.books()), [])
+        destination = self.root / "export.lua"
+        client.get(source.name, destination, application=True)
+        self.assertEqual(destination.read_bytes(), content)
+        with self.assertRaisesRegex(usb.DeviceError, "already exists"):
+            client.put(source, application=True)
+        with self.assertRaises(usb.DeviceError):
+            client.put(source)
+        for size, name in ((0, b"Empty.lua"), (32769, b"Big.lua"), (2, b"book.txt"), (2, b"../bad.lua")):
+            with self.assertRaises(usb.DeviceError):
+                client.request(usb.APP_BEGIN, struct.pack("<I", size) + name)
+        client.request(usb.APP_READ_OPEN, b"Calculator.lua")
+        with self.assertRaisesRegex(usb.DeviceError, "busy"):
+            client.request(usb.APP_REMOVE, b"Calculator.lua")
+        client.request(usb.ABORT)
+        client.request(usb.APP_BEGIN, struct.pack("<I", 100) + b"Partial.lua")
+        client.request(usb.CHUNK, struct.pack("<I", 0) + b"partial")
+        self.device.disconnect()
+        client = self.device.connect()
+        self.assertFalse((self.device.root / ".upload.part").exists())
+        self.assertEqual(len(list(client.apps())), 1)
+        client.request(usb.APP_REMOVE, b"Calculator.lua")
+        self.assertFalse((self.device.root / ".app-Calculator.lua").exists())
+        self.assertEqual(list(client.apps()), [])
+        self.device.disconnect()
+
+        source = TOOL.parent.parent / "apps/Flashcards.lua"
+        exported = self.root / "cards.lua"
+        for command in (("app-put", str(source)), ("app-list",),
+                        ("app-get", "Flashcards.lua", str(exported)), ("app-remove", "Flashcards.lua")):
+            result = subprocess.run([sys.executable, str(TOOL), "--port", self.device.port, *command],
+                                    check=True, capture_output=True, text=True, timeout=10)
+            if command[0] == "app-list":
+                self.assertEqual(json.loads(result.stdout), {"name": source.name, "size": source.stat().st_size})
+        self.assertEqual(exported.read_bytes(), source.read_bytes())
+        self.assertFalse((self.device.root / ".app-Flashcards.lua").exists())
+
     def test_cancel_and_malformed_input_recovery(self):
         client = self.device.connect()
         client.request(usb.BEGIN, struct.pack("<I", 9) + b"interrupted.txt")
@@ -180,7 +224,7 @@ class ClientFailureTest(unittest.TestCase):
             return len(data)
 
     def test_uncertain_mutations_are_not_retried(self):
-        for operation in (usb.COMMIT, usb.SET_SETTING):
+        for operation in (usb.COMMIT, usb.SET_SETTING, usb.APP_REMOVE):
             transport = self.Transport()
             client = usb.Client(transport, timeout=0)
             client.session = 7

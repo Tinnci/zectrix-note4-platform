@@ -147,13 +147,16 @@ void TerminalApp::RunApplicationShell() {
     ESP_LOGI(kTag, "launcher ready: applications=%u", static_cast<unsigned>(applications_.size()));
     while (runtime.state() == sdk::LifecycleState::Active) {
         sdk::InputEvent event;
-        // Pagination and USB requests yield one tick between bounded slices.
+        // Pagination, app loading and USB requests yield between bounded slices.
         bool busy = false;
 #if CONFIG_ZECTRIX_ENABLE_READER
         busy = reader_busy_;
 #endif
 #if CONFIG_ZECTRIX_ENABLE_USB_HOST
         busy = busy || (usb_host_ && usb_host_->Session() != 0);
+#endif
+#if CONFIG_ZECTRIX_ENABLE_RUNTIME
+        busy = busy || micro_app_busy_;
 #endif
         const TickType_t timeout = busy ? TickType_t{1} : pdMS_TO_TICKS(250);
         const bool received = input_->Wait(&event, timeout);

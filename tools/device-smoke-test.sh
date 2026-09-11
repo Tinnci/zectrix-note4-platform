@@ -49,7 +49,7 @@ build_dir = Path(sys.argv[2])
 config = json.loads((build_dir / "config/sdkconfig.json").read_text())
 # Count the mandatory catalog and the service-backed optional destinations.
 expected_apps = 9 + sum(bool(config.get(f"ZECTRIX_ENABLE_{module}"))
-                        for module in ("CONNECTIVITY", "READER", "BOOK_TRANSFER", "USB_HOST"))
+                        for module in ("CONNECTIVITY", "READER", "BOOK_TRANSFER", "USB_HOST", "RUNTIME"))
 try:
     with serial.Serial(sys.argv[1], 115200, timeout=0.2) as ser:
         ser.reset_input_buffer()

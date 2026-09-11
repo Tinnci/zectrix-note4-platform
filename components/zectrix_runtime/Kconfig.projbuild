@@ -1,0 +1,8 @@
+config ZECTRIX_ENABLE_RUNTIME
+    bool "Sandboxed Lua micro-apps"
+    default y
+    help
+        Enable a foreground-only Lua 5.4 pilot with bounded memory, instructions
+        and copied drawing commands. Independent .lua files share the content
+        filesystem through a separate app namespace. USB Manager can install
+        scripts when USB host management is enabled.

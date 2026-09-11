@@ -6,6 +6,10 @@ The maintenance prompt and a bounded binary session share one transport owner.
 computer lists, imports or exports books. No new task, partition, filesystem,
 USB descriptor or public application SDK API is required.
 
+E2.2 adds independently installed [Lua micro-apps](MICRO_APPS.md) through the
+same owner. `app-list`, `app-put`, `app-get` and `app-remove` operate on the app
+namespace; the existing book commands and settings keep their behavior.
+
 ## Transport choice
 
 Source review: 2026-09-10. The comparison distinguishes host class support from
@@ -182,6 +186,18 @@ Transferred contents retain the existing reader's format limitations.
 | 9 GetSetting | u8 key | u32 current value |
 | 10 SetSetting | u8 key, u32 value | Empty |
 | 11 Close | Empty | Empty, followed by the text maintenance prompt |
+| 12 AppList | Empty or last app filename | Same paged entry layout as List, for apps only |
+| 13 AppReadOpen | App filename | u32 source size; following Read operations export this app |
+| 14 AppUploadBegin | u32 source size, app filename | Empty; following UploadChunk/UploadCommit install this app |
+| 15 AppRemove | App filename | Empty after removal; rejected while a transfer is open |
+
+App names pass `AppStorage::ValidName`: at most 47 UTF-8 bytes with `.lua`
+suffix, without path/control characters. Sources contain 1–32,768 bytes. The
+foreground never executes code during these operations. They share the one
+transfer handle and storage lease with books and return `Unavailable` when
+the runtime module is disabled. USB Manager reports imported files and app
+removal. App remove has the same explicit uncertain-outcome treatment as a
+commit: inspect the list before repeating it after cancellation or timeout.
 
 Setting keys are `0` language, `1` auto-showcase and `2` sleep cover. Values
 match [M3 platform settings](M3_APPLICATION_CONTRACT.md#m3-platform-settings).

@@ -2,6 +2,7 @@ menu "Zectrix modules"
     rsource "../components/zectrix_demo_ui/Kconfig.projbuild"
     rsource "../components/zectrix_connectivity/Kconfig.projbuild"
     rsource "../components/zectrix_reader/Kconfig.projbuild"
+    rsource "../components/zectrix_runtime/Kconfig.projbuild"
     rsource "../components/zectrix_cli/Kconfig.projbuild"
     rsource "../components/zectrix_update/Kconfig.projbuild"
 endmenu

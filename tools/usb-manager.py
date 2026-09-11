@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["pyserial==3.5"]
 # ///
-"""Note4 USB book and settings tool. Run with uv run --script tools/usb-manager.py."""
+"""Note4 USB books, micro-apps and settings. Run with uv run --script tools/usb-manager.py."""
 
 import argparse
 import json
@@ -21,7 +21,8 @@ HEADER = struct.Struct("<4sBBHII")
 PAYLOAD_SIZE = 1024
 WIRE_SIZE = 1046
 INFO, LIST, READ_OPEN, READ, BEGIN, CHUNK, COMMIT, ABORT, GET_SETTING, SET_SETTING, CLOSE = range(1, 12)
-STATUS = ("ok", "invalid request", "busy", "unavailable", "book already exists", "book not found",
+APP_LIST, APP_READ_OPEN, APP_BEGIN, APP_REMOVE = range(12, 16)
+STATUS = ("ok", "invalid request", "busy", "unavailable", "file already exists", "file not found",
           "not enough space", "storage I/O failed", "session cancelled", "session timed out",
           "applied for this boot, but not saved; repeat the setting to retry")
 SETTINGS = {"language": 0, "auto_showcase": 1, "sleep_cover": 2}
@@ -158,10 +159,10 @@ class Client:
                     raise DeviceError(status)
                 return bytes(reply[HEADER.size:])
         except (HostError, serial.SerialException, OSError, KeyboardInterrupt) as error:
-            if operation in (COMMIT, SET_SETTING) and (
+            if operation in (COMMIT, SET_SETTING, APP_REMOVE) and (
                     not isinstance(error, DeviceError) or error.status in (8, 9)):
                 detail = str(error) or "operation interrupted"
-                raise HostError(f"{detail}; outcome unknown, inspect the book/setting before repeating") from error
+                raise HostError(f"{detail}; outcome unknown, inspect the file/setting before repeating") from error
             raise
 
     def close(self):
@@ -179,41 +180,49 @@ class Client:
         total, used, available, chunk = struct.unpack("<IIII", data)
         return {"total_bytes": total, "used_bytes": used, "available_bytes": available, "upload_chunk_bytes": chunk}
 
-    def books(self):
+    def books(self, *, applications=False):
         after = b""
         while True:
-            data = self.request(LIST, after)
+            data = self.request(APP_LIST if applications else LIST, after)
             if len(data) < 2 or data[0] > 8 or data[1] > 1:
-                raise HostError("invalid book list")
+                raise HostError("invalid file list")
             count, more = data[:2]
             cursor = 2
             for _ in range(count):
                 if cursor + 5 > len(data):
-                    raise HostError("truncated book list")
+                    raise HostError("truncated file list")
                 length = data[cursor]
                 size = struct.unpack_from("<I", data, cursor + 1)[0]
                 cursor += 5
                 name = data[cursor:cursor + length]
                 if not 0 < length <= 63 or len(name) != length or name <= after:
-                    raise HostError("invalid book list cursor")
+                    raise HostError("invalid file list cursor")
                 cursor += length
                 after = name
                 yield {"name": name.decode("utf-8"), "size": size}
             if cursor != len(data) or (more and not count):
-                raise HostError("invalid book list page")
+                raise HostError("invalid file list page")
             if not more:
                 return
 
-    def put(self, source, name=None, progress=None):
+    def apps(self):
+        return self.books(applications=True)
+
+    def put(self, source, name=None, progress=None, *, application=False):
         source = Path(source)
         name = (name if name is not None else source.name).encode("utf-8")
-        if not 0 < len(name) <= 63 or not source.is_file():
-            raise HostError("use a regular file and a book name of at most 63 UTF-8 bytes")
+        name_limit = 47 if application else 63
+        if not 0 < len(name) <= name_limit or not source.is_file():
+            raise HostError(f"use a regular file and a name of at most {name_limit} UTF-8 bytes")
+        if application and not name.lower().endswith(b".lua"):
+            raise HostError("micro-apps must be Lua source files ending in .lua")
         with source.open("rb") as file:
             size = os.fstat(file.fileno()).st_size
             if size > 0xFFFFFFFF:
-                raise HostError("book exceeds the device size limit")
-            self.request(BEGIN, struct.pack("<I", size) + name)
+                raise HostError("file exceeds the device size limit")
+            if application and not 0 < size <= 32768:
+                raise HostError("micro-app source must contain 1–32768 bytes")
+            self.request(APP_BEGIN if application else BEGIN, struct.pack("<I", size) + name)
             offset = 0
             while offset < size:
                 chunk = file.read(min(PAYLOAD_SIZE - 4, size - offset))
@@ -230,13 +239,13 @@ class Client:
             self.request(COMMIT)
         return size
 
-    def get(self, name, destination, progress=None):
+    def get(self, name, destination, progress=None, *, application=False):
         destination = Path(destination)
         if destination.exists():
             raise HostError("destination already exists")
-        data = self.request(READ_OPEN, name.encode("utf-8"))
+        data = self.request(APP_READ_OPEN if application else READ_OPEN, name.encode("utf-8"))
         if len(data) != 4:
-            raise HostError("invalid book size")
+            raise HostError("invalid file size")
         size = struct.unpack("<I", data)[0]
         temporary = None
         try:
@@ -263,17 +272,20 @@ class Client:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Manage Note4 books and settings over USB Serial/JTAG")
+    parser = argparse.ArgumentParser(description="Manage Note4 books, micro-apps and settings over USB Serial/JTAG")
     parser.add_argument("--port", help="serial device (use 'ports' to list)")
     commands = parser.add_subparsers(dest="command", required=True)
-    for command in ("ports", "info", "list"):
+    for command in ("ports", "info", "list", "app-list"):
         commands.add_parser(command)
-    put = commands.add_parser("put", help="import a TXT/EPUB book without overwriting")
-    put.add_argument("source", type=Path)
-    put.add_argument("--name")
-    get = commands.add_parser("get", help="export a book to a new local file")
-    get.add_argument("name")
-    get.add_argument("destination", type=Path)
+    for command, description in (("put", "import a TXT/EPUB book"), ("app-put", "install a Lua micro-app")):
+        put = commands.add_parser(command, help=description + " without overwriting")
+        put.add_argument("source", type=Path)
+        put.add_argument("--name")
+    for command in ("get", "app-get"):
+        get = commands.add_parser(command, help="export to a new local file")
+        get.add_argument("name")
+        get.add_argument("destination", type=Path)
+    commands.add_parser("app-remove", help="remove an installed micro-app").add_argument("name")
     for command in ("get-setting", "set-setting"):
         settings = commands.add_parser(command)
         settings.add_argument("key", choices=SETTINGS)
@@ -301,16 +313,22 @@ def main():
                 client.connect()
                 if args.command == "info":
                     print(json.dumps(client.info(), ensure_ascii=False))
-                elif args.command == "list":
-                    for book in client.books():
+                elif args.command in ("list", "app-list"):
+                    for book in client.books(applications=args.command == "app-list"):
                         print(json.dumps(book, ensure_ascii=False))
-                elif args.command in ("put", "get"):
+                elif args.command in ("put", "get", "app-put", "app-get"):
                     start = time.monotonic()
                     def progress(done, total):
                         print(f"\r{done}/{total} bytes", end="", file=sys.stderr, flush=True)
-                    size = client.put(args.source, args.name, progress) if args.command == "put" else client.get(args.name, args.destination, progress)
+                    application = args.command.startswith("app-")
+                    size = (client.put(args.source, args.name, progress, application=application)
+                            if args.command.endswith("put") else
+                            client.get(args.name, args.destination, progress, application=application))
                     seconds = time.monotonic() - start
                     print(f"\nCompleted {size} bytes in {seconds:.2f}s", file=sys.stderr)
+                elif args.command == "app-remove":
+                    client.request(APP_REMOVE, args.name.encode("utf-8"))
+                    print("Removed")
                 elif args.command == "get-setting":
                     data = client.request(GET_SETTING, bytes([SETTINGS[args.key]]))
                     if len(data) != 4:
