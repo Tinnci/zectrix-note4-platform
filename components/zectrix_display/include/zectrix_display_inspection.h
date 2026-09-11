@@ -5,11 +5,11 @@
 #include <cstdint>
 
 #include "zectrix_display_state.h"
+#include "zectrix_display_telemetry.h"
 
 namespace zectrix::display {
 
 inline constexpr std::size_t kFramebufferPreviewBytes = 64;
-enum class RefreshKind : uint8_t { kNone, kFull1Bpp, kPartial1Bpp, kFull4Bpp };
 
 struct DisplayInspection {
     State state;
@@ -18,6 +18,9 @@ struct DisplayInspection {
     uint32_t failed_refresh_count = 0;
     int32_t last_error = 0;
     uint64_t last_duration_us = 0;
+    uint32_t debt_mean_q16 = 0, debt_peak_q16 = 0;
+    uint32_t global_limit_q16 = 0, local_limit_q16 = 0, model_revision = 0;
+    RefreshReason last_reason = RefreshReason::Recovery;
     bool powered = false;
     bool batch_active = false;
     bool framebuffer_valid = false;

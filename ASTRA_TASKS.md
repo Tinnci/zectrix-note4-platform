@@ -337,7 +337,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Applied styles to system headings, Home and both Lua pilots; optional copied style flags retain old script behavior and existing quotas. Guest drawing now intersects the caller's viewport clip, including keycap borders and glyph expansion.
   - Verified all 39 Host targets, Reader/Localization/Runtime ASan/UBSan, English/Chinese previews and Full/Minimal firmware/profile comparison. Full/Minimal are 2,486,256 / 516,528 bytes (+4,048 / +2,000); font assets and static internal RAM are unchanged. Full retains 659,472 bytes (21.0%) per slot. No hardware flash was needed.
 
-- [ ] **R1.4: 墨水屏物理特性观测、分析建模底座与自适应调度 (Display Physics Telemetry, Analytical Modeling Foundation & Adaptive Scheduling)**
+- [x] **R1.4: 墨水屏物理特性观测、分析建模底座与自适应调度 (Display Physics Telemetry, Analytical Modeling Foundation & Adaptive Scheduling)**
   - **背景与愿景**：
     - 当前系统对墨水屏刷新的调度基于经验静态计数，缺乏对物理状态（温度、电池跌落、翻转像素密度、忙闲周期）的结构化观测与数学代价建模。
     - 在外部精密仪器标定前，优先在代码层面筑牢“观测基建（Telemetry Infrastructure）”与“参数化模型抽象”，为未来的功耗优化与显示质量闭环奠定坚实底座。
@@ -356,6 +356,10 @@ Each iteration picks the top unfinished task, implements production code, verifi
     5. *仿真验证与离线数据导出工具链 (Host Simulation & Telemetry Tooling)*：
        - 如何在 Host 自动化测试中模拟高频切换与长周期阅读，验证您设计的观测与债务模型的收敛性？
        - 如何在维护终端或主机工具中暴露遥测导出接口，为后续真实物理测量与 Jupyter/Python 曲线拟合做好准备？
+  - Added twenty-tile directional transition analysis and Q16.16 spatial debt with concentration, signed memory, temperature/supply gains and calibration injection. Replaced fixed frame/cumulative-pixel scheduling while preserving high-contrast cleanup, grayscale preclear and full recovery after failure.
+  - Added an allocation-free 16-frame recorder (1,800 bytes on ESP32-S3), actual SPI/RAM/BUSY/phase observations and aged temperature/battery samples. Successful completion commits predicted debt; errors preserve prior debt with an invalid image baseline. Energy estimates require explicit calibration.
+  - Added owner-dispatched `display telemetry` / `display model`, typed CSV capture conversion and 24,576-update Host simulations. Small status changes remain partial beyond eight frames; concentrated, dense and cold updates clean sooner. See [docs/DISPLAY_PHYSICS.md](docs/DISPLAY_PHYSICS.md).
+  - Verified all 39 Host targets, focused display/model ASan/UBSan, ShellCheck, Full/Minimal builds and profile comparison, connected-device Full flash/boot and real telemetry-to-CSV export. Firmware is 2,492,240 / 520,096 bytes; static internal RAM is unchanged. Optical ghosting, transient voltage sag and energy calibration remain instrument measurements.
 
 - [ ] **E1.10: 状态栏微型图标系统与微观视觉重塑 (Status Bar Micro-Icon System: Bluetooth, Wi-Fi & Multi-State Battery Polish)**
   - **背景与愿景**：

@@ -73,10 +73,10 @@ values. An unchanged patch returns `ESP_OK` without a controller transaction;
 the raw refresh API still requires the panel to be powered and ready.
 The shadow changes only after a successful refresh.
 
-Do a full refresh after eight actual partial refreshes to control ghosting.
-`DisplayService` owns this policy for platform applications and can refresh
-fully sooner based on the actual number of black/white transitions. The raw
-driver performs the requested operation without applying that service policy.
+`DisplayService` owns the spatial ghosting-debt policy for platform applications;
+see [DISPLAY_PHYSICS.md](DISPLAY_PHYSICS.md). The raw driver performs the requested
+operation without applying that policy. A standalone consumer must provide its
+own cleanup schedule.
 
 ## Dirty-region query
 
@@ -104,13 +104,22 @@ stride or origin. The refresh operation recomputes the bounds under its lock.
 `zectrix_epd_diff_t`: `dirty` contains the exact bounds and `changed_pixels`
 counts black-to-white and white-to-black transitions. Unchanged pixels inside
 the bounding box, byte-alignment neighbors and row padding do not contribute.
-The count ranges from zero to 120,000. This query has the same locking,
-allocation and error behavior as `zectrix_epd_find_dirty_1bpp()`.
+The count ranges from zero to 120,000. R1.4 also returns directional transition
+counts for twenty 80 x 75 tiles, excluding source padding and unchanged bits.
+This query has the same locking, allocation and error behavior as
+`zectrix_epd_find_dirty_1bpp()`.
 
-The display service uses this count to select the existing full OTP refresh
-when a submission changes at least 30,000 pixels, or the accumulated partial
-transitions plus the pending submission reach 60,000 pixels. See
-[M2_PLATFORM_CONTRACT.md](M2_PLATFORM_CONTRACT.md) for the complete policy.
+The display service retains the 30,000-pixel single-update full refresh and
+uses the tiled observations to predict accumulated debt instead of counting
+pages. See [M2_PLATFORM_CONTRACT.md](M2_PLATFORM_CONTRACT.md) for the policy.
+
+`zectrix_epd_read_metrics()` copies cumulative successful SPI bytes, native RAM
+bytes, observed BUSY time, display-phase BUSY time, trigger count and the last
+qualified controller temperature sample. It uses the existing driver mutex and
+performs no GPIO/SPI operation. Counters include failures up to the last completed
+transfer/wait. Subtract consecutive snapshots to observe an operation; see
+[DISPLAY_PHYSICS.md](DISPLAY_PHYSICS.md) for timing resolution, temperature validity
+and explicit power-batch boundaries.
 
 ## Full 4bpp refresh
 

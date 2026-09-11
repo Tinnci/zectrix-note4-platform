@@ -32,6 +32,8 @@ public:
         if (on_inspect) on_inspect();
         *output = sample;
         if (request.operation == ControlOperation::kInput && trace) output->input = trace->Read(request.cursor);
+        if (request.operation == ControlOperation::kDisplayTelemetry && display_trace)
+            output->display_telemetry = display_trace->Read(request.cursor);
         return status;
     }
 
@@ -41,6 +43,7 @@ public:
     ControlOperation last_operation = ControlOperation::kSystemInfo;
     ControlRequest last_request{};
     zectrix::input::InputTrace* trace = nullptr;
+    zectrix::display::TelemetryRecorder* display_trace = nullptr;
     ControlResult sample;
     ControlStatus status = ControlStatus::kOk;
     std::function<void()> on_inspect;
@@ -68,6 +71,52 @@ std::string Run(DiagnosticExecutor& executor, PlatformControlDispatcher& dispatc
     }
     assert(status == ExecuteStatus::kOk);
     return text;
+}
+
+void TestDisplayTelemetryCommands() {
+    Owner owner;
+    zectrix::display::TelemetryRecorder recorder;
+    owner.display_trace = &recorder;
+    PlatformControlDispatcher dispatcher(owner, Clock);
+    LogBuffer logs;
+    DiagnosticExecutor executor(dispatcher, logs);
+    assert(Run(executor, dispatcher, "display telemetry").find("frames=0") != std::string::npos);
+    zectrix::display::FrameTelemetry frame;
+    frame.started_us = UINT64_MAX;
+    frame.duration_us = frame.busy_us = frame.refresh_busy_us = frame.spi_bytes = frame.ram_bytes = UINT32_MAX;
+    frame.black_to_white = frame.white_to_black = UINT32_MAX;
+    frame.window = {0, 0, 400, 300};
+    frame.environment = {-4000, UINT16_MAX, UINT32_MAX, UINT32_MAX};
+    frame.error = INT32_MIN;
+    frame.flags = UINT16_MAX;
+    frame.waveform_triggers = UINT8_MAX;
+    frame.model_revision = UINT32_MAX;
+    frame.projected_mean_q16 = frame.projected_peak_q16 = UINT32_MAX;
+    frame.committed_mean_q16 = frame.committed_peak_q16 = frame.energy_uj = UINT32_MAX;
+    for (unsigned index = 0; index < 20; ++index) recorder.Record(frame);
+    const auto data = Run(executor, dispatcher, "display telemetry 0");
+    assert(data.find("next=8 latest=20 lost=4 frames=4") != std::string::npos);
+    assert(data.find("frame,5,18446744073709551615") != std::string::npos);
+    assert(data.find("env,5,-4000,4294967295,65535,4294967295,0,256") != std::string::npos);
+    assert(data.find("debt,8,4294967295,4294967295,4294967295,4294967295,4294967295,4294967295") != std::string::npos);
+    assert(Run(executor, dispatcher, "display telemetry 8").find("frame,9,") != std::string::npos);
+    assert(Run(executor, dispatcher, "display telemetry 20").find("frames=0") != std::string::npos);
+    const auto model = Run(executor, dispatcher, "display model");
+    assert(model.find("tiles=5x4") != std::string::npos && model.find("global=49152 local=262144") != std::string::npos);
+    assert(model.find("640,512,384,256,256") != std::string::npos && model.find("energy mode=3 calibrated=0") != std::string::npos);
+    BoundedOutput output;
+    for (const char* command : {"display telemetry -1", "display telemetry 1 2", "display telemetry 18446744073709551616", "display model 1"})
+        assert(executor.Execute(Parse(command), &output) == ExecuteStatus::kInvalidArguments);
+    assert(executor.Execute(Parse("display telemetry"), &output) == ExecuteStatus::kPending);
+    executor.Cancel();
+    assert(!dispatcher.Dispatch());
+    assert(executor.Execute(Parse("display telemetry"), &output) == ExecuteStatus::kPending);
+    dispatcher.Dispatch();
+    // Formatting is based on the copied batch, even after the ring overwrites it.
+    for (unsigned index = 0; index < 32; ++index) recorder.Record({});
+    assert(executor.Poll(&output) == ExecuteStatus::kPending);
+    assert(std::string(output.data()).find("latest=20") != std::string::npos);
+    executor.Cancel();
 }
 
 void TestCommands() {
@@ -133,8 +182,9 @@ void TestCommands() {
     }
     for (const char* command : {"epd-inspect", "display status"}) {
         const auto text = Run(executor, dispatcher, command);
-        assert(text.find("partial_count=4/8") != std::string::npos);
-        assert(text.find("partial_pixels=48000/60000 high_contrast_pixels=30000") != std::string::npos);
+        assert(text.find("partial_count=4 ") != std::string::npos);
+        assert(text.find("partial_pixels=48000 high_contrast_pixels=30000") != std::string::npos);
+        assert(text.find("debt_q16:") != std::string::npos);
         assert(text.find("rect=8,16 24x32") != std::string::npos);
         assert(text.find("0000: 00 01 02") != std::string::npos);
         assert(text.find("0030: 30 31 32") != std::string::npos);
@@ -569,6 +619,7 @@ void TestAsyncSession() {
 
 int main() {
     TestCommands();
+    TestDisplayTelemetryCommands();
     TestDispatcherLifetime();
     TestNonblockingOwnerRetry();
     TestExecutingCancellationAndShutdown(false, false);

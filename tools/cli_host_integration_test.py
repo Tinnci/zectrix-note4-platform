@@ -132,6 +132,12 @@ class HostIntegrationTest(unittest.TestCase):
             self.assertIn(b"panel=400x300", display)
             self.assertIn(b"framebuffer: bpp=1 bytes=15000 valid=1", display)
             self.assertRegex(display, rb"0030:(?: [0-9a-f]{2}){16}\r\n")
+            telemetry = terminal.command(b"display telemetry\r")
+            self.assertRegex(telemetry, rb"# epd next=\d+ latest=\d+ lost=\d+ frames=[1-4]")
+            self.assertRegex(telemetry, rb"frame,\d+,\d+,")
+            self.assertRegex(telemetry, rb"env,\d+,2500,0,3920,0,")
+            self.assertRegex(telemetry, rb"debt,\d+,")
+            self.assertIn(b"energy mode=3 calibrated=0", terminal.command(b"display model\r"))
             self.assertIn(b"system heap", terminal.command(b"help system heap\r"))
             for command, error in (
                 (b'help "unfinished\r', b"unterminated quote"),

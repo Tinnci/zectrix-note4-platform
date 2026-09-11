@@ -87,6 +87,14 @@ cli::ControlStatus PlatformDiagnostics::Inspect(const cli::ControlRequest& reque
         case cli::ControlOperation::kDisplay:
             err = display_.ReadInspection(&result->display);
             break;
+        case cli::ControlOperation::kDisplayTelemetry:
+            result->display_telemetry = display_.ReadTelemetry(request.cursor);
+            err = ESP_OK;
+            break;
+        case cli::ControlOperation::kDisplayModel:
+            result->display_model = display_.physics_parameters();
+            err = ESP_OK;
+            break;
         case cli::ControlOperation::kPower: {
             auto* power = services_.Get<power::PowerService>();
             power::PowerSnapshot p;

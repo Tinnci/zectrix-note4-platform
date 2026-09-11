@@ -30,7 +30,9 @@ Reader controller's existing semantics.
 Callbacks never run inside driver waits. `InputService` maintenance hooks run
 only between foreground operations. Render completion remains synchronous:
 an obsolete, deferred or failed page cannot advance a bookmark, and only a
-successful physical refresh consumes the partial-refresh budget. Existing
+successful physical refresh commits the partial-refresh debt model. R1.4
+replaces count-based cleanup with [spatial physics observations and debt](DISPLAY_PHYSICS.md);
+its recorder stays on this same foreground owner. Existing
 `Step` callers retain their behavior; [SDK_V1.md](SDK_V1.md) describes the
 additive API and callback-reentry rejection.
 

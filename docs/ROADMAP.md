@@ -144,13 +144,14 @@ tests without bypassing resource ownership.
 
 ## R1 — E-paper refresh optimization
 
-Status: R1.1/R1.2 software delivery complete. R1.1 implements full-frame and
+Status: R1.1–R1.4 software delivery complete. R1.1 implements full-frame and
 packed-patch comparison, minimal dirty bounds and unchanged-frame suppression
-using the existing driver shadow. R1.2 adds actual black/white transition counts and adaptive
-cleanup: at least 25% changed pixels in one update, or 50% accumulated across
-partial updates including the pending frame, selects the existing full OTP
-path. The maximum remains eight partial refreshes. Physical panel
-qualification and threshold calibration remain open.
+using the existing driver shadow. R1.2 adds actual black/white transition counts
+and cleanup; R1.3 adds [algorithmic typography](TYPOGRAPHY.md). R1.4 replaces
+the frame/accumulated-pixel scheduling limits with [spatial physics debt](DISPLAY_PHYSICS.md),
+temperature/supply observations, a bounded recorder and CLI/CSV export. The
+25% single-update cleanup and existing full OTP path remain. Physical optical
+qualification and energy calibration remain open.
 
 The GitHub milestone previously named R1 referred to dynamic application
 research. G1.1 preserves it as **Research — Dynamic application runtime** and

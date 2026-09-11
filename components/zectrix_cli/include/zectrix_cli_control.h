@@ -13,7 +13,8 @@ namespace zectrix::cli {
 
 enum class ControlOperation : uint8_t {
     kSystemInfo, kHeap, kTasks, kUptime, kDisplay, kPower, kTime, kConnectivity,
-    kApps, kScenes, kInput, kTimeSync, kReboot, kSleep, kStorageWipe, kFactoryReset,
+    kApps, kScenes, kInput, kDisplayTelemetry, kDisplayModel,
+    kTimeSync, kReboot, kSleep, kStorageWipe, kFactoryReset,
 };
 constexpr bool IsMutation(ControlOperation operation) { return operation >= ControlOperation::kTimeSync; }
 enum class ControlStatus : uint8_t {
@@ -40,6 +41,8 @@ struct ControlResult {
     system::HeapSnapshot heap;
     system::TaskSnapshot tasks;
     display::DisplayInspection display;
+    display::TelemetryBatch display_telemetry;
+    display::PhysicsParameters display_model;
     uint64_t uptime_us = 0;
     PowerInspection power;
     TimeInspection time;

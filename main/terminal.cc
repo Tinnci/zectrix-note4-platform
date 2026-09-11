@@ -81,6 +81,8 @@ void TerminalApp::UpdateSystemStatus() {
     const int64_t now = time_->MonotonicMicroseconds();
     if (now >= next_power_sample_us_) {
         power_snapshot_ = power_->ReadSnapshot();
+        display_->ObserveBattery(power_snapshot_.battery_valid && !power_snapshot_.battery_absent ?
+            power_snapshot_.battery_mv : 0, time_->MonotonicMicroseconds());
 #if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
         if (connectivity_) connectivity_->UpdatePower(power_snapshot_);
 #endif

@@ -21,6 +21,7 @@ trap 'rm -rf "$tmp_dir"' EXIT
   -o "$tmp_dir/cli_diagnostics_test"
 
 "$tmp_dir/cli_diagnostics_test"
+uv run --no-project "$repo_root/tools/display_telemetry_test.py"
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
   -I"$repo_root/tools/host_include" \

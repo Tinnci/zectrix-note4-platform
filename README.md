@@ -282,9 +282,11 @@ survives returning to Launcher during the same boot and clears on shutdown.
 Full enables the optional pack; Minimal excludes its code and session state.
 
 The 4bpp scene always performs a white 1bpp full refresh first to reduce
-ghosting. The display service allows at most eight partial refreshes between
-full refreshes. Large black/white changes or accumulated pixel transitions
-trigger a full refresh sooner; unchanged frames skip refresh entirely.
+ghosting. The display service selects cleanup from spatial transition debt,
+temperature and battery observations. Large black/white changes still trigger
+a full refresh; unchanged frames skip refresh entirely. See
+[Display physics](docs/DISPLAY_PHYSICS.md) for the model, calibration hook and
+`display telemetry` / CSV export.
 
 ## Configuration
 

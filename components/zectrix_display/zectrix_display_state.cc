@@ -7,12 +7,6 @@ namespace zectrix::display {
 bool Rect::IsEmpty() const { return width <= 0 || height <= 0; }
 bool StateModel::CanUsePartial() const { return state_.baseline == BaselineState::Valid1Bpp; }
 
-bool StateModel::ShouldRequestFullClean(uint32_t changed_pixels) const {
-    return state_.partial_refresh_count >= kPartialRefreshLimit ||
-        changed_pixels >= kHighContrastPixelLimit ||
-        changed_pixels >= kPartialPixelLimit - state_.partial_changed_pixels;
-}
-
 void StateModel::OnFull1BppSuccess() {
     state_ = {};
     state_.baseline = BaselineState::Valid1Bpp;
@@ -20,10 +14,10 @@ void StateModel::OnFull1BppSuccess() {
 
 void StateModel::OnPartial1BppSuccess(const Rect& region, uint32_t changed_pixels) {
     if (!CanUsePartial() || region.IsEmpty() || changed_pixels == 0) return;
-    if (state_.partial_refresh_count < kPartialRefreshLimit) ++state_.partial_refresh_count;
-    // Saturation preserves the cleanup requirement even for oversized input.
+    if (state_.partial_refresh_count < UINT32_MAX) ++state_.partial_refresh_count;
+    // These are diagnostic totals, never scheduling thresholds.
     state_.partial_changed_pixels += std::min(
-        changed_pixels, kPartialPixelLimit - state_.partial_changed_pixels);
+        changed_pixels, UINT32_MAX - state_.partial_changed_pixels);
     AddDirtyRegion(region);
 }
 
