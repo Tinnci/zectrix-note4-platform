@@ -299,6 +299,21 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Unified Manual > authorized Companion > verified HTTPS Date > RTC clock authority, with ten-minute priority holdoff, stale-sample rejection and bounded HTTPS corrections. Existing HTTPS traffic supplies optional validated Date samples without another connection; UTC and offset remain separate, sub-two-second automatic corrections avoid writes, and RTC persistence retains the STOP/calendar/resume protection. Schedulers remain monotonic. See [docs/TIME.md](docs/TIME.md) and [docs/MAINTENANCE_CLI_CONTRACT.md](docs/MAINTENANCE_CLI_CONTRACT.md).
   - Verified all 37 Host targets, 13 CLI PTY scenarios, CLI/Platform/Time ASan/UBSan and ShellCheck. Full/Minimal firmware and profile comparison passed at 3,139,120 / 565,392 bytes; Full adds 19,104 bytes and leaves 6,608 bytes in the existing slot. No hardware flash or partition change was performed; physical USB/power/RTC recovery qualification remains separate.
 
+- [ ] **S1.2: 固件空间治理、Flash 分区重构与静态资源解耦推演 (Firmware Budget Governance, Partition Topology & Asset Decoupling)**
+  - **背景与愿景**：
+    - 实机烧录实测显示，当前 Full 固件已达 3,139,024 字节，距离 3MB 分区硬上限仅剩 6.7KB（0.2% 空间），固件面临空间耗尽风险。
+    - 结合板载 16MB 物理 Flash 中尚有约 2.9MB 完全闲置未分配、且固件内嵌字库占据 1.33MB 的客观现实，开展系统性固件预算治理与架构推演。
+    - **【架构授权与探索原则】**：我们不预设特定的单一解决方案。**全面授权并鼓励 Astra 自由权衡分区拓扑扩容、静态字库分区外部化、以及工具链级代码瘦身等多种路径**；只要能从根源上消除空间焦虑且保持生产级稳定性，均予以完全信任。
+  - **交由 Astra 自由探索与自主决断的核心设问 (Open Architectural Inquiry for Astra to Lead)**：
+    1. *分区拓扑重构与 16MB Flash 空间再平衡*：
+       - 如何利用末端未分配的 2.9MB 闲置空间？在 A/B OTA 容灾机制（`ota_0`/`ota_1`）与 `factory` 镜像留存之间，如何权衡插槽尺寸（如扩充至 4.0MB）与回滚安全边界？
+    2. *大体量静态资产解耦与架构权衡*：
+       - 内嵌 1.33MB 点阵字库是固件膨胀的主因。将其剥离为独立 Flash 数据分区 vs 保持固件内嵌并引入轻量压缩，各自在 OTA 传输开销、首刷复杂度及 Minimal Profile 纯洁性上有何利弊？
+    3. *工具链优化与死代码压榨*：
+       - 评估 LTO 链接时优化、未使用 C++ 虚表/模板裁剪以及 mbedtls/NimBLE 配置微调对纯代码段的实际缩减效果。
+    4. *平滑迁移与测试套件自愈*：
+       - 确保任何分区变动均能平滑穿透 `partitions.csv`、`tools/build-firmware.sh`、`tools/device-smoke-test.sh` 及 Host 自动化回归，杜绝实机烧录错位。
+
 - [ ] **R1.3: 算法点阵排版样式引擎与墨水屏富文本渲染 (Algorithmic Typography Engine & Rich Text Rendering)**
   - **背景与愿景**：
     - 当前系统（UI、Reader、Micro-Apps）仅支持单一常规体（Regular）点阵渲染，缺乏粗体、斜体与层级样式表现力。
@@ -313,6 +328,26 @@ Each iteration picks the top unfinished task, implements production code, verifi
        - 针对 16px/24px 汉字笔画密集易粘连的物理现实，如何权衡中文字符的粗体膨胀量与斜体倾斜度？是否存在最适合低分辨率汉字的点阵防粘连规则？
     4. *墨水屏物理友好型样式落地*：
        - 权衡并实现 1~2 种高实用性墨水屏专属样式：如利用 Bayer 网点掩码模拟次要文字（免灰阶刷新延迟）、大标题空心字（防微胶囊过度翻转与残影）、实体按键键帽提示框（`[OK]`）等。
+
+- [ ] **R1.4: 墨水屏物理特性观测、分析建模底座与自适应调度 (Display Physics Telemetry, Analytical Modeling Foundation & Adaptive Scheduling)**
+  - **背景与愿景**：
+    - 当前系统对墨水屏刷新的调度基于经验静态计数，缺乏对物理状态（温度、电池跌落、翻转像素密度、忙闲周期）的结构化观测与数学代价建模。
+    - 在外部精密仪器标定前，优先在代码层面筑牢“观测基建（Telemetry Infrastructure）”与“参数化模型抽象”，为未来的功耗优化与显示质量闭环奠定坚实底座。
+    - **【架构授权与探索原则】**：本任务列举的能耗项与残影债务公式仅作为概念启发与讨论起点。**我们明确鼓励并全面授权 Astra 自由发挥，提出您认为更合理、更严密、或更具工程美感的数学模型**；无论采用何种建模范式，只要推导自洽、在嵌入式算力与内存上可控，我们均予以完全信任并直接通过。
+  - **交由 Astra 自由探索与自主决断的核心设问 (Open Architectural Inquiry for Astra to Lead)**：
+    1. *零开销物理遥测基建 (Zero-Allocation Telemetry Recorder)*：
+       - 如何在驱动与显示服务层设计轻量、无锁的环形帧快照（记录 $T, V_{\text{bat}}, N_{\text{flip}}, W, H, S_{\text{bytes}}, t_{\text{busy}}$），确保监控本身对渲染流水线零性能扰动、零动态堆分配？
+    2. *数学建模的深度推演：您是否有更优的物理模型？(Superior Mathematical Modeling Paradigms)*：
+       - *残影微观本质*：简单的像素翻转累加（$\sum N_{\text{flip}}$）是否足够？您是否认为引入**空间局部性集聚（Spatial Clustering / Hotspots）**、**高对比边缘电场畸变**、或是**微胶囊双电层极化电荷记忆积分**能更准确地预测残影与底色发灰？
+       - *多阶段 LUT 与状态转移*：针对 SSD2683 的多阶段波形脉冲与 2bpp 转换特性，是否存在更具数学美感的状态机表征（如马尔可夫转移矩阵或等效 RC 网络能耗模型）？
+       - *低开销数值计算*：在 ESP32-S3 上，如何运用定点数（Fixed-Point Q8.8/Q16.16）或微型查表实现微秒级的在线代价评估，避免高开销浮点运算？
+    3. *参数解耦与未来标定注入 (Parametric Decoupling & Calibration Hook)*：
+       - 如何抽象出通用的参数字典（基础静态项、翻转动态项、温度阿伦尼乌斯因子、电荷自发弛豫衰减率），使得未来一旦有仪器实测回归数据，只需更新系数即可无缝收敛？
+    4. *模型驱动的自适应刷新调度 (Model-Driven Adaptive Scheduling)*：
+       - 如何用动态评估的“残影债务预算（Ghosting Debt Budget）”彻底取代死板的换页计数器，在常温、低温以及不同阅读排版场景下实现智能自适应全刷？
+    5. *仿真验证与离线数据导出工具链 (Host Simulation & Telemetry Tooling)*：
+       - 如何在 Host 自动化测试中模拟高频切换与长周期阅读，验证您设计的观测与债务模型的收敛性？
+       - 如何在维护终端或主机工具中暴露遥测导出接口，为后续真实物理测量与 Jupyter/Python 曲线拟合做好准备？
 
 - [ ] **D1.5: 系统故障注入、容灾自愈与长周期浸润可靠性 (Fault Injection, Self-Healing & Health Supervisor)**
   - **背景与愿景**：
