@@ -10,6 +10,7 @@
 #include "sdkconfig.h"
 #include "zectrix_board.h"
 #include "zectrix_boot_esp.h"
+#include "zectrix_health_esp.h"
 #if CONFIG_ZECTRIX_ENABLE_USB_HOST
 #include "zectrix_host_protocol.h"
 #endif
@@ -63,6 +64,8 @@ private:
 
 struct Platform::Impl {
     const ServiceRegistry* services = nullptr;
+    system::EspHealthWatchdog health_watchdog;
+    system::HealthSupervisor health{health_watchdog};
 #if CONFIG_ZECTRIX_ENABLE_UPDATE
     update::EspUpdateBackend update_backend;
     update::UpdateService update{update_backend};
@@ -125,7 +128,7 @@ struct Platform::Impl {
                      static_cast<unsigned>(boot.image_state), update::ResultName(boot.layout_result));
             if (boot.confirmation_pending && !boot.rollback_available)
                 ESP_LOGW("update", "trial boot has no verified fallback image");
-            return ESP_OK;
+            return boot.confirmation_pending ? ESP_OK : self.health.Start();
         }, nullptr, KeepForPowerTransition};
 #if CONFIG_ZECTRIX_ENABLE_UPDATE
     update::UpdateService* update_facade = &update;
@@ -160,9 +163,20 @@ struct Platform::Impl {
         }};
     ServiceBinding<storage::StorageService, Impl> storage_binding{
         *this, storage, [](Impl& self) { return storage::StorageService::Create(&self.storage); },
-        [](Impl& self) { return self.storage->Initialize(); }};
+        [](Impl& self) {
+            const auto result = self.storage->Initialize();
+            self.health.SetStorageError(result);
+            if (result != ESP_OK) ESP_LOGE("platform", "settings unavailable: %s; preserving NVS, radios disabled",
+                                          esp_err_to_name(result));
+            return ESP_OK;
+        }};
     ServiceBinding<system::SystemService, Impl> system_binding{
-        *this, system, [](Impl& self) { return system::SystemService::Attach(self.board, &self.system); }};
+        *this, system, [](Impl& self) { return system::SystemService::Attach(self.board, &self.system); },
+        [](Impl& self) {
+            system::SystemSnapshot snapshot;
+            if (self.system->ReadSnapshot(&snapshot) == ESP_OK) self.health.SetResetReason(snapshot.reset_reason);
+            return ESP_OK;
+        }};
     ServiceBinding<display::DisplayService, Impl> display_binding{
         *this, display, [](Impl& self) { return display::DisplayService::Create(&self.display); }};
     ServiceBinding<ZectrixSelfTest, Impl> diagnostics_binding{
@@ -180,6 +194,12 @@ struct Platform::Impl {
             self.connectivity->SetStorageService(self.storage);
             return ESP_OK;
         }, [](Impl& self) {
+            // Keep a stopped facade available without starting NimBLE's NVS path.
+            const auto health = self.health.Snapshot();
+            if (health.storage_error != ESP_OK || health.recovery_boot) {
+                ESP_LOGW("platform", "recovery boot: keeping connectivity stopped");
+                return ESP_OK;
+            }
             return self.connectivity->Initialize() == connectivity::ConnectivityResult::kOk ? ESP_OK : ESP_FAIL;
         }, [](Impl& self) {
             delete std::exchange(self.connectivity, nullptr);
@@ -191,7 +211,7 @@ struct Platform::Impl {
     ServiceBinding<cli::CliUsbService, Impl> maintenance_binding{
         *this, cli_usb, [](Impl& self) {
             self.maintenance = new (std::nothrow) PlatformDiagnostics(
-                *self.services, *self.system, *self.display, *self.input, *self.time
+                *self.services, *self.system, *self.display, *self.input, *self.time, self.health
 #if CONFIG_ZECTRIX_ENABLE_USB_HOST
                 , &self.host_protocol
 #endif
@@ -251,6 +271,20 @@ esp_err_t Platform::Initialize() {
     }
     initialized_ = true;
     return ESP_OK;
+}
+
+system::HealthSupervisor& Platform::Health() const {
+    assert(initialized_ && impl_ != nullptr);
+    return impl_->health;
+}
+
+update::Result Platform::ConfirmBoot() {
+    if (!initialized_) return update::Result::kInvalidState;
+    const auto result = impl_->boot_facade->ConfirmBoot();
+    if (result != update::Result::kOk) return result;
+    const auto armed = impl_->health.Start();
+    return armed == ESP_OK ? update::Result::kOk :
+        armed == ESP_ERR_TIMEOUT ? update::Result::kTimeout : update::Result::kIoError;
 }
 
 #define ZECTRIX_PLATFORM_ACCESSOR(Type, Name)         \
@@ -323,6 +357,7 @@ esp_err_t Platform::ResetUserData(bool factory) {
     StopMaintenance();
     ReleaseServices();
     initialized_ = false;
+    if (impl_ != nullptr) impl_->health.DisarmForPowerTransition();
     esp_restart();
     std::abort();
 }
@@ -332,7 +367,9 @@ esp_err_t Platform::ResetUserData(bool factory) {
     ReleaseServices();
     initialized_ = false;
     // Lookup has been withdrawn, but this owner retains the final power handle.
-    impl_->power->Shutdown();
+    impl_->power->Shutdown([](void* context) {
+        static_cast<system::HealthSupervisor*>(context)->DisarmForPowerTransition();
+    }, &impl_->health);
 }
 
 void Platform::ReleaseServices() {

@@ -281,6 +281,22 @@ If Launcher creation or entry fails, enter a low-allocation system failsafe.
 The failsafe must preserve shutdown and recovery access. It must not allocate a
 normal application object.
 
+D1.5 retains failed render requests for the next foreground slice. Three
+consecutive returned errors in the same foreground generation request owner-only
+`Recover(reason)` after callbacks unwind. Success or a generation change clears
+the streak. Recovery releases a broken non-Home app before allocating Home;
+repeated Home failures enter Failsafe instead of an automatic restart loop.
+Recovery discards outgoing commands/renders and retains callback reentry checks
+through Exit, destructors, factories and delegates, including failed candidates.
+
+Failsafe reuses the shared system canvas, releases retained gray content and
+keeps input/USB maintenance alive. OK or Back explicitly retries Home; holding
+DOWN shuts down after foreground cleanup. A recovered Home must actually render
+before confirming a trial image. Automatic showcase is suppressed for the rest
+of a boot after an SDK error, recovery, unavailable settings or a panic/watchdog
+reset. Manual application navigation remains available. See
+[RELIABILITY.md](RELIABILITY.md).
+
 `Exit()` is idempotent and cannot veto destruction. It should not throw. If it
 reports an error, the runtime records the error, destroys the application once,
 and continues the transition. Repeated Stop or Shutdown calls must not destroy

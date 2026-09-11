@@ -3,6 +3,7 @@
 #include "esp_http_server.h"
 
 #include <sys/socket.h>
+#include <netinet/in.h>
 #include <unistd.h>
 #include <atomic>
 #include <cassert>
@@ -35,6 +36,27 @@ template <typename Predicate> void Wait(Predicate done) {
         assert(std::chrono::steady_clock::now() < deadline);
         std::this_thread::yield();
     }
+}
+
+void TcpPair(int (&sockets)[2]) {
+    // Match IDF's TCP sockets and receive deadline. Darwin AF_UNIX shutdown
+    // can leave a racing recv blocked, even after the peer has disconnected.
+    const int listener = socket(AF_INET, SOCK_STREAM, 0);
+    assert(listener >= 0);
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    assert(bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0);
+    assert(listen(listener, 1) == 0);
+    socklen_t size = sizeof(address);
+    assert(getsockname(listener, reinterpret_cast<sockaddr*>(&address), &size) == 0);
+    sockets[1] = socket(AF_INET, SOCK_STREAM, 0);
+    assert(sockets[1] >= 0 && connect(sockets[1], reinterpret_cast<sockaddr*>(&address), size) == 0);
+    sockets[0] = accept(listener, nullptr, nullptr);
+    close(listener);
+    assert(sockets[0] >= 0);
+    const timeval timeout{current->config.recv_wait_timeout, 0};
+    assert(setsockopt(sockets[0], SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == 0);
 }
 }  // namespace
 
@@ -91,12 +113,13 @@ int main(int argc, char** argv) {
     const auto root = fs::path(argv[1]) / "esp-http";
     fs::create_directory(root);
     zectrix::storage::BookStorage books(root.c_str());
-    for (unsigned scenario = 0; scenario < 3; ++scenario) {
+    for (unsigned cycle = 0; cycle < 120; ++cycle) {
+        const unsigned scenario = cycle % 3;
         assert(books.BeginManagement() == ESP_OK);
         zectrix::connectivity::EspBookWebServer server;
         assert(server.Start(books, "ABCDEFGH2345", 0));
         assert(current->handlers.size() == 4);
-        int sockets[2]; assert(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == 0);
+        int sockets[2]; TcpPair(sockets);
         assert(current->config.open_fn(current, sockets[0]) == ESP_OK);
         current->sockets.push_back(sockets[0]);
         std::atomic<bool> entered{false};
@@ -125,5 +148,5 @@ int main(int argc, char** argv) {
         assert(!current && !fs::exists(root / ".upload.part") && !fs::exists(root / "cancelled.txt"));
         assert(books.EndManagement() == ESP_OK);
     }
-    std::puts("PASS: ESP HTTP adapter cancels blocked headers and uploads before joining and releasing Storage.");
+    std::puts("PASS: 120 ESP HTTP cancellation/restart cycles; blocked headers/uploads exit before Storage release.");
 }

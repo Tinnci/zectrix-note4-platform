@@ -17,6 +17,7 @@ host_tests=(
     test-enrollment-ndef.sh
     test-first-party-app-controllers.sh
     test-firmware-budget.sh
+    test-health-supervisor.sh
     test-input-event.sh
     test-localization.sh
     test-module-config.sh

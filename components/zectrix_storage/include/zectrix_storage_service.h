@@ -16,6 +16,7 @@ public:
     StorageService(const StorageService&) = delete;
     StorageService& operator=(const StorageService&) = delete;
 
+    // Reports NVS errors without erasing records. File access is independent.
     esp_err_t Initialize();
     bool IsInitialized() const;
 

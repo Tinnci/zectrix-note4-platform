@@ -229,6 +229,10 @@ void TestTimeoutCancelAndStopFailureRemainObservable() {
     assert(backend.Busy());
     backend.Poll(499);
     WifiBackendOutcome outcome{};
+    assert(!backend.TakeOutcome(&outcome) && backend.State() == WifiBackendState::kStopping);
+    backend.Poll(2498);
+    assert(!backend.TakeOutcome(&outcome));
+    backend.Poll(2499);
     assert(backend.TakeOutcome(&outcome));
     assert(outcome.operation == WifiOperationResult::kTimeout);
     assert(outcome.stop == WifiStopResult::kFailure);

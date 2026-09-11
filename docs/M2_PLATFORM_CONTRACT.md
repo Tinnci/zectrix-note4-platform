@@ -185,9 +185,12 @@ current time and persistence behavior is in [TIME.md](TIME.md).
 
 `StorageService` owns default NVS initialization, recovery policy, and the
 platform key-value namespace. Application and self-test code do not call NVS
-directly. A successful write or erase commits immediately. Initialization is
-on demand so the migration does not add an NVS erase path during normal boot.
-The behavior baseline is in
+directly. A successful write or erase commits immediately. D1.5 returns NVS
+initialization/open errors without erasing records, including no-free-pages
+and newer-format errors. Platform records the error and continues with volatile
+defaults, independent book/app files and local maintenance; Connectivity stays
+stopped. Persistence errors remain visible. Only explicit factory reset erases
+the default NVS partition. The historical behavior baseline is in
 [`M2_STORAGE_BASELINE.md`](M2_STORAGE_BASELINE.md). M2.5 does not select a
 filesystem or application package format.
 L1.2 adds a separate Storage-owned, on-demand SPIFFS book mount with bounded
@@ -203,3 +206,13 @@ diagnostics, flash size, and the hardware MAC address. Device Info and
 diagnostic code get these values from the service. Board support continues to
 own the detection of board capabilities such as RTC and NFC. The behavior
 baseline is in [`M2_SYSTEM_BASELINE.md`](M2_SYSTEM_BASELINE.md).
+
+D1.5 adds a fixed-size, foreground-owned `HealthSupervisor`. Known-good boots
+hand the RTC watchdog to a 90-second runtime deadline before board startup;
+trial boots retain their 60-second confirmation deadline until a successful
+Home frame and `Platform::ConfirmBoot()`. Only completed foreground work or a
+completed bounded diagnostic item feeds runtime protection. Polling maintenance
+or waiting for input never feeds it. Existing task/interrupt watchdogs remain
+unchanged. Protection covers application/service/board teardown and is disarmed
+at the final power transition. See [RELIABILITY.md](RELIABILITY.md) for recovery
+behavior, observation and fault-injection coverage.

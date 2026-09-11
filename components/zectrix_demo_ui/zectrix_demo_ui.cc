@@ -1,6 +1,7 @@
 #include "zectrix_locale.h"
 #include "zectrix_demo_ui.h"
 #include "zectrix_first_party_app_controllers.h"
+#include "sdkconfig.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -80,6 +81,17 @@ esp_err_t ZectrixDemoUi::ShowSplash() {
     canvas_.TextCentered(154, Tr(Text::ReadClockConnect), 1);
     canvas_.TextCentered(184, Tr(Text::DisplayGray), 1);
     canvas_.TextCentered(236, "ZECTRIX LAB", 1);
+    return RefreshFull();
+}
+
+esp_err_t ZectrixDemoUi::ShowRecovery() {
+    // Reuse the system canvas and release any retained gray frame.
+    DrawFrame(Tr(Text::RecoveryTitle), Tr(Text::NavRecovery));
+    canvas_.TextCentered(100, Tr(Text::RecoveryMessage), 1);
+    canvas_.TextCentered(140, Tr(Text::OkRetry), 1);
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+    canvas_.TextCentered(196, Tr(Text::RecoveryUsb), 1);
+#endif
     return RefreshFull();
 }
 

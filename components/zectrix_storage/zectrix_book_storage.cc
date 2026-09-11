@@ -317,6 +317,7 @@ BookWriteResult BookStorage::UploadImpl(const char* name, uint32_t size, BookUpl
     if (!upload->file_) return errno == ENOSPC ? BookWriteResult::NoSpace : BookWriteResult::IoError;
     upload->expected_ = size;
     upload->received_ = 0;
+    upload->error_ = BookWriteResult::Ok;
     upload->owner_ = this;
     uploading_ = true;
     return BookWriteResult::Ok;
@@ -338,24 +339,28 @@ BookWriteResult BookStorage::RemoveImpl(const char* name, bool application) {
 }
 
 BookWriteResult BookUpload::Write(const void* data, std::size_t size) {
+    if (error_ != BookWriteResult::Ok) return error_;
     if (!file_ || (size && !data) || size > expected_ - received_) return BookWriteResult::Invalid;
+    // A short write may already have advanced the file. Replaying that chunk
+    // on this handle could publish duplicate or truncated data.
     if (size && std::fwrite(data, 1, size, file_) != size)
-        return errno == ENOSPC ? BookWriteResult::NoSpace : BookWriteResult::IoError;
+        return error_ = errno == ENOSPC ? BookWriteResult::NoSpace : BookWriteResult::IoError;
     received_ += size;
     return BookWriteResult::Ok;
 }
 
 BookWriteResult BookUpload::Commit() {
+    if (error_ != BookWriteResult::Ok) return error_;
     if (!file_ || received_ != expected_) return BookWriteResult::Invalid;
     if (std::fflush(file_) != 0 || fsync(fileno(file_)) != 0)
-        return errno == ENOSPC ? BookWriteResult::NoSpace : BookWriteResult::IoError;
+        return error_ = errno == ENOSPC ? BookWriteResult::NoSpace : BookWriteResult::IoError;
     const int closed = std::fclose(file_);
     file_ = nullptr;
-    if (closed != 0) return BookWriteResult::IoError;
+    if (closed != 0) return error_ = BookWriteResult::IoError;
     std::lock_guard<std::mutex> lock(owner_->mutex_);
     struct stat info{};
-    if (FileInfo(target_.data(), &info)) return BookWriteResult::Exists;
-    if (errno != ENOENT || std::rename(temporary_.data(), target_.data()) != 0) return BookWriteResult::IoError;
+    if (FileInfo(target_.data(), &info)) return error_ = BookWriteResult::Exists;
+    if (errno != ENOENT || std::rename(temporary_.data(), target_.data()) != 0) return error_ = BookWriteResult::IoError;
     owner_->uploading_ = false;
     owner_ = nullptr;
     return BookWriteResult::Ok;
@@ -370,6 +375,7 @@ void BookUpload::Abort() {
         owner_->uploading_ = false;
         owner_ = nullptr;
     }
+    error_ = BookWriteResult::Ok;
 }
 
 }  // namespace zectrix::storage

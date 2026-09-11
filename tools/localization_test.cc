@@ -5,7 +5,12 @@
 #include "zectrix_storage_service.h"
 #include "zectrix_utf8.h"
 #include "sdkconfig.h"
+#if CONFIG_ZECTRIX_ENABLE_READER && CONFIG_ZECTRIX_ENABLE_UI_CHINESE
+#include "zectrix_reader.h"
+#include "zectrix_ui_chinese_font.h"
+#endif
 
+#include <algorithm>
 #include <cassert>
 #include <climits>
 #include <cstdio>
@@ -98,6 +103,19 @@ void TestCatalogAndGlyphs() {
                 char glyph[5]{};
                 std::memcpy(glyph, first, static_cast<std::size_t>(text - first));
                 assert(canvas.TextWidth(glyph) == 16);
+#if CONFIG_ZECTRIX_ENABLE_READER && CONFIG_ZECTRIX_ENABLE_UI_CHINESE
+                // Compare the generated subset against the production packed-font
+                // reader so a stale generator cannot silently corrupt UI pixels.
+                const auto* first_cp = std::begin(kUiChineseCodepoints);
+                const auto* last_cp = std::end(kUiChineseCodepoints);
+                const auto* found = std::lower_bound(first_cp, last_cp, cp);
+                assert(found != last_cp && *found == cp);
+                const auto* subset = kUiChineseBitmaps[found - first_cp];
+                const auto packed = zectrix::reader::GlyphBitmap(cp);
+                assert(subset[0] == packed.width);
+                for (unsigned row = 0; row < 16; ++row)
+                    assert((static_cast<uint16_t>(subset[1 + row * 2]) << 8 | subset[2 + row * 2]) == packed.Row(row));
+#endif
             }
         }
     }

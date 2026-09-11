@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -71,7 +72,8 @@ void TerminalApp::Run() {
     ui_.SetDisplay(display_);
     ui_.SetTime(time_);
     UpdateSystemStatus();
-    ESP_ERROR_CHECK(ui_.ShowSplash());
+    const auto splash = ui_.ShowSplash();
+    if (splash != ESP_OK) ESP_LOGW(kTag, "splash unavailable: %s; continuing to Home", esp_err_to_name(splash));
     if (Wait(1500, false) == ControlResult::kShutdown) PowerOff();
 
     RunApplicationShell();
@@ -119,19 +121,43 @@ void TerminalApp::RunApplicationShell() {
         ~Unbind() { owner.platform_.SetMaintenanceDelegate(nullptr); owner.runtime_ = nullptr; }
     } unbind{*this};
 #endif
-    if (!sdk::IsOk(runtime.Start())) return;
-    // Retain the boot-evidence marker consumed by the maintenance smoke test.
-    LogHeap("M3 runtime active");
-    if (!sdk::IsOk(runtime.Step())) return;
-    // Confirm a trial image only after platform startup and the first
-    // launcher frame have both succeeded.
-    const auto confirmed = platform_.Boot().ConfirmBoot();
-    if (confirmed != zectrix::update::Result::kOk) {
-        ESP_LOGE(kTag, "boot confirmation failed: %s", zectrix::update::ResultName(confirmed));
-        return;
+    auto& health = platform_.Health();
+    bool boot_ready = false;
+    const auto complete = [&](sdk::Status result) {
+        // Entry fallback can succeed while retaining the original SDK error.
+        if (!sdk::IsOk(runtime.last_error())) health.SuppressAutomaticApps();
+        if (sdk::IsOk(result) && runtime.state() == sdk::LifecycleState::Active)
+            result = ToSdkStatus(ui_.RefreshPending());
+        const bool recover = health.CompleteForeground(static_cast<int32_t>(result), runtime.foreground_generation());
+        if (!sdk::IsOk(result)) ESP_LOGE(kTag, "application step failed: %s", sdk::StatusName(result));
+        if (recover && runtime.state() == sdk::LifecycleState::Active) {
+            health.BeginRecovery(static_cast<int32_t>(result));
+            launcher_back_requested_ = false;
+            runtime.Recover(result);
+            LogHeap("foreground recovery");
+            return true;
+        }
+        if (!boot_ready && sdk::IsOk(result) && runtime.state() == sdk::LifecycleState::Active &&
+            std::strcmp(runtime.foreground_id().c_str(), "launcher") == 0) {
+            // A recovery page never confirms a trial; a completed Home frame does.
+            const auto confirmed = platform_.ConfirmBoot();
+            if (confirmed != update::Result::kOk) {
+                ESP_LOGE(kTag, "boot confirmation failed: %s", update::ResultName(confirmed));
+                return false;
+            }
+            boot_ready = true;
+            ESP_LOGI(kTag, "launcher ready: applications=%u", static_cast<unsigned>(applications_.size()));
+        }
+        return true;
+    };
+    auto started = runtime.Start();
+    if (sdk::IsOk(started)) {
+        // Retain the boot-evidence marker consumed by the maintenance smoke test.
+        LogHeap("M3 runtime active");
+        started = runtime.Step();
     }
-    ESP_LOGI(kTag, "launcher ready: applications=%u", static_cast<unsigned>(applications_.size()));
-    while (runtime.state() == sdk::LifecycleState::Active) {
+    if (!complete(started)) return;
+    while (runtime.state() == sdk::LifecycleState::Active || runtime.state() == sdk::LifecycleState::Failsafe) {
         sdk::InputEvent event;
         // Pagination, app loading and USB requests yield between bounded slices.
         bool busy = false;
@@ -147,24 +173,37 @@ void TerminalApp::RunApplicationShell() {
         const TickType_t timeout = busy ? TickType_t{1} : pdMS_TO_TICKS(250);
         const bool received = input_->Wait(&event, timeout);
         UpdateSystemStatus();
+        if (received && app::MapNavigation(event) == app::Navigation::Shutdown) {
+            runtime.Stop();
+            break;
+        }
 #if CONFIG_ZECTRIX_ENABLE_USB_CLI
         if (maintenance_operation_ >= cli::ControlOperation::kReboot &&
-            time_->MonotonicMicroseconds() >= maintenance_ready_us_ &&
-            !(received && app::MapNavigation(event) == app::Navigation::Shutdown)) {
+            time_->MonotonicMicroseconds() >= maintenance_ready_us_) {
             // This point is outside every SDK callback, including diagnostic waits.
             executing_maintenance_ = true;
             runtime.Stop();
             break;
         }
 #endif
+        if (runtime.state() == sdk::LifecycleState::Failsafe) {
+            const auto key = received ? app::MapNavigation(event) : app::Navigation::None;
+            if (key == app::Navigation::Confirm || key == app::Navigation::Back) {
+                const auto reason = runtime.last_error();
+                health.BeginRecovery(static_cast<int32_t>(reason));
+                auto result = runtime.Recover(reason);
+                if (sdk::IsOk(result)) result = runtime.Step();
+                if (!complete(result)) return;
+            } else {
+                // The shared canvas retains failed recovery-page work for retry.
+                ui_.RefreshPending();
+                health.Progress();
+            }
+            continue;
+        }
         const sdk::Status result = received ? app::DispatchInputBurst(runtime, event,
             [this](sdk::InputEvent* pending) { return input_->Wait(pending, 0); }) : runtime.Idle();
-        if (!sdk::IsOk(result)) {
-            ESP_LOGE(kTag, "application step failed: %s", sdk::StatusName(result));
-        } else if (runtime.state() == sdk::LifecycleState::Active) {
-            const esp_err_t status = ui_.RefreshPending();
-            if (status != ESP_OK) ESP_LOGW(kTag, "status refresh failed: %s", esp_err_to_name(status));
-        }
+        if (!complete(result)) return;
     }
 }
 
@@ -185,7 +224,7 @@ sdk::Status TerminalApp::Shutdown() {
 
 #if CONFIG_ZECTRIX_ENABLE_USB_CLI
 cli::ControlStatus TerminalApp::ScheduleMaintenance(cli::ControlOperation operation) {
-    if (!runtime_ || runtime_->state() != sdk::LifecycleState::Active ||
+    if (!runtime_ || (runtime_->state() != sdk::LifecycleState::Active && runtime_->state() != sdk::LifecycleState::Failsafe) ||
         maintenance_operation_ >= cli::ControlOperation::kReboot) return cli::ControlStatus::kBusy;
     if (operation < cli::ControlOperation::kReboot || operation > cli::ControlOperation::kFactoryReset)
         return cli::ControlStatus::kInvalidArgument;
@@ -235,6 +274,14 @@ sdk::Status TerminalApp::RequestBack(sdk::ApplicationContext& context) {
 void TerminalApp::EnterFailsafe(sdk::Status reason) {
     ESP_LOGE(kTag, "application runtime failsafe: %s",
              sdk::StatusName(reason));
+    platform_.Health().SuppressAutomaticApps();
+    launcher_back_requested_ = false;
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+    scene_snapshot_ = {};
+    guest_inspection_ = {};
+#endif
+    const auto result = ui_.ShowRecovery();
+    if (result != ESP_OK) ESP_LOGW(kTag, "recovery page failed: %s; input and USB remain available", esp_err_to_name(result));
 }
 
 void TerminalApp::LogHeap(const char* phase) {

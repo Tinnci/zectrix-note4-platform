@@ -48,7 +48,8 @@ public:
     sdk::Status HandleIdle(sdk::ApplicationContext& context) override {
         const int64_t now = owner_->time_->MonotonicMicroseconds();
         if (controller_.scene() == app::LauncherScene::Home &&
-            auto_showcase_ && now - last_input_us_ >= kHomeIdleTimeoutUs) {
+            auto_showcase_ && owner_->platform_.Health().AutomaticAppsAllowed() &&
+            now - last_input_us_ >= kHomeIdleTimeoutUs) {
             last_input_us_ = now;
             return Apply({app::LauncherDecision::OpenSelected, "showcase"}, context);
         }

@@ -58,11 +58,8 @@ esp_err_t StorageService::Initialize() {
     if (impl_ == nullptr) return ESP_ERR_INVALID_STATE;
     if (impl_->initialized) return ESP_OK;
     esp_err_t err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES ||
-        err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        err = nvs_flash_erase();
-        if (err == ESP_OK) err = nvs_flash_init();
-    }
+    // Preserve settings, bonds and bookmarks for recovery or a compatible image.
+    // Only the explicit factory-reset path may erase the NVS partition.
     if (err != ESP_OK) return err;
     err = nvs_open(kNamespace, NVS_READWRITE, &impl_->handle);
     if (err == ESP_OK) impl_->initialized = true;
@@ -162,17 +159,18 @@ esp_err_t StorageService::WipeUserFiles() {
 }
 
 esp_err_t StorageService::ResetSettings() {
-    if (!IsInitialized()) return ESP_ERR_INVALID_STATE;
-    nvs_close(impl_->handle);
+    if (!impl_) return ESP_ERR_INVALID_STATE;
+    if (impl_->initialized) nvs_close(impl_->handle);
     impl_->initialized = false;
     impl_->handle = 0;
     const auto stopped = nvs_flash_deinit();
-    return stopped == ESP_OK ? nvs_flash_erase() : stopped;
+    return stopped == ESP_OK || stopped == ESP_ERR_NVS_NOT_INITIALIZED ? nvs_flash_erase() : stopped;
 }
 
 #if CONFIG_ZECTRIX_ENABLE_BOOK_STORAGE
 esp_err_t StorageService::InitializeBooks() {
-    if (!IsInitialized()) return ESP_ERR_INVALID_STATE;
+    // The independent file partition remains usable when settings are damaged.
+    if (!impl_) return ESP_ERR_INVALID_STATE;
     if (!impl_->books) impl_->books.reset(new (std::nothrow) BookStorage);
     return impl_->books ? ESP_OK : ESP_ERR_NO_MEM;
 }

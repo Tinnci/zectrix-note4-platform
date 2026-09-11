@@ -13,7 +13,7 @@ namespace zectrix::cli {
 
 enum class ControlOperation : uint8_t {
     kSystemInfo, kHeap, kTasks, kUptime, kDisplay, kPower, kTime, kConnectivity,
-    kApps, kScenes, kInput, kDisplayTelemetry, kDisplayModel,
+    kApps, kScenes, kInput, kDisplayTelemetry, kDisplayModel, kHealth,
     kTimeSync, kReboot, kSleep, kStorageWipe, kFactoryReset,
 };
 constexpr bool IsMutation(ControlOperation operation) { return operation >= ControlOperation::kTimeSync; }
@@ -38,6 +38,7 @@ struct ControlTicket {
 
 struct ControlResult {
     system::SystemSnapshot system;
+    system::HealthSnapshot health;
     system::HeapSnapshot heap;
     system::TaskSnapshot tasks;
     display::DisplayInspection display;

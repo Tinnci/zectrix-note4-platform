@@ -55,7 +55,7 @@ int main(int argc, char** argv) {
     }
 
     const auto cards = Read(std::string(argv[1]) + "/Flashcards.lua");
-    for (int i = 0; i < 100; ++i) {
+    for (int i = 0; i < 1024; ++i) {
         assert(Start(engine, cards) && engine.Draw());
         assert(HasText(engine.frame(), "OK: reveal answer"));
         assert(engine.Handle(Key::Ok) && engine.Draw());
@@ -63,6 +63,17 @@ int main(int argc, char** argv) {
         assert(engine.Handle(Key::Down) && engine.Draw());
         assert(HasText(engine.frame(), "CARD 2 / 6"));
         engine.Stop();
+        assert(engine.heap().live == 0 && engine.heap().peak <= kHeapLimit);
+        if (i % 3 == 0) {
+            assert(!Start(engine, "while true do end"));
+            assert(engine.error() == Error::Instructions);
+        } else if (i % 3 == 1) {
+            assert(Start(engine, "function on_render() while true do end end"));
+            assert(!engine.Draw() && engine.error() == Error::Instructions);
+        } else {
+            assert(!Start(engine, "local t = {}; local s = 'x'; for i = 1,32 do s = s .. s; t[i] = s end"));
+            assert(engine.error() == Error::Memory);
+        }
         assert(engine.heap().live == 0 && engine.heap().peak <= kHeapLimit);
     }
 
@@ -113,5 +124,5 @@ int main(int argc, char** argv) {
     assert(Start(engine, "function on_render() if io or os or package or debug or coroutine or load or setmetatable then note4.text(0,0,'unsafe') else note4.text(0,0,'restricted') end end"));
     assert(engine.Draw() && HasText(engine.frame(), "restricted"));
     engine.Stop();
-    std::cout << "Runtime: pilots, quota, malformed code, draw bounds and 100 lifetimes passed.\n";
+    std::cout << "Runtime: pilots, quota, malformed code, draw bounds and 1024 fault/restart lifetimes passed.\n";
 }

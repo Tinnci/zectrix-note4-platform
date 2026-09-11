@@ -85,6 +85,7 @@ Status ApplicationRuntime::SwitchTo(const ApplicationId& id,
     if (!IsOk(create_result) || candidate == nullptr) {
         const Status failure =
             IsOk(create_result) ? Status::NoMemory : create_result;
+        InvokeCallback([&] { candidate.reset(); return Status::Ok; });
         last_error_ = failure;
         state_ = foreground_ ? LifecycleState::Active : LifecycleState::Absent;
         if (!foreground_ && allow_fallback) return EnterLauncherFallback(failure);
@@ -219,8 +220,28 @@ Status ApplicationRuntime::ProcessRender() {
     if (!renders_.TakeFor(generation_, &request)) return Status::Ok;
     const Status result = InvokeCallback(
         [this, &request] { return foreground_->Render(request); });
-    if (!IsOk(result)) last_error_ = result;
+    if (!IsOk(result)) {
+        last_error_ = result;
+        // Preserve failed work so transient I/O can retry and persistent failures
+        // reach the foreground supervisor even when the app does not invalidate.
+        renders_.Submit(request);
+    }
     return result;
+}
+
+Status ApplicationRuntime::Recover(Status reason) {
+    if (callback_active_ || (state_ != LifecycleState::Active && state_ != LifecycleState::Failsafe)) {
+        return Status::InvalidState;
+    }
+    if (state_ == LifecycleState::Active && foreground_id_ == launcher_id_) {
+        EnterFailsafe(reason);
+        return reason;
+    }
+    ExitAndDestroyForeground();
+    renders_.Discard();
+    commands_ = {};
+    last_error_ = reason;
+    return EnterLauncherFallback(reason);
 }
 
 Status ApplicationRuntime::Stop() {

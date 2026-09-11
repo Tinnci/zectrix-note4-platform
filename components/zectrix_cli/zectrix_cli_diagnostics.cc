@@ -22,6 +22,7 @@ constexpr CommandDescriptor kSystem[] = {
     Leaf("heap", "Internal and PSRAM heap in bytes", "system heap", Handler::kHeap),
     Leaf("tasks", "Task IDs, states, priorities and stack watermarks", "system tasks", Handler::kTasks),
     Leaf("uptime", "Monotonic time since boot", "system uptime", Handler::kUptime),
+    Leaf("health", "Foreground watchdog, recovery and storage health", "system health", Handler::kHealth),
 };
 constexpr CommandDescriptor kDisplay[] = {
     Leaf("status", "Refresh state and framebuffer preview", "display status", Handler::kDisplayInspect),
@@ -63,7 +64,7 @@ constexpr CommandDescriptor kCommands[] = {
          Handler::kHelp, Execution::kImmediate),
     Leaf("version", "CLI protocol version", "version",
          Handler::kVersion, Execution::kImmediate),
-    {"system", "System diagnostics", "system <info|heap|tasks|uptime>",
+    {"system", "System diagnostics", "system <info|heap|tasks|uptime|health>",
      Access::kReadOnly, Execution::kImmediate, false, kSystem, std::size(kSystem)},
     {"display", "Display diagnostics", "display <status|telemetry|model>", Access::kReadOnly,
      Execution::kImmediate, false, kDisplay, std::size(kDisplay)},
@@ -251,6 +252,7 @@ ExecuteStatus DiagnosticExecutor::Execute(const Invocation& invocation,
     Handler handler = command.handler;
     switch (command.handler) {
         case Handler::kSystemInfo: request.operation = ControlOperation::kSystemInfo; break;
+        case Handler::kHealth: request.operation = ControlOperation::kHealth; break;
         case Handler::kHeap: request.operation = ControlOperation::kHeap; break;
         case Handler::kTasks: request.operation = ControlOperation::kTasks; break;
         case Handler::kUptime: request.operation = ControlOperation::kUptime; break;
@@ -348,7 +350,7 @@ ExecuteStatus DiagnosticExecutor::FormatResult(BoundedOutput* output) {
     bool more = false;
     if (active_ == Handler::kHelp) {
         constexpr const char* pages[] = {
-            "help [command], version\r\nsystem <info|heap|tasks|uptime>, display status\r\npower status, connectivity status\r\ntime <get|status|sync [unix-ms offset-seconds]>",
+            "help [command], version\r\nsystem <info|heap|tasks|uptime|health>, display status\r\npower status, connectivity status\r\ntime <get|status|sync [unix-ms offset-seconds]>",
             "app <list|current>, scene dump, input watch\r\nlog follow [error|warn|info|debug], log stats\r\nreboot, sleep, storage wipe, factory reset, confirm <token>",
             "Aliases: sysinfo, heap, tasks, uptime, epd-inspect, log-stream\r\nCtrl+C cancels; host start 1 enters USB management.\r\nPairing and bond removal use the device's Connectivity screen."
         };
@@ -374,6 +376,21 @@ ExecuteStatus DiagnosticExecutor::FormatResult(BoundedOutput* output) {
                    static_cast<unsigned long>(s.diagnostics.psram_bytes),
                    s.wifi_mac[0], s.wifi_mac[1], s.wifi_mac[2],
                    s.wifi_mac[3], s.wifi_mac[4], s.wifi_mac[5]);
+        }
+        more = page_ < 2;
+    } else if (active_ == Handler::kHealth) {
+        const auto& h = result_.health;
+        if (page_ == 0) {
+            Format(output, "watchdog_armed=%u expired=%u timeout_ms=%lu\r\nlast_progress_ms=%llu maximum_gap_ms=%llu",
+                   h.watchdog_armed, h.watchdog_expired, static_cast<unsigned long>(system::kForegroundWatchdogMs),
+                   static_cast<unsigned long long>(h.last_progress_ms), static_cast<unsigned long long>(h.maximum_gap_ms));
+        } else if (page_ == 1) {
+            Format(output, "heartbeats=%lu failures=%lu recoveries=%lu consecutive=%u last_sdk_error=%ld",
+                   static_cast<unsigned long>(h.heartbeats), static_cast<unsigned long>(h.failures),
+                   static_cast<unsigned long>(h.recoveries), h.consecutive_failures, static_cast<long>(h.last_error));
+        } else {
+            Format(output, "storage_error=%ld recovery_boot=%u automatic_apps_suppressed=%u",
+                   static_cast<long>(h.storage_error), h.recovery_boot, h.automatic_apps_suppressed);
         }
         more = page_ < 2;
     } else if (active_ == Handler::kHeap) {

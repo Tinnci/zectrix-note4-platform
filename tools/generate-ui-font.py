@@ -14,12 +14,31 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def unpack_glyph(source, index, count):
+    """Expand the reader's width bits and four shared 8x8 tiles."""
+    width_bytes = (count + 7) // 8
+    tile_base = width_bytes + count * 8
+    if not 0 <= index < count or len(source) < tile_base or (len(source) - tile_base) % 8:
+        raise ValueError("Invalid packed reader font")
+    glyph = bytearray(33)
+    glyph[0] = 16 if source[index // 8] & (1 << (index % 8)) else 8
+    for tile in range(4):
+        position = width_bytes + index * 8 + tile * 2
+        offset = tile_base + int.from_bytes(source[position:position + 2], "little") * 8
+        if offset + 8 > len(source):
+            raise ValueError("Reader font tile outside data")
+        for row in range(8):
+            glyph[1 + (tile // 2 * 8 + row) * 2 + tile % 2] = source[offset + row]
+    return glyph
+
+
 def main():
     strings = (ROOT / "components/zectrix_app/include/zectrix_strings.inc").read_text()
     literals = re.findall(r'"(?:[^"\\]|\\.)*"', strings)
     codepoints = sorted({ord(char) for literal in literals
                          for char in ast.literal_eval(literal) if ord(char) >= 128})
     ranges = runpy.run_path(str(ROOT / "tools/generate-reader-font.py"))["RANGES"]
+    count = sum(last - first + 1 for first, last in ranges)
     source = (ROOT / "components/zectrix_reader/font/reader_font.bin").read_bytes()
     glyphs = []
     for codepoint in codepoints:
@@ -27,7 +46,7 @@ def main():
         for first, last in ranges:
             if first <= codepoint <= last:
                 index = offset + codepoint - first
-                glyphs.append(source[index * 33:(index + 1) * 33])
+                glyphs.append(unpack_glyph(source, index, count))
                 break
             offset += last - first + 1
         else:

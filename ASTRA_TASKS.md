@@ -387,13 +387,18 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Added seventeen normal/inverse pixel and ASCII preview cases, state-source integration and three-profile allocation/clipping checks. Verified all 39 Host targets, display/localization ASan/UBSan, Full/Minimal builds/profile comparison and connected ESP32-S3 Full flash/boot. See [docs/STATUS_BAR.md](docs/STATUS_BAR.md).
   - Full/Minimal firmware is 2,492,576 / 520,304 bytes (+336 / +208); static internal RAM is unchanged / +8 bytes. Tested minute changes still transfer 44 native RAM bytes; a radio activity mark change transfers 14 bytes without changing content pixels.
 
-- [ ] **D1.5: 系统故障注入、容灾自愈与长周期浸润可靠性 (Fault Injection, Self-Healing & Health Supervisor)**
+- [x] **D1.5: 系统故障注入、容灾自愈与长周期浸润可靠性 (Fault Injection, Self-Healing & Health Supervisor)**
   - **背景与愿景**：
     - 随身墨水屏设备面临异常掉电、外部射频突发干扰、NVS 损坏等复杂边缘场景，系统需具备工业级自诊断与自愈韧性（对标 GitHub Issue #56, #57）。
   - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
     1. *异常与断电模拟*：如何设计文件系统断电写坏、NVS 校验和失效、无线射频连续重试超时等故障注入测试？系统如何自主触发安全回滚或状态重置？
     2. *硬件看门狗与死锁防御*：如何确保当第三方应用或前台场景发生长时间挂起时，硬件与软件看门狗能够平滑保护底座系统？
     3. *长周期稳定性浸润（Soak Test）*：设计多场景长周期高频轮转测试，验证整机在无内存泄漏、无句柄耗尽前提下的长期运行可靠性。
+  - Added foreground-owned health supervision with a 90-second RTC watchdog, preserved trial-boot confirmation deadlines and cleanup protection, and exposed copied observations through read-only `system health`. Polling and input waits cannot feed a hung foreground.
+  - Three consecutive application errors release the failed app before reopening Home. A failing Home retains bilingual recovery, OK/Back retry, long-DOWN shutdown and USB maintenance on the shared canvas. Panic/watchdog boots suppress radios and automatic showcase; SDK faults suppress automatic showcase for the current boot.
+  - Preserved NVS on initialization/open errors while keeping independent files and local maintenance usable. Upload handles reject retries after uncertain I/O; Wi-Fi cleanup retries transient faults within its existing two-second window while retaining ownership. See [docs/RELIABILITY.md](docs/RELIABILITY.md).
+  - Verified all 40 Host targets, focused ASan/UBSan, 4,096 application recovery cycles, 1,024 Wi-Fi and Lua fault/restart cycles, 120 HTTP cancellations, 256 recovery/sleep UI cycles per language and seven simulated days of health progress. Corrected packed-font subset generation and checked recovery previews in English/Chinese.
+  - Full/Minimal builds and profile comparison passed at 2,495,312 / 521,648 bytes (+2,736 / +1,344); static internal RAM is unchanged. Connected ESP32-S3 Full flash/boot and 95.15 seconds of continuous watchdog feeding passed. Physical interrupted OTA and separate endurance/power measurements remain tracked by #56/#57.
 
 - [ ] **G1.2: 远端代码同步与 GitHub 状态治理闭环 (Remote Git Sync & GitHub Governance)**
   - **背景与愿景**：

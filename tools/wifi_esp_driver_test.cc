@@ -380,6 +380,9 @@ void TestFailedCleanupRetainsOwnership() {
         fail_unregister_base = phase == 2 ? WIFI_EVENT : phase == 3 ? IP_EVENT : nullptr;
         backend.Poll(9);
         WifiBackendOutcome outcome;
+        assert(backend.State() == WifiBackendState::kStopping && !backend.TakeOutcome(&outcome));
+        assert(diagnostic.StartScan() == WifiDriverResult::kUnavailable);
+        backend.Poll(2008);
         assert(backend.State() == WifiBackendState::kStopFailed);
         assert(EspWifiBackendDriver::RadioClaimed());
         assert(backend.TakeOutcome(&outcome));
@@ -396,6 +399,36 @@ void TestFailedCleanupRetainsOwnership() {
         assert(diagnostic.StopStation() == WifiDriverResult::kReady);
     }
     Reset();
+}
+
+void TestRepeatedTimeoutAndCleanupRecovery() {
+    Reset();
+    StoredCredentials credentials;
+    EspWifiBackendDriver driver, observer;
+    WifiBackend backend(&credentials, &driver);
+    constexpr unsigned cycles = 1024;
+    for (unsigned cycle = 0; cycle < cycles; ++cycle) {
+        StartBurst(backend);
+        fail_stop = cycle % 4 == 0;
+        fail_deinit = cycle % 4 == 1;
+        fail_unregister_base = cycle % 4 == 2 ? WIFI_EVENT : cycle % 4 == 3 ? IP_EVENT : nullptr;
+        // Every failed burst must release HTTP/TLS, then finish cleanup without
+        // starting a second owner or leaking handlers across the next reconnect.
+        backend.Poll(15000);
+        WifiBackendOutcome outcome;
+        assert(backend.State() == WifiBackendState::kStopping && !backend.TakeOutcome(&outcome));
+        assert(!http_active && tls_objects == 0 && EspWifiBackendDriver::RadioClaimed());
+        assert(observer.StartScan() == WifiDriverResult::kUnavailable);
+        backend.Poll(16000);
+        assert(!backend.TakeOutcome(&outcome));
+        fail_stop = fail_deinit = false;
+        fail_unregister_base = nullptr;
+        backend.Poll(16999);
+        assert(backend.State() == WifiBackendState::kStopped && backend.TakeOutcome(&outcome));
+        assert(outcome.operation == WifiOperationResult::kTimeout && outcome.stop == WifiStopResult::kSuccess);
+        Reset();
+    }
+    std::printf("PASS: %u ESP Wi-Fi timeout/reconnect cycles with transient cleanup faults; no retained handles.\n", cycles);
 }
 }  // namespace
 
@@ -589,5 +622,6 @@ int main() {
     TestDnsFailuresAndCachedAnswer();
     TestBurstPowersDownBeforeResult();
     TestFailedCleanupRetainsOwnership();
+    TestRepeatedTimeoutAndCleanupRecovery();
     Reset();
 }

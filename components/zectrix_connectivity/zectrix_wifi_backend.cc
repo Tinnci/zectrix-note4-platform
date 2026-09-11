@@ -236,7 +236,9 @@ void WifiBackend::BeginStopping() {
 
 void WifiBackend::StopNow(uint32_t now_ms) {
     const WifiDriverResult result = driver_->StopStation();
-    if (result == WifiDriverResult::kPending &&
+    // ESP teardown is idempotent and retains ownership on errors. Give transient
+    // stop/deinit failures the existing cleanup window before latching failure.
+    if (result != WifiDriverResult::kReady &&
         !DeadlineReached(now_ms, stop_deadline_ms_)) {
         return;
     }

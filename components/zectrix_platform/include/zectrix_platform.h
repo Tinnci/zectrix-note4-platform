@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include "esp_err.h"
 #include "zectrix_service_registry.h"
 
@@ -10,9 +12,9 @@ namespace zectrix::connectivity { class ConnectivityService; }
 namespace zectrix::input { class InputService; }
 namespace zectrix::power { class PowerService; }
 namespace zectrix::storage { class StorageService; }
-namespace zectrix::system { class SystemService; }
+namespace zectrix::system { class SystemService; class HealthSupervisor; }
 namespace zectrix::time { class TimeService; }
-namespace zectrix::update { class BootGuard; class UpdateService; }
+namespace zectrix::update { class BootGuard; class UpdateService; enum class Result : uint8_t; }
 namespace zectrix::cli { class MaintenanceDelegate; }
 
 namespace zectrix {
@@ -36,6 +38,9 @@ public:
     void PollMaintenance();
     void StopMaintenance();
     void SetMaintenanceDelegate(cli::MaintenanceDelegate* delegate);
+    // The first successful Home frame hands trial protection to runtime health.
+    update::Result ConfirmBoot();
+    system::HealthSupervisor& Health() const;
     // The shell has exited its foreground before either operation is called.
     esp_err_t ResetUserData(bool factory);
     [[noreturn]] void Reboot();

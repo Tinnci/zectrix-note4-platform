@@ -10,6 +10,7 @@
 #include "zectrix_reading_overview.h"
 #include "zectrix_demo_ui.h"
 #include "zectrix_platform.h"
+#include "zectrix_health_supervisor.h"
 #include "zectrix_sleep_cover.h"
 #if CONFIG_ZECTRIX_ENABLE_USB_CLI
 #include "zectrix_cli_control.h"

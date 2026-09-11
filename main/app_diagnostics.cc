@@ -77,7 +77,7 @@ private:
     ZectrixTestResult Execute(ZectrixTestId id) {
         owner_->test_states_[static_cast<size_t>(id)] =
             ZectrixTestState::kRunning;
-        return owner_->tests_->Run(
+        const auto result = owner_->tests_->Run(
             id, [this](const ZectrixTestUpdate& update) {
                 owner_->UpdateSystemStatus();
                 owner_->test_states_[static_cast<size_t>(update.id)] =
@@ -89,6 +89,10 @@ private:
                              esp_err_to_name(draw));
                 }
             });
+        // Each interactive item has its own bounded deadline. Polling inside an
+        // item must not conceal a hung test or driver from the RTC watchdog.
+        owner_->platform_.Health().Progress();
+        return result;
     }
 
     sdk::Status RunAll(sdk::ApplicationContext& context) {
