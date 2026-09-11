@@ -52,8 +52,8 @@ std::u32string Text(const Page& page) {
     std::u32string text;
     for (std::size_t i = 0; i < page.count; ++i) {
         const auto& glyph = page.glyphs[i];
-        assert(glyph.x + GlyphWidth(glyph.codepoint, page.font) <= Page::kWidth);
-        assert(glyph.y + FontHeight(page.font) <= Page::kHeight);
+        assert(glyph.x + GlyphWidth(glyph.codepoint, page.font, glyph.style) <= Page::kWidth);
+        assert(glyph.y + GlyphHeight(glyph.codepoint, page.font, glyph.style) <= Page::kHeight);
         text += glyph.codepoint;
     }
     return text;
@@ -188,6 +188,122 @@ std::u32string EpubTest(const std::string& path) {
     assert(source.largest_read <= 1045);
     assert(engine.page().end && engine.page().progress_per_mille == 1000);
     return complete;
+}
+
+std::vector<detail::Token> DecodeXhtml(const std::string& xhtml) {
+    Bytes source(xhtml);
+    detail::Stream stream;
+    detail::Entry entry;
+    entry.size = entry.compressed = source.Size();
+    assert(stream.Open(source, entry, false) == Result::Ok);
+    detail::Decoder decoder;
+    decoder.Reset(0, Format::Epub);
+    std::vector<detail::Token> tokens;
+    for (std::size_t steps = 0; ; ++steps) {
+        assert(steps < 2 * xhtml.size() + 16);
+        detail::Token token;
+        bool emitted = false;
+        const auto result = decoder.Step(stream, &token, &emitted);
+        if (result == Result::End) return tokens;
+        assert(result == Result::Ok || result == Result::Pending);
+        if (emitted && token.codepoint != '\n' && token.codepoint != ' ') tokens.push_back(token);
+    }
+}
+
+void RichDecoderTests() {
+    const auto regular = TextStyle::Regular, bold = TextStyle::Bold, italic = TextStyle::Italic;
+    const std::string source = "<p>A<strong>B<em>C中</em>D</strong>E<u>F</u><small>G</small>"
+        "<b><b>H</b>I</b><b/><i />J<b><i>K</b>L</i><script><b>hidden</b></script>"
+        "<b>&#x4e2d;</b>M</p><h1>N</h1>O";
+    const auto tokens = DecodeXhtml(source);
+    const std::u32string expected = U"ABC中DEFGHIJKL中MNO";
+    const TextStyle styles[] = {regular, bold, bold | italic, bold | italic, bold, regular,
+        TextStyle::Underline, TextStyle::Dim, bold, bold, regular, bold | italic, regular,
+        bold, regular, bold, regular};
+    assert(tokens.size() == expected.size() && tokens.size() == std::size(styles));
+    for (std::size_t i = 0; i < tokens.size(); ++i) {
+        assert(tokens[i].codepoint == expected[i] && tokens[i].style == styles[i]);
+        assert(tokens[i].start.offset < tokens[i].after.offset);
+    }
+    assert(source.substr(tokens[13].start.offset, tokens[13].after.offset - tokens[13].start.offset) == "&#x4e2d;");
+    std::string nested;
+    for (int i = 0; i < 40; ++i) nested += "<b>";
+    nested += "X";
+    for (int i = 0; i < 40; ++i) nested += "</b>";
+    nested += "Y";
+    const auto overflow = DecodeXhtml(nested);
+    assert(overflow.size() == 2 && overflow[0].style == bold && overflow[1].style == regular);
+    const auto invalid = DecodeXhtml(std::string("<b>\xe4") + "</b>A");
+    assert(invalid.size() == 2 && invalid[0].codepoint == 0xfffd && invalid[0].style == bold);
+    assert(invalid[1].codepoint == 'A' && invalid[1].style == regular);
+    Bytes text("**Bold** _italic_ <b>literal</b>");
+    Engine engine;
+    assert(OpenReady(engine, text, Format::Text) == Result::Ok);
+    assert(engine.Seek({}, FontSize::Small) == Result::Pending && Finish(engine) == Result::Ok);
+    assert(Text(engine.page()) == U"**Bold** _italic_ <b>literal</b>");
+    for (std::size_t i = 0; i < engine.page().count; ++i) assert(engine.page().glyphs[i].style == regular);
+}
+
+void SamePage(const Page& expected, const Page& actual) {
+    assert(expected.count == actual.count && expected.start == actual.start && expected.next == actual.next);
+    assert(expected.font == actual.font && expected.end == actual.end);
+    for (std::size_t i = 0; i < expected.count; ++i) {
+        const auto& left = expected.glyphs[i]; const auto& right = actual.glyphs[i];
+        assert(left.codepoint == right.codepoint && left.style == right.style && left.x == right.x && left.y == right.y);
+    }
+}
+
+void RichPaginationTests(const std::string& dir) {
+    assert(sizeof(Glyph) == 8);
+    Bytes source(ReadFile(dir + "/styled.epub"));
+    auto expected = DecodeXhtml(ReadFile(dir + "/styled.xhtml"));
+    const auto last = DecodeXhtml("<p>Next chapter.</p>");
+    expected.insert(expected.end(), last.begin(), last.end());
+    for (auto font : {FontSize::Small, FontSize::Large}) {
+        Engine forward, resumed;
+        assert(OpenReady(forward, source, Format::Epub) == Result::Ok);
+        assert(OpenReady(resumed, source, Format::Epub) == Result::Ok);
+        assert(forward.Seek({}, font) == Result::Pending);
+        std::size_t offset = 0, pages = 0;
+        do {
+            assert(Finish(forward, 7) == Result::Ok);
+            const auto page = forward.page();
+            Text(page);
+            assert(resumed.Seek(page.start, font) == Result::Pending && Finish(resumed, 31) == Result::Ok);
+            SamePage(page, resumed.page());
+            assert(resumed.SetFont(font == FontSize::Small ? FontSize::Large : FontSize::Small) == Result::Pending);
+            assert(Finish(resumed) == Result::Ok && resumed.page().start == page.start);
+            assert(resumed.SetFont(font) == Result::Pending && Finish(resumed) == Result::Ok);
+            SamePage(page, resumed.page());
+            for (std::size_t i = 0; i < page.count; ++i) {
+                const auto& glyph = page.glyphs[i];
+                if (glyph.codepoint == ' ') continue;
+                assert(offset < expected.size());
+                assert(glyph.codepoint == expected[offset].codepoint && glyph.style == expected[offset].style);
+                ++offset;
+            }
+            if (++pages == 3) {
+                assert(forward.Previous() == Result::Pending && Finish(forward, 1) == Result::Ok);
+                assert(forward.Next() == Result::Pending && Finish(forward, 1) == Result::Ok);
+                SamePage(page, forward.page());
+            }
+            assert(pages < 100);
+        } while (forward.Next() == Result::Pending);
+        assert(offset == expected.size() && pages > 3);
+        std::printf("MEASURE: styled EPUB font=%d pages=%zu glyphs=%zu, page buffer=%zu bytes.\n",
+                    FontHeight(font), pages, offset, sizeof(Page));
+    }
+    Bytes bottom(ReadFile(dir + "/styled-bottom.epub"));
+    Engine forward, resumed;
+    assert(OpenReady(forward, bottom, Format::Epub) == Result::Ok);
+    assert(OpenReady(resumed, bottom, Format::Epub) == Result::Ok);
+    assert(forward.Seek({}, FontSize::Small) == Result::Pending && Finish(forward, 1) == Result::Ok);
+    assert(Text(forward.page()).find(U"Bottom") == std::u32string::npos);
+    assert(forward.Next() == Result::Pending && Finish(forward, 1) == Result::Ok);
+    assert(Text(forward.page()) == U"Bottom underline中 and continuation.");
+    assert(forward.page().glyphs[0].y == 0);
+    assert(resumed.Seek(forward.page().start, FontSize::Small) == Result::Pending && Finish(resumed, 1) == Result::Ok);
+    SamePage(forward.page(), resumed.page());
 }
 
 class Store final : public BookmarkStore {
@@ -572,6 +688,8 @@ void ContinueReadingTests(const std::string& dir) {
 int main(int argc, char** argv) {
     assert(argc == 2);
     const std::string dir = argv[1];
+    RichDecoderTests();
+    RichPaginationTests(dir);
     TextTests();
     const auto text = EpubTest(dir + "/stored.epub");
     assert(text == EpubTest(dir + "/deflated.epub"));

@@ -3,11 +3,13 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 sdk_include="$repo_root/components/zectrix_app/include"
+text_include="$repo_root/components/zectrix_text/include"
 
 expected_headers=$(printf '%s\n' \
     zectrix/sdk/application.h \
     zectrix/sdk/input.h \
     zectrix/sdk/status.h \
+    zectrix/sdk/text_style.h \
     zectrix/sdk/version.h \
     zectrix/zectrix_sdk.h | sort)
 
@@ -40,7 +42,10 @@ if [[ "${1:-}" == "--self-test" ]]; then
     exit 0
 fi
 
-actual_headers=$( (cd "$sdk_include" && find zectrix -type f \( -name '*.h' -o -name '*.hpp' \)) | sed 's#^\./##' | sort -u)
+actual_headers=$( {
+    (cd "$sdk_include" && find zectrix -type f \( -name '*.h' -o -name '*.hpp' \))
+    (cd "$text_include" && find zectrix -type f \( -name '*.h' -o -name '*.hpp' \))
+} | sed 's#^\./##' | sort -u)
 
 if [[ "$actual_headers" != "$expected_headers" ]]; then
     echo 'FAIL: SDK v1 public header set changed.' >&2
@@ -50,6 +55,7 @@ if [[ "$actual_headers" != "$expected_headers" ]]; then
 fi
 
 if check_forbidden_tokens "$sdk_include/zectrix/sdk" ||
+   check_forbidden_tokens "$text_include/zectrix/sdk" ||
    check_forbidden_tokens "$sdk_include/zectrix/zectrix_sdk.h"; then
     echo 'FAIL: SDK v1 exposes an implementation-specific token.' >&2
     exit 1

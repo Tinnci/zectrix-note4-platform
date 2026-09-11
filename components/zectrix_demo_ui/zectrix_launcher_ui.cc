@@ -85,7 +85,7 @@ void DrawOverview(ZectrixCanvas& canvas, const zectrix::time::ClockSnapshot& clo
         canvas.Text(24, 78, value, 2);
         canvas.Text(78, 79, Tr(months[date.month - 1]));
         std::snprintf(value, sizeof(value), "%04d", date.year);
-        canvas.Text(78, 102, value);
+        canvas.Text(78, 102, value, 1, false, ZectrixCanvas::TextStyle::Dim);
     } else {
         canvas.Text(24, 63, Tr(Text::Date));
         canvas.Text(24, 84, Tr(Text::NotSet));
@@ -95,7 +95,7 @@ void DrawOverview(ZectrixCanvas& canvas, const zectrix::time::ClockSnapshot& clo
     using State = zectrix::app::ReadingOverview::State;
     switch (reading.state) {
         case State::Saved: {
-            canvas.Text(140, 58, Tr(Text::ContinueReading), 1, active);
+            canvas.TextFitted(140, 58, Tr(Text::ContinueReading), 236, active, ZectrixCanvas::TextStyle::Bold);
             auto title = reading.book_id;
             title.back() = '\0';
             zectrix::ui::DrawUtf8Line(canvas, 140, 80, title.data(), 236, active);

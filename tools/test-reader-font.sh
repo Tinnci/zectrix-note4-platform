@@ -20,7 +20,7 @@ for source in fixture product; do
     fi
     "${CC:-cc}" -DZECTRIX_READER_FONT_PATH="\"$font\"" \
         -c "$reader_dir/zectrix_reader_font_data.S" -o "$work_dir/font.o"
-    "${CXX:-c++}" "${flags[@]}" -I"$reader_dir/include" \
+    "${CXX:-c++}" "${flags[@]}" -I"$reader_dir/include" -I"$repo_dir/components/zectrix_text/include" \
         "$reader_dir/zectrix_reader_font.cc" "$repo_dir/tools/reader_font_test.cc" \
         "$work_dir/font.o" -o "$work_dir/font-test"
     "$work_dir/font-test" "${reference[@]}"

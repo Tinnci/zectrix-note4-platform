@@ -94,7 +94,8 @@ end
 | `note4.api` | Pilot API revision `1`; this is a source interface, not a frozen binary ABI |
 | `note4.width`, `note4.height` | `376`, `192`; origin is the guest's upper-left corner |
 | `note4.UP`, `note4.DOWN`, `note4.OK` | Copied short-click values `1`, `2`, `3`; long presses stay with the host |
-| `note4.text(x, y, text, scale)` | Black UTF-8 text or number; optional integer scale `1` or `2`, at most 128 bytes per call |
+| `note4.text(x, y, text, scale, style)` | Black UTF-8 text or number; optional integer scale `1` or `2`, optional style flags defaulting to `0`, at most 128 bytes per call |
+| `note4.REGULAR`, `BOLD`, `ITALIC`, `DIM`, `UNDERLINE`, `KEYCAP` | Values `0`, `1`, `2`, `4`, `8`, `16`; combine with Lua's `|` |
 | `note4.rect(x, y, width, height)` | Black rectangle outline |
 | `note4.fill(x, y, width, height)` | Black filled rectangle |
 | `note4.exit()` | Request return after initialization/event callback completes |
@@ -106,6 +107,13 @@ firmware font's fallback; Full includes the broad reader CJK font. At most 64
 commands and 2,048 copied text bytes (including terminators) form one frame.
 The host draws at `(12,66,376,192)` in the shared 15,000-byte canvas. No guest
 pointer, raw framebuffer, display waveform or hardware object is exposed.
+
+R1.3 adds [algorithmic typography](TYPOGRAPHY.md) to these copied frames.
+Calculator emphasizes its result and boxes its edit hint; Flashcards emphasizes
+questions, italicizes answers and dims the card index. Four-argument scripts
+keep Regular text. Styling adds no font face or rendering allocation.
+Unsupported flag bits and negative styles use the existing drawing-error path.
+The host intersects its content region with the caller's clip before painting.
 
 The Lua language supports tables, functions, numeric loops, operators, `#` and
 string concatenation. No standard libraries are opened: `io`, `os`, `package`,

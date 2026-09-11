@@ -5,8 +5,11 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "zectrix/sdk/text_style.h"
+
 class ZectrixCanvas {
 public:
+    using TextStyle = zectrix::sdk::TextStyle;
     static constexpr int kWidth = 400;
     static constexpr int kHeight = 300;
     static constexpr int kStride = kWidth / 8;
@@ -23,12 +26,13 @@ public:
     void Rect(int x, int y, int width, int height, bool black = true);
     void Line(int x0, int y0, int x1, int y1, bool black = true);
     void Text(int x, int y, const char* text, int scale = 1,
-              bool inverted = false);
+              bool inverted = false, TextStyle style = TextStyle::Regular);
     void TextCentered(int y, const char* text, int scale = 1,
-                      bool inverted = false);
-    int TextWidth(const char* text, int scale = 1) const;
+                      bool inverted = false, TextStyle style = TextStyle::Regular);
+    int TextWidth(const char* text, int scale = 1, TextStyle style = TextStyle::Regular) const;
+    int TextHeight(const char* text, int scale = 1, TextStyle style = TextStyle::Regular) const;
     void TextFitted(int x, int y, const char* text, int max_width,
-                    bool inverted = false);
+                    bool inverted = false, TextStyle style = TextStyle::Regular);
 
     uint8_t* data() { return pixels_.data(); }
     const uint8_t* data() const { return pixels_.data(); }

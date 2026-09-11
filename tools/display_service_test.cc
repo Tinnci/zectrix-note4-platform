@@ -12,6 +12,7 @@
 #include "zectrix_foreground_dispatch.h"
 #include "zectrix_button_buffer.h"
 #include "zectrix_epd.h"
+#include "zectrix_unicode_text.h"
 #include "ssd2683_waveform.h"
 
 #include <algorithm>
@@ -22,6 +23,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <fstream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <new>
@@ -786,6 +789,50 @@ void SavePreview(const ZectrixCanvas& canvas, const char* name) {
     assert(std::fclose(output) == 0);
 }
 
+void TestTypographyRendering() {
+    using zectrix::sdk::TextStyle;
+    using namespace zectrix::reader;
+    ZectrixCanvas canvas;
+    for (auto font : {FontSize::Small, FontSize::Large}) {
+        for (unsigned flags = 0; flags < 16; ++flags) for (auto cp : {U'F', U'g', U'中', U'\ufffd'}) {
+            const auto style = static_cast<TextStyle>(flags);
+            canvas.Clear();
+            zectrix::ui::DrawGlyph(canvas, 20, 20, cp, font, false, style);
+            for (int y = 0; y < 60; ++y) for (int x = 0; x < 60; ++x) {
+                if (x >= 20 && x < 20 + GlyphWidth(cp, font, style) &&
+                    y >= 20 && y < 20 + GlyphHeight(cp, font, style)) continue;
+                assert(Bit(canvas.data(), 50, x, y));
+            }
+        }
+        canvas.Clear();
+        canvas.Text(8, 8, font == FontSize::Small ? "READER 16px" : "READER 24px");
+        const TextStyle styles[] = {TextStyle::Regular, TextStyle::Bold, TextStyle::Italic,
+            TextStyle::Bold | TextStyle::Italic, TextStyle::Dim, TextStyle::Underline};
+        const char* labels[] = {"Regular", "Bold", "Italic", "Bold + Italic", "Dim", "Underline"};
+        for (std::size_t row = 0; row < std::size(styles); ++row) {
+            const int y = 36 + static_cast<int>(row) * 36;
+            canvas.Text(8, y + 3, labels[row]);
+            int x = 136;
+            for (char32_t cp : U"Astra 中文阅读") {
+                if (!cp) break;
+                zectrix::ui::DrawGlyph(canvas, x, y, cp, font, false, styles[row]);
+                x += GlyphWidth(cp, font, styles[row]);
+            }
+        }
+        canvas.Text(8, 268, "OK", 1, false, TextStyle::Keycap);
+        canvas.Text(44, 270, "Read / 阅读", 1, false, TextStyle::Dim);
+        SavePreview(canvas, font == FontSize::Small ? "typography-reader-16" : "typography-reader-24");
+    }
+    canvas.Clear();
+    const TextStyle styles[] = {TextStyle::Regular, TextStyle::Bold, TextStyle::Italic,
+        TextStyle::Bold | TextStyle::Italic, TextStyle::Dim, TextStyle::Underline, TextStyle::Keycap};
+    for (std::size_t i = 0; i < std::size(styles); ++i) {
+        canvas.Text(12, 10 + i * 40, "Astra 中文阅读", 1, false, styles[i]);
+        canvas.Text(202, 10 + i * 40, "Astra 中文阅读", 1, true, styles[i]);
+    }
+    SavePreview(canvas, "typography-ui");
+}
+
 void TestUsbManagerComposition() {
     Reset();
     auto service = CreateService();
@@ -1329,6 +1376,7 @@ void TestReaderComposition() {
     class PreviewLibrary final : public Library {
     public:
         std::string text;
+        Format format = Format::Text;
         std::unique_ptr<MemorySource> source;
         PreviewLibrary() {
             for (unsigned i = 0; i < 30; ++i)
@@ -1339,7 +1387,8 @@ void TestReaderComposition() {
         std::size_t count() const override { return 1; }
         BookInfo Get(std::size_t) const override {
             BookInfo book;
-            std::strcpy(book.id.data(), "风从海上来.txt"); book.bytes = text.size(); return book;
+            std::strcpy(book.id.data(), format == Format::Text ? "风从海上来.txt" : "Typography.epub");
+            book.format = format; book.bytes = text.size(); return book;
         }
         bool truncated() const override { return false; }
         Result Open(std::size_t, Source** output) override { *output = source.get(); return Result::Ok; }
@@ -1420,6 +1469,25 @@ void TestReaderComposition() {
     reader.Presented(true);
     assert(displayed.position < bookmarks.Latest()->position);
     assert(bookmarks.Latest()->position == reader.engine().page().start);
+    reader.Stop();
+    const auto* fixtures = std::getenv("ZECTRIX_READER_FIXTURES");
+    assert(fixtures);
+    std::ifstream styled(std::string(fixtures) + "/styled.epub", std::ios::binary);
+    assert(styled.good());
+    library.text.assign(std::istreambuf_iterator<char>(styled), std::istreambuf_iterator<char>());
+    library.format = Format::Epub;
+    library.source = std::make_unique<MemorySource>(reinterpret_cast<const uint8_t*>(library.text.data()), library.text.size());
+    assert(zectrix::sdk::IsOk(reader.Start()));
+    reader.Handle({Button::Ok, InputAction::Click});
+    for (unsigned i = 0; reader.busy(); ++i) { assert(i < 10000); reader.Tick(now_us); }
+    assert(reader.result() == Result::Ok && ui.ShowReader(reader, true) == ESP_OK);
+    reader.Presented(true);
+    SavePreview(ui.canvas(), "reader-rich-small");
+    reader.Handle({Button::Ok, InputAction::Click});
+    reader.Handle({Button::Ok, InputAction::Click});
+    for (unsigned i = 0; reader.busy(); ++i) { assert(i < 10000); reader.Tick(now_us); }
+    assert(reader.result() == Result::Ok && ui.ShowReader(reader, true) == ESP_OK);
+    SavePreview(ui.canvas(), "reader-rich-large");
 }
 
 void TestBookTransferComposition() {
@@ -1711,6 +1779,7 @@ int main() {
     TestForegroundDisplayScheduling();
     TestShutdownReleasesSpi();
     TestUiTraffic();
+    TestTypographyRendering();
     TestViewPorts();
     TestLauncherComposition();
     TestStatusAndImageComposition();

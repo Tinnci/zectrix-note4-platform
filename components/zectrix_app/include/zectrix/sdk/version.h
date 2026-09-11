@@ -3,9 +3,9 @@
 #include <cstdint>
 
 #define ZECTRIX_SDK_VERSION_MAJOR 1
-#define ZECTRIX_SDK_VERSION_MINOR 1
-#define ZECTRIX_SDK_VERSION_PATCH 1
-#define ZECTRIX_SDK_VERSION_STRING "1.1.1"
+#define ZECTRIX_SDK_VERSION_MINOR 2
+#define ZECTRIX_SDK_VERSION_PATCH 0
+#define ZECTRIX_SDK_VERSION_STRING "1.2.0"
 
 namespace zectrix::sdk {
 inline namespace v1 {

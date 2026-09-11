@@ -5,7 +5,10 @@
 #include <cstdint>
 #include <memory>
 
+#include "zectrix/sdk/text_style.h"
+
 namespace zectrix::reader {
+using sdk::TextStyle;
 
 enum class Result : uint8_t {
     Ok, Pending, End, Invalid, Unsupported, TooLarge, IoError, NoMemory,
@@ -47,9 +50,14 @@ struct Position {
 };
 
 struct Glyph {
-    uint32_t codepoint = 0;
-    uint16_t x = 0;
-    uint16_t y = 0;
+    // Unicode needs 21 bits; styles share the existing eight-byte page entry.
+    uint32_t codepoint : 24;
+    TextStyle style : 8;
+    uint16_t x;
+    uint16_t y;
+    constexpr Glyph(uint32_t cp = 0, uint16_t left = 0, uint16_t top = 0,
+                    TextStyle appearance = TextStyle::Regular)
+        : codepoint(cp), style(appearance), x(left), y(top) {}
 };
 
 struct Page {
@@ -66,7 +74,8 @@ struct Page {
 };
 
 int FontHeight(FontSize size);
-int GlyphWidth(uint32_t codepoint, FontSize size);
+int GlyphWidth(uint32_t codepoint, FontSize size, TextStyle style = TextStyle::Regular);
+int GlyphHeight(uint32_t codepoint, FontSize size, TextStyle style = TextStyle::Regular);
 // Immutable flash views stay valid across later glyph lookups. No cache or
 // decompression buffer is needed; each row combines two shared 8x8 tiles.
 struct BitmapGlyph {

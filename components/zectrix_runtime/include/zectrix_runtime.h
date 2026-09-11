@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "zectrix/sdk/text_style.h"
+
 struct lua_State;
 struct lua_Debug;
 
@@ -22,6 +24,7 @@ struct DrawCommand {
     DrawKind kind = DrawKind::Text;
     uint8_t scale = 1;
     uint16_t x = 0, y = 0, width = 0, height = 0, text = 0;
+    sdk::TextStyle style = sdk::TextStyle::Regular;
 };
 
 // A completed frame owns every byte; rendering never borrows Lua memory.

@@ -24,7 +24,7 @@ for profile in full chinese-only english-only; do
       -DCONFIG_ZECTRIX_ENABLE_READER="$reader" -DCONFIG_ZECTRIX_ENABLE_UI_CHINESE="$chinese" \
       -DCONFIG_ZECTRIX_UI_DEFAULT_CHINESE=1 \
       -I"$root_dir/tools/host_include" \
-      -I"$root_dir/components/zectrix_app/include" \
+      -I"$root_dir/components/zectrix_app/include" -I"$root_dir/components/zectrix_text/include" \
       -I"$root_dir/components/zectrix_time/include" \
       -I"$root_dir/components/zectrix_storage/include" \
       -I"$root_dir/components/zectrix_demo_ui/include" \

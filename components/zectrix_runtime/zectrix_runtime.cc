@@ -89,7 +89,7 @@ void Engine::Budget(lua_State* state, lua_Debug*) {
 
 int Engine::Prepare(lua_State* state) {
     auto& self = Self(state);
-    lua_createtable(state, 0, 10);
+    lua_createtable(state, 0, 16);
     const luaL_Reg functions[] = {{"text", Text}, {"rect", Rect}, {"fill", Fill}, {"exit", Exit}, {nullptr, nullptr}};
     luaL_setfuncs(state, functions, 0);
     lua_pushinteger(state, kWidth); lua_setfield(state, -2, "width");
@@ -98,6 +98,16 @@ int Engine::Prepare(lua_State* state) {
     lua_pushinteger(state, static_cast<int>(Key::Up)); lua_setfield(state, -2, "UP");
     lua_pushinteger(state, static_cast<int>(Key::Down)); lua_setfield(state, -2, "DOWN");
     lua_pushinteger(state, static_cast<int>(Key::Ok)); lua_setfield(state, -2, "OK");
+    struct StyleName { const char* name; sdk::TextStyle style; };
+    constexpr StyleName styles[] = {
+        {"REGULAR", sdk::TextStyle::Regular}, {"BOLD", sdk::TextStyle::Bold},
+        {"ITALIC", sdk::TextStyle::Italic}, {"DIM", sdk::TextStyle::Dim},
+        {"UNDERLINE", sdk::TextStyle::Underline}, {"KEYCAP", sdk::TextStyle::Keycap},
+    };
+    for (const auto& style : styles) {
+        lua_pushinteger(state, static_cast<int>(style.style));
+        lua_setfield(state, -2, style.name);
+    }
     lua_setglobal(state, "note4");
     self.callback_ = lua_newthread(state);
     return 1;
@@ -203,14 +213,15 @@ int Engine::Text(lua_State* state) {
     std::size_t size = 0;
     const char* text = luaL_checklstring(state, 3, &size);
     const auto scale = luaL_optinteger(state, 4, 1);
-    if (size > 128 || !ValidText(text, size) || (scale != 1 && scale != 2) ||
+    const auto style = luaL_optinteger(state, 5, 0);
+    if (size > 128 || !ValidText(text, size) || (scale != 1 && scale != 2) || style < 0 || style > 31 ||
         self.frame_.count == self.frame_.commands.size() || size + 1 > self.frame_.text.size() - self.frame_.text_size) {
         self.error_ = Error::Drawing;
         return luaL_error(state, "drawing limit or invalid text");
     }
     auto& command = self.frame_.commands[self.frame_.count++];
     command = {DrawKind::Text, static_cast<uint8_t>(scale), static_cast<uint16_t>(x), static_cast<uint16_t>(y),
-               0, 0, static_cast<uint16_t>(self.frame_.text_size)};
+               0, 0, static_cast<uint16_t>(self.frame_.text_size), static_cast<sdk::TextStyle>(style)};
     std::memcpy(self.frame_.text.data() + self.frame_.text_size, text, size);
     self.frame_.text_size += size;
     self.frame_.text[self.frame_.text_size++] = 0;

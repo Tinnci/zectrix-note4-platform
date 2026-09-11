@@ -74,6 +74,7 @@ struct Engine::Impl {
     std::size_t history_size = 0;
     std::size_t line_size = 0;
     int line_width = 0;
+    int line_height = 0;
     int indent = 0;
     int y = 0;
     uint16_t chapter = 0;
@@ -115,7 +116,8 @@ struct Engine::Impl {
         work.end = false;
         work.progress_per_mille = 0;
         y = 0;
-        if (!keep_line) { line_size = 0; line_width = indent = 0; }
+        if (!keep_line) { line_size = 0; line_width = line_height = indent = 0; }
+        else LayoutLine();
     }
 
     Result Start(Position position, FontSize font, Job kind, bool forward = false) {
@@ -162,7 +164,11 @@ struct Engine::Impl {
         }
         indent = line_size && line[0].paragraph ? 2 * FontHeight(work.font) : 0;
         line_width = indent;
-        for (std::size_t i = 0; i < line_size; ++i) line_width += GlyphWidth(line[i].codepoint, work.font);
+        line_height = 0;
+        for (std::size_t i = 0; i < line_size; ++i) {
+            line_width += GlyphWidth(line[i].codepoint, work.font, line[i].style);
+            line_height = std::max(line_height, GlyphHeight(line[i].codepoint, work.font, line[i].style));
+        }
     }
 
     void Flush(std::size_t count) {
@@ -172,8 +178,8 @@ struct Engine::Impl {
         for (std::size_t i = 0; i < printed; ++i) {
             const auto cp = line[i].codepoint;
             if (work.count < work.glyphs.size())
-                work.glyphs[work.count++] = {cp, static_cast<uint16_t>(x), static_cast<uint16_t>(y)};
-            x += GlyphWidth(cp, work.font);
+                work.glyphs[work.count++] = {cp, static_cast<uint16_t>(x), static_cast<uint16_t>(y), line[i].style};
+            x += GlyphWidth(cp, work.font, line[i].style);
         }
         // Use the spare body height for a wider CJK gap while retaining seven large-font rows.
         if (printed) y += FontHeight(work.font) + (work.font == FontSize::Large ? 8 : 4);
@@ -191,7 +197,18 @@ struct Engine::Impl {
         if (!line_size && token.codepoint == ' ') return false;
         if (!line_size) indent = line_width = token.paragraph ? 2 * FontHeight(work.font) : 0;
         line[line_size++] = token;
-        line_width += GlyphWidth(token.codepoint, work.font);
+        line_width += GlyphWidth(token.codepoint, work.font, token.style);
+        line_height = std::max(line_height, GlyphHeight(token.codepoint, work.font, token.style));
+        return LayoutLine();
+    }
+
+    bool LayoutLine() {
+        // A decorated bottom line moves intact to the next page. Its buffered
+        // tokens retain styles even when the stream has already closed a tag.
+        if (y + line_height > Page::kHeight) {
+            work.next = line[0].start;
+            return true;
+        }
         if (line_width <= Page::kWidth) return false;
         std::size_t split = 0;
         for (std::size_t i = 1; i < line_size; ++i)
@@ -199,8 +216,8 @@ struct Engine::Impl {
         // An overlong Latin word must still advance by complete Unicode scalars.
         if (!split) split = line_size - 1;
         Flush(split);
-        if (PageFull()) {
-            work.next = line_size ? line[0].start : token.after;
+        if (PageFull() || y + line_height > Page::kHeight) {
+            if (line_size) work.next = line[0].start;
             return true;
         }
         return false;

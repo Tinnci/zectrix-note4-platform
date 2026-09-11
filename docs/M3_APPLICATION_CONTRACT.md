@@ -33,6 +33,13 @@ replacement without a background application. It uses the existing TimeService
 and shared canvas, with minute-only timer invalidation and no alarm or sleep
 wake. Shutdown clears the session. See [UTILITIES.md](UTILITIES.md).
 
+R1.3 adds the source-compatible SDK 1.2 text-style vocabulary and internal
+algorithmic rendering. Reader retains streamed semantic XHTML styles in its
+bounded tokens/pages; Lua copies styles into its completed frame. Canvas and
+pagination share glyph geometry. Foreground callbacks, scene ownership,
+viewports and physical refresh arbitration retain their behavior. See
+[TYPOGRAPHY.md](TYPOGRAPHY.md).
+
 ## Scope
 
 M3 runs statically linked applications through one lifecycle. The runtime owns

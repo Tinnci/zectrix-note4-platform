@@ -4,7 +4,7 @@ set(sources "zectrix_canvas.cc" "zectrix_demo_ui.cc" "zectrix_view_port.cc"
     "zectrix_status_bar.cc" "zectrix_sleep_ui.cc" "zectrix_unicode_text.cc"
     "zectrix_launcher_ui.cc")
 set(requires zectrix_display zectrix_power zectrix_self_test zectrix_system
-    zectrix_time zectrix_app)
+    zectrix_time zectrix_app zectrix_text)
 if(CONFIG_ZECTRIX_ENABLE_UTILITIES)
     list(APPEND sources "zectrix_utilities_ui.cc")
 endif()

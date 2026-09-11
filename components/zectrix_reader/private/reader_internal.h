@@ -132,6 +132,7 @@ struct Token {
     Position start{};
     Position after{};
     bool paragraph = false;
+    TextStyle style = TextStyle::Regular;
 };
 
 class Decoder {
@@ -140,6 +141,7 @@ public:
     Result Step(Stream& stream, Token* token, bool* emitted);
 private:
     bool Emit(uint32_t codepoint, uint32_t start, uint32_t after, Token* token);
+    void StyleTag(const char* tag);
     Xml xml_{};
     Format format_ = Format::Text;
     uint16_t chapter_ = 0;
@@ -155,6 +157,10 @@ private:
     bool pending_ = false;
     XmlEvent pending_event_{};
     uint32_t pending_after_ = 0;
+    std::array<uint8_t, 16> styles_{};
+    uint8_t style_count_ = 0;
+    uint32_t style_overflow_ = 0;
+    TextStyle style_ = TextStyle::Regular;
 };
 
 }  // namespace zectrix::reader::detail

@@ -229,8 +229,46 @@ void Decoder::Reset(uint16_t chapter, Format format) {
     cr_ = pending_ = false;
     pending_event_ = {};
     pending_after_ = 0;
+    style_count_ = style_overflow_ = 0;
+    style_ = TextStyle::Regular;
     chapter_ = chapter;
     format_ = format;
+}
+
+void Decoder::StyleTag(const char* tag) {
+    struct Style { const char* name; TextStyle value; };
+    constexpr Style tags[] = {
+        {"b", TextStyle::Bold}, {"strong", TextStyle::Bold},
+        {"i", TextStyle::Italic}, {"em", TextStyle::Italic},
+        {"u", TextStyle::Underline}, {"small", TextStyle::Dim},
+        {"h1", TextStyle::Bold}, {"h2", TextStyle::Bold}, {"h3", TextStyle::Bold},
+        {"h4", TextStyle::Bold}, {"h5", TextStyle::Bold}, {"h6", TextStyle::Bold},
+    };
+    std::size_t length = std::strlen(tag);
+    while (length && Space(tag[length - 1])) --length;
+    if (length && tag[length - 1] == '/') return;
+    for (uint8_t i = 0; i < std::size(tags); ++i) {
+        if (TagIs(tag, tags[i].name)) {
+            if (style_overflow_ || style_count_ == styles_.size()) ++style_overflow_;
+            else {
+                styles_[style_count_++] = i;
+                style_ = style_ | tags[i].value;
+            }
+            return;
+        }
+        if (!TagIs(tag, tags[i].name, true)) continue;
+        // Excess nesting inherits the last bounded style, then unwinds without
+        // allocating a DOM or rejecting otherwise readable chapter text.
+        if (style_overflow_) { --style_overflow_; return; }
+        for (auto count = style_count_; count; --count) {
+            if (styles_[count - 1] != i) continue;
+            style_count_ = count - 1;
+            style_ = TextStyle::Regular;
+            for (uint8_t n = 0; n < style_count_; ++n) style_ = style_ | tags[styles_[n]].value;
+            break;
+        }
+        return;
+    }
 }
 
 bool Decoder::Emit(uint32_t cp, uint32_t start, uint32_t after, Token* token) {
@@ -247,7 +285,7 @@ bool Decoder::Emit(uint32_t cp, uint32_t start, uint32_t after, Token* token) {
         if (space_) return false;
         space_ = true;
     } else if (cp < 0x20 || cp == 0x7f) return false;
-    *token = {cp, {start, chapter_}, {after, chapter_}, paragraph_};
+    *token = {cp, {start, chapter_}, {after, chapter_}, paragraph_, style_};
     if (cp != '\n' && cp != ' ') { paragraph_ = false; space_ = false; }
     return true;
 }
@@ -283,6 +321,14 @@ Result Decoder::Step(Stream& stream, Token* token, bool* emitted) {
     }
     if (event.kind == XmlEvent::Kind::None) return Result::Ok;
     if (event.kind == XmlEvent::Kind::Tag) {
+        if (utf8_remaining_) {
+            pending_ = true;
+            pending_event_ = event;
+            pending_after_ = after;
+            utf8_remaining_ = 0;
+            *emitted = Emit(0xfffd, utf8_start_, event.start, token);
+            return Result::Ok;
+        }
         const char* tag = xml_.tag();
         if (hidden_depth_) {
             if (TagIs(tag, hidden_.data(), true)) --hidden_depth_;
@@ -300,6 +346,7 @@ Result Decoder::Step(Stream& stream, Token* token, bool* emitted) {
                 return Result::Ok;
             }
         }
+        StyleTag(tag);
         if (Block(tag)) {
             if (!paragraph_) {
                 *token = {'\n', {event.start, chapter_}, {after, chapter_}, true};

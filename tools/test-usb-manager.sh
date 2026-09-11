@@ -15,7 +15,7 @@ includes=(
     -I"$root_dir/components/zectrix_storage/include"
     -I"$root_dir/components/zectrix_system/include"
     -I"$root_dir/components/zectrix_display/include"
-    -I"$root_dir/components/zectrix_app/include"
+    -I"$root_dir/components/zectrix_app/include" -I"$root_dir/components/zectrix_text/include"
     -I"$root_dir/components/zectrix_time/include"
     -I"$root_dir/components/zectrix_power/include"
 )

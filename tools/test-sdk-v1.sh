@@ -11,7 +11,7 @@ trap 'rm -f "$test_binary" "$example_object"' EXIT
 
 c++ -std=c++17 -Wall -Wextra -Werror \
     -I"$repo_root/tools/host_include" \
-    -I"$repo_root/components/zectrix_app/include" \
+    -I"$repo_root/components/zectrix_app/include" -I"$repo_root/components/zectrix_text/include" \
     "$repo_root/components/zectrix_app/zectrix_app_contract.cc" \
     "$repo_root/components/zectrix_app/zectrix_application_runtime.cc" \
     "$repo_root/components/zectrix_app/zectrix_sdk_status.cc" \
@@ -20,7 +20,7 @@ c++ -std=c++17 -Wall -Wextra -Werror \
 "$test_binary"
 
 c++ -std=c++17 -Wall -Wextra -Werror \
-    -I"$repo_root/components/zectrix_app/include" \
+    -I"$repo_root/components/zectrix_app/include" -I"$repo_root/components/zectrix_text/include" \
     -c "$repo_root/examples/sdk_v1_minimal_app.cc" \
     -o "$example_object"
 

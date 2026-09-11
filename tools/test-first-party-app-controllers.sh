@@ -7,7 +7,7 @@ trap 'rm -f "$test_binary"' EXIT
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -I"$repo_root/tools/host_include" \
-    -I"$repo_root/components/zectrix_app/include" \
+    -I"$repo_root/components/zectrix_app/include" -I"$repo_root/components/zectrix_text/include" \
     -I"$repo_root/components/zectrix_time/include" \
     "$repo_root/components/zectrix_app/zectrix_first_party_app_controllers.cc" \
     "$repo_root/components/zectrix_app/zectrix_locale.cc" \

@@ -7,7 +7,7 @@ set(sources "zectrix_app_contract.cc" "zectrix_application_runtime.cc"
          "zectrix_gallery_controller.cc"
          "zectrix_locale.cc" "zectrix_language_setting.cc"
          "zectrix_sleep_cover.cc")
-set(requires zectrix_power zectrix_time zectrix_storage)
+set(requires zectrix_power zectrix_time zectrix_storage zectrix_text)
 if(CONFIG_ZECTRIX_ENABLE_UTILITIES)
     list(APPEND sources "zectrix_utilities.cc")
 endif()

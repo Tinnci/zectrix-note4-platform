@@ -6,6 +6,7 @@
 #include "sdkconfig.h"
 
 #include <cassert>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -176,6 +177,99 @@ void TestLanguagePersistence() {
     delete storage;
 }
 
+bool Ink(const ZectrixCanvas& canvas, int x, int y) {
+    return !(canvas.data()[y * ZectrixCanvas::kStride + x / 8] & (0x80 >> (x & 7)));
+}
+
+void TestTypography() {
+    using zectrix::sdk::TextStyle;
+    ZectrixCanvas canvas, clipped, expected;
+    const auto before = allocations;
+    for (int scale : {1, 2, 3}) for (unsigned flags = 0; flags < 32; ++flags) {
+        const auto style = static_cast<TextStyle>(flags);
+        for (bool inverted : {false, true}) {
+            canvas.Clear();
+            canvas.Text(8, 20, "AV中jg文", scale, inverted, style);
+            const auto width = canvas.TextWidth("AV中jg文", scale, style);
+            const auto height = canvas.TextHeight("AV中jg文", scale, style);
+            clipped.ResetClip();
+            clipped.Clear();
+            const ZectrixCanvas::Clip clip{13, 23, 43, 17};
+            clipped.SetClip(clip);
+            clipped.Text(8, 20, "AV中jg文", scale, inverted, style);
+            for (int y = 0; y < 300; ++y) for (int x = 0; x < 400; ++x) {
+                if (x < 8 || x >= 8 + width || y < 20 || y >= 20 + height)
+                    assert(!Ink(canvas, x, y));
+                const bool inside = x >= clip.x && x < clip.x + clip.width &&
+                    y >= clip.y && y < clip.y + clip.height;
+                assert(Ink(clipped, x, y) == (inside && Ink(canvas, x, y)));
+            }
+            assert(clipped.clip().x == clip.x && clipped.clip().width == clip.width);
+        }
+    }
+    for (unsigned flags = 0; flags < 32; ++flags) {
+        const auto style = static_cast<TextStyle>(flags);
+        const auto width = canvas.TextWidth("A中...", 1, style);
+        canvas.Clear(); expected.Clear();
+        canvas.TextFitted(8, 20, "A中文 and more words", width, true, style);
+        expected.Text(8, 20, "A中...", 1, true, style);
+        assert(std::memcmp(canvas.data(), expected.data(), canvas.size()) == 0);
+        for (int limit = 0; limit < width; ++limit) {
+            canvas.Clear();
+            canvas.TextFitted(8, 20, "A中文 and more words", limit, true, style);
+            for (int y = 0; y < 70; ++y) for (int x = 8 + limit; x < 150; ++x)
+                assert(!Ink(canvas, x, y));
+        }
+    }
+
+    // Bold must be an exact horizontal dilation, not a shifted or clipped glyph.
+    for (int scale : {1, 2}) {
+        canvas.Clear(); expected.Clear();
+        canvas.Text(8, 20, "F", scale, false, TextStyle::Bold);
+        expected.Text(8, 20, "F", scale);
+        const int regular = canvas.TextWidth("F", scale);
+        assert(canvas.TextWidth("F", scale, TextStyle::Bold) == regular + scale);
+        for (int y = 20; y < 20 + 16 * scale; ++y) for (int x = 8; x < 8 + regular + scale; ++x) {
+            bool dilated = false;
+            for (int delta = 0; delta <= scale; ++delta) dilated |= Ink(expected, x - delta, y);
+            assert(Ink(canvas, x, y) == dilated);
+        }
+    }
+    for (auto style : {TextStyle::Bold, TextStyle::Italic, TextStyle::Bold | TextStyle::Italic}) {
+        canvas.Clear(); expected.Clear();
+        canvas.Text(8, 20, "中", 1, false, style);
+        expected.Text(8, 20, "中", 1, false, TextStyle::Underline);
+        assert(std::memcmp(canvas.data(), expected.data(), canvas.size()) == 0);
+        assert(canvas.TextHeight("中", 1, style) == 18);
+    }
+    canvas.Clear(); expected.Clear();
+    canvas.Text(8, 20, "Dim text 中文阅读", 1, false, TextStyle::Dim);
+    expected.Text(8, 20, "Dim text 中文阅读");
+    unsigned regular_ink = 0, dim_ink = 0;
+    for (int y = 20; y < 36; ++y) for (int x = 8; x < 300; ++x) {
+        assert(!Ink(canvas, x, y) || Ink(expected, x, y));
+        regular_ink += Ink(expected, x, y); dim_ink += Ink(canvas, x, y);
+    }
+    assert(dim_ink * 2 > regular_ink && dim_ink < regular_ink);
+    canvas.Clear();
+    canvas.Text(8, 20, "OK", 1, false, TextStyle::Keycap);
+    const int box_width = canvas.TextWidth("OK", 1, TextStyle::Keycap);
+    assert(box_width == canvas.TextWidth("OK") + 6);
+    assert(canvas.TextHeight("OK", 1, TextStyle::Keycap) == 20);
+    for (int x = 8; x < 8 + box_width; ++x) assert(Ink(canvas, x, 20) && Ink(canvas, x, 39));
+    for (int y = 20; y < 40; ++y) assert(Ink(canvas, 8, y) && Ink(canvas, 7 + box_width, y));
+    canvas.Clear();
+    for (int edge : {INT_MIN, INT_MAX}) {
+        canvas.Text(edge, edge, "OK", 1, true, TextStyle::Keycap | TextStyle::Italic);
+        canvas.TextCentered(edge, "OK", INT_MAX, true, TextStyle::Bold);
+        assert(canvas.TextWidth("OK", edge) == 0);
+    }
+    assert(canvas.TextHeight(nullptr, 1, TextStyle::Keycap) == 0);
+    assert(canvas.TextWidth("", 1, TextStyle::Keycap) == 0);
+    for (std::size_t i = 0; i < canvas.size(); ++i) assert(canvas.data()[i] == 0xff);
+    assert(allocations == before);
+}
+
 void TestLanguageScenes() {
     using namespace zectrix::app;
     using namespace zectrix::sdk;
@@ -221,6 +315,7 @@ void TestLanguageScenes() {
 
 int main() {
     TestCatalogAndGlyphs();
+    TestTypography();
     TestLanguagePersistence();
     TestLanguageScenes();
     std::printf("PASS: localization, UTF-8 bounds, zero-allocation drawing, persistence and scenes (reader=%d, Chinese=%d).\n",
