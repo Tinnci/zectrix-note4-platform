@@ -13,7 +13,8 @@ validation into independent jobs so a failure identifies its platform:
   packages, then runs a clean JVM test and debug APK build with the committed
   Gradle Wrapper.
 - `ESP32-S3 firmware` builds with the official ESP-IDF v5.5.2 container, runs
-  the size report and captures build provenance.
+  the size report and captures build provenance. The container installs `uv`
+  for the same Python artifact reporters used by local builds.
 
 Successful runs retain the debug APK, firmware images, ELF, map, size report
 and provenance for 14 days. Android test reports are uploaded for non-cancelled
@@ -37,6 +38,10 @@ tools/build-firmware.sh --clean
 idf.py size
 tools/capture-build-provenance.sh
 ```
+
+G1.2's [release preparation](RELEASE_PREPARATION.md) reuses these builds and
+the Full/Minimal profiles to create draft downloads. Packaging tests run with
+the existing firmware-budget Host target; no additional required CI job is added.
 
 CI does not replace real-device qualification. BLE pairing, NFC routing, USB
 reconnect, Wi-Fi behavior, e-paper output, current draw, sleep and coexistence
