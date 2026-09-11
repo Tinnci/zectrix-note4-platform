@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cstring>
+#include "sdkconfig.h"
+#include "zectrix_app_storage.h"
 
 namespace zectrix::host {
 namespace {
@@ -82,22 +84,24 @@ void BookSession::Poll() {
     channel_.Complete(reply_);
 }
 
-bool BookSession::Name(std::size_t offset, char* output) const {
+bool BookSession::Name(std::size_t offset, char* output, bool application) const {
     if (request_.size <= offset || request_.size - offset > 63) return false;
     const auto size = request_.size - offset;
     if (std::memchr(request_.payload.data() + offset, 0, size)) return false;
     std::memcpy(output, request_.payload.data() + offset, size);
     output[size] = 0;
-    return storage::BookStorage::ValidName(output);
+    return application ? storage::AppStorage::ValidName(output) : storage::BookStorage::ValidName(output);
 }
 
-Status BookSession::List() {
+Status BookSession::List(bool application) {
     char after[64]{};
-    if (request_.size && !Name(0, after)) return Status::Invalid;
+    if (request_.size && !Name(0, after, application)) return Status::Invalid;
     storage::BookEntry entries[8];
     std::size_t count = 0;
     bool more = false;
-    const auto result = Map(books_->List(entries, std::size(entries), &count, &more, after[0] ? after : nullptr));
+    const auto result = Map(application
+        ? storage::AppStorage(*books_).List(entries, std::size(entries), &count, &more, after[0] ? after : nullptr)
+        : books_->List(entries, std::size(entries), &count, &more, after[0] ? after : nullptr));
     if (result != Status::Ok) return result;
     reply_.payload[0] = static_cast<uint8_t>(count);
     reply_.payload[1] = more ? 1 : 0;
@@ -113,12 +117,15 @@ Status BookSession::List() {
     return Status::Ok;
 }
 
-Status BookSession::Open(bool upload) {
+Status BookSession::Open(bool upload, bool application) {
     if (Transferring()) return Status::Busy;
     char name[64];
-    if (!Name(upload ? 4 : 0, name)) return Status::Invalid;
-    const auto result = upload ? Map(books_->BeginUpload(name, Read32(request_.payload.data()), &upload_))
-                               : Map(books_->OpenManaged(name, &file_));
+    if (!Name(upload ? 4 : 0, name, application)) return Status::Invalid;
+    storage::AppStorage apps(*books_);
+    const auto result = upload
+        ? Map(application ? apps.BeginUpload(name, Read32(request_.payload.data()), &upload_)
+                          : books_->BeginUpload(name, Read32(request_.payload.data()), &upload_))
+        : Map(application ? apps.OpenManaged(name, &file_) : books_->OpenManaged(name, &file_));
     if (result != Status::Ok) return result;
     std::strcpy(snapshot_.name.data(), name);
     snapshot_.transferred = 0;
@@ -201,6 +208,29 @@ Status BookSession::Execute() {
         case Operation::UploadBegin: return Open(true);
         case Operation::UploadChunk: return Write();
         case Operation::UploadCommit: return Commit();
+        case Operation::AppList:
+        case Operation::AppReadOpen:
+        case Operation::AppUploadBegin:
+        case Operation::AppRemove:
+#if CONFIG_ZECTRIX_ENABLE_RUNTIME
+            if (request_.operation == static_cast<uint8_t>(Operation::AppList)) return List(true);
+            if (request_.operation == static_cast<uint8_t>(Operation::AppReadOpen)) return Open(false, true);
+            if (request_.operation == static_cast<uint8_t>(Operation::AppUploadBegin)) return Open(true, true);
+            if (Transferring()) return Status::Busy;
+            {
+                char name[64];
+                if (!Name(0, name, true)) return Status::Invalid;
+                const auto result = Map(storage::AppStorage(*books_).Remove(name));
+                if (result == Status::Ok) {
+                    std::strcpy(snapshot_.name.data(), name);
+                    snapshot_.state = TransferState::Removed;
+                    snapshot_.error = Status::Ok;
+                }
+                return result;
+            }
+#else
+            return Status::Unavailable;
+#endif
         case Operation::Abort:
             if (request_.size) return Status::Invalid;
             ResetTransfer();

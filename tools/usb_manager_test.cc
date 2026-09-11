@@ -4,6 +4,7 @@
 #include "zectrix_usb_manager.h"
 #include "zectrix_storage_service.h"
 #include "zectrix_language_setting.h"
+#include "sdkconfig.h"
 
 #include <algorithm>
 #include <cassert>
@@ -317,6 +318,35 @@ void TestInterruptedBooks(const std::string& root) {
     assert(f.storage.EndManagement() == ESP_OK);
 }
 
+void TestApps(const std::string& root) {
+    Fixture f(root);
+    f.Start();
+#if CONFIG_ZECTRIX_ENABLE_RUNTIME
+    const std::string source = "while true do end";
+    assert(f.Call(Operation::AppUploadBegin, Number(source.size()) + "Test.lua").status == Status::Ok);
+    assert(f.Call(Operation::UploadChunk, Number(0) + source).status == Status::Ok);
+    assert(f.Call(Operation::AppList).payload[0] == 0);
+    assert(f.Call(Operation::UploadCommit).status == Status::Ok);
+    assert(f.Contents(".app-Test.lua") == source && !f.Exists("Test.lua"));
+    assert(f.Call(Operation::List).payload[0] == 0);
+    assert(f.Call(Operation::AppList).payload[0] == 1);
+    assert(f.Call(Operation::AppUploadBegin, Number(source.size()) + "Test.lua").status == Status::Exists);
+    assert(f.Call(Operation::AppUploadBegin, Number(32769) + "Large.lua").status == Status::Invalid);
+    assert(f.Call(Operation::AppReadOpen, "Test.lua").status == Status::Ok);
+    assert(f.Call(Operation::AppRemove, "Test.lua").status == Status::Busy);
+    const auto read = f.Call(Operation::Read, Number(0));
+    assert(read.size == source.size() && std::memcmp(read.payload.data(), source.data(), source.size()) == 0);
+    assert(f.Call(Operation::AppRemove, "Test.lua").status == Status::Ok);
+    assert(f.books.snapshot().state == TransferState::Removed && !f.Exists(".app-Test.lua"));
+    assert(f.Call(Operation::AppRemove, "book.txt").status == Status::Invalid);
+#else
+    for (auto operation : {Operation::AppList, Operation::AppReadOpen, Operation::AppUploadBegin, Operation::AppRemove})
+        assert(f.Call(operation).status == Status::Unavailable);
+    assert(f.Call(Operation::Info).status == Status::Ok);
+#endif
+    f.Close();
+}
+
 void TestBinaryFailures(const std::string& root) {
     Fixture f(root);
     f.Start();
@@ -458,6 +488,7 @@ int main(int argc, char** argv) {
     TestChannelCancellation();
     TestBooks(root + "/books");
     TestInterruptedBooks(root + "/interrupted");
+    TestApps(root + "/apps");
     TestBinaryFailures(root + "/binary");
     TestSettingsAndControls();
     std::printf("USB object sizes: channel=%zu protocol=%zu book-session=%zu controller=%zu; payload=%zu wire=%zu\n",

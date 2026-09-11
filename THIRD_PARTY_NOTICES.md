@@ -27,6 +27,13 @@ Copyright 2013-2014 RAD Game Tools and Valve Software; copyright 2010-2014
 Rich Geldreich and Tenacious Software LLC. ZIP and EPUB handling are implemented
 in this repository.
 
+## Lua
+
+The optional micro-app runtime builds the core and auxiliary API of
+[Lua 5.4.9](https://github.com/lua/lua/tree/v5.4.9). Lua is fetched at build time;
+its standard libraries are not opened for guests. Copyright (C) 1994–2026
+Lua.org, PUC-Rio. Its MIT license is included in [licenses/LUA_LICENSE.txt](licenses/LUA_LICENSE.txt).
+
 ## Espressif ESP-IDF
 
 ESP-IDF is provided by Espressif Systems under its respective open-source

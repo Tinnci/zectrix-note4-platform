@@ -24,9 +24,9 @@ common=(
   "$root_dir/tools/platform_test.cc"
 )
 for profile in full minimal connectivity cli usb-host update; do
-    connectivity=0 cli=0 update=0 reader=0 usb_host=0
+    connectivity=0 cli=0 update=0 reader=0 usb_host=0 runtime=0
     case "$profile" in
-        full) connectivity=1 cli=1 update=1 reader=1 usb_host=1 ;;
+        full) connectivity=1 cli=1 update=1 reader=1 usb_host=1 runtime=1 ;;
         connectivity) connectivity=1 ;;
         cli) cli=1 ;;
         usb-host) cli=1 usb_host=1 ;;
@@ -58,6 +58,7 @@ for profile in full minimal connectivity cli usb-host update; do
     "${CXX:-c++}" -std=c++17 "${flags[@]}" \
         -DCONFIG_ZECTRIX_ENABLE_CONNECTIVITY="$connectivity" \
         -DCONFIG_ZECTRIX_ENABLE_READER="$reader" \
+        -DCONFIG_ZECTRIX_ENABLE_RUNTIME="$runtime" \
         -DCONFIG_ZECTRIX_ENABLE_USB_CLI="$cli" -DCONFIG_ZECTRIX_ENABLE_UPDATE="$update" \
         -DCONFIG_ZECTRIX_ENABLE_USB_HOST="$usb_host" \
         "${common[@]}" "${optional[@]}" -o "$test_binary"

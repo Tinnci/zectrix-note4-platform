@@ -8,6 +8,10 @@ set(sources "zectrix_app_contract.cc" "zectrix_application_runtime.cc"
          "zectrix_locale.cc" "zectrix_language_setting.cc"
          "zectrix_sleep_cover.cc")
 set(requires zectrix_power zectrix_time zectrix_storage)
+if(CONFIG_ZECTRIX_ENABLE_RUNTIME)
+    list(APPEND sources "zectrix_micro_app_controller.cc")
+    list(APPEND requires zectrix_runtime)
+endif()
 if(CONFIG_ZECTRIX_ENABLE_USB_HOST)
     list(APPEND sources "zectrix_usb_manager.cc")
     list(APPEND requires zectrix_host)

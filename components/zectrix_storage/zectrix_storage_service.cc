@@ -6,6 +6,9 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "sdkconfig.h"
+#if CONFIG_ZECTRIX_ENABLE_RUNTIME
+#include "zectrix_app_storage.h"
+#endif
 
 namespace zectrix::storage {
 namespace {
@@ -175,6 +178,19 @@ esp_err_t StorageService::BeginBookManagement(BookStorage** books) {
     const auto acquired = impl_->books->BeginManagement();
     if (acquired == ESP_OK) *books = impl_->books.get();
     return acquired;
+}
+#endif
+
+#if CONFIG_ZECTRIX_ENABLE_RUNTIME
+esp_err_t StorageService::ListApps(BookEntry* entries, std::size_t capacity, std::size_t* count,
+                                 bool* more, const char* cursor, bool previous) {
+    const auto result = InitializeBooks();
+    return result == ESP_OK ? AppStorage(*impl_->books).List(entries, capacity, count, more, cursor, previous) : result;
+}
+
+esp_err_t StorageService::OpenApp(const char* name, BookFile* file) {
+    const auto result = InitializeBooks();
+    return result == ESP_OK ? AppStorage(*impl_->books).Open(name, file) : result;
 }
 #endif
 

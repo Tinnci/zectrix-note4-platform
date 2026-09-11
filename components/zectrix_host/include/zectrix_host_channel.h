@@ -12,6 +12,7 @@ inline constexpr std::size_t kChunkSize = kPayloadSize - 4;
 enum class Operation : uint8_t {
     Info = 1, List, ReadOpen, Read, UploadBegin, UploadChunk, UploadCommit,
     Abort, GetSetting, SetSetting, Close,
+    AppList, AppReadOpen, AppUploadBegin, AppRemove,
 };
 enum class Status : uint8_t {
     Ok, Invalid, Busy, Unavailable, Exists, NotFound, NoSpace, IoError,

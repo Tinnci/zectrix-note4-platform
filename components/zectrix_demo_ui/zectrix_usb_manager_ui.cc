@@ -2,6 +2,7 @@
 #include "zectrix_host_books.h"
 #include "zectrix_locale.h"
 #include "zectrix_unicode_text.h"
+#include "sdkconfig.h"
 
 #include <cstdio>
 
@@ -24,6 +25,7 @@ esp_err_t ZectrixDemoUi::ShowUsbManager(const zectrix::host::Snapshot& status, b
             case TransferState::Complete: state = Text::TransferFinished; break;
             case TransferState::Cancelled: state = Text::UsbCancelled; break;
             case TransferState::Failed: state = Text::UsbTransferFailed; break;
+            case TransferState::Removed: state = Text::UsbRemoved; break;
         }
         canvas_.TextCentered(70, Tr(state));
         if (status.state == TransferState::Uploading || status.state == TransferState::Downloading ||
@@ -36,9 +38,15 @@ esp_err_t ZectrixDemoUi::ShowUsbManager(const zectrix::host::Snapshot& status, b
             std::snprintf(progress, sizeof(progress), "%u%%   %lu / %lu B", percent,
                 static_cast<unsigned long>(status.transferred), static_cast<unsigned long>(status.expected));
             canvas_.TextCentered(174, progress);
+        } else if (status.state == TransferState::Removed) {
+            ui::DrawUtf8Line(canvas_, 20, 112, status.name.data(), 360);
         } else {
             canvas_.TextCentered(118, Tr(Text::UsbToolHint));
+#if CONFIG_ZECTRIX_ENABLE_RUNTIME
+            canvas_.TextCentered(150, Tr(Text::UsbFilesHint));
+#else
             canvas_.TextCentered(150, Tr(Text::UsbBooksHint));
+#endif
         }
         Text detail = Text::UsbKeepOpen;
         if (status.error == host::Status::NotSaved) detail = Text::UsbNotSaved;
@@ -48,7 +56,7 @@ esp_err_t ZectrixDemoUi::ShowUsbManager(const zectrix::host::Snapshot& status, b
         else if (status.settings_revision) detail = Text::UsbSettingsUpdated;
         canvas_.TextCentered(221, Tr(detail));
         char count[64];
-        std::snprintf(count, sizeof(count), Tr(Text::BooksAdded), static_cast<unsigned long>(status.uploaded));
+        std::snprintf(count, sizeof(count), Tr(Text::UsbFilesAdded), static_cast<unsigned long>(status.uploaded));
         canvas_.TextCentered(250, count);
     }
     return full_refresh ? RefreshFull() : RefreshAuto();

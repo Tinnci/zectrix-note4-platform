@@ -248,7 +248,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Resolved the R1 research/display naming collision, added E1 tracking and updated PR #54 to its actual E1.1–E1.7 scope. Preserved the new E1.8 plan in #58 and retained unfinished C1/D1 implementation and physical acceptance work. Existing OTA and device-measurement follow-ups are explicit in #55–#57.
   - Verified all 34 Host targets and read back GitHub states, assignments and PR metadata. Updated README/roadmap and recorded the scope mapping in [docs/GITHUB_TRIAGE.md](docs/GITHUB_TRIAGE.md). No firmware or hardware change was needed for this governance iteration.
 
-- [ ] **E2.2: 动态应用运行时原型落地与微应用试点 (Dynamic Application Runtime Prototype & Micro-App Pilot)**
+- [x] **E2.2: 动态应用运行时原型落地与微应用试点 (Dynamic Application Runtime Prototype & Micro-App Pilot)**
   - **背景与愿景**：
     - 承接 E2.1 架构预研与基准测量结论（[docs/DYNAMIC_APPLICATION_RESEARCH.md](docs/DYNAMIC_APPLICATION_RESEARCH.md)），将动态应用从“纯理论调研与隔离探针”推向“最小可用工程原型（Minimum Viable Prototype）”。
     - 让 Note4 启动器初步具备发现并载入独立沙箱微应用的能力，使极客用户能在不重新编译/烧录整机固件的前提下探索第三方扩展。
@@ -257,6 +257,9 @@ Each iteration picks the top unfinished task, implements production code, verifi
     2. *极简系统调用接口设计*：为沙箱暴露哪些必要的轻量 Native 宿主功能？如何通过零分配/只读快照将物理按键事件输入、单色 15KB 画布绘制以及退出返回控制以最小摩擦暴露给动态应用？
     3. *端侧动态发现与运行生命周期*：如何在 Launcher 引入分页式“Apps”磁贴或动态入口？如何确保应用异常崩溃、配额耗尽或用户长按退出时，沙箱能够干净回收内存并恢复系统前台状态？
     4. *示范微应用原型验证*：自主设计并实现 1~2 个小巧实用的独立微应用示例（如计算器、简易备忘、卡片复习等），验证端到端闭环。
+  - Implemented optional restricted Lua 5.4.9, metered initialization/events/rendering, a 128 KiB allocation budget and copied commands clipped inside the system canvas. Paged Apps discovery and List/Loading/Running/Error scenes preserve system Back/shutdown and reclaim files/VM memory on failure or exit.
+  - Added Calculator and Flashcards as independent scripts, plus USB app-list/app-put/app-get/app-remove. AppStorage shares the existing mount, exclusive lease, staging and no-overwrite commit while preserving TXT/EPUB name validation. Documented the pilot API, installation and limits in [docs/MICRO_APPS.md](docs/MICRO_APPS.md); packaging remains E2.3.
+  - Verified all 36 Host targets, strict runtime and USB ASan/UBSan, eight USB client/integration scenarios, 100 VM/foreground lifetimes, clipped pilot previews and ShellCheck. Full/Minimal firmware builds passed at 3,112,640 / 563,872 bytes; the profile comparison passed with an 81.9% Minimal reduction. Full retains 33,088 bytes in the existing 3 MiB slot. No hardware flash or partition change was needed.
 
 - [ ] **E1.9: 原生随身极客实用工具集演进 (Native Geek Utility Pack)**
   - **背景与愿景**：

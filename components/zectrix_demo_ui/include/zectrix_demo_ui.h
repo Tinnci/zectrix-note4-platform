@@ -17,6 +17,7 @@
 #include "zectrix_view_port.h"
 
 namespace zectrix::app { class ReaderController; }
+namespace zectrix::app { class MicroAppController; }
 namespace zectrix::app { class SettingsController; }
 namespace zectrix::app { class LauncherController; struct ReadingOverview; }
 namespace zectrix::app { struct SleepCoverSnapshot; enum class SleepCoverStyle : uint8_t; }
@@ -78,6 +79,7 @@ public:
     esp_err_t ShowBookTransfer(const zectrix::connectivity::BookTransferSnapshot& status,
                                bool choosing_mode, bool station_selected, bool full_refresh);
     esp_err_t ShowUsbManager(const zectrix::host::Snapshot& status, bool storage_ready, bool full_refresh);
+    esp_err_t ShowMicroApps(const zectrix::app::MicroAppController& apps, bool full_refresh);
     esp_err_t ClearDisplay();
     esp_err_t ShowSleepCoverMenu(zectrix::app::SleepCoverStyle selected,
                                   zectrix::app::SleepCoverStyle active,

@@ -273,6 +273,12 @@ above, rather than triggering the application-entry failure path.
 
 ## L1.1 private scenes and viewports
 
+E2.2's optional [Apps adapter](MICRO_APPS.md) uses these same rules for
+List -> Loading -> Running/Error. It owns one bounded Lua guest and copied
+commands inside the content viewport. Guest files are discovered in pages and
+do not modify the static SDK catalog. Host-render retries reuse the completed
+frame; Back and shutdown close both source handles and the guest.
+
 `SceneManager` uses a static handler table and fixed storage for eight private
 scene IDs, eight stack entries and one `uint32_t` state value per scene. Only
 an event callback can request Push, Replace or Pop. A request validates its

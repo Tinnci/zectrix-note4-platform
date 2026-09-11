@@ -2,6 +2,11 @@
 
 E2.1, source review and experiments: **2026-09-11**.
 
+Current implementation: [E2.2 micro-apps](MICRO_APPS.md) selects restricted Lua
+5.4.9 for a working Apps/USB pilot. The recommendations and measurements below
+record the earlier research snapshot, including the reasons WAMR needs further
+execution-boundary work.
+
 The preferred next experiment is **WAMR's metered classic interpreter**, with a
 small, explicitly supported Wasm module subset. It provides a portable binary
 boundary without exposing ESP32 addresses. Text-only Lua is a viable alternative
@@ -13,8 +18,8 @@ ELF loading can separate distribution from firmware, but cannot isolate native
 code from this device's memory or peripherals. Neither is the preferred route
 for third-party foreground apps.
 
-This iteration completes the research and reproducible experiments. **The
-shipping firmware still runs static SDK v1 applications.** A successful link
+E2.1 completed the research and reproducible experiments. At that point the
+shipping firmware ran only static SDK v1 applications. A successful link
 does not establish safe arbitrary-code execution: WAMR initialization bypasses
 the callback instruction limit, and both Wasm candidates produce the Host
 sanitizer findings below. The proposed application format and binary interface

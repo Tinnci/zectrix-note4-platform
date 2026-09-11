@@ -9,6 +9,11 @@ lifecycle, navigation, render intent, status, factories, the registry, and the
 single-foreground runtime. It does not define a UI toolkit, hardware driver
 API, dynamic loader, binary application format, or binary ABI.
 
+The optional [Lua micro-app pilot](MICRO_APPS.md) is a private native Apps
+adapter using this lifecycle. Its script functions, quota allocator and copied
+frame interface are separate from SDK v1; the public C++ headers and version
+remain unchanged.
+
 Include the umbrella header:
 
 ```cpp
