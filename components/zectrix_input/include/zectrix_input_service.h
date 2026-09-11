@@ -5,6 +5,7 @@
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
 #include "zectrix/sdk/input.h"
+#include "zectrix_input_trace.h"
 
 class ZectrixBoard;
 
@@ -26,6 +27,7 @@ public:
     // Uses native FreeRTOS ticks so portMAX_DELAY keeps its wait-forever meaning.
     bool Wait(InputEvent* event, TickType_t timeout_ticks);
     void Drain();
+    TraceBatch ReadTrace(uint64_t cursor) const;
 
     // Install/remove on the application owner. The hook runs between blocking
     // waits, outside a display operation. WakeWait is safe from another task.

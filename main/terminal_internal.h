@@ -11,6 +11,9 @@
 #include "zectrix_demo_ui.h"
 #include "zectrix_platform.h"
 #include "zectrix_sleep_cover.h"
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+#include "zectrix_cli_control.h"
+#endif
 #if CONFIG_ZECTRIX_ENABLE_UTILITIES
 #include "zectrix_utilities.h"
 #endif
@@ -26,7 +29,11 @@ enum class ControlResult { kContinue, kBack, kShutdown };
 struct SceneResult { esp_err_t error = ESP_OK; int64_t elapsed_ms = 0; };
 sdk::Status ToSdkStatus(esp_err_t result);
 
-class TerminalApp final : public sdk::RuntimeDelegate {
+class TerminalApp final : public sdk::RuntimeDelegate
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+    , public cli::MaintenanceDelegate
+#endif
+{
 public:
     TerminalApp();
     void Run();
@@ -44,6 +51,10 @@ private:
     template <typename ApplicationType>
     static sdk::Status CreateApplication(TerminalApp& owner, sdk::Application** output) {
         if (!output) return sdk::Status::InvalidArgument;
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+        owner.scene_snapshot_ = {};
+        owner.guest_inspection_ = {};
+#endif
         *output = new (std::nothrow) ApplicationType(owner);
         return *output ? sdk::Status::Ok : sdk::Status::NoMemory;
     }
@@ -91,6 +102,23 @@ private:
     app::SleepCoverSnapshot ReadSleepCover();
     app::ReadingOverview ReadReadingOverview();
     [[noreturn]] void PowerOff();
+    template <typename Controller> void BindScenes(Controller& controller) {
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+        controller.ObserveScenes(&scene_snapshot_);
+#else
+        (void)controller;
+#endif
+    }
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+    cli::ControlStatus InspectApps(cli::ControlResult* result) override;
+    cli::ControlStatus ScheduleMaintenance(cli::ControlOperation operation) override;
+    sdk::ApplicationRuntime* runtime_ = nullptr;
+    app::SceneSnapshot scene_snapshot_{};
+    cli::SceneInspection guest_inspection_{};
+    cli::ControlOperation maintenance_operation_ = cli::ControlOperation::kSystemInfo;
+    int64_t maintenance_ready_us_ = 0;
+    bool executing_maintenance_ = false;
+#endif
 
     app::ApplicationCatalog applications_;
     std::array<Factory, app::ApplicationCatalog::kCapacity> factories_{};

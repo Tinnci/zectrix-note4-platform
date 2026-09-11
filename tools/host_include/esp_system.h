@@ -12,3 +12,4 @@ enum esp_reset_reason_t {
     ESP_RST_BROWNOUT,
 };
 esp_reset_reason_t esp_reset_reason();
+[[noreturn]] void esp_restart();

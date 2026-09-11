@@ -89,6 +89,8 @@ esp_err_t TimeService::Restore() {
     if (restored == ESP_OK) {
         status_.rtc_persisted = true;
         system_source_ = ClockSource::Rtc;
+        sync_.source = SyncSource::Rtc;
+        sync_.accepted_us = MonotonicMicroseconds();
     }
     return restored;
 }
@@ -96,7 +98,7 @@ esp_err_t TimeService::Restore() {
 void TimeService::Poll() {
     if (!storage_ || MonotonicMicroseconds() < next_retry_us_) return;
     if (status_.persistence_pending) status_.last_error = Persist();
-    else if (!status_.rtc_persisted) status_.last_error = Restore();
+    else if (!status_.rtc_persisted && sync_.source <= SyncSource::Rtc) status_.last_error = Restore();
     next_retry_us_ = MonotonicMicroseconds() + kRetryIntervalUs;
 }
 
@@ -143,6 +145,54 @@ esp_err_t TimeService::SetLocalTime(const DateTime& value, int32_t utc_offset_se
 }
 
 esp_err_t TimeService::SetUnixTime(int64_t unix_milliseconds, int32_t utc_offset_seconds) {
+    const auto before = UnixSeconds();
+    const auto result = Calibrate(unix_milliseconds, utc_offset_seconds, true);
+    if (result == ESP_OK) {
+        sync_.source = SyncSource::Manual;
+        sync_.result = SyncResult::Applied;
+        sync_.accepted_us = MonotonicMicroseconds();
+        sync_.correction_ms = before >= kFirstCalendarSecond - kMaximumUtcOffsetSeconds &&
+            before <= kLastCalendarSecond + kMaximumUtcOffsetSeconds ? unix_milliseconds - before * 1000 : 0;
+    }
+    return result;
+}
+
+int64_t TimeService::UnixSeconds() const { return static_cast<int64_t>(std::time(nullptr)); }
+
+SyncResult TimeService::ApplySample(const TimeSample& sample) {
+    const auto reject = [this](SyncResult result) { ++sync_.rejected; return sync_.result = result; };
+    if ((sample.source != SyncSource::HttpsDate && sample.source != SyncSource::Companion) ||
+        sample.unix_ms < (kFirstCalendarSecond - kMaximumUtcOffsetSeconds) * 1000 ||
+        sample.unix_ms > (kLastCalendarSecond + kMaximumUtcOffsetSeconds) * 1000 + 999 ||
+        (sample.has_offset && !IsValidUtcOffset(sample.utc_offset_seconds))) return reject(SyncResult::Invalid);
+    const int64_t now = MonotonicMicroseconds();
+    if (sample.received_us < 0 || now < sample.received_us || now - sample.received_us > kTimeSampleLifetimeUs)
+        return reject(SyncResult::Stale);
+    if (sample.source < sync_.source && now >= sync_.accepted_us && now - sync_.accepted_us < kTimeAuthorityHoldUs)
+        return reject(SyncResult::LowerPriority);
+    const int64_t adjusted = sample.unix_ms + (now - sample.received_us) / 1000;
+    const int64_t seconds = UnixSeconds();
+    const bool valid_clock = seconds >= kFirstCalendarSecond - kMaximumUtcOffsetSeconds &&
+        seconds <= kLastCalendarSecond + kMaximumUtcOffsetSeconds;
+    const int64_t correction = valid_clock ? adjusted - seconds * 1000 : 0;
+    // Authenticated HTTPS is still a coarse server clock, not a bootstrap
+    // source. Reject cached/implausible hints and never derive a timezone.
+    if (sample.source == SyncSource::HttpsDate && (!valid_clock || sample.has_offset ||
+        correction < -300000 || correction > 300000)) return reject(SyncResult::ExcessiveStep);
+    const int32_t offset = sample.has_offset ? sample.utc_offset_seconds : status_.utc_offset_seconds;
+    const bool known = sample.has_offset || status_.utc_offset_known;
+    DateTime local{};
+    if (!CalendarFromSeconds(adjusted / 1000 + offset, &local)) return reject(SyncResult::Invalid);
+    const bool unchanged = valid_clock && correction > -2000 && correction < 2000 &&
+        offset == status_.utc_offset_seconds && known == status_.utc_offset_known;
+    if (!unchanged && Calibrate(adjusted, offset, known) != ESP_OK) return reject(SyncResult::Failed);
+    sync_.source = sample.source;
+    sync_.accepted_us = now;
+    sync_.correction_ms = correction;
+    return sync_.result = unchanged ? SyncResult::Unchanged : SyncResult::Applied;
+}
+
+esp_err_t TimeService::Calibrate(int64_t unix_milliseconds, int32_t utc_offset_seconds, bool offset_known) {
     if (!IsValidUtcOffset(utc_offset_seconds) ||
         unix_milliseconds < (kFirstCalendarSecond - kMaximumUtcOffsetSeconds) * 1000 ||
         unix_milliseconds > (kLastCalendarSecond + kMaximumUtcOffsetSeconds) * 1000 + 999) {
@@ -156,10 +206,10 @@ esp_err_t TimeService::SetUnixTime(int64_t unix_milliseconds, int32_t utc_offset
     system_source_ = ClockSource::System;
     local_rtc_seconds_ = 0;
     status_.utc_offset_seconds = utc_offset_seconds;
-    status_.utc_offset_known = true;
+    status_.utc_offset_known = offset_known;
     status_.rtc_persisted = false;
-    status_.persistence_pending = true;
-    status_.last_error = Persist();
+    status_.persistence_pending = offset_known;
+    status_.last_error = offset_known ? Persist() : ESP_OK;
     next_retry_us_ = MonotonicMicroseconds() + kRetryIntervalUs;
     return ESP_OK;
 }

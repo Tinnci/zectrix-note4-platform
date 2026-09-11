@@ -4,6 +4,10 @@
 
 #include <cassert>
 #include <cstring>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <unistd.h>
 #include <string>
 #include <unordered_map>
 #include <variant>
@@ -15,6 +19,7 @@ static std::unordered_map<std::string, Value> values;
 static esp_err_t next_init_result = ESP_OK;
 static int erase_count = 0;
 static int commit_count = 0;
+static esp_err_t deinit_result = ESP_OK;
 
 esp_err_t nvs_flash_init() {
     const esp_err_t result = next_init_result;
@@ -22,6 +27,7 @@ esp_err_t nvs_flash_init() {
     return result;
 }
 esp_err_t nvs_flash_erase() { ++erase_count; values.clear(); return ESP_OK; }
+esp_err_t nvs_flash_deinit() { return deinit_result; }
 esp_err_t nvs_open(const char* name, nvs_open_mode_t, nvs_handle_t* handle) {
     if (std::string(name) != "zectrix") return ESP_FAIL;
     *handle = 1;
@@ -73,6 +79,43 @@ esp_err_t nvs_erase_key(nvs_handle_t, const char* key) {
     return values.erase(key) == 1 ? ESP_OK : ESP_ERR_NVS_NOT_FOUND;
 }
 
+void TestFileWipe() {
+    namespace fs = std::filesystem;
+    using namespace zectrix::storage;
+    char directory[] = "/tmp/zectrix-wipe-XXXXXX";
+    assert(mkdtemp(directory));
+    const fs::path root(directory);
+    fs::create_directory(root / "books");
+    std::ofstream(root / "outside.txt") << "outside";
+    std::ofstream(root / "books/keep.txt") << "keep";
+    std::ofstream(root / "books/.app-example.lua") << "return {}";
+    BookStorage books((root / "books").c_str());
+    BookFile reader;
+    assert(books.Open("keep.txt", &reader) == ESP_OK);
+    assert(books.Wipe() == ESP_ERR_INVALID_STATE && fs::exists(root / "books/keep.txt"));
+    reader.Close();
+    assert(books.BeginManagement() == ESP_OK);
+    assert(books.Wipe() == ESP_ERR_INVALID_STATE);
+    BookUpload upload;
+    assert(books.BeginUpload("new.txt", 4, &upload) == BookWriteResult::Ok);
+    assert(upload.Write("part", 4) == BookWriteResult::Ok);
+    assert(books.Wipe() == ESP_ERR_INVALID_STATE && fs::exists(root / "books/.app-example.lua"));
+    upload.Abort();
+    assert(books.EndManagement() == ESP_OK);
+    fs::create_symlink(root / "outside.txt", root / "books/link.txt");
+    std::ofstream(root / "books/.upload.part") << "orphan";
+    assert(books.Wipe() == ESP_OK && fs::is_empty(root / "books"));
+    assert(fs::exists(root / "outside.txt"));
+    assert(books.BeginManagement() == ESP_OK);
+    assert(books.BeginUpload("after.txt", 0, &upload) == BookWriteResult::Ok);
+    assert(upload.Commit() == BookWriteResult::Ok && books.EndManagement() == ESP_OK);
+    assert(fs::exists(root / "books/after.txt"));
+    fs::create_directory(root / "books/directory");
+    std::ofstream(root / "books/directory/keep.txt") << "nested";
+    assert(books.Wipe() == ESP_FAIL && fs::exists(root / "books/directory/keep.txt"));
+    fs::remove_all(root);
+}
+
 int main() {
     using zectrix::storage::StorageService;
     StorageService* service = nullptr;
@@ -113,5 +156,13 @@ int main() {
     assert(service->Initialize() == ESP_OK);
     count = 0;
     assert(service->GetUInt32("count", &count) == ESP_OK && count == 42);
+    assert(service->ResetSettings() == ESP_OK && erase_count == 2 && values.empty());
+    assert(!service->IsInitialized());
+    assert(service->GetUInt32("count", &count) == ESP_ERR_INVALID_STATE);
+    assert(service->Initialize() == ESP_OK);
+    assert(service->SetUInt32("count", 7) == ESP_OK);
+    deinit_result = ESP_FAIL;
+    assert(service->ResetSettings() == ESP_FAIL && erase_count == 2 && values.size() == 1);
     delete service;
+    TestFileWipe();
 }

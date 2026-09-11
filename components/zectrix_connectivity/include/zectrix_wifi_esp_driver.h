@@ -1,6 +1,7 @@
 #pragma once
 
 #include "zectrix_wifi_backend.h"
+#include "zectrix_time_sync.h"
 
 namespace zectrix::connectivity {
 
@@ -35,6 +36,8 @@ public:
     WifiDriverResult StartAccessPoint(const WifiCredentials& credentials);
     WifiDriverResult PollAccessPoint();
     bool LocalAddress(char* output, std::size_t capacity) const;
+    bool TakeClockSample(time::TimeSample* sample);
+    WifiLinkSnapshot CachedSnapshot() const;
 
     // An empty target scans all APs. A non-empty target qualifies that SSID.
     WifiDriverResult StartScan();

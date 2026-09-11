@@ -19,6 +19,7 @@ enum class MicroAppDecision : uint8_t { None, RenderFast, RenderQuality, Back, S
 
 class MicroAppController final {
 public:
+    void ObserveScenes(SceneSnapshot* snapshot) { scenes_.ObserveScenes(snapshot); }
     static constexpr std::size_t kPageSize = 5;
     explicit MicroAppController(MicroAppLibrary& library) : library_(library) {}
     ~MicroAppController() { Stop(); }

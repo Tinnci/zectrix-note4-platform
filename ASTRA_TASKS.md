@@ -272,7 +272,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Reused TimeService, SceneManager and the shared 15,000-byte canvas. Monotonic timing retains exact pause/resume and same-boot state across foreground recreation; visible countdowns update by minute, failed frames retry with Quality, and hidden timers do not redraw unrelated tools. No background task, storage writes, radio work or wake alarm is added; shutdown clears temporary state.
   - Verified all 37 Host targets, utility ASan/UBSan, both language renderers/previews and ShellCheck. Full/Minimal firmware and profile comparison passed at 3,120,016 / 564,896 bytes; Full adds 7,376 bytes and retains 25,712 bytes in the existing slot. Minimal excludes utility sources and session RAM. The simulated minute update transfers 880 bytes; no hardware flash or partition change was needed.
 
-- [ ] **D1.4: 维护终端指令集补全、系统级状态反射与多源时钟同步演进 (Maintenance CLI Completeness, System Reflection & Multi-Source Clock Synchronization)**
+- [x] **D1.4: 维护终端指令集补全、系统级状态反射与多源时钟同步演进 (Maintenance CLI Completeness, System Reflection & Multi-Source Clock Synchronization)**
   - **背景与愿景**：
     - 针对前期治理遗留的维护终端能力缺口（对标 GitHub Issue #44, #45, #46），全面充实 USB Maintenance CLI 的全景状态反射、无损观测与安全防护能力。
     - 解决随身墨水屏终端在离线长待机与异构无线环境下的系统时钟准确性与 PCF8563 硬件 RTC 持久化问题。
@@ -294,6 +294,10 @@ Each iteration picks the top unfinished task, implements production code, verifi
        - *异构时钟源仲裁*：面对 LwIP SNTP、HTTP 响应头 Date、BLE CTS (0x1805)、Companion Hello TLV 与 NFC，如何设计统一的优先级裁决模型与时区/UTC 解耦；
        - *RTC 原子写与跳变平滑*：如何确保 PCF8563 I2C 寄存器写入时进位不出现脏数据？外部时钟偏移时如何防御跳变（Step vs Slew）对前台调度器的冲击？
        - *维护终端指令*：设计 `time status` / `time sync` 等状态探查与手动校准指令。
+  - Added `power status`, `connectivity status`, `app list/current`, `scene dump` and `time get/status/sync`, using typed services, cached power/radio data and copied foreground/scene/ViewPort/Lua quota snapshots. Queries do not start ADC sampling, radio work, rendering or guest callbacks; contended radio snapshots return Busy. Pairing and individual bond removal remain physical Connectivity actions.
+  - Added non-consuming `input watch` with a 16-record overwrite ring, four-record reads, bounded output and explicit loss counts. Confirmed USB time changes, reboot, sleep, storage wipe and factory reset bind exact arguments to a 15-second challenge; cancellation, expiry and disconnect retire it. Deferred power/reset operations exit the foreground and release file/transfer leases first; unknown outcomes never trigger automatic retries.
+  - Unified Manual > authorized Companion > verified HTTPS Date > RTC clock authority, with ten-minute priority holdoff, stale-sample rejection and bounded HTTPS corrections. Existing HTTPS traffic supplies optional validated Date samples without another connection; UTC and offset remain separate, sub-two-second automatic corrections avoid writes, and RTC persistence retains the STOP/calendar/resume protection. Schedulers remain monotonic. See [docs/TIME.md](docs/TIME.md) and [docs/MAINTENANCE_CLI_CONTRACT.md](docs/MAINTENANCE_CLI_CONTRACT.md).
+  - Verified all 37 Host targets, 13 CLI PTY scenarios, CLI/Platform/Time ASan/UBSan and ShellCheck. Full/Minimal firmware and profile comparison passed at 3,139,120 / 565,392 bytes; Full adds 19,104 bytes and leaves 6,608 bytes in the existing slot. No hardware flash or partition change was performed; physical USB/power/RTC recovery qualification remains separate.
 
 - [ ] **R1.3: 算法点阵排版样式引擎与墨水屏富文本渲染 (Algorithmic Typography Engine & Rich Text Rendering)**
   - **背景与愿景**：

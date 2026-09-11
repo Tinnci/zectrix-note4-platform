@@ -16,6 +16,8 @@
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "zectrix_button_buffer.h"
+#include "zectrix_input_trace.h"
+#include "sdkconfig.h"
 
 class AudioCodec;
 class RtcPcf8563;
@@ -40,6 +42,7 @@ public:
     bool WaitButton(ZectrixButtonEvent* event, TickType_t timeout);
     void WakeButtonWait();
     void DrainButtons();
+    zectrix::input::TraceBatch ReadInputTrace(uint64_t cursor);
 
     bool HasRtc() const;
     bool ReadRtc(tm* value);
@@ -86,6 +89,9 @@ private:
     QueueHandle_t button_queue_ = nullptr;
     portMUX_TYPE button_lock_ = portMUX_INITIALIZER_UNLOCKED;
     ZectrixButtonBuffer button_events_;
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+    zectrix::input::InputTrace input_trace_;
+#endif
     std::atomic<bool> button_wait_wake_pending_{false};
     SemaphoreHandle_t button_task_done_ = nullptr;
     std::atomic<bool> button_task_stop_{false};

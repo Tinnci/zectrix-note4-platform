@@ -8,6 +8,7 @@ public:
     explicit UtilitiesApplication(TerminalApp& owner) : owner_(owner), controller_(owner.utilities_) {}
 
     sdk::Status Enter(sdk::ApplicationContext& context) override {
+        owner_.BindScenes(controller_);
         const auto started = controller_.Start(owner_.time_->MonotonicMicroseconds(), owner_.time_->Now());
         if (!sdk::IsOk(started)) return started;
         return HandleIdle(context);

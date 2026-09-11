@@ -7,6 +7,7 @@
 
 #include "esp_http_client.h"
 #include "esp_transport.h"
+#include "esp_timer.h"
 
 namespace zectrix::connectivity {
 
@@ -97,7 +98,7 @@ struct WifiHttpClient::Impl {
         }
         self->read_budget -= static_cast<std::size_t>(received);
         self->result = self->response.Feed(
-            reinterpret_cast<const uint8_t*>(data), received);
+            reinterpret_cast<const uint8_t*>(data), received, esp_timer_get_time());
         if (self->result != WifiDriverResult::kPending &&
             self->result != WifiDriverResult::kReady) {
             // Validate before IDF sees the bytes, bounding its header buffers
@@ -191,6 +192,11 @@ void WifiHttpClient::Close() {
     // The custom transport is caller-owned; IDF does not destroy it.
     if (impl_->transport != nullptr) esp_transport_destroy(impl_->transport);
     *impl_ = {};
+}
+
+bool WifiHttpClient::ClockSample(time::TimeSample* sample) const {
+    return impl_ && impl_->finished && impl_->result == WifiDriverResult::kReady &&
+        impl_->response.ClockSample(sample);
 }
 
 }  // namespace zectrix::connectivity

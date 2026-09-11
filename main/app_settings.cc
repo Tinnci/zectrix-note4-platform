@@ -12,6 +12,7 @@ public:
         : owner_(&owner), controller_(app::kAutoShowcaseDefault != 0) {}
 
     sdk::Status Enter(sdk::ApplicationContext& context) override {
+        owner_->BindScenes(controller_);
         uint32_t stored = app::kAutoShowcaseDefault;
         const auto read = owner_->storage_->GetUInt32(app::kAutoShowcaseSettingKey, &stored);
         bool value = app::kAutoShowcaseDefault != 0;

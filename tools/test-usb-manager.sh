@@ -11,6 +11,7 @@ includes=(
     -I"$root_dir/tools/host_include"
     -I"$root_dir/components/zectrix_host/include"
     -I"$root_dir/components/zectrix_cli/include"
+    -I"$root_dir/components/zectrix_board/include"
     -I"$root_dir/components/zectrix_storage/include"
     -I"$root_dir/components/zectrix_system/include"
     -I"$root_dir/components/zectrix_display/include"
@@ -27,6 +28,7 @@ sources=(
     "$root_dir/components/zectrix_cli/zectrix_cli_session.cc"
     "$root_dir/components/zectrix_cli/zectrix_cli_control.cc"
     "$root_dir/components/zectrix_cli/zectrix_cli_diagnostics.cc"
+    "$root_dir/components/zectrix_time/zectrix_time_sync.cc"
     "$root_dir/components/zectrix_cli/zectrix_cli_log.cc"
 )
 for runtime in 1 0; do

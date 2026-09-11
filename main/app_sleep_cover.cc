@@ -45,6 +45,7 @@ class TerminalApp::SleepCoverApplication final : public sdk::Application {
 public:
     explicit SleepCoverApplication(TerminalApp& owner) : owner_(owner) {}
     sdk::Status Enter(sdk::ApplicationContext& context) override {
+        owner_.BindScenes(controller_);
         const auto result = controller_.Start(owner_.sleep_cover_style_);
         return sdk::IsOk(result) ? Apply(zectrix::app::SleepCoverDecision::RenderQuality, context) : result;
     }

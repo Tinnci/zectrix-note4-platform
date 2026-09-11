@@ -6,6 +6,7 @@
 #include <ctime>
 
 class ZectrixNfc;
+namespace zectrix::input { struct TraceBatch; }
 
 enum class ZectrixButton { kUp, kDown, kOk };
 enum class ZectrixButtonAction { kClick, kLongPress, kWake };
@@ -56,6 +57,7 @@ public:
         return true;
     }
 
+    zectrix::input::TraceBatch ReadInputTrace(uint64_t cursor);
     void DrainButtons() { drained = true; }
     void WakeButtonWait() { wake_pending = true; ++wake_calls; }
 

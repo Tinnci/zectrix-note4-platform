@@ -8,6 +8,8 @@
 #include <string>
 
 using namespace zectrix::connectivity;
+static int64_t clock_us = 1234567;
+int64_t esp_timer_get_time() { return clock_us; }
 
 // The HTTP fake drives the registered transport callbacks. Wire validation
 // uses the production reader; this fake supplies only IDF completion signals.
@@ -233,7 +235,7 @@ void TestNonBlockingClientAndReuse() {
     WifiHttpClient client;
     for (int scenario = 0; scenario < 5; ++scenario) {
         Stream stream;
-        stream.response = kHeaders + (scenario == 1 ? "\r\n" : "Content-Length: 1500\r\n\r\n") +
+        stream.response = kHeaders + "Date: Thu, 29 Feb 2024 04:00:00 GMT\r\n" + (scenario == 1 ? "\r\n" : "Content-Length: 1500\r\n\r\n") +
             std::string(1500, 'a');
         stream.read_failure = scenario == 2;
         stream.write_failure = scenario == 3;
@@ -244,6 +246,7 @@ void TestNonBlockingClientAndReuse() {
         std::size_t size = 99;
         WifiDriverResult result = WifiDriverResult::kPending;
         for (int poll = 0; poll < 200 && result == WifiDriverResult::kPending; ++poll) {
+            clock_us += 1000000;
             const auto before = stream.offset;
             result = client.Poll(&size);
             assert(stream.offset - before <= 512);
@@ -252,6 +255,9 @@ void TestNonBlockingClientAndReuse() {
             scenario == 4 ? WifiDriverResult::kResponseTooLarge : WifiDriverResult::kTransferFailure;
         assert(result == expected);
         assert(size == (scenario < 2 ? 1500 : 0));
+        zectrix::time::TimeSample sample;
+        assert(client.ClockSample(&sample) == (scenario < 2));
+        if (scenario < 2) assert(sample.received_us < clock_us && sample.unix_ms == 1709179200000);
         if (scenario != 3) {
             assert(stream.request.find("GET /robots.txt HTTP/1.1\r\n") == 0);
             assert(stream.request.find("GET ", 1) == std::string::npos);
@@ -261,8 +267,33 @@ void TestNonBlockingClientAndReuse() {
         const auto calls = perform_calls;
         assert(client.Poll(&size) == result && perform_calls == calls);
         client.Close();
+        assert(!client.ClockSample(&sample));
         client.Close();
         assert(live_transports == 0 && live_clients == 0);
+    }
+}
+
+void TestDateHints() {
+    const std::string date = "Date: Thu, 29 Feb 2024 04:00:00 GMT\r\n";
+    for (int mode = 0; mode < 7; ++mode) {
+        WifiHttpResponse response;
+        uint8_t body[8];
+        assert(response.Begin(body, sizeof(body)));
+        auto header = kHeaders + date;
+        if (mode == 1) header += date;
+        if (mode == 2) header += "Age: 0\r\n";
+        if (mode == 3) header = kHeaders + "Date: Thu, 29 Feb 2023 04:00:00 GMT\r\n";
+        if (mode == 4) header = kHeaders;
+        if (mode == 5) header += "Age: invalid\r\n";
+        header += mode == 6 ? "Transfer-Encoding: chunked\r\n\r\n" : "Content-Length: 3\r\n\r\n";
+        assert(response.Feed(reinterpret_cast<const uint8_t*>(header.data()), header.size(), 1234) == WifiDriverResult::kPending);
+        zectrix::time::TimeSample sample;
+        assert(!response.ClockSample(&sample));
+        const auto payload = mode == 6 ? "3\r\nok\n\r\n0\r\n" + date + "\r\n" : std::string("ok\n");
+        assert(response.Feed(reinterpret_cast<const uint8_t*>(payload.data()), payload.size(), 9999999) == WifiDriverResult::kReady);
+        assert(response.ClockSample(&sample) == (mode == 0));
+        if (mode == 0) assert(sample.received_us == 1234 && !sample.has_offset &&
+            sample.source == zectrix::time::SyncSource::HttpsDate);
     }
 }
 
@@ -271,4 +302,5 @@ void TestNonBlockingClientAndReuse() {
 int main() {
     TestFramingAndValidation();
     TestNonBlockingClientAndReuse();
+    TestDateHints();
 }

@@ -133,6 +133,8 @@ void EspUpdateBackend::AbortImage() {}
 #endif
 }
 
+[[noreturn]] void esp_restart() { events.emplace_back("reboot"); throw SleepEntered{}; }
+
 namespace zectrix::input {
 esp_err_t InputService::Attach(ZectrixBoard& board, InputService** output) {
     const esp_err_t result = Result("input");
@@ -145,12 +147,18 @@ void InputService::SetWaitHook(WaitHook hook, void* context) {
     wait_context_ = context;
 }
 void InputService::WakeWait() { board_->WakeButtonWait(); }
+TraceBatch InputService::ReadTrace(uint64_t cursor) const { TraceBatch result; result.cursor = cursor ? cursor : 1; return result; }
 }
 namespace zectrix::power {
 esp_err_t PowerService::Attach(ZectrixBoard& board, PowerService** output) {
     const esp_err_t result = Result("power");
     if (result == ESP_OK) *output = new PowerService(board);
     return result;
+}
+PowerSnapshot PowerService::ReadSnapshot() const {
+    cached_ = {true, 3888, 70, false, false, false, false, false};
+    sampled_us_ = 1000000;
+    return cached_;
 }
 PowerService::~PowerService() { AssertWithdrawn<PowerService>(); events.emplace_back("delete:power"); }
 [[noreturn]] void PowerService::Shutdown() {
@@ -172,6 +180,14 @@ esp_err_t TimeService::Initialize(storage::StorageService& storage) {
     return fail_at == "rtc-restore" ? ESP_FAIL : ESP_OK;
 }
 void TimeService::Poll() { ++time_polls; }
+ClockSnapshot TimeService::Now() const { return {{2024, 2, 29, 4, 12, 0, 0}, ClockSource::System}; }
+int64_t TimeService::UnixSeconds() const { return 1709179200; }
+bool TimeService::RtcAvailable() const { return true; }
+SyncResult TimeService::ApplySample(const TimeSample& sample) {
+    assert(sample.source == SyncSource::Companion && sample.received_us == 1234000 && sample.has_offset);
+    SetUnixTime(sample.unix_ms, sample.utc_offset_seconds);
+    return SyncResult::Applied;
+}
 esp_err_t TimeService::SetUnixTime(int64_t milliseconds, int32_t offset) {
     assert(host_current_task == reinterpret_cast<void*>(1) && offset == 28800);
     applied_clock_ms = milliseconds;
@@ -187,6 +203,8 @@ esp_err_t StorageService::Create(StorageService** output) {
     return result;
 }
 esp_err_t StorageService::Initialize() { return Result("storage-init"); }
+esp_err_t StorageService::WipeUserFiles() { events.emplace_back("wipe:files"); return fail_at == "wipe" ? ESP_FAIL : ESP_OK; }
+esp_err_t StorageService::ResetSettings() { events.emplace_back("wipe:settings"); return ESP_OK; }
 StorageService::~StorageService() {
     AssertWithdrawn<StorageService>();
     delete impl_;
@@ -262,6 +280,16 @@ bool ConnectivityService::TakeClockSample(companion::ClockSample* sample) {
     *sample = {1709179200123, 28800};
     return true;
 }
+ConnectivityResult ConnectivityService::Stop() {
+    events.emplace_back("stop:connectivity");
+    return fail_at == "stop-connectivity" ? ConnectivityResult::kBusy : ConnectivityResult::kOk;
+}
+bool ConnectivityService::TakeNetworkClockSample(time::TimeSample*) { return false; }
+bool ConnectivityService::TrySnapshot(ConnectivitySnapshot* snapshot) const {
+    *snapshot = {};
+    std::strcpy(snapshot->wifi.ssid.data(), "bad\x1bssid");
+    return fail_at != "snapshot-busy";
+}
 ConnectivityService::~ConnectivityService() {
     AssertWithdrawn<ConnectivityService>();
     delete impl_;
@@ -288,6 +316,33 @@ LogBuffer& MaintenanceLogs() { static LogBuffer logs; return logs; }
 
 #endif
 
+void TestMaintenanceReset() {
+    for (const char* failure : {"", "wipe", "stop-connectivity"}) {
+        fail_at.clear();
+        zectrix::Platform platform;
+        assert(platform.Initialize() == ESP_OK);
+        events.clear();
+        fail_at = failure;
+        const auto result = platform.ResetUserData(true);
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+        assert(events[0] == "stop:connectivity");
+        if (fail_at == "stop-connectivity") {
+            assert(result == ESP_ERR_INVALID_STATE && events.size() == 1);
+        } else
+#endif
+        {
+            assert(std::find(events.begin(), events.end(), "wipe:files") != events.end());
+            assert((std::find(events.begin(), events.end(), "wipe:settings") != events.end()) == (fail_at != "wipe"));
+            assert(result == (fail_at == "wipe" ? ESP_FAIL : ESP_OK));
+        }
+        fail_at.clear();
+        try { platform.Reboot(); } catch (const SleepEntered&) {}
+        assert(events.back() == "reboot" && !platform.IsInitialized());
+        AssertNoServices(platform);
+    }
+    events.clear();
+}
+
 void TestUnsetClockDoesNotBlockStartup() {
     fail_at = "rtc-restore";
     {
@@ -305,6 +360,7 @@ void TestUnsetClockDoesNotBlockStartup() {
 int main() {
     host_current_task = reinterpret_cast<void*>(1);
     TestUnsetClockDoesNotBlockStartup();
+    TestMaintenanceReset();
     {
         zectrix::Platform platform;
         inspected_registry = &platform.Services();
@@ -356,6 +412,31 @@ int main() {
         assert(cli_executor->Poll(&output) == zectrix::cli::ExecuteStatus::kOk);
         assert(inspections == 1);
         assert(std::string(output.data()).find("1234 ms") != std::string::npos);
+        const auto query = [&](const char* command) {
+            output.Clear();
+            assert(zectrix::cli::ParseLine(command, std::strlen(command), &invocation) == zectrix::cli::ParseStatus::kOk);
+            assert(cli_executor->Execute(invocation, &output) == zectrix::cli::ExecuteStatus::kPending);
+            platform.PollMaintenance();
+            std::string text;
+            auto state = zectrix::cli::ExecuteStatus::kPending;
+            for (unsigned i = 0; state == zectrix::cli::ExecuteStatus::kPending && i < 20; ++i) {
+                output.Clear();
+                state = cli_executor->Poll(&output);
+                text += output.data();
+            }
+            assert(state == zectrix::cli::ExecuteStatus::kOk);
+            return text;
+        };
+        platform.Power().ReadSnapshot();
+        assert(query("power status").find("mv=3888") != std::string::npos);
+        assert(query("time status").find("unix_seconds=1709179200") != std::string::npos);
+        assert(query("connectivity status").find("ssid=bad?ssid") != std::string::npos);
+        fail_at = "snapshot-busy";
+        assert(zectrix::cli::ParseLine("connectivity status", 19, &invocation) == zectrix::cli::ParseStatus::kOk);
+        assert(cli_executor->Execute(invocation, &output) == zectrix::cli::ExecuteStatus::kPending);
+        platform.PollMaintenance();
+        assert(cli_executor->Poll(&output) == zectrix::cli::ExecuteStatus::kBusy);
+        fail_at.clear();
         pending_clock_sample = true;
         platform.Poll();
         assert(time_polls == 1 && applied_clock_ms == 1709179200123 && !pending_clock_sample);
@@ -533,6 +614,7 @@ int main() {
 int main() {
     host_current_task = reinterpret_cast<void*>(1);
     TestUnsetClockDoesNotBlockStartup();
+    TestMaintenanceReset();
     ZectrixNfc nfc;
     ZectrixBoard::nfc_device = &nfc;
     {

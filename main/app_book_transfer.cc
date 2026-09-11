@@ -11,6 +11,7 @@ class TerminalApp::BookTransferApplication final : public sdk::Application {
 public:
     explicit BookTransferApplication(TerminalApp& owner) : owner_(owner) {}
     sdk::Status Enter(sdk::ApplicationContext& context) override {
+        owner_.BindScenes(controller_);
         const auto result = controller_.Start();
         if (!sdk::IsOk(result)) return result;
         return Apply(zectrix::app::BookTransferDecision::RenderQuality, context);

@@ -191,6 +191,8 @@ void TestButtonProducerAndWake() {
         board.DrainButtons();
         ZectrixButtonEvent event;
         assert(!board.WaitButton(&event, 0));
+        const auto trace_cursor = board.ReadInputTrace(0).cursor;
+        assert(board.ReadInputTrace(trace_cursor).count == 0);
 
         // Sampling proceeds while the foreground is busy and the one-slot
         // signal queue is full. Wake traffic must not consume physical input.
@@ -202,6 +204,9 @@ void TestButtonProducerAndWake() {
         std::this_thread::sleep_for(100ms);
         stop = true;
         waker.join();
+        const auto trace = board.ReadInputTrace(trace_cursor);
+        assert(trace.count == 1 && trace.records[0].button == 0 && trace.records[0].action == 0 && trace.records[0].queued);
+        assert(board.ReadInputTrace(trace_cursor).records[0].sequence == trace.records[0].sequence);
         assert(board.WaitButton(&event, 0));
         assert(event.button == ZectrixButton::kUp && event.action == ZectrixButtonAction::kClick);
         board.DrainButtons();

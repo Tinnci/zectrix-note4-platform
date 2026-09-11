@@ -12,6 +12,16 @@ constexpr std::size_t kMaximumWifiSsidBytes = 32;
 constexpr std::size_t kMaximumWifiPassphraseBytes = 64;
 constexpr std::size_t kMaximumWifiResourceBytes = 2048;
 
+enum class WifiMode : uint8_t { Off, Station, AccessPoint };
+struct WifiLinkSnapshot {
+    WifiMode mode = WifiMode::Off;
+    std::array<char, 33> ssid{};
+    std::array<char, 16> address{};
+    std::array<uint8_t, 6> mac{};
+    int8_t rssi = -127;
+    bool rssi_valid = false, mac_valid = false, associated = false;
+};
+
 struct WifiCredentials {
     std::array<char, kMaximumWifiSsidBytes + 1> ssid{};
     std::array<char, kMaximumWifiPassphraseBytes + 1> passphrase{};

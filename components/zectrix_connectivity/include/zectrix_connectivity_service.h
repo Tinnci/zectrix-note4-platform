@@ -8,6 +8,7 @@
 #include "zectrix_sync_engine.h"
 #include "zectrix_book_transfer.h"
 #include "zectrix_radio_arbiter.h"
+#include "zectrix_time_sync.h"
 
 namespace zectrix::nfc { class NfcService; }
 namespace zectrix::storage { class StorageService; }
@@ -59,6 +60,7 @@ struct ConnectivitySnapshot {
     bool book_transfer_active = false;
     WifiBackendState wifi_state = WifiBackendState::kStopped;
     RadioMode radio_mode = RadioMode::kCompanion;
+    WifiLinkSnapshot wifi{};
     companion::ConnectivityDecision resource_decision{};
 };
 
@@ -80,10 +82,12 @@ public:
     ConnectivityResult ClearPeerBonds();
     ConnectivityState State() const;
     ConnectivitySnapshot Snapshot() const;
+    bool TrySnapshot(ConnectivitySnapshot* snapshot) const;
     bool TakePairingPasskey(uint32_t* passkey);
     // The foreground owner takes an authorized, current-session clock hint.
     // The copy includes queue delay; this service never writes RTC/system time.
     bool TakeClockSample(companion::ClockSample* sample);
+    bool TakeNetworkClockSample(time::TimeSample* sample);
     // Publish a copied power sample from the application owner before a
     // request. Radio policy treats an invalid battery sample conservatively.
     void UpdatePower(const power::PowerSnapshot& power,
@@ -106,6 +110,7 @@ public:
                                            uint8_t* value, std::size_t* size) const;
 
 private:
+    bool ReadSnapshot(ConnectivitySnapshot* snapshot, bool wait) const;
     struct Impl;
     explicit ConnectivityService(Impl* impl) : impl_(impl) {}
     Impl* impl_ = nullptr;

@@ -12,6 +12,7 @@ enum class ReaderNotice : uint8_t { None, RecentUnavailable, RecentChanged, Hist
 
 class ReaderController {
 public:
+    void ObserveScenes(SceneSnapshot* snapshot) { scenes_.ObserveScenes(snapshot); }
     static constexpr std::size_t kOptionCount = 4;
     ReaderController(reader::Library& library, reader::Bookmarks& bookmarks, uint32_t selected = 0);
     ~ReaderController() { Stop(); }

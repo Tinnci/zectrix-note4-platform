@@ -8,6 +8,7 @@ c++ -std=c++17 -Wall -Wextra -Werror \
   -I"$root_dir/components/zectrix_time/include" \
   -I"$root_dir/components/zectrix_storage/include" \
   "$root_dir/components/zectrix_time/zectrix_time_service.cc" \
+  "$root_dir/components/zectrix_time/zectrix_time_sync.cc" \
   "$root_dir/tools/time_service_test.cc" -o "$test_binary"
 "$test_binary"
 echo 'PASS: time service tests.'

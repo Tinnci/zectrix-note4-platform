@@ -91,6 +91,7 @@ public:
                               bool preference_saved = true);
 
     ZectrixCanvas& canvas() { return canvas_; }
+    auto InspectViews() const { return viewports_.Inspect(); }
     esp_err_t RefreshFull();
     esp_err_t RefreshAuto();
 

@@ -39,6 +39,13 @@ public:
     PowerService& operator=(const PowerService&) = delete;
 
     PowerSnapshot ReadSnapshot() const;
+    // Foreground-owned cache; inspection must not start an ADC conversion.
+    bool CachedSnapshot(PowerSnapshot* output, int64_t* sampled_us) const {
+        if (!output || !sampled_us || sampled_us_ < 0) return false;
+        *output = cached_;
+        *sampled_us = sampled_us_;
+        return true;
+    }
     WakeReason GetWakeReason() const;
 
     // Platform stops peripheral consumers before calling this final transition.
@@ -48,6 +55,8 @@ public:
 private:
     explicit PowerService(ZectrixBoard& board) : board_(&board) {}
     ZectrixBoard* board_;
+    mutable PowerSnapshot cached_{};
+    mutable int64_t sampled_us_ = -1;
 };
 
 }  // namespace zectrix::power

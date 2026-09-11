@@ -95,6 +95,66 @@ clock or UI operation runs on a BLE callback/session task. The PCF8563 has
 one-second calendar resolution; this handshake does not measure BLE transit
 latency or promise NTP-grade precision.
 
+## D1.4 clock arbitration and opportunistic HTTPS
+
+`TimeSample` carries UTC milliseconds, a monotonic receipt timestamp, source
+and optional signed offset. Only TimeService's foreground owner applies a
+copied sample. The current priority is Manual > authorized Companion >
+verified HTTPS Date > restored RTC > unset. A higher source holds authority
+for ten minutes after acceptance; lower sources can correct it afterward.
+Samples older than 30 seconds, future receipt timestamps and invalid local
+calendar/offset combinations are rejected. Companion's existing authorized
+session mailbox still rejects disconnect/replacement/expiry and accounts for
+queue delay before this arbitration.
+
+The existing fixed-capability HTTPS client can supply one Date sample from a
+successful, fully verified response. It timestamps the header when received,
+not when a delayed body finishes, and preserves the copy through radio/TLS
+cleanup. Parsing accepts Gregorian IMF-fixdate GMT with a matching weekday.
+Duplicate/malformed Date, any Age header, a Date trailer, framing/body errors
+or a failed response prevent clock use without invalidating an otherwise
+valid resource solely for its optional Date. Certificate checks stay enabled.
+HTTPS Date never bootstraps an unset UTC clock, carries a timezone or steps a
+valid clock by more than five minutes. It is a coarse hint from the existing
+server, not an NTP precision claim.
+
+Automatic corrections smaller than two seconds with an unchanged timezone
+avoid clock/RTC/NVS writes. Larger accepted corrections use the existing
+STOP → offset commit → complete RTC calendar → resume sequence. UTC accepted
+without a known offset remains usable for this boot; RTC persistence waits
+for explicit offset configuration. Restore retries cannot overwrite it with
+an older RTC value. Timezone and UTC are separate: HTTPS preserves the offset;
+Companion carries the phone's current offset; local UI/USB calibration sets it
+explicitly. All input, pagination, stream deadlines, focus timers and display
+scheduling retain their monotonic clocks, so wall-time steps do not move their
+deadlines. No background slew task or periodic radio wake is introduced.
+
+| Candidate source | D1.4 decision |
+| --- | --- |
+| Local Clock UI / confirmed USB | Explicit authority, supports initial UTC and timezone setup |
+| Companion Hello TLV | Use the existing authorized session, no extra BLE service or connection |
+| HTTPS Date | Piggyback on the existing verified resource fetch, bounded correction only |
+| LwIP SNTP | No new client or polling; unauthenticated UDP is not granted authority by association alone |
+| BLE CTS / advertisements | No implicit trust; a future adapter needs an authorized peer and copied sample |
+| NFC | Enrollment remains separate; no unauthenticated timestamp is accepted |
+| Wi-Fi beacon TSF | AP-relative counter, not absolute UTC |
+
+`time get` and `time status` report local calendar validity, raw Unix seconds,
+offset knowledge, RTC presence/persistence/retry error, accepted source/age,
+last arbitration result, correction and rejection count. `time sync` without
+arguments reports the same opportunistic synchronization state; it does not
+open a connection. `time sync <unix-ms> <offset-seconds>` offers the 15-second
+USB confirmation described in [MAINTENANCE_CLI_CONTRACT.md](MAINTENANCE_CLI_CONTRACT.md).
+For example, `time sync 1709179200123 28800` proposes 2024-02-29 12:00:00.123
+at UTC+08:00. An applied system clock with a failed RTC save is reported as
+pending, never as durable success.
+
+The added tests cover priority holdoff, coarse/no-op corrections, delayed and
+stale samples, timezone boundaries, extreme integer input, UTC without offset,
+RTC retry protection, Date validation/caching/duplicates/trailers and retaining
+a successful sample after the HTTPS radio stops. Hardware drift and RTC power
+retention still need measurement; no standby estimate is inferred from them.
+
 ## Hardware evidence and limits
 
 The firmware uses PCF8563 at I2C address `0x51`, SDA/SCL GPIO47/48 and INT GPIO5.

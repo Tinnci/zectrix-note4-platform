@@ -2,6 +2,7 @@
 #include "zectrix_micro_app_controller.h"
 #include "zectrix_storage_service.h"
 #include "esp_log.h"
+#include <cstdio>
 
 namespace zectrix::terminal {
 
@@ -10,6 +11,7 @@ public:
     explicit MicroAppsApplication(TerminalApp& owner)
         : owner_(owner), library_(*owner.storage_), controller_(library_) {}
     sdk::Status Enter(sdk::ApplicationContext& context) override {
+        owner_.BindScenes(controller_);
         const auto result = controller_.Start();
         return sdk::IsOk(result) ? Update(controller_.Tick(), context) : result;
     }
@@ -22,15 +24,29 @@ public:
     sdk::Status Render(const sdk::RenderRequest& request) override {
         const auto result = owner_.ui_.ShowMicroApps(controller_, request.intent == sdk::RenderIntent::Quality);
         controller_.Presented(result == ESP_OK);
+        ObserveGuest();
         return ToSdkStatus(result);
     }
     sdk::Status Exit() override {
         controller_.Stop();
         owner_.micro_app_busy_ = false;
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+        owner_.guest_inspection_ = {};
+#endif
         return sdk::Status::Ok;
     }
 
 private:
+    void ObserveGuest() {
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+        auto& state = owner_.guest_inspection_;
+        state.guest = true;
+        std::snprintf(state.guest_name.data(), state.guest_name.size(), "%s", controller_.name());
+        const auto heap = controller_.engine().heap();
+        state.heap_live = heap.live; state.heap_peak = heap.peak; state.heap_rejected = heap.rejected;
+        state.heap_limit = runtime::kHeapLimit; state.instruction_limit = runtime::kInstructionLimit;
+#endif
+    }
     class Library final : public app::MicroAppLibrary {
     public:
         explicit Library(storage::StorageService& service) : service_(service) {}
@@ -44,6 +60,7 @@ private:
     };
 
     sdk::Status Update(app::MicroAppDecision decision, sdk::ApplicationContext& context) {
+        ObserveGuest();
         owner_.micro_app_busy_ = controller_.busy();
         if (controller_.scene() == app::MicroAppScene::Error && last_scene_ != app::MicroAppScene::Error) {
             ESP_LOGW(kTag, "app %s stopped: storage=%s runtime=%s peak=%u",

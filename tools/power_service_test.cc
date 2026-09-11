@@ -14,6 +14,7 @@ std::jmp_buf shutdown_jump;
 }
 
 esp_sleep_wakeup_cause_t esp_sleep_get_wakeup_cause() { return wake_cause; }
+int64_t esp_timer_get_time() { return 1234567; }
 const char* esp_err_to_name(esp_err_t error) { return error == ESP_OK ? "ESP_OK" : "ESP_FAIL"; }
 void vTaskDelay(TickType_t ticks) { delays[delay_count++] = ticks; }
 [[noreturn]] void esp_deep_sleep_start() { std::longjmp(shutdown_jump, 1); }
@@ -27,6 +28,9 @@ int main() {
     assert(PowerService::Attach(board, nullptr) == ESP_ERR_INVALID_ARG);
     assert(PowerService::Attach(board, &service) == ESP_OK);
     assert(service != nullptr);
+    PowerSnapshot cached;
+    int64_t sampled = 0;
+    assert(!service->CachedSnapshot(&cached, &sampled));
 
     const PowerSnapshot snapshot = service->ReadSnapshot();
     assert(snapshot.battery_valid && snapshot.battery_mv == 3900);
@@ -34,6 +38,9 @@ int main() {
     assert(snapshot.external_power_present && snapshot.charging);
     assert(!snapshot.charge_full && snapshot.charge_fault);
     assert(!snapshot.battery_absent);
+    board.power_snapshot.battery_mv = 3200;
+    assert(service->CachedSnapshot(&cached, &sampled));
+    assert(cached.battery_mv == 3900 && sampled == 1234567);
 
     struct WakeCase {
         esp_sleep_wakeup_cause_t raw;

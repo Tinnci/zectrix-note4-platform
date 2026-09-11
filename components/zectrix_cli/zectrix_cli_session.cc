@@ -28,6 +28,8 @@ const char* ExecuteError(ExecuteStatus status) {
         case ExecuteStatus::kUnavailable: return "temporarily unavailable";
         case ExecuteStatus::kBusy: return "command busy";
         case ExecuteStatus::kTimeout: return "owner request timed out";
+        case ExecuteStatus::kDenied: return "confirmation denied or expired";
+        case ExecuteStatus::kUnknownOutcome: return "outcome unknown; inspect device before retrying";
         case ExecuteStatus::kPending: break;
         case ExecuteStatus::kBinary: break;
         case ExecuteStatus::kOk: break;
@@ -108,13 +110,17 @@ void CliSession::OnDisconnected() { Reset(); }
 void CliSession::ProcessByte(uint8_t value) {
     // Cancellation takes precedence even in a partial ANSI escape sequence.
     if (value == 0x03) {
-        executor_.Cancel();
+        const auto cancelled = executor_.CancelStatus();
         command_active_ = false;
         escape_state_ = EscapeState::kNone;
         previous_was_cr_ = false;
         ClearLine();
         history_offset_ = 0;
         Write("^C\r\n");
+        if (cancelled == ExecuteStatus::kUnknownOutcome) {
+            Write(ExecuteError(cancelled));
+            Write("\r\n");
+        }
         Write(kPrompt);
         return;
     }
@@ -255,6 +261,7 @@ void CliSession::SubmitLine() {
         FinishExecution(execute, output);
         return;
     } else if (parse != ParseStatus::kEmpty) {
+        executor_.Cancel();
         Write("error: ");
         Write(ParseError(parse));
         Write("\r\n");

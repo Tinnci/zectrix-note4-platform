@@ -5,6 +5,8 @@
 #include <utility>
 
 #include "esp_log.h"
+#include "esp_system.h"
+#include <cstdlib>
 #include "sdkconfig.h"
 #include "zectrix_board.h"
 #include "zectrix_boot_esp.h"
@@ -60,6 +62,7 @@ private:
 }  // namespace
 
 struct Platform::Impl {
+    const ServiceRegistry* services = nullptr;
 #if CONFIG_ZECTRIX_ENABLE_UPDATE
     update::EspUpdateBackend update_backend;
     update::UpdateService update{update_backend};
@@ -188,7 +191,7 @@ struct Platform::Impl {
     ServiceBinding<cli::CliUsbService, Impl> maintenance_binding{
         *this, cli_usb, [](Impl& self) {
             self.maintenance = new (std::nothrow) PlatformDiagnostics(
-                *self.system, *self.display, *self.input, *self.time
+                *self.services, *self.system, *self.display, *self.input, *self.time
 #if CONFIG_ZECTRIX_ENABLE_USB_HOST
                 , &self.host_protocol
 #endif
@@ -206,6 +209,7 @@ struct Platform::Impl {
 #endif
 
     esp_err_t RegisterServices(ServiceRegistry& registry) {
+        services = &registry;
         esp_err_t err = registry.Register(boot_binding);
 #if CONFIG_ZECTRIX_ENABLE_UPDATE
         if (err == ESP_OK) err = registry.Register(update_binding);
@@ -274,10 +278,12 @@ void Platform::Poll() {
 #if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
     companion::ClockSample sample;
     if (impl_->connectivity && impl_->connectivity->TakeClockSample(&sample)) {
-        const esp_err_t calibrated = impl_->time->SetUnixTime(sample.unix_milliseconds, sample.utc_offset_seconds);
-        if (calibrated != ESP_OK) ESP_LOGW("time", "companion clock rejected: %s", esp_err_to_name(calibrated));
-        else ESP_LOGI("time", "companion clock applied; RTC saved=%d", impl_->time->Status().rtc_persisted);
+        impl_->time->ApplySample({sample.unix_milliseconds, impl_->time->MonotonicMicroseconds(),
+            sample.utc_offset_seconds, time::SyncSource::Companion, true});
     }
+    time::TimeSample network;
+    if (impl_->connectivity && impl_->connectivity->TakeNetworkClockSample(&network))
+        impl_->time->ApplySample(network);
 #endif
     impl_->time->Poll();
     PollMaintenance();
@@ -291,6 +297,34 @@ void Platform::PollMaintenance() {
 
 void Platform::StopMaintenance() {
     if (impl_ != nullptr) impl_->StopMaintenance();
+}
+
+void Platform::SetMaintenanceDelegate(cli::MaintenanceDelegate* delegate) {
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+    if (impl_ && impl_->maintenance) impl_->maintenance->SetDelegate(delegate);
+#else
+    (void)delegate;
+#endif
+}
+
+esp_err_t Platform::ResetUserData(bool factory) {
+    if (!initialized_) return ESP_ERR_INVALID_STATE;
+    StopMaintenance();
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+    if (impl_->connectivity && impl_->connectivity->Stop() != connectivity::ConnectivityResult::kOk)
+        return ESP_ERR_INVALID_STATE;
+#endif
+    const auto wiped = impl_->storage->WipeUserFiles();
+    if (wiped != ESP_OK && wiped != ESP_ERR_NOT_SUPPORTED) return wiped;
+    return factory ? impl_->storage->ResetSettings() : wiped;
+}
+
+[[noreturn]] void Platform::Reboot() {
+    StopMaintenance();
+    ReleaseServices();
+    initialized_ = false;
+    esp_restart();
+    std::abort();
 }
 
 [[noreturn]] void Platform::Shutdown() {

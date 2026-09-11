@@ -887,8 +887,18 @@ BleState BleLink::State() const {
 
 BleSnapshot BleLink::Snapshot() const {
     BleSnapshot snapshot{};
-    if (impl_ == nullptr || impl_->lock == nullptr) return snapshot;
-    xSemaphoreTake(impl_->lock, portMAX_DELAY);
+    ReadSnapshot(&snapshot, true);
+    return snapshot;
+}
+
+bool BleLink::TrySnapshot(BleSnapshot* snapshot) const { return ReadSnapshot(snapshot, false); }
+
+bool BleLink::ReadSnapshot(BleSnapshot* output, bool wait) const {
+    if (!output) return false;
+    *output = {};
+    if (!impl_ || !impl_->lock) return true;
+    if (xSemaphoreTake(impl_->lock, wait ? portMAX_DELAY : 0) != pdTRUE) return false;
+    auto& snapshot = *output;
     snapshot.state = impl_->state;
     snapshot.session_id = impl_->session_id;
     snapshot.local_pairing_active = impl_->pairing_requested ||
@@ -899,7 +909,7 @@ BleSnapshot BleLink::Snapshot() const {
     snapshot.bonded = impl_->bonded;
     snapshot.notifications_enabled = impl_->subscribed;
     xSemaphoreGive(impl_->lock);
-    return snapshot;
+    return true;
 }
 
 bool BleLink::TakePairingPasskey(uint32_t* passkey) {

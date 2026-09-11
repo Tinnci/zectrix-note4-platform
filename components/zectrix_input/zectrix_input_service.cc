@@ -49,6 +49,10 @@ void InputService::Drain() {
     if (board_ != nullptr) board_->DrainButtons();
 }
 
+TraceBatch InputService::ReadTrace(uint64_t cursor) const {
+    return board_ ? board_->ReadInputTrace(cursor) : TraceBatch{};
+}
+
 void InputService::SetWaitHook(WaitHook hook, void* context) {
     wait_hook_ = hook;
     wait_context_ = context;

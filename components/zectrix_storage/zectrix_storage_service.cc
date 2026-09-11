@@ -152,6 +152,24 @@ esp_err_t StorageService::Commit(esp_err_t operation_result) {
     return nvs_commit(impl_->handle);
 }
 
+esp_err_t StorageService::WipeUserFiles() {
+#if CONFIG_ZECTRIX_ENABLE_BOOK_STORAGE
+    const auto result = InitializeBooks();
+    return result == ESP_OK ? impl_->books->Wipe() : result;
+#else
+    return ESP_ERR_NOT_SUPPORTED;
+#endif
+}
+
+esp_err_t StorageService::ResetSettings() {
+    if (!IsInitialized()) return ESP_ERR_INVALID_STATE;
+    nvs_close(impl_->handle);
+    impl_->initialized = false;
+    impl_->handle = 0;
+    const auto stopped = nvs_flash_deinit();
+    return stopped == ESP_OK ? nvs_flash_erase() : stopped;
+}
+
 #if CONFIG_ZECTRIX_ENABLE_BOOK_STORAGE
 esp_err_t StorageService::InitializeBooks() {
     if (!IsInitialized()) return ESP_ERR_INVALID_STATE;

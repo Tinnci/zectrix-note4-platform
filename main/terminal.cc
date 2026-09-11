@@ -1,6 +1,7 @@
 #include "terminal_internal.h"
 
 #include <algorithm>
+#include <cstdio>
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -133,6 +134,14 @@ void TerminalApp::RunApplicationShell() {
         return;
     }
     sdk::ApplicationRuntime runtime(applications_.data(), applications_.size(), "launcher", *this);
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+    runtime_ = &runtime;
+    platform_.SetMaintenanceDelegate(this);
+    struct Unbind {
+        TerminalApp& owner;
+        ~Unbind() { owner.platform_.SetMaintenanceDelegate(nullptr); owner.runtime_ = nullptr; }
+    } unbind{*this};
+#endif
     if (!sdk::IsOk(runtime.Start())) return;
     // Retain the boot-evidence marker consumed by the maintenance smoke test.
     LogHeap("M3 runtime active");
@@ -161,6 +170,16 @@ void TerminalApp::RunApplicationShell() {
         const TickType_t timeout = busy ? TickType_t{1} : pdMS_TO_TICKS(250);
         const bool received = input_->Wait(&event, timeout);
         UpdateSystemStatus();
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+        if (maintenance_operation_ >= cli::ControlOperation::kReboot &&
+            time_->MonotonicMicroseconds() >= maintenance_ready_us_ &&
+            !(received && app::MapNavigation(event) == app::Navigation::Shutdown)) {
+            // This point is outside every SDK callback, including diagnostic waits.
+            executing_maintenance_ = true;
+            runtime.Stop();
+            break;
+        }
+#endif
         const sdk::Status result = received ? app::DispatchInputBurst(runtime, event,
             [this](sdk::InputEvent* pending) { return input_->Wait(pending, 0); }) : runtime.Idle();
         if (!sdk::IsOk(result)) {
@@ -173,8 +192,61 @@ void TerminalApp::RunApplicationShell() {
 }
 
 sdk::Status TerminalApp::Shutdown() {
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+    if (executing_maintenance_ && maintenance_operation_ != cli::ControlOperation::kSleep) {
+        if (maintenance_operation_ == cli::ControlOperation::kStorageWipe ||
+            maintenance_operation_ == cli::ControlOperation::kFactoryReset) {
+            const auto result = platform_.ResetUserData(maintenance_operation_ == cli::ControlOperation::kFactoryReset);
+            if (result != ESP_OK) ESP_LOGE(kTag, "user data reset incomplete: %s", esp_err_to_name(result));
+            else ESP_LOGI(kTag, "user data reset complete");
+        }
+        platform_.Reboot();
+    }
+#endif
     PowerOff();
 }
+
+#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+cli::ControlStatus TerminalApp::ScheduleMaintenance(cli::ControlOperation operation) {
+    if (!runtime_ || runtime_->state() != sdk::LifecycleState::Active ||
+        maintenance_operation_ >= cli::ControlOperation::kReboot) return cli::ControlStatus::kBusy;
+    if (operation < cli::ControlOperation::kReboot || operation > cli::ControlOperation::kFactoryReset)
+        return cli::ControlStatus::kInvalidArgument;
+    maintenance_operation_ = operation;
+    // Give the nonblocking USB writer a short opportunity to report acceptance.
+    // A transport failure still means unknown outcome, never permission to retry.
+    maintenance_ready_us_ = time_->MonotonicMicroseconds() + 1000000;
+    return cli::ControlStatus::kOk;
+}
+
+cli::ControlStatus TerminalApp::InspectApps(cli::ControlResult* result) {
+    if (!runtime_ || !result) return cli::ControlStatus::kUnavailable;
+    auto& a = result->apps;
+    static_assert(app::ApplicationCatalog::kCapacity == cli::AppInspection{}.entries.size());
+    a.count = static_cast<uint8_t>(applications_.size());
+    a.generation = runtime_->foreground_generation();
+    a.lifecycle = static_cast<uint8_t>(runtime_->state());
+    a.error = static_cast<uint8_t>(runtime_->last_error());
+    std::snprintf(a.foreground.data(), a.foreground.size(), "%s", runtime_->foreground_id().c_str());
+    for (std::size_t i = 0; i < a.count; ++i) {
+        std::snprintf(a.entries[i].id.data(), a.entries[i].id.size(), "%s", applications_.data()[i].id);
+        std::snprintf(a.entries[i].label.data(), a.entries[i].label.size(), "%s", applications_.data()[i].display_name);
+    }
+    auto& s = result->scenes;
+    s = guest_inspection_;
+    s.depth = scene_snapshot_.depth;
+    s.transitioning = scene_snapshot_.transitioning;
+    for (std::size_t i = 0; i < s.depth; ++i) s.scenes[i] = {scene_snapshot_.states[i], scene_snapshot_.stack[i]};
+    const auto views = ui_.InspectViews();
+    for (std::size_t i = 0; i < views.size(); ++i) {
+        const auto& v = views[i];
+        s.views[i] = {static_cast<int16_t>(v.bounds.x), static_cast<int16_t>(v.bounds.y),
+            static_cast<int16_t>(v.bounds.width), static_cast<int16_t>(v.bounds.height),
+            v.configured, v.enabled, v.dirty, v.quality};
+    }
+    return cli::ControlStatus::kOk;
+}
+#endif
 
 sdk::Status TerminalApp::RequestBack(sdk::ApplicationContext& context) {
     const auto submitted = context.RequestCommand(sdk::AppCommand::Back());

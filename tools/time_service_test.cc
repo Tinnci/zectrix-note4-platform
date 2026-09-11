@@ -293,6 +293,91 @@ void TestUnknownOffset(zectrix::storage::StorageService& storage) {
         assert(service->Now().source == ClockSource::Rtc && clock_writes == 0);
     }
 }
+
+void TestSourceArbitration(zectrix::storage::StorageService& storage) {
+    Reset();
+    ZectrixBoard board;
+    auto service = Attach(board);
+    service->Initialize(storage);
+    TimeSample https{1709179200000, monotonic_time, 0, SyncSource::HttpsDate, false};
+    assert(service->ApplySample(https) == SyncResult::ExcessiveStep);
+    TimeSample phone{https.unix_ms, monotonic_time, 28800, SyncSource::Companion, true};
+    assert(service->ApplySample(phone) == SyncResult::Applied);
+    assert(service->Status().rtc_persisted && service->Synchronization().source == SyncSource::Companion);
+    assert(service->Now().value.hour == 12);
+    const auto writes = board.rtc_writes;
+    assert(service->ApplySample(phone) == SyncResult::Unchanged && board.rtc_writes == writes);
+    assert(service->ApplySample(https) == SyncResult::LowerPriority);
+
+    assert(service->SetUnixTime(phone.unix_ms, 28800) == ESP_OK);
+    assert(service->Synchronization().source == SyncSource::Manual && service->Synchronization().correction_ms == 0);
+    phone.unix_ms += 10000;
+    assert(service->ApplySample(phone) == SyncResult::LowerPriority);
+    monotonic_time += kTimeAuthorityHoldUs;
+    https.received_us = monotonic_time - 2500000;
+    https.unix_ms = service->UnixSeconds() * 1000 + 10000;
+    assert(service->ApplySample(https) == SyncResult::Applied);
+    assert(system_clock.tv_sec == 1709179212 && system_clock.tv_usec == 500000);
+    assert(service->Status().utc_offset_seconds == 28800);
+    assert(service->Synchronization().correction_ms == 12500);
+    phone.received_us = monotonic_time;
+    phone.unix_ms = system_clock.tv_sec * 1000;
+    phone.utc_offset_seconds = -18000;
+    assert(service->ApplySample(phone) == SyncResult::Applied && service->Now().value.day == 28);
+
+    for (const auto received : {monotonic_time + 1, int64_t{-1}, monotonic_time - kTimeSampleLifetimeUs - 1}) {
+        phone.received_us = received;
+        assert(service->ApplySample(phone) == SyncResult::Stale);
+    }
+    phone.received_us = monotonic_time;
+    for (const auto ms : {INT64_MIN, INT64_MAX, int64_t{0}}) {
+        phone.unix_ms = ms;
+        assert(service->ApplySample(phone) == SyncResult::Invalid);
+    }
+    monotonic_time += kTimeAuthorityHoldUs;
+    https.received_us = monotonic_time;
+    https.unix_ms = service->UnixSeconds() * 1000 + 300001;
+    assert(service->ApplySample(https) == SyncResult::ExcessiveStep);
+    https.unix_ms = service->UnixSeconds() * 1000 - 300001;
+    assert(service->ApplySample(https) == SyncResult::ExcessiveStep);
+    https.unix_ms = service->UnixSeconds() * 1000;
+    https.has_offset = true;
+    assert(service->ApplySample(https) == SyncResult::ExcessiveStep);
+    https.has_offset = false;
+    clock_result = -1;
+    https.unix_ms += 10000;
+    assert(service->ApplySample(https) == SyncResult::Failed);
+    assert(service->Synchronization().source == SyncSource::Companion);
+
+    // UTC without timezone must not be overwritten by a subsequent RTC restore.
+    Reset();
+    SetRetainedDate(board, {2020, 1, 1, 3, 12, 0, 0});
+    service = Attach(board);
+    service->Initialize(storage);
+    TimeSample utc{1709179200000, monotonic_time, 0, SyncSource::Companion, false};
+    assert(service->ApplySample(utc) == SyncResult::Applied);
+    assert(!service->Status().utc_offset_known && !service->Status().persistence_pending);
+    const auto reads = board.rtc_reads;
+    monotonic_time += 120000000;
+    service->Poll();
+    assert(board.rtc_reads == reads && service->Now().value.year == 2024);
+    utc = {946634400000, monotonic_time, 50400, SyncSource::Companion, true};
+    assert(service->ApplySample(utc) == SyncResult::Applied && service->Now().value.year == 2000);
+    utc = {4102495199000, monotonic_time, -50400, SyncSource::Companion, true};
+    assert(service->ApplySample(utc) == SyncResult::Applied && service->Now().value.year == 2099);
+}
+
+void TestHttpDate() {
+    int64_t ms = 0;
+    const char* valid = "Thu, 29 Feb 2024 04:00:00 GMT";
+    assert(ParseHttpDate(valid, std::strlen(valid), &ms) && ms == 1709179200000);
+    for (const auto* value : {"Thu, 29 Feb 2023 04:00:00 GMT", "Fri, 29 Feb 2024 04:00:00 GMT",
+            "Thu, 29 Feb 2024 24:00:00 GMT", "Thu, 29 Feb 2024 04:00:60 GMT",
+            "Thu, 29 Feb 2024 04:00:00 UTC", "Thu, 29 Feb 2024 04:00:00 GMT ",
+            "Thu, 29 Xxx 2024 04:00:00 GMT", "Mon, 01 Jan 2100 00:00:00 GMT"})
+        assert(!ParseHttpDate(value, std::strlen(value), &ms));
+    assert(!ParseHttpDate(nullptr, 29, &ms) && !ParseHttpDate(valid, 29, nullptr));
+}
 }  // namespace
 
 int main() {
@@ -303,5 +388,7 @@ int main() {
     TestInterruptedCalibration(*storage);
     TestRecoveryAndTimers(*storage);
     TestUnknownOffset(*storage);
+    TestSourceArbitration(*storage);
+    TestHttpDate();
     delete storage;
 }

@@ -36,6 +36,8 @@ private:
     LogBuffer& logs_;
     SimulationOptions options_;
     ControlResult snapshot_;
+    input::InputTrace input_trace_;
+    int64_t unix_base_ms_ = 1709179200000;
     display::StateModel display_state_;
     Clock::time_point started_ = Clock::now();
     uint32_t log_sequence_ = 0;
