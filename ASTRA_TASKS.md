@@ -268,15 +268,47 @@ Each iteration picks the top unfinished task, implements production code, verifi
 
 - [ ] **D1.4: 维护终端指令集补全与系统级状态反射 (Maintenance CLI Completeness & System Reflection)**
   - **背景与愿景**：
-    - 针对前期治理遗留的维护终端指令缺口（如 GitHub Issue #44），进一步充实 USB Maintenance CLI 的只读与状态观测能力。
+    - 针对前期治理遗留的维护终端指令缺口（对标 GitHub Issue #44），进一步充实 USB Maintenance CLI 的只读与状态观测能力。
   - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
     1. *指令集覆盖与设计*：如何通过 ServiceRegistry 安全获取底层状态？例如：电源与电量状态（`power status`）、高精度时间与 RTC 读数（`time get`）、射频工作模式（`connectivity status`）、已注册微应用目录与前台栈（`app list` / `app current`）等；
     2. *并发安全与无阻塞原则*：在终端查询期间，如何确保不阻塞墨水屏主线程与 USB 数据通道，全链路坚持只读快照机制。
 
+- [ ] **D1.5: 系统故障注入、容灾自愈与长周期浸润可靠性 (Fault Injection, Self-Healing & Health Supervisor)**
+  - **背景与愿景**：
+    - 随身墨水屏设备面临异常掉电、外部射频突发干扰、NVS 损坏等复杂边缘场景，系统需具备工业级自诊断与自愈韧性（对标 GitHub Issue #56, #57）。
+  - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
+    1. *异常与断电模拟*：如何设计文件系统断电写坏、NVS 校验和失效、无线射频连续重试超时等故障注入测试？系统如何自主触发安全回滚或状态重置？
+    2. *硬件看门狗与死锁防御*：如何确保当第三方应用或前台场景发生长时间挂起时，硬件与软件看门狗能够平滑保护底座系统？
+    3. *长周期稳定性浸润（Soak Test）*：设计多场景长周期高频轮转测试，验证整机在无内存泄漏、无句柄耗尽前提下的长期运行可靠性。
+
 - [ ] **G1.2: 远端代码同步与 GitHub 状态治理闭环 (Remote Git Sync & GitHub Governance)**
   - **背景与愿景**：
-    - 本地主线已积累了包含 E1.8 与 E2.1 在内的高质量原子 Commit，需要将这一阶段性重大成果与远端 GitHub 保持同步，并治理关联的 GitHub Issues。
+    - 本地主线已积累了大量高质量原子 Commit（含 E1.8、E2.1 及后续成果），需要将这一阶段性重大成果与远端 GitHub 保持同步，并治理关联的 GitHub Issues。
   - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
     1. *远端分支对齐与 PR 治理*：检查本地与远端分支状态，审查 PR #54 或更新相关 PR，确保提交历史干净规范；
     2. *Issue 状态同步*：使用 `gh` CLI 审查并更新远端 GitHub Issue（特别是已由 E1.8 完整解决的 Issue #58 与关联 Milestone 13），更新验证记录；
     3. *阶段性版本固件打包准备*：准备 v1.2 阶段性 Release 资产（如 Full / Minimal 固件二进制与校验哈希）。
+
+- [ ] **E2.3: 极客应用分发与打包工具链探索 (`.zapp` Package Specification & CLI Toolchain)**
+  - **背景与愿景**：
+    - 在 E2.2 动态沙箱原型落地后，为第三方开发者提供友好的外部构建与单文件打包规范（对标 Flipper Zero `.fap` 与 Android `.apk` 思想）。
+  - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
+    1. *容器格式与元数据设计*：设计轻量自包含格式（如 `.zapp`），如何将 16x16 / 32x32 单色图标、应用名称、版本号、作者、权限声明、指令配额（Quota）与编译字节码打包为单一可交换二进制文件？
+    2. *极客命令行构建工具*：开发极简的打包与校验工具（使用 `bun` 或 `python`），支持开发者一键执行 `zapp build` 与 `zapp pack`；
+    3. *USB / Wi-Fi 传包协同*：与现有的 USB Manager 及 Web 传书通道无缝衔接，实现通过浏览器或命令行拖拽安装第三方应用。
+
+- [ ] **C2.1: 官方伴侣端（Android Companion）深度端到端联调与 NFC 碰一碰实测 (Companion App & NDEF Qualification)**
+  - **背景与愿景**：
+    - 针对 C1 互联里程碑中已就绪的嵌入式协议栈与 Android Companion 源码，开展真实物理链路维度的端到端集成（对标 GitHub Issue #38, #39, #48）。
+  - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
+    1. *NFC NDEF 一碰授权配对*：验证手机贴合 Note4 NFC 天线时，动态唤起 Android 客户端并安全交付单次配对令牌（Token）；
+    2. *双向持久化数据同步*：在真实 BLE 连接下，验证阅读进度流式回传、离线排队重发、手机端天气/时间校准同步；
+    3. *手机端传书与画报推送*：通过手机端伴侣应用一键推送电子书或待机画报至 Note4 存储分区。
+
+- [ ] **R2.1: Note4 生产级固件全量发布与用户使用手册 (Production Firmware Release Pipeline & User Handbook)**
+  - **背景与愿景**：
+    - 随着各项软硬件特性的全面成熟，Note4 平台具备了发布正式 Release 生产版本固件的条件。
+  - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
+    1. *多架构固件构建矩阵*：自动化输出 Full（全功能版）、Minimal（极限离线版）及特定微调版的最终 Release 固件包与 SHA256 校验列表；
+    2. *中英双语图文手册*：产出系统化、对极客与普通用户兼顾的《Note4 快速上手与极客指南》（含按键操作流、USB/Wi-Fi 传书教程、动态应用安装指南）；
+    3. *发布说明与版本里程碑收敛*：起草完整的 GitHub Release Note，收敛并关闭对应里程碑。
