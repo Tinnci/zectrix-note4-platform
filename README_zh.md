@@ -61,10 +61,30 @@
 重新编译或烧录固件；长按 OK 返回，长按 DOWN 关机。Full 默认启用，Minimal 可完整裁剪运行时。
 
 > [!IMPORTANT]
-> 本项目仅适用于黑白墨水屏版 ZECTRIX NOTE4，不适用于 NOTE4C。烧录本 Demo
+> 本项目仅适用于黑白墨水屏版 ZECTRIX NOTE4，不适用于 NOTE4C。烧录本固件
 > 会替换连接设备上现有的固件，执行烧录命令前请确认设备型号和准确串口。
 
-![脚印局刷动画预览](main/assets/snow_path_footprints_preview.png)
+## 界面与功能展示 (UI & Feature Showcase)
+
+Note4 平台具备算法级点阵排版引擎、模块化场景状态机以及原生中英双语界面支持。所有界面均基于 400x300 1-bit 单色墨水屏像素对齐渲染，兼顾低残影局部刷新与高对比度美学。
+
+| 场景与功能 | 简体中文界面 | English UI |
+| :--- | :---: | :---: |
+| **磁贴仪表盘主屏 (Home Dashboard)**<br>• 常驻 24px 顶部状态栏<br>• 阅读进度概览卡片与一键续读<br>• 快速应用导航磁贴 | ![Home ZH](docs/screenshots/home_zh.png) | ![Home EN](docs/screenshots/home_en.png) |
+| **流式电子书阅读 (Streamed E-Reader)**<br>• TXT 与 EPUB 原生轻量解析<br>• 算法级加粗/斜体/衬线排版<br>• CJK 字符智能避头尾与分页 | ![Reader ZH](docs/screenshots/reader_zh.png) | ![Reader EN](docs/screenshots/reader_en.png) |
+| **桌面待机画报 (Ambient Sleep Cover)**<br>• 日历日期与最新阅读进度仪表盘<br>• 灵感格言与微安级掉电休眠<br>• 支持仪表盘/风景画报/纯白留白 | ![Sleep ZH](docs/screenshots/sleep_dashboard_zh.png) | ![Sleep EN](docs/screenshots/sleep_dashboard_en.png) |
+| **局域网 Web 传书 (Local Web Transfer)**<br>• 浏览器拖拽上传 TXT/EPUB<br>• 临时便携热点或已有 Wi-Fi 局域网<br>• 传书结束无线射频自动断电 | ![Transfer ZH](docs/screenshots/book_transfer_zh.png) | ![Transfer EN](docs/screenshots/book_transfer_en.png) |
+| **随身极客工具箱 (Pocket Tools)**<br>• 静音番茄专注钟<br>• 1900–2199 离线万年历<br>• 防误触计数器与重置撤销 | ![Tools ZH](docs/screenshots/calendar_zh.png) | ![Tools EN](docs/screenshots/calendar_en.png) |
+
+### 状态栏微型图标系统 (E1.10)
+
+顶部 24px 状态栏全面采用去文本化纯点阵图形设计，划定绝对固定槽位，杜绝状态变迁时的邻近元素抖动：
+
+![状态栏多态微标全景](docs/screenshots/status_bar_icons.png)
+
+- **蓝牙 (BLE)**：经典卢恩符文（7×13）结合 5 态伴随微标（关闭 `\`、就绪/广播 `○`、已连接 `●`、数据传输 `⇅`、故障 `!`）。
+- **Wi-Fi**：对称双同心扇形信号弧（13×9）结合 5 态伴随微标。
+- **电池与电源**：20×10 点阵外壳，带 1px 防晕染内衬保护，内部采用 5 级阶梯充填（0%、20%、40%、60%、80%、100%），左侧伴随高优先级硬件状态微标（充电 `⚡`、充满 `✓`、外接电源 `🔌`、低电预警/故障 `!`、未装电池 `X`）。
 
 ## 硬件基线
 

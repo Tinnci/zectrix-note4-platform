@@ -106,7 +106,27 @@ script can be installed or removed separately.
 > device. Confirm the model and serial port before you flash. If you flash the
 > wrong device, you can lose its current firmware.
 
-![Footprint animation preview](main/assets/snow_path_footprints_preview.png)
+## UI and Feature Showcase
+
+The Note4 platform features an algorithmic typography engine, modular scene architecture, and native bilingual UI (English / 简体中文). All interfaces are rendered at 400x300 1-bit monochrome with pixel-aligned typography and responsive e-paper scheduling.
+
+| Screen / Feature | English UI | 简体中文 UI |
+| :--- | :---: | :---: |
+| **Home Dashboard**<br>• Persistent 24px status bar<br>• Reading overview & fast resume<br>• Fast application tiles | ![Home EN](docs/screenshots/home_en.png) | ![Home ZH](docs/screenshots/home_zh.png) |
+| **Streamed E-Reader**<br>• TXT & EPUB streaming<br>• Algorithmic styling (bold/italic)<br>• CJK line wrapping & pagination | ![Reader EN](docs/screenshots/reader_en.png) | ![Reader ZH](docs/screenshots/reader_zh.png) |
+| **Ambient Sleep Cover**<br>• Daily calendar & reading snapshot<br>• Microamp deep-sleep standby<br>• Landscape, dashboard, or blank | ![Sleep EN](docs/screenshots/sleep_dashboard_en.png) | ![Sleep ZH](docs/screenshots/sleep_dashboard_zh.png) |
+| **Local Web Transfer**<br>• Drag-and-drop TXT/EPUB upload<br>• AP hotspot or saved Wi-Fi station<br>• Auto-shutdown on complete | ![Transfer EN](docs/screenshots/book_transfer_en.png) | ![Transfer ZH](docs/screenshots/book_transfer_zh.png) |
+| **Pocket Tools & Calendar**<br>• Focus Pomodoro timer<br>• 1900–2199 Gregorian calendar<br>• Bounded tally counter | ![Tools EN](docs/screenshots/calendar_en.png) | ![Tools ZH](docs/screenshots/calendar_zh.png) |
+
+### Status Bar Micro-Icon System (E1.10)
+
+The 24px status bar employs 1-bit monochrome micro-icon masks with fixed slots:
+
+![Status Bar Micro-Icons](docs/screenshots/status_bar_icons.png)
+
+- **Bluetooth**: Nordic rune with 5-state marks (Off `\`, Ready `○`, Connected `●`, Active `⇅`, Warning `!`).
+- **Wi-Fi**: Dual-arc fan with 5-state marks.
+- **Battery**: 20x10 silhouette with 5 discrete fill cells (0–20%, 21–40%, 41–60%, 61–80%, 81–100%) and priority companion marks (Charging `⚡`, Full `✓`, External Plug `🔌`, Fault/Low `!`, Absent `X`).
 
 ## Hardware baseline
 
