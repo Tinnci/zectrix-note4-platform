@@ -6,13 +6,13 @@ build_dir="$repo_dir/build"
 clean_build=0
 profile=""
 
-usage() { printf 'Usage: %s [--clean] [--profile full|minimal]\n' "$0"; }
+usage() { printf 'Usage: %s [--clean] [--profile full|minimal|reader]\n' "$0"; }
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --clean) clean_build=1; shift ;;
         --profile)
             case "${2:-}" in
-                full|minimal) profile="$2"; shift 2 ;;
+                full|minimal|reader) profile="$2"; shift 2 ;;
                 *) usage >&2; exit 2 ;;
             esac ;;
         --help|-h) usage; exit 0 ;;

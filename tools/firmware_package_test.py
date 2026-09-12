@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import shlex
+import shutil
 import struct
 import tempfile
 import unittest
@@ -117,6 +118,96 @@ class FirmwarePackageTest(unittest.TestCase):
             self.run_package()
         with self.assertRaisesRegex(ValueError, "filename-safe"):
             package.package(self.full, self.minimal, "../unsafe", self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_matrix_collection_and_separate_library_initialization(self):
+        reader = self.root / "reader"
+        shutil.copytree(self.full, reader)
+        (self.full / "books.bin").write_bytes(b"\xff" * 0x400000)
+        self.write(self.full, "config/sdkconfig.json", {
+            "COMPILER_OPTIMIZATION_SIZE": True, "SPIFFS_OBJ_NAME_LEN": 96,
+            "ZECTRIX_ENABLE_READER": True, "ZECTRIX_ENABLE_WIFI": True,
+        })
+        self.write(reader, "config/sdkconfig.json", {
+            "COMPILER_OPTIMIZATION_SIZE": True, "ZECTRIX_ENABLE_READER": True,
+            "ZECTRIX_ENABLE_USB_HOST": True, "ZECTRIX_ENABLE_WIFI": False,
+        })
+        extras = self.root / "extras"
+        extras.mkdir()
+        (extras / "handbook.html").write_text("<h1>Note4</h1>")
+        version = "v1.2.0"
+        matrix = []
+        for profile, directory in (("full", self.full), ("minimal", self.minimal), ("reader", reader)):
+            output = self.root / f"download-{profile}"
+            package.package_profiles({profile: directory}, version, output,
+                                     library=profile == "full", extras=extras if profile == "full" else None)
+            matrix.append(output)
+        records = package.collect_packages(matrix, version, self.output)
+        self.assertEqual([record["profile"] for record in records], ["full", "minimal", "reader"])
+        self.assertEqual(records[2]["enabled_modules"], ["READER", "USB_HOST"])
+        self.assertTrue((self.output / "handbook.html").exists())
+        for record in records:
+            with zipfile.ZipFile(self.output / f"zectrix-note4-{version}-{record['profile']}.zip") as archive:
+                self.assertNotIn("books.bin", archive.namelist())
+        with zipfile.ZipFile(self.output / f"zectrix-note4-{version}-library-init.zip") as archive:
+            self.assertEqual(shlex.split(archive.read("flash_args").decode()), ["0x912000", "books.bin"])
+            self.assertEqual(archive.read("books.bin"), (self.full / "books.bin").read_bytes())
+            self.assertEqual(json.loads(archive.read("manifest.json"))["spiffs_object_name_length"], 96)
+            self.assertIn("replaces the entire books partition", archive.read("README.txt").decode())
+        for line in (self.output / "SHA256SUMS").read_text().splitlines():
+            digest, name = line.split("  ")
+            self.assertEqual(digest, package.checksum(self.output / name))
+
+    def test_failed_matrix_collection_and_library_do_not_publish(self):
+        matrix = self.root / "matrix"
+        package.package_profiles({"full": self.full}, "v1.2.0", matrix)
+        with self.assertRaisesRegex(ValueError, "duplicate matrix download"):
+            package.collect_packages([matrix, matrix], "v1.2.0", self.output)
+        self.assertFalse(self.output.exists())
+        with self.assertRaisesRegex(ValueError, "version does not match"):
+            package.collect_packages([matrix], "v1.2.1", self.output)
+        self.assertFalse(self.output.exists())
+        (matrix / "zectrix-note4-v1.2.0-full-app.bin").unlink()
+        with self.assertRaisesRegex(ValueError, "Missing artifact"):
+            package.collect_packages([matrix], "v1.2.0", self.output)
+        self.assertFalse(self.output.exists())
+        (self.full / "books.bin").write_bytes(b"incomplete")
+        with self.assertRaisesRegex(ValueError, "partition size"):
+            package.package_profiles({"full": self.full}, "v1.2.0", self.output, library=True)
+        self.assertFalse(self.output.exists())
+
+    def test_matrix_preserves_integrity_across_artifact_downloads(self):
+        matrix = self.root / "matrix"
+        package.package_profiles({"full": self.full}, "v1.2.0", matrix)
+        image = matrix / "zectrix-note4-v1.2.0-full-app.bin"
+        original = image.read_bytes()
+        image.write_bytes(original[:-1])
+        with self.assertRaisesRegex(ValueError, "checksum mismatch"):
+            package.collect_packages([matrix], "v1.2.0", self.output)
+        self.assertFalse(self.output.exists())
+        image.write_bytes(original)
+        (matrix / "unexpected.bin").write_bytes(b"stale download")
+        with self.assertRaisesRegex(ValueError, "complete download set"):
+            package.collect_packages([matrix], "v1.2.0", self.output)
+        self.assertFalse(self.output.exists())
+        (matrix / "unexpected.bin").unlink()
+        image.unlink()
+        image.symlink_to(self.full / "application.bin")
+        with self.assertRaisesRegex(ValueError, "outside the build directory"):
+            package.collect_packages([matrix], "v1.2.0", self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_matrix_rejects_escaped_or_duplicate_checksum_names(self):
+        matrix = self.root / "matrix"
+        package.package_profiles({"full": self.full}, "v1.2.0", matrix)
+        sums = matrix / "SHA256SUMS"
+        original = sums.read_text()
+        sums.write_text(original + original.splitlines()[0] + "\n")
+        with self.assertRaisesRegex(ValueError, "Duplicate download checksum"):
+            package.collect_packages([matrix], "v1.2.0", self.output)
+        sums.write_text("0" * 64 + "  ../escaped.bin\n")
+        with self.assertRaisesRegex(ValueError, "Invalid download checksum entry"):
+            package.collect_packages([matrix], "v1.2.0", self.output)
         self.assertFalse(self.output.exists())
 
 

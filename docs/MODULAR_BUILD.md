@@ -34,8 +34,22 @@ Wi-Fi. Keep the existing NimBLE peripheral and HTTPS validation settings from
 
 ## Build an offline reader
 
-Activate the qualified ESP-IDF environment, then build with a separate config
-so existing developer settings are preserved:
+The committed `reader` release profile keeps the bilingual reader, USB library
+management/maintenance and firmware writing, and excludes radios, Lua and
+Pocket Tools. It uses `build-reader` and preserves the developer's saved config:
+
+```bash
+source tools/activate-dev-env.sh
+bash tools/build-firmware.sh --profile reader
+```
+
+`bash tools/device-smoke-test.sh --profile reader` optionally checks its boot
+on a connected Note4. Full, Reader and Minimal use the same OTA/content layout;
+switching profiles does not initialize or erase the library. See
+[Releasing](RELEASING.md) for their common download pipeline.
+
+For a custom offline configuration, activate the qualified ESP-IDF environment
+and use a separate build/config path:
 
 ```bash
 source tools/activate-dev-env.sh
