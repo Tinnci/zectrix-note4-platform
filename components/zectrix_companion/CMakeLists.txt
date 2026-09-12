@@ -4,6 +4,7 @@ idf_component_register(
         "zectrix_companion_protocol.cc"
         "zectrix_connectivity_policy.cc"
         "zectrix_enrollment_ndef.cc"
+        "zectrix_enrollment_publisher.cc"
         "zectrix_pairing_bootstrap.cc"
         "zectrix_resource_gateway.cc"
         "zectrix_sync_engine.cc"

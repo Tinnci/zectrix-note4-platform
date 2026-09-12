@@ -21,6 +21,7 @@
 #include "zectrix_companion_identity.h"
 #include "zectrix_companion_protocol.h"
 #include "zectrix_clock_sync.h"
+#include "zectrix_enrollment_publisher.h"
 #include "zectrix_nfc_service.h"
 #include "zectrix_pairing_bootstrap.h"
 #include "zectrix_power_service.h"
@@ -156,6 +157,7 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
     EspBootstrapClock bootstrap_clock;
     EspBootstrapRandom bootstrap_random;
     std::unique_ptr<companion::PairingBootstrap> bootstrap;
+    companion::EnrollmentPublisher enrollment_publisher;
     std::atomic<bool> initialized{false};
     bool initialization_started = false;
     std::atomic<bool> stop_session_task{false};
@@ -277,6 +279,7 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
                 }
             } else result = ConnectivityResult::kUnavailable;
             if (bootstrap != nullptr) bootstrap->Cancel();
+            enrollment_publisher.Reset();
             if (resource_client != nullptr) {
                 resource_client->PhoneDisconnected(MonotonicMilliseconds());
             }
@@ -286,18 +289,7 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
         xSemaphoreGive(clear_bonds_done);
     }
 
-    bool PrepareNfcEnrollment() {
-        if (nfc_service == nullptr || bootstrap == nullptr) return false;
-        const nfc::NfcSnapshot nfc = nfc_service->Snapshot();
-        if (nfc.field_present) return false;
-        if (bootstrap->Prepare() != companion::BootstrapStatus::kOk) {
-            return false;
-        }
-        companion::BootstrapMaterial material{};
-        if (bootstrap->Material(&material) != companion::BootstrapStatus::kOk) {
-            return false;
-        }
-
+    bool WriteNfcEnrollment(const companion::BootstrapMaterial& material) {
         nfc::EnrollmentNdefInfo info{};
         std::array<uint8_t, 6> mac{};
         if (esp_read_mac(mac.data(), ESP_MAC_BT) == ESP_OK) {
@@ -320,18 +312,10 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
     void MaybeRefreshNfcEnrollment() {
         if (nfc_service == nullptr || bootstrap == nullptr) return;
         const nfc::NfcSnapshot nfc = nfc_service->Snapshot();
-        if (nfc.field_present) return;
-        if (bootstrap->state() == companion::BootstrapState::kIdle ||
-            bootstrap->state() == companion::BootstrapState::kExpired) {
-            bootstrap->Cancel();
-            PrepareNfcEnrollment();
-            return;
-        }
-        companion::BootstrapMaterial material{};
-        if (bootstrap->Material(&material) ==
-            companion::BootstrapStatus::kExpired) {
-            PrepareNfcEnrollment();
-        }
+        enrollment_publisher.Refresh(*bootstrap, bootstrap_clock.MonotonicMilliseconds(),
+            nfc.field_present, [this](const companion::BootstrapMaterial& material) {
+                return WriteNfcEnrollment(material);
+            });
     }
 
     bool PollNfcFieldAndOpenPairing() {
@@ -339,7 +323,7 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
         nfc::NfcFieldEvent event{};
         if (!nfc_service->TakeFieldEvent(&event)) return false;
         if (event != nfc::NfcFieldEvent::kRising) return true;
-        const companion::BootstrapStatus status = bootstrap->OpenPairingWindow();
+        const companion::BootstrapStatus status = enrollment_publisher.OpenPairingWindow(*bootstrap);
         if (status != companion::BootstrapStatus::kOk) {
             ESP_LOGW(kTag, "event=nfc_pairing_window_rejected reason=%d",
                      static_cast<int>(status));
@@ -353,19 +337,9 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
     }
 
     uint32_t NextSessionWakeMs() const {
-        if (bootstrap == nullptr) return UINT32_MAX;
-        const uint32_t now = bootstrap_clock.MonotonicMilliseconds();
-        const companion::BootstrapState state = bootstrap->state();
-        uint32_t deadline = 0;
-        if (state == companion::BootstrapState::kPrepared) {
-            deadline = bootstrap->token_expires_at_ms();
-        } else if (state == companion::BootstrapState::kPairingWindowOpen) {
-            deadline = std::min(bootstrap->token_expires_at_ms(),
-                                bootstrap->pairing_window_expires_at_ms());
-        } else {
-            return UINT32_MAX;
-        }
-        return static_cast<int32_t>(deadline - now) > 0 ? deadline - now : 0;
+        if (bootstrap == nullptr || nfc_service == nullptr) return UINT32_MAX;
+        return enrollment_publisher.NextWakeMs(*bootstrap,
+            bootstrap_clock.MonotonicMilliseconds(), nfc_service->Snapshot().field_present);
     }
 
     struct HelloAckDecision {
@@ -788,8 +762,8 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
         while (!self->stop_session_task.load()) {
             self->ProcessPendingCommands();
             self->ble.ProcessAdvertiseRequest();
-            self->MaybeRefreshNfcEnrollment();
             self->PollNfcFieldAndOpenPairing();
+            self->MaybeRefreshNfcEnrollment();
 
             BleSnapshot link = self->ble.Snapshot();
             if (link.session_id != self->protocol_session_id.load()) {
@@ -1101,7 +1075,7 @@ ConnectivityResult ConnectivityService::Initialize() {
         if (impl_->bootstrap != nullptr) {
             impl_->nfc_service->SetEventCallback(
                 [impl = impl_]() { impl->ble.WakeSessionWaiter(); });
-            impl_->PrepareNfcEnrollment();
+            impl_->MaybeRefreshNfcEnrollment();
         } else {
             ESP_LOGW(kTag, "event=bootstrap_allocation_failed");
         }
