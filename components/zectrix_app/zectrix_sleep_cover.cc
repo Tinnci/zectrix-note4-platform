@@ -3,7 +3,7 @@
 namespace zectrix::app {
 
 SleepCoverStyle SleepCoverSetting(uint32_t value) {
-    return value <= static_cast<uint32_t>(SleepCoverStyle::Blank)
+    return value <= static_cast<uint32_t>(SleepCoverStyle::Picture)
         ? static_cast<SleepCoverStyle>(value) : kSleepCoverDefault;
 }
 
@@ -41,7 +41,8 @@ const SleepQuote& QuoteForSleep(const SleepCalendar& calendar) {
 sdk::Status SleepCoverController::Start(SleepCoverStyle selected) {
     if (scenes_.depth()) return sdk::Status::InvalidState;
     const auto result = scenes_.Start(0);
-    scenes_.SetState(0, static_cast<uint32_t>(SleepCoverSetting(static_cast<uint32_t>(selected))));
+    const auto normalized = static_cast<uint32_t>(SleepCoverSetting(static_cast<uint32_t>(selected)));
+    scenes_.SetState(0, normalized < kSleepCoverStyleCount ? normalized : 0);
     action_ = SleepCoverDecision::None;
     dirty_ = quality_ = false;
     return result;
@@ -70,7 +71,7 @@ bool SleepCoverController::Event(void* context, const SceneEvent& event) {
     } else if (self.scene() == SleepCoverScene::Choose &&
                (key == Navigation::Previous || key == Navigation::Next)) {
         const auto selected = self.scenes_.state(0);
-        self.scenes_.SetState(0, MoveSelection(selected, 3, key));
+        self.scenes_.SetState(0, MoveSelection(selected, kSleepCoverStyleCount, key));
         self.dirty_ = true;
     } else return false;
     return true;

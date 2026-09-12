@@ -21,7 +21,7 @@ namespace zectrix::app { class MicroAppController; }
 namespace zectrix::app { class UtilityController; }
 namespace zectrix::app { class SettingsController; }
 namespace zectrix::app { class LauncherController; struct ReadingOverview; }
-namespace zectrix::app { struct SleepCoverSnapshot; enum class SleepCoverStyle : uint8_t; }
+namespace zectrix::app { struct SleepCoverSnapshot; struct SleepCoverImage; enum class SleepCoverStyle : uint8_t; }
 namespace zectrix::connectivity { struct BookTransferSnapshot; }
 namespace zectrix::host { struct Snapshot; }
 
@@ -89,7 +89,7 @@ public:
                                   const char* status, bool full_refresh);
     esp_err_t ShowSleepCover(const zectrix::app::SleepCoverSnapshot& snapshot,
                               zectrix::app::SleepCoverStyle style, bool preview = false,
-                              bool preference_saved = true);
+                              bool preference_saved = true, const zectrix::app::SleepCoverImage* picture = nullptr);
 
     ZectrixCanvas& canvas() { return canvas_; }
     auto InspectViews() const { return viewports_.Inspect(); }

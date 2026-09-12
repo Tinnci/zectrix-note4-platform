@@ -44,7 +44,7 @@ private:
     uint32_t expected_ = 0, received_ = 0;
     BookWriteResult error_ = BookWriteResult::Ok;
     package::Validator package_;
-    bool packaged_ = false;
+    bool packaged_ = false, cover_ = false;
 };
 
 class BookFile {
@@ -84,6 +84,9 @@ public:
     esp_err_t OpenManaged(const char* name, BookFile* file);
     BookWriteResult BeginUpload(const char* name, uint32_t size, BookUpload* upload);
     BookWriteResult Remove(const char* name);
+    esp_err_t OpenCover(BookFile* file, bool managed = false);
+    BookWriteResult BeginCoverUpload(uint32_t size, BookUpload* upload);
+    BookWriteResult RemoveCover();
     // Explicit maintenance only. Readers, uploads and management must exit first.
     esp_err_t Wipe();
 
@@ -91,16 +94,17 @@ private:
     friend class BookFile;
     friend class BookUpload;
     friend class AppStorage;
+    enum class Content : uint8_t { Book, App, Cover };
     void ReaderClosed();
     static bool ValidAppName(const char* name);
     esp_err_t ListImpl(BookEntry* entries, std::size_t capacity, std::size_t* count,
                        bool* truncated, const char* after, bool application, bool reverse = false);
-    esp_err_t OpenImpl(const char* name, BookFile* file, bool managed, bool application = false);
-    BookWriteResult UploadImpl(const char* name, uint32_t size, BookUpload* upload, bool application);
-    BookWriteResult RemoveImpl(const char* name, bool application);
+    esp_err_t OpenImpl(const char* name, BookFile* file, bool managed, Content kind = Content::Book);
+    BookWriteResult UploadImpl(const char* name, uint32_t size, BookUpload* upload, Content kind);
+    BookWriteResult RemoveImpl(const char* name, Content kind);
     esp_err_t ReadSpace(BookSpace* space);
     esp_err_t Mount();
-    bool Path(const char* name, char* output, std::size_t capacity, bool application = false) const;
+    bool Path(const char* name, char* output, std::size_t capacity, Content kind = Content::Book) const;
     std::array<char, 192> root_{};
     bool mounted_ = false;
     bool managing_ = false, uploading_ = false;

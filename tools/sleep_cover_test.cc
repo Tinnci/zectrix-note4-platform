@@ -12,6 +12,7 @@ int main() {
     assert(SleepCoverSetting(0) == SleepCoverStyle::Dashboard);
     assert(SleepCoverSetting(1) == SleepCoverStyle::Quote);
     assert(SleepCoverSetting(2) == SleepCoverStyle::Blank);
+    assert(SleepCoverSetting(3) == SleepCoverStyle::Picture);
     assert(SleepCoverSetting(UINT32_MAX) == kSleepCoverDefault);
 
     time::ClockSnapshot clock{{2026, 9, 9, 6, 20, 27, 0}, time::ClockSource::Rtc};
@@ -46,7 +47,7 @@ int main() {
     constexpr sdk::InputEvent down{sdk::Button::Down, sdk::InputAction::Click};
     constexpr sdk::InputEvent up{sdk::Button::Up, sdk::InputAction::Click};
     constexpr sdk::InputEvent back{sdk::Button::Ok, sdk::InputAction::LongPress};
-    for (const auto style : {SleepCoverStyle::Dashboard, SleepCoverStyle::Quote, SleepCoverStyle::Blank}) {
+    for (const auto style : {SleepCoverStyle::Dashboard, SleepCoverStyle::Quote, SleepCoverStyle::Blank, SleepCoverStyle::Picture}) {
         SleepCoverController controller;
         assert(sdk::IsOk(controller.Start(style)) && controller.selected() == style);
         assert(controller.Tick() == SleepCoverDecision::None);

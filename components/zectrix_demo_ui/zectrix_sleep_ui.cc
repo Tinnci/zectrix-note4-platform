@@ -96,29 +96,29 @@ void DrawReading(ZectrixCanvas& canvas, const SleepCoverSnapshot& snapshot) {
 esp_err_t ZectrixDemoUi::ShowSleepCoverMenu(SleepCoverStyle selected, SleepCoverStyle active,
                                            const char* status, bool full_refresh) {
     DrawFrame(Tr(Text::SleepCover), Tr(Text::NavCoverPreview));
-    const char* styles[] = {Tr(Text::DailyDashboard), Tr(Text::QuietLandscape), Tr(Text::BlankPrivacy)};
+    const char* styles[] = {Tr(Text::DailyDashboard), Tr(Text::QuietLandscape), Tr(Text::BlankPrivacy), Tr(Text::PhonePicture)};
     const char* details[] = {
 #if CONFIG_ZECTRIX_ENABLE_READER
         Tr(Text::DashboardDetail),
 #else
         Tr(Text::CalendarDetail),
 #endif
-        Tr(Text::LandscapeDetail), Tr(Text::BlankDetail)};
-    for (unsigned i = 0; i < std::size(styles); ++i) {
+        Tr(Text::LandscapeDetail), Tr(Text::BlankDetail), Tr(Text::PhonePictureDetail)};
+    for (unsigned i = 0; i < kSleepCoverStyleCount; ++i) {
         const bool chosen = i == static_cast<unsigned>(selected);
-        const int y = 54 + i * 62;
-        canvas_.FillRect(16, y, 368, 30, chosen);
-        canvas_.Rect(16, y, 368, 30);
-        canvas_.Text(28, y + 7, styles[i], 1, chosen);
-        if (i == static_cast<unsigned>(active)) canvas_.Text(354, y + 7, "*", 1, chosen);
-        canvas_.Text(16, y + 34, details[i]);
+        const int y = kSleepCoverStyleCount == 4 ? 54 + i * 47 : 54 + i * 62;
+        canvas_.FillRect(16, y, 368, 26, chosen);
+        canvas_.Rect(16, y, 368, 26);
+        canvas_.Text(28, y + 5, styles[i], 1, chosen);
+        if (i == static_cast<unsigned>(active)) canvas_.Text(354, y + 5, "*", 1, chosen);
+        canvas_.Text(16, y + 28, details[i]);
     }
     canvas_.Text(16, 246, status ? status : Tr(Text::SetCoverHint));
     return full_refresh ? RefreshFull() : RefreshAuto();
 }
 
 esp_err_t ZectrixDemoUi::ShowSleepCover(const SleepCoverSnapshot& snapshot, SleepCoverStyle style,
-                                       bool preview, bool preference_saved) {
+                                       bool preview, bool preference_saved, const SleepCoverImage* picture) {
     if (display_ == nullptr) return ESP_ERR_INVALID_STATE;
     style = SleepCoverSetting(static_cast<uint32_t>(style));
     if (!preview && style == SleepCoverStyle::Blank) return ClearDisplay();
@@ -137,6 +137,20 @@ esp_err_t ZectrixDemoUi::ShowSleepCover(const SleepCoverSnapshot& snapshot, Slee
     }
     const auto calendar = CalendarForSleep(snapshot.clock);
     const auto& quote = QuoteForSleep(calendar);
+    bool picture_loaded = false;
+    if (style == SleepCoverStyle::Picture && picture && picture->read) {
+        std::array<uint8_t, ZectrixCanvas::kStride> row{};
+        picture_loaded = true;
+        for (int y = preview ? 24 : 0; y < 273; ++y) {
+            if (!picture->read(picture->context, y * row.size(), row.data(), row.size())) {
+                picture_loaded = false;
+                break;
+            }
+            // PBM uses one for black; the display canvas uses one for white.
+            for (std::size_t x = 0; x < row.size(); ++x) canvas_.data()[y * row.size() + x] = ~row[x];
+        }
+        if (!picture_loaded) return ESP_FAIL;
+    }
     if (style == SleepCoverStyle::Dashboard) {
         DrawCalendar(canvas_, snapshot, calendar);
 #if CONFIG_ZECTRIX_ENABLE_READER
@@ -144,7 +158,7 @@ esp_err_t ZectrixDemoUi::ShowSleepCover(const SleepCoverSnapshot& snapshot, Slee
 #endif
         char line[96];
         std::snprintf(line, sizeof(line), "%s %s", Tr(quote.first_text, quote.first), Tr(quote.second_text, quote.second));
-        zectrix::ui::DrawUtf8Line(canvas_, 16, 246, line, 368);
+        zectrix::ui::DrawUtf8Line(canvas_, 16, 246, snapshot.weather_line[0] ? snapshot.weather_line.data() : line, 368);
     } else if (style == SleepCoverStyle::Quote) {
         canvas_.TextCentered(31, Tr(Text::BetweenPages));
         DrawLandscape(canvas_, calendar.day_number);
@@ -156,6 +170,12 @@ esp_err_t ZectrixDemoUi::ShowSleepCover(const SleepCoverSnapshot& snapshot, Slee
             value.year, value.month, value.day, value.hour, value.minute);
         else std::snprintf(date, sizeof(date), "%s", Tr(Text::TimeNotSet));
         canvas_.TextCentered(246, date);
+    } else if (style == SleepCoverStyle::Picture) {
+        if (!picture_loaded) {
+            canvas_.TextCentered(92, Tr(Text::PhonePicture));
+            canvas_.TextCentered(133, Tr(Text::PhonePictureMissing));
+            canvas_.TextCentered(174, Tr(Text::PhonePictureDetail));
+        }
     } else {
         canvas_.TextCentered(101, Tr(Text::QuietBlankScreen));
         canvas_.TextCentered(152, Tr(Text::ReadingStaysPrivate));

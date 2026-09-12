@@ -35,7 +35,7 @@ Status UsbSettings::Set(Setting key, uint32_t value) {
             if (value > 1) return Status::Invalid;
             return storage_.SetUInt32(kAutoShowcaseSettingKey, value) == ESP_OK ? Status::Ok : Status::IoError;
         case Setting::SleepCover:
-            if (value > static_cast<uint32_t>(SleepCoverStyle::Blank)) return Status::Invalid;
+            if (value > static_cast<uint32_t>(SleepCoverStyle::Picture)) return Status::Invalid;
             cover_ = static_cast<SleepCoverStyle>(value);
             cover_saved_ = storage_.SetUInt32(kSleepCoverSettingKey, value) == ESP_OK;
             return cover_saved_ ? Status::Ok : Status::NotSaved;

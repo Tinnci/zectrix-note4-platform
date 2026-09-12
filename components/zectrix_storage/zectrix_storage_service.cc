@@ -186,6 +186,11 @@ esp_err_t StorageService::OpenBook(const char* name, BookFile* file) {
     return result == ESP_OK ? impl_->books->Open(name, file) : result;
 }
 
+esp_err_t StorageService::OpenCover(BookFile* file) {
+    const auto result = InitializeBooks();
+    return result == ESP_OK ? impl_->books->OpenCover(file) : result;
+}
+
 esp_err_t StorageService::BeginBookManagement(BookStorage** books) {
     if (!books) return ESP_ERR_INVALID_ARG;
     *books = nullptr;

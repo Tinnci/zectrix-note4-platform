@@ -25,12 +25,12 @@ public:
                    bool* more, const char* cursor = nullptr, bool previous = false) {
         return storage_.ListImpl(entries, capacity, count, more, cursor, true, previous);
     }
-    esp_err_t Open(const char* name, BookFile* file) { return storage_.OpenImpl(name, file, false, true); }
-    esp_err_t OpenManaged(const char* name, BookFile* file) { return storage_.OpenImpl(name, file, true, true); }
+    esp_err_t Open(const char* name, BookFile* file) { return storage_.OpenImpl(name, file, false, BookStorage::Content::App); }
+    esp_err_t OpenManaged(const char* name, BookFile* file) { return storage_.OpenImpl(name, file, true, BookStorage::Content::App); }
     BookWriteResult BeginUpload(const char* name, uint32_t size, BookUpload* upload) {
-        return storage_.UploadImpl(name, size, upload, true);
+        return storage_.UploadImpl(name, size, upload, BookStorage::Content::App);
     }
-    BookWriteResult Remove(const char* name) { return storage_.RemoveImpl(name, true); }
+    BookWriteResult Remove(const char* name) { return storage_.RemoveImpl(name, BookStorage::Content::App); }
 
 private:
     BookStorage& storage_;

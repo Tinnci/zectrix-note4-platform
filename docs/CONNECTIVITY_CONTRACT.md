@@ -150,6 +150,26 @@ Android decodes this payload for its progress card and assigns outgoing revision
 from its existing durable queue when the user selects Resume this position.
 See [READER.md](READER.md) for file identity, coalescing, limits and installation.
 
+### Companion weather snapshot
+
+C2.1 uses application durable key `0x0102`; it does not change protocol 1.0 or
+add a background task. The version-1 value is 14–61 bytes: version `1` (u8), WMO
+weather code (u8), Celsius temperature in tenths (signed i16), observation Unix
+seconds (u32), expiry Unix seconds (u32), UTF-8 place length (u8, 1–48), then the
+place bytes. All integers are little-endian. Temperatures are bounded to
+−100.0…100.0 °C. Codes are 0–3, 45/48, 51/53/55/56/57, 61/63/65/66/67,
+71/73/75/77, 80/81/82, 85/86 and 95/96/99. Text must be valid UTF-8 without C0
+or DEL characters. Dates lie within 2000–2099, with expiry after observation
+and at most six hours later; midnight 2100 is allowed only as the expiry.
+
+Android explicitly requests a selected city's current Open-Meteo observation
+and persists it through the per-device queue before reporting it saved. The
+foreground dashboard validates the received application payload and its age;
+it tolerates at most five minutes of future skew and never changes the clock.
+No fresh value means the normal daily line. Weather remains a static snapshot
+on the final sleep surface. Clock samples continue through the authorized,
+current-session Hello mailbox and are never replayed as durable weather state.
+
 ### Cursor exchange and durable replay
 
 Hello and accepted, authorized HelloAck require TLV type `4` (sync cursors).
@@ -583,3 +603,32 @@ Hardware evidence:
 - direct Wi-Fi success and fallback decisions;
 - standby, sleep, wake, shutdown and reconnect soak;
 - Note4 power, latency, heap and stack-watermark measurements.
+
+## C2.1 Android handoff and local content integration
+
+The Android manifest resolves `application/vnd.zectrix.enroll.v1`; onCreate and
+onNewIntent share one decoder. It removes NDEF extras after consumption and
+rejects multiple matching records. A supported enrollment target has a valid
+public/static-random peripheral address and a nonzero device ID. CDM approval
+and all existing BLE/protocol authorization remain necessary. A pending proof
+is copied, target-bound, monotonic-expiring and one-use; it is never persisted,
+logged or sent to the first unrelated association. The preferred approved MAC
+is separate from that ephemeral material and selects the offline queue.
+
+Bulk content uses the screen-code-protected HTTP session, outside the small
+BLE durable-value limit. Existing `/api/books` responses add optional boolean
+`cover_supported`. `/api/cover` accepts PUT of the fixed 15,011-byte PBM, GET of
+the committed file and DELETE after an explicit user choice. It shares books'
+management lease, `.upload.part`, sync/commit, timeout and cancellation. No
+implicit overwrite or install retry is added. Older companions ignore the new
+capability; the new companion hides picture operations if the capability is
+absent. [SLEEP_COVER.md](SLEEP_COVER.md) defines the retained surface.
+
+The phone HTTP client accepts literal private IPv4 destinations, refuses URL
+credentials/query/fragment/base paths and redirects, and bounds request sources
+and responses. Matching Wi-Fi routes support a Note4 hotspot without Internet
+validation, while public weather/resource requests retain their HTTPS owners.
+Android 37 local-network permission and legacy Bluetooth permissions are
+explicit. Android 26–30 uses manual connect; the presence API is called only on
+Android 31 and later. Physical phone outcomes remain in
+[the C2.1 qualification record](qualification/C2.1-COMPANION-INTEGRATION.md).

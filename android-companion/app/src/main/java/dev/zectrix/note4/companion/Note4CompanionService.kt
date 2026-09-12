@@ -11,26 +11,26 @@ class Note4CompanionService : CompanionDeviceService() {
     @Suppress("DEPRECATION")
     override fun onDeviceAppeared(associationInfo: AssociationInfo) {
         Log.i("ZectrixCompanion", "event=presence state=appeared api=modern")
-        CompanionConnectionManager.connectApproved(
-            this, associationInfo.deviceMacAddress.toString(), automatic = true,
-        )
+        associationInfo.deviceMacAddress?.toString()?.let {
+            CompanionConnectionManager.deviceAppeared(this, it)
+        }
     }
 
     @Suppress("DEPRECATION")
     override fun onDeviceAppeared(address: String) {
         Log.i("ZectrixCompanion", "event=presence state=appeared api=legacy")
-        CompanionConnectionManager.connectApproved(this, address, automatic = true)
+        CompanionConnectionManager.deviceAppeared(this, address)
     }
 
     @Suppress("DEPRECATION")
     override fun onDeviceDisappeared(associationInfo: AssociationInfo) {
-        CompanionConnectionManager.stop()
+        associationInfo.deviceMacAddress?.toString()?.let(CompanionConnectionManager::deviceDisappeared)
         Log.i("ZectrixCompanion", "event=presence state=disappeared api=modern")
     }
 
     @Suppress("DEPRECATION")
     override fun onDeviceDisappeared(address: String) {
-        CompanionConnectionManager.stop()
+        CompanionConnectionManager.deviceDisappeared(address)
         Log.i("ZectrixCompanion", "event=presence state=disappeared api=legacy")
     }
 }
