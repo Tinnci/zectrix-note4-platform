@@ -122,7 +122,7 @@ def package_profile(directory, profile, version, output):
             f"Firmware descriptor: {metadata['firmware_version']}\n\n"
             "Initial/recovery install: extract the complete archive, enter its directory,\n"
             "install uv (https://docs.astral.sh/uv/), then run:\n"
-            "  uvx --from esptool==4.11.0 esptool.py --chip esp32s3 --port PORT write_flash @flash_args\n\n"
+            '  uvx --from esptool==4.11.0 esptool.py --chip esp32s3 --port PORT write_flash "@flash_args"\n\n'
             "Use a data cable and replace PORT with the device's serial port.\n"
             "This rewrites the factory image, bootloader, partition table and OTA selection.\n"
             "It preserves NVS and books only on the same installed partition layout.\n"
@@ -164,7 +164,7 @@ def package_library(directory, version, output, record):
             "An ordinary firmware update does not need this image.\n"
             "注意：此操作替换全部书籍、应用和手机画报。仅用于新书库或备份后的主动重置。\n"
             "普通固件升级不要刷入此文件。先安装同版 Full 或 Reader 固件，再解压本文件并执行：\n\n"
-            "  uvx --from esptool==4.11.0 esptool.py --chip esp32s3 --port PORT write_flash @flash_args\n\n"
+            '  uvx --from esptool==4.11.0 esptool.py --chip esp32s3 --port PORT write_flash "@flash_args"\n\n'
             "Replace PORT with your Note4 serial port. / 将 PORT 替换为 Note4 串口。\n"
             "This writes the bundled reading guide. It preserves firmware and NVS settings.\n"
         ))

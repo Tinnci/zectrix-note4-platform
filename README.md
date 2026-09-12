@@ -119,7 +119,7 @@ The Note4 platform features an algorithmic typography engine, modular scene arch
 | :--- | :---: | :---: |
 | **Home Dashboard**<br>• Persistent 24px status bar<br>• Reading overview & fast resume<br>• Fast application tiles | ![Home EN](docs/screenshots/home_en.png) | ![Home ZH](docs/screenshots/home_zh.png) |
 | **Streamed E-Reader**<br>• TXT & EPUB streaming<br>• Algorithmic styling (bold/italic)<br>• CJK line wrapping & pagination | ![Reader EN](docs/screenshots/reader_en.png) | ![Reader ZH](docs/screenshots/reader_zh.png) |
-| **Ambient Sleep Cover**<br>• Daily calendar & reading snapshot<br>• Microamp deep-sleep standby<br>• Landscape, dashboard, or blank | ![Sleep EN](docs/screenshots/sleep_dashboard_en.png) | ![Sleep ZH](docs/screenshots/sleep_dashboard_zh.png) |
+| **Ambient Sleep Cover**<br>• Daily calendar & reading snapshot<br>• Static image retained during sleep<br>• Landscape, dashboard, or blank | ![Sleep EN](docs/screenshots/sleep_dashboard_en.png) | ![Sleep ZH](docs/screenshots/sleep_dashboard_zh.png) |
 | **Local Web Transfer**<br>• Drag-and-drop TXT/EPUB upload<br>• AP hotspot or saved Wi-Fi station<br>• Auto-shutdown on complete | ![Transfer EN](docs/screenshots/book_transfer_en.png) | ![Transfer ZH](docs/screenshots/book_transfer_zh.png) |
 | **Pocket Tools & Calendar**<br>• Focus Pomodoro timer<br>• 1900–2199 Gregorian calendar<br>• Bounded tally counter | ![Tools EN](docs/screenshots/calendar_en.png) | ![Tools ZH](docs/screenshots/calendar_zh.png) |
 

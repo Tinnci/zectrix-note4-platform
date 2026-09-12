@@ -46,7 +46,8 @@ requires its own backup and migration; preservation is not guaranteed there.
 1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/).
    A firmware download does not require ESP-IDF or a C++ compiler.
 2. Verify each downloaded file against its line in `SHA256SUMS`. On macOS,
-   use `shasum -a 256 FILE`; on Linux, use `sha256sum FILE`. If you downloaded
+   use `shasum -a 256 FILE`; on Linux, use `sha256sum FILE`; in Windows
+   PowerShell, use `Get-FileHash -Algorithm SHA256 FILE`. If you downloaded
    the entire set into one directory, run `shasum -a 256 -c SHA256SUMS`
    (macOS) or `sha256sum -c SHA256SUMS` (Linux). Stop if a checksum differs.
 3. Extract the host-tools ZIP. From its directory, connect a USB **data** cable
@@ -57,9 +58,10 @@ requires its own backup and migration; preservation is not guaranteed there.
    terminal there and replace `PORT` in this command:
 
 ```bash
-uvx --from esptool==4.11.0 esptool.py --chip esp32s3 --port PORT write_flash @flash_args
+uvx --from esptool==4.11.0 esptool.py --chip esp32s3 --port PORT write_flash "@flash_args"
 ```
 
+Keep the quotes around `"@flash_args"`, including in Windows PowerShell.
 Keep power connected until the write finishes. The device restarts into Home.
 Keep all extracted files together: `flash_args` refers to their relative paths.
 It writes the bootloader, partition table, factory application and OTA selection
@@ -69,7 +71,7 @@ as separate segments. Do not combine their gaps into an erase-filled image.
 
 If Full/Reader reports unavailable content storage on a new installation,
 extract the **library-init** ZIP into a separate directory and run the same
-`write_flash @flash_args` command from that directory.
+`write_flash "@flash_args"` command from that directory.
 
 **Library initialization replaces every book, installed app and phone picture.**
 It installs the bundled reading guide and preserves firmware and NVS settings.
@@ -237,11 +239,8 @@ directory, then open USB Manager:
 ```bash
 uv run --script tools/usb-manager.py --port PORT app-put Calculator.zapp
 uv run --script tools/usb-manager.py --port PORT app-list
-uv run --script tools/usb-manager.py --port PORT app-get Calculator.zapp saved-calculator.zapp
-uv run --script tools/usb-manager.py --port PORT app-remove Calculator.zapp
 ```
 
-The last command removes that app; use it only when removal is intended.
 Alternatively, drop `.zapp`/`.lua` files onto the Send Books web page. Leave
 transfer mode, open **Home → Apps**, select an app and press OK. Hold OK exits
 to the list. An app fault opens a recoverable error page; OK returns to the list.
@@ -251,6 +250,15 @@ Flashcards uses UP/DOWN to change cards and OK to show/hide the answer.
 App state lasts until exit. Apps have bounded memory/instruction budgets and
 declared display/input access; they have no file, radio or native-driver API.
 Package author/version labels are self-declared, not signatures.
+
+To export an installed app, reopen USB Manager and run:
+
+```bash
+uv run --script tools/usb-manager.py --port PORT app-get Calculator.zapp saved-calculator.zapp
+```
+
+When you want to uninstall it, run
+`uv run --script tools/usb-manager.py --port PORT app-remove Calculator.zapp`.
 
 To make a package from a checkout:
 

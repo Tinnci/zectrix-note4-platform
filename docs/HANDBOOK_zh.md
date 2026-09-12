@@ -41,7 +41,8 @@ Note4 的 NVS 设置与内容分区。较早版本、厂商固件或其他分区
 1. 安装 [uv](https://docs.astral.sh/uv/getting-started/installation/)。
    使用发布包不需要安装 ESP-IDF 或 C++ 编译器。
 2. 对照 `SHA256SUMS` 检查下载文件。macOS 执行 `shasum -a 256 文件名`，
-   Linux 执行 `sha256sum 文件名`，与列表中对应的一行比较。如果已将全部发布
+   Linux 执行 `sha256sum 文件名`，Windows PowerShell 执行
+   `Get-FileHash -Algorithm SHA256 文件名`，与列表中对应的一行比较。如果已将全部发布
    文件放在同一目录，可以执行 `shasum -a 256 -c SHA256SUMS`（macOS）或
    `sha256sum -c SHA256SUMS`（Linux）。校验不一致时重新下载，不要继续刷写。
 3. 解压 host-tools，用 USB **数据线**连接设备，在工具目录执行
@@ -51,9 +52,10 @@ Note4 的 NVS 设置与内容分区。较早版本、厂商固件或其他分区
    替换为实际串口后执行：
 
 ```bash
-uvx --from esptool==4.11.0 esptool.py --chip esp32s3 --port PORT write_flash @flash_args
+uvx --from esptool==4.11.0 esptool.py --chip esp32s3 --port PORT write_flash "@flash_args"
 ```
 
+保留 `"@flash_args"` 两侧的引号，Windows PowerShell 中也按此写法执行。
 写入完成前保持供电。设备重启后进入主页。不要移动解压后的单个文件，`flash_args`
 使用它们的相对路径。它分段写入引导程序、分区表、出厂应用与 OTA 选择信息；
 不要把段间空隙填充成擦除数据后合并刷入。
@@ -61,7 +63,7 @@ uvx --from esptool==4.11.0 esptool.py --chip esp32s3 --port PORT write_flash @fl
 ### 只在新书库上初始化一次
 
 首次安装 Full/Reader 后，如果提示内容存储不可用，将 **library-init** ZIP
-解压到另一个目录，在该目录执行相同的 `write_flash @flash_args` 命令。
+解压到另一个目录，在该目录执行相同的 `write_flash "@flash_args"` 命令。
 
 **书库初始化会替换全部书籍、已安装应用和手机画报。** 它装入随包阅读指南，保留
 固件与 NVS 设置。普通升级、Full 与 Reader 之间切换均不需要此步骤；Minimal
@@ -209,11 +211,9 @@ USB 管理，然后执行：
 ```bash
 uv run --script tools/usb-manager.py --port PORT app-put Calculator.zapp
 uv run --script tools/usb-manager.py --port PORT app-list
-uv run --script tools/usb-manager.py --port PORT app-get Calculator.zapp saved-calculator.zapp
-uv run --script tools/usb-manager.py --port PORT app-remove Calculator.zapp
 ```
 
-最后一条命令会移除应用，仅在确实要删除时执行。也可以在局域网传书网页中拖入
+也可以在局域网传书网页中拖入
 `.zapp`/`.lua`。退出传输界面，进入**主页 → 应用**，选中后按 OK 启动。
 长按 OK 回到列表；应用出错时会显示可恢复的错误页，按 OK 返回列表。
 
@@ -221,6 +221,15 @@ Calculator 用 UP/DOWN 修改数字或运算符，OK 前进；Flashcards 用 UP/
 切卡，OK 显示或隐藏答案。应用状态在退出时结束。运行时限制内存、指令配额
 和已声明的显示/输入权限，不提供文件、无线或原生驱动 API。包中的作者与
 版本是自行声明的元数据，不是数字签名。
+
+需要导出已安装应用时，重新打开 USB 管理并执行：
+
+```bash
+uv run --script tools/usb-manager.py --port PORT app-get Calculator.zapp saved-calculator.zapp
+```
+
+需要卸载时，再执行
+`uv run --script tools/usb-manager.py --port PORT app-remove Calculator.zapp`。
 
 从源码目录制作应用包：
 
