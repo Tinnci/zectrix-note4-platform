@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include "sdkconfig.h"
 
 #include "zectrix_power_service.h"
 #include "zectrix_scene_manager.h"
@@ -9,10 +10,20 @@
 
 namespace zectrix::app {
 
-enum class SleepCoverStyle : uint8_t { Dashboard, Quote, Blank };
+enum class SleepCoverStyle : uint8_t { Dashboard, Quote, Blank, Picture };
+#if CONFIG_ZECTRIX_ENABLE_BOOK_STORAGE
+constexpr unsigned kSleepCoverStyleCount = 4;
+#else
+constexpr unsigned kSleepCoverStyleCount = 3;
+#endif
 constexpr char kSleepCoverSettingKey[] = "ui.sleep_cover";
 constexpr SleepCoverStyle kSleepCoverDefault = SleepCoverStyle::Dashboard;
 SleepCoverStyle SleepCoverSetting(uint32_t value);
+
+struct SleepCoverImage {
+    void* context = nullptr;
+    bool (*read)(void* context, uint32_t offset, void* output, std::size_t size) = nullptr;
+};
 
 struct SleepCoverSnapshot {
     time::ClockSnapshot clock{};
@@ -23,6 +34,7 @@ struct SleepCoverSnapshot {
         uint16_t progress_per_mille = 0;
     } reading;
     bool has_reading = false;
+    std::array<char, 112> weather_line{};
 };
 
 struct SleepCalendar {

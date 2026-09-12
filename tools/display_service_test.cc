@@ -1957,6 +1957,44 @@ void TestSleepCoverComposition() {
     assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Quote) == ESP_OK);
     assert(std::memcmp(cover.data(), ui.canvas().data(), cover.size()) == 0);
 
+    struct PictureFixture {
+        std::array<uint8_t, 15000> bytes{};
+        std::size_t largest_read = 0;
+        bool fail = false;
+    } picture_fixture;
+    for (std::size_t i = 0; i < picture_fixture.bytes.size(); ++i) picture_fixture.bytes[i] = i % 50 < 25 ? 0xaa : 0x55;
+    const SleepCoverImage picture{&picture_fixture, [](void* context, uint32_t offset, void* output, std::size_t size) {
+        auto& fixture = *static_cast<PictureFixture*>(context);
+        assert(offset <= fixture.bytes.size() && size <= fixture.bytes.size() - offset);
+        fixture.largest_read = std::max(fixture.largest_read, size);
+        if (fixture.fail) return false;
+        std::memcpy(output, fixture.bytes.data() + offset, size);
+        return true;
+    }};
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Picture, true, true, &picture) == ESP_OK);
+    assert(picture_fixture.largest_read == 50);
+    for (std::size_t i = 24 * 50; i < 273 * 50; ++i)
+        assert(ui.canvas().data()[i] == static_cast<uint8_t>(~picture_fixture.bytes[i]));
+    SavePreview(ui.canvas(), "sleep-picture-preview");
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Picture, false, true, &picture) == ESP_OK);
+    for (std::size_t i = 0; i < 273 * 50; ++i)
+        assert(ui.canvas().data()[i] == static_cast<uint8_t>(~picture_fixture.bytes[i]));
+    SavePreview(ui.canvas(), "sleep-picture");
+    std::memcpy(cover.data(), ui.canvas().data(), cover.size());
+    ClearTraffic();
+    ++status.minute;
+    ui.UpdateStatus(status);
+    assert(ui.RefreshPending() == ESP_OK && packets.empty());
+    assert(std::memcmp(cover.data(), ui.canvas().data(), cover.size()) == 0);
+    picture_fixture.fail = true;
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Picture, true, true, &picture) == ESP_FAIL);
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Picture, true) == ESP_OK);
+    SavePreview(ui.canvas(), "sleep-picture-missing");
+    std::strcpy(snapshot.weather_line.data(), "Shanghai 18.5 C Cloudy");
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard) == ESP_OK);
+    SavePreview(ui.canvas(), "sleep-weather");
+    snapshot.weather_line.fill(0);
+
     snapshot.reading.progress_per_mille = UINT16_MAX;
     assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard) == ESP_OK);
     assert(!Bit(ui.canvas().data(), 50, 382, 231));

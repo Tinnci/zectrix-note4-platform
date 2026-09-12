@@ -39,6 +39,7 @@ public:
     esp_err_t ListBooks(BookEntry* entries, std::size_t capacity,
                         std::size_t* count, bool* truncated);
     esp_err_t OpenBook(const char* name, BookFile* file);
+    esp_err_t OpenCover(BookFile* file);
     esp_err_t BeginBookManagement(BookStorage** books);
     esp_err_t ListApps(BookEntry* entries, std::size_t capacity, std::size_t* count,
                       bool* more, const char* cursor = nullptr, bool previous = false);

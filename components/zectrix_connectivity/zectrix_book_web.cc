@@ -1,6 +1,7 @@
 #include "zectrix_book_web.h"
 #include "zectrix_book_storage.h"
 #include "zectrix_app_storage.h"
+#include "zectrix_cover_image.h"
 #include "sdkconfig.h"
 
 #include <algorithm>
@@ -111,6 +112,15 @@ bool BookWebApi::Handle(BookHttpRequest& request) {
         finish_ = true;
         return sent;
     }
+    if (std::strcmp(request.uri, "/api/cover") == 0) {
+        if (request.method == BookHttpMethod::Put)
+            return Upload(request, storage::cover::kName, ContentKind::Cover);
+        if (request.content_length) return Reply(request, 400, "{\"error\":\"Unexpected request body.\"}");
+        if (request.method == BookHttpMethod::Get)
+            return Download(request, storage::cover::kName, ContentKind::Cover);
+        if (request.method == BookHttpMethod::Delete) return WriteResult(request, books_->RemoveCover());
+        return Reply(request, 405, "{\"error\":\"Method not allowed.\"}");
+    }
     const bool application = std::strncmp(request.uri, "/api/apps", 9) == 0;
     if (application && !kAppsEnabled) return Reply(request, 503, "{\"error\":\"Apps are disabled in this firmware.\"}");
     const char* base = application ? "/api/apps" : "/api/books";
@@ -128,8 +138,8 @@ bool BookWebApi::Handle(BookHttpRequest& request) {
     if (*tail != '/') return Reply(request, 404, "{\"error\":\"Page not found.\"}");
     if (!DecodeName(tail + 1, name, application)) return WriteResult(request, storage::BookWriteResult::Invalid, application);
     switch (request.method) {
-        case BookHttpMethod::Put: return Upload(request, name, application);
-        case BookHttpMethod::Get: return Download(request, name, application);
+        case BookHttpMethod::Put: return Upload(request, name, application ? ContentKind::App : ContentKind::Book);
+        case BookHttpMethod::Get: return Download(request, name, application ? ContentKind::App : ContentKind::Book);
         case BookHttpMethod::Delete:
             if (request.content_length) return Reply(request, 400, "{\"error\":\"Unexpected request body.\"}");
             return WriteResult(request, application ? storage::AppStorage(*books_).Remove(name) : books_->Remove(name), application);
@@ -154,17 +164,21 @@ bool BookWebApi::List(BookHttpRequest& request, const char* after, bool applicat
             i ? "," : "", name, static_cast<unsigned long>(books[i].size));
         if (!request.Write(buffer, size)) return false;
     }
-    const int size = std::snprintf(buffer, sizeof(buffer), "],\"more\":%s,\"available\":%lu,\"total\":%lu,\"used\":%lu,\"apps_supported\":%s}",
+    const int size = std::snprintf(buffer, sizeof(buffer), "],\"more\":%s,\"available\":%lu,\"total\":%lu,\"used\":%lu,\"apps_supported\":%s,\"cover_supported\":true}",
         more ? "true" : "false", static_cast<unsigned long>(space.available),
         static_cast<unsigned long>(space.total), static_cast<unsigned long>(space.used), kAppsEnabled ? "true" : "false");
     return request.Write(buffer, size) && request.Finish();
 }
 
-bool BookWebApi::Upload(BookHttpRequest& request, const char* name, bool application) {
-    const auto limit = application ? storage::AppStorage::SizeLimit(name) : 0x400000;
+bool BookWebApi::Upload(BookHttpRequest& request, const char* name, ContentKind kind) {
+    const bool application = kind == ContentKind::App;
+    const bool cover = kind == ContentKind::Cover;
+    const auto limit = cover ? storage::cover::kFileSize : application ? storage::AppStorage::SizeLimit(name) : 0x400000;
+    if (cover && request.content_length != storage::cover::kFileSize)
+        return Reply(request, 400, "{\"error\":\"Use a 400 x 300 binary PBM from the companion app.\"}");
     if (request.content_length > limit) return Reply(request, 413, "{\"error\":\"This file exceeds its Note4 size limit.\"}");
     storage::BookUpload upload;
-    const auto begun = application ? storage::AppStorage(*books_).BeginUpload(name, request.content_length, &upload)
+    const auto begun = cover ? books_->BeginCoverUpload(request.content_length, &upload) : application ? storage::AppStorage(*books_).BeginUpload(name, request.content_length, &upload)
                                    : books_->BeginUpload(name, request.content_length, &upload);
     if (begun != storage::BookWriteResult::Ok) return WriteResult(request, begun, application);
     received_ = 0;
@@ -179,7 +193,11 @@ bool BookWebApi::Upload(BookHttpRequest& request, const char* name, bool applica
         if (read <= 0 || static_cast<std::size_t>(read) > capacity)
             return Reply(request, 408, "{\"error\":\"Upload interrupted. Please send the file again.\"}");
         const auto written = upload.Write(buffer.data(), read);
-        if (written != storage::BookWriteResult::Ok) return WriteResult(request, written, application);
+        if (written != storage::BookWriteResult::Ok) {
+            if (cover && written == storage::BookWriteResult::Invalid)
+                return Reply(request, 400, "{\"error\":\"Invalid PBM picture. Prepare it again in the companion app.\"}");
+            return WriteResult(request, written, application);
+        }
         remaining -= read;
         received_ = request.content_length - remaining;
         activity_ = request.NowMs();
@@ -194,9 +212,10 @@ bool BookWebApi::Upload(BookHttpRequest& request, const char* name, bool applica
     return WriteResult(request, committed, application);
 }
 
-bool BookWebApi::Download(BookHttpRequest& request, const char* name, bool application) {
+bool BookWebApi::Download(BookHttpRequest& request, const char* name, ContentKind kind) {
+    const bool application = kind == ContentKind::App;
     storage::BookFile file;
-    const auto opened = application ? storage::AppStorage(*books_).OpenManaged(name, &file) : books_->OpenManaged(name, &file);
+    const auto opened = kind == ContentKind::Cover ? books_->OpenCover(&file, true) : application ? storage::AppStorage(*books_).OpenManaged(name, &file) : books_->OpenManaged(name, &file);
     if (opened != ESP_OK) return WriteResult(request, opened == ESP_ERR_NOT_FOUND ?
         storage::BookWriteResult::NotFound : storage::BookWriteResult::IoError);
     if (!request.Respond(200, "application/octet-stream", name)) return false;

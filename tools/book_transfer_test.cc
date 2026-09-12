@@ -1,5 +1,6 @@
 #include "zectrix_book_web.h"
 #include "zectrix_book_storage.h"
+#include "zectrix_cover_image.h"
 #include "zectrix_book_transfer_controller.h"
 #include "sdkconfig.h"
 
@@ -322,6 +323,54 @@ void AppHttp(const fs::path& root, const fs::path& package) {
     assert(books.EndManagement() == ESP_OK);
 }
 
+void CoverHttp(const fs::path& root) {
+    fs::create_directory(root);
+    storage::BookStorage books(root.c_str());
+    assert(books.BeginManagement() == ESP_OK);
+    BookWebApi api;
+    api.Start(books, kCode, 0);
+    const std::string image = std::string(storage::cover::kHeader) + std::string(storage::cover::kPixelBytes, '\x55');
+    for (const auto size : {std::size_t(0), image.size() - 1, image.size() + 1}) {
+        Request wrong_size(BookHttpMethod::Put, "/api/cover", std::string(size, 'x'));
+        Check(api, wrong_size, 400);
+        assert(!fs::exists(root / ".upload.part"));
+    }
+    Request malformed(BookHttpMethod::Put, "/api/cover", image);
+    malformed.body[1] = '6'; malformed.fragment = 1;
+    Check(api, malformed, 400);
+    assert(!fs::exists(root / ".cover-phone.pbm") && !fs::exists(root / ".upload.part"));
+    Request cancelled(BookHttpMethod::Put, "/api/cover", image);
+    cancelled.fail_after = 1024;
+    Check(api, cancelled, 408);
+    assert(!fs::exists(root / ".cover-phone.pbm") && !fs::exists(root / ".upload.part"));
+    Request upload(BookHttpMethod::Put, "/api/cover", image);
+    upload.fragment = 1;
+    Check(api, upload, 200);
+    assert(Contents(root / ".cover-phone.pbm") == image);
+    Request duplicate(BookHttpMethod::Put, "/api/cover", image);
+    Check(api, duplicate, 409);
+    assert(Contents(root / ".cover-phone.pbm") == image);
+    Request download(BookHttpMethod::Get, "/api/cover");
+    Check(api, download, 200);
+    assert(download.output == image);
+    Request listing(BookHttpMethod::Get, "/api/books");
+    Check(api, listing, 200);
+    assert(listing.output.find("phone.pbm") == std::string::npos);
+    storage::BookFile picture;
+    assert(books.OpenCover(&picture) == ESP_ERR_INVALID_STATE);
+    assert(books.EndManagement() == ESP_OK);
+    assert(books.OpenCover(&picture) == ESP_OK && picture.Size() == image.size());
+    assert(books.BeginManagement() == ESP_ERR_INVALID_STATE);
+    picture.Close();
+    std::ofstream(root / ".cover-phone.pbm", std::ios::binary | std::ios::trunc) << "bad image";
+    assert(books.OpenCover(&picture) == ESP_ERR_INVALID_SIZE);
+    assert(books.BeginManagement() == ESP_OK);
+    Request remove(BookHttpMethod::Delete, "/api/cover");
+    Check(api, remove, 200);
+    assert(!fs::exists(root / ".cover-phone.pbm"));
+    assert(books.EndManagement() == ESP_OK);
+}
+
 void Scenes() {
     using namespace app;
     constexpr sdk::InputEvent ok{sdk::Button::Ok, sdk::InputAction::Click};
@@ -373,6 +422,7 @@ int main(int argc, char** argv) {
     StorageAndHttp(fs::path(argv[1]) / "http");
     Lifecycle(fs::path(argv[1]) / "lifecycle");
     Scenes();
+    CoverHttp(fs::path(argv[1]) / "covers");
     AppHttp(fs::path(argv[1]) / "apps", argv[2]);
     std::puts("PASS: streamed web books, interrupted uploads, storage isolation, radio lifecycle and transfer scenes.");
 }

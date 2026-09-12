@@ -31,9 +31,10 @@ public:
     BookTransferProgress Progress() const;
 
 private:
+    enum class ContentKind : uint8_t { Book, App, Cover };
     bool List(BookHttpRequest& request, const char* after, bool application);
-    bool Upload(BookHttpRequest& request, const char* name, bool application);
-    bool Download(BookHttpRequest& request, const char* name, bool application);
+    bool Upload(BookHttpRequest& request, const char* name, ContentKind kind);
+    bool Download(BookHttpRequest& request, const char* name, ContentKind kind);
     bool Expired(const BookHttpRequest& request, uint32_t started) const;
     storage::BookStorage* books_ = nullptr;
     std::array<char, 20> authorization_{};

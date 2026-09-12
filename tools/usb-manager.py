@@ -28,7 +28,7 @@ STATUS = ("ok", "invalid request", "busy", "unavailable", "file already exists",
           "applied for this boot, but not saved; repeat the setting to retry")
 SETTINGS = {"language": 0, "auto_showcase": 1, "sleep_cover": 2}
 VALUES = {"language": {"en": 0, "zh-CN": 1}, "auto_showcase": {"off": 0, "on": 1},
-          "sleep_cover": {"dashboard": 0, "landscape": 1, "blank": 2}}
+          "sleep_cover": {"dashboard": 0, "landscape": 1, "blank": 2, "picture": 3}}
 
 
 class HostError(Exception):
@@ -298,7 +298,7 @@ def main():
         settings = commands.add_parser(command)
         settings.add_argument("key", choices=SETTINGS)
         if command == "set-setting":
-            settings.add_argument("value", help="en/zh-CN, off/on, or dashboard/landscape/blank")
+            settings.add_argument("value", help="en/zh-CN, off/on, or dashboard/landscape/blank/picture")
     args = parser.parse_args()
     if args.command == "ports":
         for port in list_ports.comports():

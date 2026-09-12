@@ -1,5 +1,6 @@
 #include "zectrix_book_storage.h"
 #include "zectrix_app_storage.h"
+#include "zectrix_cover_image.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -156,9 +157,12 @@ esp_err_t BookStorage::Mount() {
     return ESP_OK;
 }
 
-bool BookStorage::Path(const char* name, char* output, std::size_t capacity, bool application) const {
-    if (!(application ? ValidAppName(name) : BookName(name))) return false;
-    const int size = std::snprintf(output, capacity, "%s/%s%s", root_.data(), application ? kAppPrefix : "", name);
+bool BookStorage::Path(const char* name, char* output, std::size_t capacity, Content kind) const {
+    const bool application = kind == Content::App;
+    if (kind == Content::Cover ? (!name || std::strcmp(name, cover::kName) != 0) :
+        !(application ? ValidAppName(name) : BookName(name))) return false;
+    const int size = std::snprintf(output, capacity, "%s/%s%s", root_.data(),
+        application ? kAppPrefix : kind == Content::Cover ? ".cover-" : "", name);
     return size > 0 && static_cast<std::size_t>(size) < capacity;
 }
 
@@ -191,7 +195,7 @@ esp_err_t BookStorage::ListImpl(BookEntry* entries, std::size_t capacity,
         if (after && (reverse ? std::strcmp(name, after) >= 0 : std::strcmp(name, after) <= 0)) continue;
         char path[256];
         struct stat info{};
-        if (!Path(name, path, sizeof(path), application) || !FileInfo(path, &info) ||
+        if (!Path(name, path, sizeof(path), application ? Content::App : Content::Book) || !FileInfo(path, &info) ||
             !S_ISREG(info.st_mode) || info.st_size < 0 ||
             static_cast<uint64_t>(info.st_size) > LONG_MAX ||
             static_cast<uint64_t>(info.st_size) > UINT32_MAX) continue;
@@ -221,13 +225,18 @@ esp_err_t BookStorage::OpenManaged(const char* name, BookFile* file) {
     return OpenImpl(name, file, true);
 }
 
-esp_err_t BookStorage::OpenImpl(const char* name, BookFile* file, bool managed, bool application) {
+esp_err_t BookStorage::OpenCover(BookFile* file, bool managed) {
+    return OpenImpl(cover::kName, file, managed, Content::Cover);
+}
+
+esp_err_t BookStorage::OpenImpl(const char* name, BookFile* file, bool managed, Content kind) {
+    const bool application = kind == Content::App;
     if (!file) return ESP_ERR_INVALID_ARG;
     file->Close();
     std::lock_guard<std::mutex> lock(mutex_);
     if (managing_ != managed || uploading_) return ESP_ERR_INVALID_STATE;
     char path[256];
-    if (!Path(name, path, sizeof(path), application)) return ESP_ERR_INVALID_ARG;
+    if (!Path(name, path, sizeof(path), kind)) return ESP_ERR_INVALID_ARG;
     const auto mounted = Mount();
     if (mounted != ESP_OK) return mounted;
     struct stat info{};
@@ -239,6 +248,14 @@ esp_err_t BookStorage::OpenImpl(const char* name, BookFile* file, bool managed, 
         return ESP_ERR_INVALID_SIZE;
     auto* opened = std::fopen(path, "rb");
     if (!opened) return ESP_FAIL;
+    if (kind == Content::Cover) {
+        char header[cover::kHeaderSize];
+        if (info.st_size != cover::kFileSize || std::fread(header, 1, sizeof(header), opened) != sizeof(header) ||
+            std::memcmp(header, cover::kHeader, sizeof(header)) != 0 || std::fseek(opened, 0, SEEK_SET) != 0) {
+            std::fclose(opened);
+            return ESP_ERR_INVALID_SIZE;
+        }
+    }
     file->file_ = opened;
     file->size_ = static_cast<uint32_t>(info.st_size);
     file->owner_ = this;
@@ -298,15 +315,22 @@ esp_err_t BookStorage::Space(BookSpace* space) {
 }
 
 BookWriteResult BookStorage::BeginUpload(const char* name, uint32_t size, BookUpload* upload) {
-    return UploadImpl(name, size, upload, false);
+    return UploadImpl(name, size, upload, Content::Book);
 }
 
-BookWriteResult BookStorage::UploadImpl(const char* name, uint32_t size, BookUpload* upload, bool application) {
+BookWriteResult BookStorage::BeginCoverUpload(uint32_t size, BookUpload* upload) {
+    return UploadImpl(cover::kName, size, upload, Content::Cover);
+}
+
+BookWriteResult BookStorage::UploadImpl(const char* name, uint32_t size, BookUpload* upload, Content kind) {
+    const bool application = kind == Content::App;
+    if (kind == Content::Cover && size != cover::kFileSize) return BookWriteResult::Invalid;
     if (!upload || upload->owner_) return BookWriteResult::Busy;
     std::lock_guard<std::mutex> lock(mutex_);
     if (!managing_ || uploading_ || readers_) return BookWriteResult::Busy;
     if ((application && (!size || size > AppStorage::SizeLimit(name))) ||
-        !Path(name, upload->target_.data(), upload->target_.size(), application)) return BookWriteResult::Invalid;
+        !Path(name, upload->target_.data(), upload->target_.size(), kind)) return BookWriteResult::Invalid;
+    upload->cover_ = kind == Content::Cover;
     upload->packaged_ = application && AppStorage::Packaged(name);
     if (upload->packaged_ && size < package::kHeaderSize + 32 + 1) return BookWriteResult::Invalid;
     struct stat info{};
@@ -328,14 +352,16 @@ BookWriteResult BookStorage::UploadImpl(const char* name, uint32_t size, BookUpl
 }
 
 BookWriteResult BookStorage::Remove(const char* name) {
-    return RemoveImpl(name, false);
+    return RemoveImpl(name, Content::Book);
 }
 
-BookWriteResult BookStorage::RemoveImpl(const char* name, bool application) {
+BookWriteResult BookStorage::RemoveCover() { return RemoveImpl(cover::kName, Content::Cover); }
+
+BookWriteResult BookStorage::RemoveImpl(const char* name, Content kind) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!managing_ || uploading_ || readers_) return BookWriteResult::Busy;
     char path[256];
-    if (!Path(name, path, sizeof(path), application)) return BookWriteResult::Invalid;
+    if (!Path(name, path, sizeof(path), kind)) return BookWriteResult::Invalid;
     struct stat info{};
     if (!FileInfo(path, &info)) return errno == ENOENT ? BookWriteResult::NotFound : BookWriteResult::IoError;
     if (!S_ISREG(info.st_mode)) return BookWriteResult::Invalid;
@@ -345,6 +371,9 @@ BookWriteResult BookStorage::RemoveImpl(const char* name, bool application) {
 BookWriteResult BookUpload::Write(const void* data, std::size_t size) {
     if (error_ != BookWriteResult::Ok) return error_;
     if (!file_ || (size && !data) || size > expected_ - received_) return BookWriteResult::Invalid;
+    if (cover_ && received_ < cover::kHeaderSize && size &&
+        std::memcmp(data, cover::kHeader + received_, std::min<std::size_t>(size, cover::kHeaderSize - received_)) != 0)
+        return error_ = BookWriteResult::Invalid;
     if (packaged_ && !package_.Feed(data, size)) return error_ = BookWriteResult::Invalid;
     // A short write may already have advanced the file. Replaying that chunk
     // on this handle could publish duplicate or truncated data.

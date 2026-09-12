@@ -1,7 +1,7 @@
 # Ambient sleep cover and dashboard
 
 L1.4 adds **SLEEP COVER** to the Launcher. Choose a daily dashboard, a quiet
-landscape or a blank privacy screen. The selected surface is drawn before
+landscape, a blank privacy screen or a phone-supplied picture. The selected surface is drawn before
 power-off and remains visible without keeping the display or radios active.
 
 ## Controls
@@ -28,6 +28,7 @@ controls and save-failure hint. The blank final style stays entirely white.
 | DAILY DASHBOARD | `0` (default) | Day, month calendar, capture time, last saved book and reading progress, and a daily line |
 | QUIET LANDSCAPE | `1` | Mountain illustration, daily line and capture date/time |
 | BLANK / PRIVACY | `2` | Entirely white, including the status and footer areas |
+| PHONE PICTURE | `3` | Imported monochrome picture and wake hint; available with book storage |
 
 `StorageService` stores the unsigned 32-bit preference at `ui.sleep_cover`.
 A missing or invalid value uses the dashboard. A missing key needs no boot-time
@@ -89,6 +90,36 @@ If DOWN stays held past the bound, or wake configuration fails, USB-powered
 sleep has no button wake; use reset or power cycling. Battery-powered shutdown
 continues to use the board's hardware latch. Neither the retained calendar nor
 the quote schedules a wake.
+
+## Companion pictures and weather
+
+C2.1 adds a fourth choice when file storage is enabled. In the Android companion,
+choose a photo, inspect its 400×300 monochrome preview, and send it through the
+current Wi-Fi Transfer session. After Finish, choose **PHONE PICTURE** locally.
+The upload itself does not change the selected style or navigate the device.
+
+The stored file is `/books/.cover-phone.pbm`. The fixed binary PBM starts with
+exactly `P4\n400 300\n`, then 15,000 row-major bytes, most significant bit first,
+with one meaning black. Other headers, dimensions, lengths and partial files
+are rejected. Uploads use the same exclusive lease and staging transaction as
+books/apps, and cannot overwrite a saved picture. Remove the existing picture
+explicitly in the companion before sending a replacement. It is excluded from
+book/app lists. Missing or malformed saved artwork produces a readable missing
+picture screen; a read failure during final composition uses the existing white
+fallback. Each row read is 50 bytes and feeds the existing canvas, without a
+new framebuffer or device image decoder. Preview retains the status bar; final
+sleep displays the picture above the wake-hint band.
+
+The daily dashboard can replace its daily line with an explicitly requested
+phone weather snapshot. The C1 queue remains its only persistent store. The
+foreground copies a fresh observation before stopping connectivity; no network,
+storage mutation or time calibration runs in the renderer. The observation
+expires within six hours and is hidden when the clock is unset or outside its
+validity window. The displayed weather stays static throughout sleep, just like
+the calendar and battery snapshot.
+
+See [C2.1 qualification](qualification/C2.1-COMPANION-INTEGRATION.md) for the
+software tests and remaining physical phone checks.
 
 ## Verification and references
 

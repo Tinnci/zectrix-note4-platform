@@ -135,6 +135,13 @@ class DurableQueue(private val storage: DurableStorage) {
         return change { put(entry.key, (old ?: State(entry.key)).copy(pending = entry.copied())) }
     }
 
+    fun enqueue(key: Int, payload: ByteArray): Boolean {
+        val state = entries[key]
+        if (state?.pending?.payload?.contentEquals(payload) == true) return true
+        val revision = maxOf(state?.acknowledged ?: 0L, state?.pending?.revision ?: 0L) + 1
+        return put(DurableEntry(key, revision, payload))
+    }
+
     fun acknowledge(key: Int, revision: Long): Boolean {
         if (!loaded || revision !in 1..0xffff_ffffL) return false
         val old = entries[key] ?: return false

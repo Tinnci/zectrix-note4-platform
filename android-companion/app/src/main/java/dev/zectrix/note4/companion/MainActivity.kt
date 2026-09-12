@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.app.PendingIntent
 import android.companion.AssociationRequest
+import android.bluetooth.le.ScanFilter
 import android.companion.BluetoothLeDeviceFilter
 import android.companion.CompanionDeviceManager
 import android.content.pm.PackageManager
@@ -11,18 +12,21 @@ import android.os.Build
 import android.os.Bundle
 import android.content.Intent
 import android.content.IntentFilter
-import android.nfc.NdefMessage
-import android.nfc.NdefRecord
 import android.nfc.NfcAdapter
 import android.nfc.NfcManager
 import android.os.Handler
 import android.os.Looper
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,19 +58,26 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import java.util.regex.Pattern
+import androidx.lifecycle.ViewModelProvider
 
 class MainActivity : ComponentActivity() {
     companion object {
         private const val ASSOCIATION_RESULT_OK = Activity.RESULT_OK
     }
 
+    private lateinit var transfers: CompanionTransferModel
+    private var approvedDevices by mutableStateOf<List<String>>(emptyList())
+    private var associationPending by mutableStateOf(false)
+    private var pendingUpdates by mutableIntStateOf(0)
     private var snapshot by mutableStateOf(CompanionConnectionManager.snapshot())
     private var readingProgress by mutableStateOf<ReaderProgress?>(null)
+    private var actionNotice by mutableStateOf<String?>(null)
     private var readerNotice by mutableStateOf<String?>(null)
     private val readerHandler = Handler(Looper.getMainLooper())
     private val readerTick = object : Runnable {
         override fun run() {
             readingProgress = CompanionConnectionManager.readingProgress()
+            pendingUpdates = CompanionConnectionManager.pendingUpdates()
             readerHandler.postDelayed(this, 1000)
         }
     }
@@ -80,36 +91,53 @@ class MainActivity : ComponentActivity() {
     private val associationLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult(),
     ) { result ->
+        associationPending = false
         if (result.resultCode == ASSOCIATION_RESULT_OK) {
+            @Suppress("DEPRECATION")
+            val chosen = result.data?.getParcelableExtra<android.os.Parcelable>(CompanionDeviceManager.EXTRA_DEVICE)
+            val address = when (chosen) {
+                is android.bluetooth.BluetoothDevice -> chosen.address
+                is android.bluetooth.le.ScanResult -> chosen.device.address
+                else -> null
+            }
+            address?.let { CompanionConnectionManager.selectApproved(this, it) }
             refreshAssociations()
             observeApprovedDevice()
             connectApprovedDevice()
         } else {
-            snapshot = GattSnapshot(GattState.IDLE, "Association cancelled")
+            snapshot = actionSnapshot(GattState.IDLE, "Association cancelled")
         }
     }
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { results ->
-        if (results.isNotEmpty() && results.values.all { it }) connectApprovedDevice()
+        if (results.isNotEmpty() && results.values.all { it }) {
+            if (approvedAddress() == null) beginAssociation() else connectApprovedDevice()
+        } else snapshot = actionSnapshot(GattState.FAULT, "Allow Nearby devices, then try again")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+        )
         CompanionConnectionManager.initialize(this)
-        nfcAdapter = (getSystemService(NFC_SERVICE) as NfcManager).defaultAdapter
+        transfers = ViewModelProvider(this)[CompanionTransferModel::class.java]
+        nfcAdapter = (getSystemService(NFC_SERVICE) as? NfcManager)?.defaultAdapter
         nfcPendingIntent = PendingIntent.getActivity(
             this, 0, Intent(this, javaClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_MUTABLE,
         )
         refreshAssociations()
-        requestBluetoothPermissionsIfNeeded()
         observeApprovedDevice()
         setContent { ZectrixCompanionScreen() }
+        if (savedInstanceState == null) handleNfcIntent(intent)
     }
 
     override fun onStart() {
         super.onStart()
+        refreshAssociations()
         CompanionConnectionManager.observe(connectionObserver)
         readerTick.run()
     }
@@ -124,14 +152,14 @@ class MainActivity : ComponentActivity() {
                     addDataType(NfcEnrollmentParser.MIME_TYPE)
                 },
             )
-            if (intent != null) {
+            if (intent != null) try {
                 adapter.enableForegroundDispatch(this, intent, filters, nfcTechLists)
-            }
+            } catch (_: IllegalStateException) { }
         }
     }
 
     override fun onPause() {
-        nfcAdapter?.disableForegroundDispatch(this)
+        try { nfcAdapter?.disableForegroundDispatch(this) } catch (_: IllegalStateException) { }
         super.onPause()
     }
 
@@ -146,39 +174,40 @@ class MainActivity : ComponentActivity() {
         handleNfcIntent(intent)
     }
 
+    private fun actionSnapshot(state: GattState, detail: String): GattSnapshot {
+        actionNotice = detail
+        return GattSnapshot(state, detail)
+    }
+
     private fun handleNfcIntent(intent: Intent) {
-        val messages = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES)
-            ?: return
-        val record = messages
-            .filterIsInstance<NdefMessage>()
-            .flatMap { it.records.asList() }
-            .firstOrNull {
-                it.tnf == NdefRecord.TNF_MIME_MEDIA &&
-                    it.type.contentEquals(NfcEnrollmentParser.MIME_TYPE.toByteArray(Charsets.US_ASCII))
-            } ?: return
-        val enrollment = NfcEnrollmentParser.parsePayload(record.payload) ?: run {
-            snapshot = GattSnapshot(GattState.FAULT, "Malformed Note4 enrollment record")
+        val enrollment = try { NfcEnrollmentIntents.read(intent) }
+        catch (failure: Exception) {
+            snapshot = actionSnapshot(GattState.FAULT, failure.message ?: "Malformed NFC message")
             return
-        }
-        val accepted = CompanionConnectionManager.setEnrollmentProof(
-            enrollment.generation, enrollment.token,
-        )
-        if (accepted) {
-            snapshot = GattSnapshot(
-                GattState.IDLE,
-                "NFC enrollment read. Connect to the Note4 to continue.",
-            )
-            connectApprovedDevice()
-        } else {
-            snapshot = GattSnapshot(GattState.FAULT, "Bluetooth transport is not ready")
-        }
+        } ?: return
+        try {
+            if (enrollment.targetAddress() == null) {
+                snapshot = actionSnapshot(GattState.FAULT, "This tag has no supported Note4 peripheral address")
+                return
+            }
+            if (!CompanionConnectionManager.setEnrollmentProof(enrollment)) {
+                snapshot = actionSnapshot(GattState.FAULT, "Could not prepare enrollment securely; tap again")
+                return
+            }
+            snapshot = actionSnapshot(GattState.IDLE, "Note4 tap received. Approve this device and confirm its passkey.")
+            if (approvedAddress() != null) connectApprovedDevice() else beginAssociation()
+        } finally { enrollment.token.fill(0) }
     }
 
     private fun beginAssociation() {
+        actionNotice = null
+        if (associationPending || requestBluetoothPermissionsIfNeeded()) return
         val manager = getSystemService(CompanionDeviceManager::class.java)
-        val filter = BluetoothLeDeviceFilter.Builder()
-            .setNamePattern(Pattern.compile("Zectrix Note4"))
-            .build()
+        val target = CompanionConnectionManager.pendingTapAddress()
+        val filter = BluetoothLeDeviceFilter.Builder().apply {
+            if (target == null) setNamePattern(Pattern.compile("Zectrix Note4"))
+            else setScanFilter(ScanFilter.Builder().setDeviceAddress(target).build())
+        }.build()
         val request = AssociationRequest.Builder()
             .addDeviceFilter(filter)
             .setSingleDevice(true)
@@ -187,7 +216,7 @@ class MainActivity : ComponentActivity() {
             @Suppress("DEPRECATION")
             @Deprecated("Used on Android 12")
             override fun onDeviceFound(intentSender: android.content.IntentSender) {
-                launchAssociationChooser(intentSender)
+                if (Build.VERSION.SDK_INT < 33) launchAssociationChooser(intentSender)
             }
 
             override fun onAssociationPending(intentSender: android.content.IntentSender) {
@@ -195,23 +224,31 @@ class MainActivity : ComponentActivity() {
             }
 
             override fun onAssociationCreated(associationInfo: android.companion.AssociationInfo) {
+                associationPending = false
+                associationInfo.deviceMacAddress?.toString()?.let { CompanionConnectionManager.selectApproved(this@MainActivity, it) }
                 refreshAssociations()
                 observeApprovedDevice()
                 connectApprovedDevice()
             }
 
             override fun onFailure(errorMessage: CharSequence?) {
-                snapshot = GattSnapshot(
+                associationPending = false
+                snapshot = actionSnapshot(
                     GattState.FAULT,
                     "Association failed: ${errorMessage ?: "unknown error"}",
                 )
             }
         }
-        if (Build.VERSION.SDK_INT >= 33) {
-            manager.associate(request, mainExecutor, callback)
-        } else {
-            @Suppress("DEPRECATION")
-            manager.associate(request, callback, Handler(Looper.getMainLooper()))
+        associationPending = true
+        try {
+            if (Build.VERSION.SDK_INT >= 33) manager.associate(request, mainExecutor, callback)
+            else {
+                @Suppress("DEPRECATION")
+                manager.associate(request, callback, Handler(Looper.getMainLooper()))
+            }
+        } catch (_: Exception) {
+            associationPending = false
+            snapshot = actionSnapshot(GattState.FAULT, "Turn on Bluetooth and retry pairing")
         }
     }
 
@@ -219,14 +256,16 @@ class MainActivity : ComponentActivity() {
         associationLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
     }
 
-    private fun requestBluetoothPermissionsIfNeeded() {
-        if (Build.VERSION.SDK_INT < 31) return
+    private fun requestBluetoothPermissionsIfNeeded(): Boolean {
+        if (Build.VERSION.SDK_INT < 31) return false
         val required = arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
             .filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
         if (required.isNotEmpty()) permissionLauncher.launch(required.toTypedArray())
+        return required.isNotEmpty()
     }
 
     private fun connectApprovedDevice() {
+        actionNotice = null
         if (Build.VERSION.SDK_INT >= 31 &&
             checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
             requestBluetoothPermissionsIfNeeded()
@@ -234,7 +273,7 @@ class MainActivity : ComponentActivity() {
         }
         val address = approvedAddress()
         if (address == null) {
-            snapshot = GattSnapshot(GattState.IDLE, "Pair a Note4 to continue")
+            snapshot = actionSnapshot(GattState.IDLE, "Pair a Note4 to continue")
             return
         }
         CompanionConnectionManager.connectApproved(this, address)
@@ -242,6 +281,7 @@ class MainActivity : ComponentActivity() {
 
     @Suppress("DEPRECATION")
     private fun observeApprovedDevice() {
+        if (Build.VERSION.SDK_INT < 31) return
         val address = approvedAddress() ?: return
         try {
             getSystemService(CompanionDeviceManager::class.java)
@@ -252,24 +292,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun refreshAssociations() {
-        val manager = getSystemService(CompanionDeviceManager::class.java)
-        associationCount = if (Build.VERSION.SDK_INT >= 33) {
-            manager.myAssociations.size
-        } else {
-            @Suppress("DEPRECATION")
-            manager.associations.size
-        }
+        approvedDevices = ApprovedDevices.addresses(this)
+        associationCount = approvedDevices.size
+        approvedAddress()?.let { CompanionConnectionManager.selectApproved(this, it) }
     }
 
-    private fun approvedAddress(): String? {
-        val manager = getSystemService(CompanionDeviceManager::class.java)
-        return if (Build.VERSION.SDK_INT >= 33) {
-            manager.myAssociations.firstOrNull()?.deviceMacAddress?.toString()
-        } else {
-            @Suppress("DEPRECATION")
-            manager.associations.firstOrNull()
-        }
-    }
+    private fun approvedAddress(): String? = selectApprovedPeer(ApprovedDevices.addresses(this),
+        CompanionConnectionManager.pendingTapAddress(), CompanionConnectionManager.preferredAddress())
 
     @OptIn(ExperimentalMaterial3ExpressiveApi::class)
     @androidx.compose.runtime.Composable
@@ -280,6 +309,7 @@ class MainActivity : ComponentActivity() {
             Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
                 Column(
                     modifier = Modifier.fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.safeDrawing)
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 24.dp, vertical = 28.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -290,15 +320,29 @@ class MainActivity : ComponentActivity() {
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold,
                     )
-                    Spacer(Modifier.height(44.dp))
+                    Spacer(Modifier.height(24.dp))
                     ConnectionHero(snapshot)
                     Spacer(Modifier.height(32.dp))
                     PrimaryAction()
+                    actionNotice?.let {
+                        Spacer(Modifier.height(12.dp))
+                        Text(it, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    if (approvedDevices.size > 1) approvedDevices.forEach { address ->
+                        androidx.compose.material3.TextButton(onClick = {
+                            CompanionConnectionManager.stop()
+                            CompanionConnectionManager.selectApproved(this@MainActivity, address)
+                            readingProgress = CompanionConnectionManager.readingProgress()
+                            snapshot = actionSnapshot(GattState.IDLE, "Selected $address")
+                        }) { Text(address) }
+                    }
                     readingProgress?.let { progress ->
                         Spacer(Modifier.height(24.dp))
                         ReadingProgressCard(progress)
                     }
-                    Spacer(Modifier.height(36.dp))
+                    Spacer(Modifier.height(24.dp))
+                    CompanionExtras(transfers, CompanionConnectionManager.hasOfflineQueue(), pendingUpdates)
+                    Spacer(Modifier.height(24.dp))
                     Diagnostics(snapshot, associationCount)
                 }
             }
@@ -369,15 +413,22 @@ class MainActivity : ComponentActivity() {
             GattState.PAIRING, GattState.VERIFYING_LINK, GattState.NEGOTIATING_PROTOCOL,
             GattState.SYNCHRONIZING,
         )
-        if (associationCount == 0) {
-            Button(onClick = ::beginAssociation, modifier = Modifier.fillMaxWidth().height(56.dp)) {
-                Text("Pair a Note4")
+        if (busy) {
+            FilledTonalButton(onClick = { CompanionConnectionManager.stop() }, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                Text("Cancel connection")
+            }
+        } else if (associationCount == 0 || CompanionConnectionManager.pendingTapAddress() != null && approvedAddress() == null) {
+            Button(onClick = ::beginAssociation, enabled = !associationPending, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                Text(if (associationPending) "Approve Note4 pairing…" else "Pair a Note4")
             }
         } else if (snapshot.state == GattState.READY) {
             FilledTonalButton(
-                onClick = {}, enabled = false,
+                onClick = {
+                    CompanionConnectionManager.stop()
+                    connectApprovedDevice()
+                },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
-            ) { Text("Connected") }
+            ) { Text("Reconnect & sync time") }
         } else {
             Button(
                 onClick = ::connectApprovedDevice,
@@ -397,12 +448,12 @@ class MainActivity : ComponentActivity() {
                 Text("${progress.perMille / 10}.${progress.perMille % 10}% · ${if (progress.largeFont) 24 else 16} px")
                 Spacer(Modifier.height(12.dp))
                 FilledTonalButton(
-                    enabled = snapshot.state == GattState.READY,
+                    enabled = CompanionConnectionManager.hasOfflineQueue(),
                     onClick = {
                         readerNotice = if (CompanionConnectionManager.sendReadingProgress(progress)) {
                             "Position queued. On Note4, choose Use phone position."
                         } else {
-                            "Could not save the position. Connect and try again."
+                            "Could not save the position. Please try again."
                         }
                     },
                 ) { Text("Resume this position") }

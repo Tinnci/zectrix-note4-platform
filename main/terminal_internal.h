@@ -101,6 +101,8 @@ private:
     void LogHeap(const char* phase);
     ControlResult Wait(uint32_t duration_ms, bool confirm_returns);
     app::SleepCoverSnapshot ReadSleepCover();
+    esp_err_t PresentSleepCover(const app::SleepCoverSnapshot& snapshot, app::SleepCoverStyle style,
+                               bool preview = false, bool preference_saved = true);
     app::ReadingOverview ReadReadingOverview();
     [[noreturn]] void PowerOff();
     template <typename Controller> void BindScenes(Controller& controller) {

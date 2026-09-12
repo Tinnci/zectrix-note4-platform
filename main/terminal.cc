@@ -330,6 +330,8 @@ ControlResult TerminalApp::Wait(uint32_t duration_ms, bool confirm_returns) {
 
 [[noreturn]] void TerminalApp::PowerOff() {
     platform_.StopMaintenance();
+    // Capture committed sync values before stopping their connectivity owner.
+    const auto sleep_snapshot = ReadSleepCover();
 #if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
     const auto stopped = connectivity_ ? connectivity_->Stop() : zectrix::connectivity::ConnectivityResult::kOk;
     if (stopped != zectrix::connectivity::ConnectivityResult::kOk) {
@@ -337,7 +339,7 @@ ControlResult TerminalApp::Wait(uint32_t duration_ms, bool confirm_returns) {
     }
 #endif
     ESP_LOGI(kTag, "presenting sleep cover before shutdown");
-    const esp_err_t cover = ui_.ShowSleepCover(ReadSleepCover(), sleep_cover_style_);
+    const esp_err_t cover = PresentSleepCover(sleep_snapshot, sleep_cover_style_);
     if (cover != ESP_OK) {
         ESP_LOGW(kTag, "sleep cover failed: %s; attempting blank fallback", esp_err_to_name(cover));
         const auto clear = ui_.ClearDisplay();

@@ -41,6 +41,7 @@ data class GattSnapshot(
     val detail: String,
     val receivedFrames: Int = 0,
     val sessionId: Int = 0,
+    val retryable: Boolean = false,
 )
 
 @SuppressLint("MissingPermission")
@@ -67,26 +68,34 @@ class BleGattClient(
     private val resourceGateway = PhoneResourceGateway()
     private var gatt: BluetoothGatt? = null
     private var tx: BluetoothGattCharacteristic? = null
+    private var latestSnapshot: GattSnapshot? = null
     private var state = GattState.IDLE
     private var mtu = 23
     private var nextFrameId = 1
     private var receivedFrames = 0
     private var sessionId = 0
     private var writeInFlight = false
+    private var inFlightPacket: ByteArray? = null
+    private var phaseDeadlineAt = 0L
+    private var writeDeadlineAt = 0L
     private var helloRequestId = 0L
     private var peerAuthorized = false
-    private var enrollmentProofPayload: ByteArray? = null
-    private var enrollmentProofExpiresAt = 0L
+    private val enrollment = EnrollmentHandoff()
+    private var selectedAddress: String? = null
+    private var notificationsEnabled = false
+    private var helloStarted = false
     private var durableQueue: DurableQueue? = null
     private var syncSession: CompanionSyncSession? = null
     private val handler = Handler(Looper.getMainLooper())
     private val syncTick = Runnable { synchronized(this) { pollSync() } }
-    private val helloTimeout = Runnable {
+    private val phaseTimeout = Runnable {
         synchronized(this) {
-            if (state == GattState.VERIFYING_LINK || state == GattState.NEGOTIATING_PROTOCOL) {
-                failSession("Note4 handshake timed out; reconnect to retry")
-            }
+            if (phaseDeadlineAt != 0L && SystemClock.elapsedRealtime() >= phaseDeadlineAt)
+                failSession("Connection timed out during ${state.name.lowercase()}; retry when Note4 is nearby")
         }
+    }
+    private val writeTimeout = Runnable {
+        synchronized(this) { if (writeInFlight && SystemClock.elapsedRealtime() >= writeDeadlineAt) failSession("Bluetooth write timed out; saved updates will retry") }
     }
     private val pendingWrites = ArrayDeque<ByteArray>()
     private val reassembler = CompanionFragments.Reassembler()
@@ -111,8 +120,8 @@ class BleGattClient(
             BluetoothDevice.BOND_BONDING ->
                 report(GattState.PAIRING, "Confirm the passkey shown on Note4")
             BluetoothDevice.BOND_BONDED -> startVerification(link)
-            BluetoothDevice.BOND_NONE -> if (state == GattState.PAIRING) {
-                report(GattState.FAULT, "Pairing failed. Open pairing on Note4 and try again")
+            BluetoothDevice.BOND_NONE -> if (state !in setOf(GattState.IDLE, GattState.DISCONNECTED, GattState.FAULT)) {
+                failSession("Pairing failed. Open pairing on Note4 and try again", retryable = false)
             }
         }
     }
@@ -120,7 +129,7 @@ class BleGattClient(
     init {
         val filter = IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
         if (Build.VERSION.SDK_INT >= 33) {
-            applicationContext.registerReceiver(bondReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            applicationContext.registerReceiver(bondReceiver, filter, Context.RECEIVER_EXPORTED)
         } else {
             applicationContext.registerReceiver(bondReceiver, filter)
         }
@@ -136,52 +145,55 @@ class BleGattClient(
             event("connect_ignored", "reason=already_active")
             return false
         }
-        closeInternal(report = false)
-        durableQueue = null
-        syncSession = null
-        val queue = DurableQueue(File(applicationContext.noBackupFilesDir,
-            "sync_${device.address.replace(":", "")}.bin"))
-        if (!queue.load()) {
-            report(GattState.FAULT, "Saved sync state could not be read; recovery is required")
+        if (!prepareDevice(device.address)) return false
+        if (enrollment.address != null && enrollment.address != selectedAddress) {
+            failSession("Tap belongs to a different Note4", retryable = false)
             return false
         }
-        durableQueue = queue
-        syncSession = CompanionSyncSession(queue)
+        closeInternal(report = false)
+        syncSession = CompanionSyncSession(requireNotNull(durableQueue))
         sessionId = sessionSequence.updateAndGet { if (it == Int.MAX_VALUE) 1 else it + 1 }
         report(GattState.CONNECTING, "Connecting to approved Note4")
-        gatt = device.connectGatt(applicationContext, false, this, BluetoothDevice.TRANSPORT_LE)
+        gatt = try {
+            device.connectGatt(applicationContext, false, this, BluetoothDevice.TRANSPORT_LE)
+        } catch (_: Exception) { null }
         if (gatt == null) {
-            report(GattState.FAULT, "Android did not start the GATT connection")
+            failSession("Android did not start the GATT connection")
             return false
         }
         return true
     }
 
+    /** Restore offline state before Bluetooth is available. Switching peers closes the old session. */
+    @Synchronized
+    fun prepareDevice(address: String): Boolean {
+        val normalized = normalizeAddress(address) ?: return false
+        if (selectedAddress == normalized && durableQueue != null) return true
+        closeInternal(report = false)
+        durableQueue = null
+        syncSession = null
+        selectedAddress = normalized
+        val queue = DurableQueue(File(applicationContext.noBackupFilesDir,
+            "sync_${normalized.replace(":", "")}.bin"))
+        if (!queue.load()) {
+            report(GattState.FAULT, "Saved sync state could not be read; recovery is required")
+            return false
+        }
+        durableQueue = queue
+        report(GattState.IDLE, "Saved updates ready; connect to Note4")
+        return true
+    }
+
     @Synchronized
     fun close() {
-        enrollmentProofPayload?.fill(0)
-        enrollmentProofPayload = null
+        enrollment.clear()
         closeInternal(report = true)
     }
 
-    /**
-     * Supplies a single-use NFC enrollment proof for the next protocol Hello.
-     * The proof is discarded after its first send. If HelloAck is lost, the
-     * next connection presents the already persisted identity instead.
-     */
     @Synchronized
-    fun setEnrollmentProof(generation: Long, token: ByteArray): Boolean {
-        if (!identityStore.isDurable || token.size != 16 || token.all { it == 0.toByte() } ||
-            generation !in 1..0xffff_ffffL) return false
-        enrollmentProofPayload?.fill(0)
-        val value = CompanionProtocol.encodeHelloEnrollmentProof(
-            generation, token, companionIdentity,
-        )
-        enrollmentProofPayload = CompanionProtocol.encodeTlv(
-            CompanionProtocol.HELLO_ENROLLMENT_PROOF_TYPE, required = true, value = value,
-        )
-        value.fill(0)
-        enrollmentProofExpiresAt = SystemClock.elapsedRealtime() + 120_000
+    fun setEnrollmentProof(record: CompanionEnrollmentRecord): Boolean {
+        if (!identityStore.isDurable || !enrollment.offer(record, SystemClock.elapsedRealtime())) return false
+        closeInternal(report = true)
         return true
     }
 
@@ -215,25 +227,24 @@ class BleGattClient(
         }
         if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
             report(GattState.DISCOVERING, "Connected; checking Note4 service")
-            if (!gatt.discoverServices()) report(GattState.FAULT, "Service discovery did not start")
+            if (!gatt.discoverServices()) failSession("Service discovery did not start")
             return
         }
         if (newState == BluetoothProfile.STATE_DISCONNECTED) {
             val previousState = state
-            resetTransport()
+            closeInternal(report = false)
             report(
                 GattState.DISCONNECTED,
                 if (previousState == GattState.PAIRING) {
                     "Pairing failed. Reopen pairing on Note4; if needed, forget its trusted phone first"
                 } else {
                     "Connection ended (code $status)"
-                },
+                }, retryable = previousState != GattState.PAIRING,
             )
             return
         }
         if (status != BluetoothGatt.GATT_SUCCESS) {
-            resetTransport()
-            report(GattState.FAULT, "Connection failed (code $status)")
+            failSession("Connection failed (code $status)")
         }
     }
 
@@ -253,7 +264,7 @@ class BleGattClient(
     override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
         if (gatt !== this.gatt) return
         if (status != BluetoothGatt.GATT_SUCCESS) {
-            report(GattState.FAULT, "Service discovery failed (code $status)")
+            failSession("Service discovery failed (code $status)")
             return
         }
         val service = gatt.getService(SERVICE_UUID)
@@ -261,12 +272,12 @@ class BleGattClient(
         val rx = service?.getCharacteristic(NOTE_TO_PHONE_UUID)
         val cccd = rx?.getDescriptor(CCCD_UUID)
         if (tx == null || rx == null || cccd == null) {
-            report(GattState.FAULT, "This device does not provide the Note4 service")
+            failSession("This device does not provide the Note4 service", retryable = false)
             return
         }
         report(GattState.SUBSCRIBING, "Securing link and enabling updates")
         if (!gatt.setCharacteristicNotification(rx, true) || !writeDescriptor(gatt, cccd)) {
-            report(GattState.FAULT, "Notification setup did not start")
+            failSession("Notification setup did not start")
         }
     }
 
@@ -274,9 +285,10 @@ class BleGattClient(
     override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
         if (gatt !== this.gatt || descriptor.uuid != CCCD_UUID) return
         if (status != BluetoothGatt.GATT_SUCCESS) {
-            report(GattState.FAULT, "Secure notification setup failed (code $status)")
+            failSession("Secure notification setup failed (code $status)")
             return
         }
+        notificationsEnabled = true
         when (gatt.device.bondState) {
             BluetoothDevice.BOND_BONDED -> startVerification(gatt)
             BluetoothDevice.BOND_BONDING ->
@@ -284,18 +296,16 @@ class BleGattClient(
             else -> {
                 report(GattState.PAIRING, "Open pairing on Note4, then confirm its passkey")
                 if (!gatt.device.createBond()) {
-                    report(GattState.FAULT, "Android did not start secure pairing")
+                    failSession("Android did not start secure pairing", retryable = false)
                 }
             }
         }
     }
 
     private fun startVerification(gatt: BluetoothGatt) {
-        if (gatt !== this.gatt) return
+        if (gatt !== this.gatt || !notificationsEnabled || gatt.device.bondState != BluetoothDevice.BOND_BONDED) return
         if (state != GattState.SUBSCRIBING && state != GattState.PAIRING) return
         report(GattState.VERIFYING_LINK, "Verifying the encrypted Note4 link")
-        handler.removeCallbacks(helloTimeout)
-        handler.postDelayed(helloTimeout, 15_000)
         if (!gatt.requestMtu(REQUESTED_MTU)) {
             event("mtu_request_not_started", "value=$REQUESTED_MTU")
             sendHello(gatt)
@@ -309,6 +319,10 @@ class BleGattClient(
         status: Int,
     ) {
         if (gatt !== this.gatt || characteristic.uuid != PHONE_TO_NOTE_UUID) return
+        handler.removeCallbacks(writeTimeout)
+        inFlightPacket?.fill(0)
+        inFlightPacket = null
+        writeDeadlineAt = 0
         writeInFlight = false
         if (status != BluetoothGatt.GATT_SUCCESS) {
             pendingWrites.clear()
@@ -377,6 +391,9 @@ class BleGattClient(
         val characteristic = tx ?: return
         val packet = pendingWrites.removeFirst()
         writeInFlight = true
+        inFlightPacket = packet
+        writeDeadlineAt = SystemClock.elapsedRealtime() + 10_000
+        handler.postDelayed(writeTimeout, 10_000)
         if (!writeCharacteristic(gatt, characteristic, packet)) {
             writeInFlight = false
             pendingWrites.clear()
@@ -385,24 +402,23 @@ class BleGattClient(
     }
 
     private fun sendHello(gatt: BluetoothGatt) {
-        if (state != GattState.VERIFYING_LINK || pendingWrites.isNotEmpty() || writeInFlight) return
+        if (state != GattState.VERIFYING_LINK || helloStarted || pendingWrites.isNotEmpty() || writeInFlight) return
         if (!identityStore.isDurable) {
-            failSession("Companion identity could not be saved securely")
+            failSession("Companion identity could not be saved securely", retryable = false)
             return
         }
         helloRequestId = sessionId.toLong()
-        if (enrollmentProofPayload != null && SystemClock.elapsedRealtime() >= enrollmentProofExpiresAt) {
-            enrollmentProofPayload?.fill(0)
-            enrollmentProofPayload = null
-            failSession("Enrollment expired; tap Note4 again")
+        val identityPayload = try {
+            enrollment.take(requireNotNull(selectedAddress), companionIdentity, SystemClock.elapsedRealtime())
+                ?: CompanionProtocol.encodeTlv(
+                    CompanionProtocol.HELLO_COMPANION_IDENTITY_TYPE, required = true,
+                    value = CompanionProtocol.encodeCompanionIdentity(companionIdentity),
+                )
+        } catch (failure: IllegalArgumentException) {
+            failSession(failure.message ?: "Tap Note4 again", retryable = false)
             return
         }
-        val identityPayload = enrollmentProofPayload ?: run {
-            CompanionProtocol.encodeTlv(
-                CompanionProtocol.HELLO_COMPANION_IDENTITY_TYPE, required = true,
-                value = CompanionProtocol.encodeCompanionIdentity(companionIdentity),
-            )
-        }
+        helloStarted = true
         val now = System.currentTimeMillis()
         val payload = identityPayload + CompanionProtocol.encodeTlv(SyncWire.HELLO_CURSORS, true,
             SyncWire.encodeCursors(requireNotNull(durableQueue).cursors())) +
@@ -418,8 +434,7 @@ class BleGattClient(
             payload,
         )
         val fragments = CompanionFragments.encode(hello, nextFrameId++, mtu - 3)
-        enrollmentProofPayload?.fill(0)
-        enrollmentProofPayload = null
+        identityPayload.fill(0)
         payload.fill(0)
         hello.fill(0)
         fragments.forEach(pendingWrites::addLast)
@@ -431,19 +446,27 @@ class BleGattClient(
         val previous = gatt
         gatt = null
         resetTransport()
-        previous?.disconnect()
-        previous?.close()
+        try { previous?.disconnect() } catch (_: Exception) { }
+        try { previous?.close() } catch (_: Exception) { }
         if (report) report(GattState.IDLE, "Not connected") else state = GattState.IDLE
     }
 
     private fun resetTransport() {
         handler.removeCallbacks(syncTick)
-        handler.removeCallbacks(helloTimeout)
+        handler.removeCallbacks(phaseTimeout)
+        handler.removeCallbacks(writeTimeout)
+        phaseDeadlineAt = 0
+        writeDeadlineAt = 0
+        inFlightPacket?.fill(0)
+        inFlightPacket = null
         syncSession?.disconnect()
+        notificationsEnabled = false
+        helloStarted = false
         tx = null
         mtu = 23
         nextFrameId = 1
         writeInFlight = false
+        pendingWrites.forEach { it.fill(0) }
         pendingWrites.clear()
         reassembler.reset()
         helloRequestId = 0
@@ -455,25 +478,25 @@ class BleGattClient(
             val (ack, cursors) = SyncWire.decodeHelloAck(frame.payload)
             if (ack.status != CompanionProtocol.HELLO_ACK_STATUS_OK || !ack.peerAuthorized) {
                 identityStore.setEnrolled(false)
-                failSession("Enrollment rejected (code ${ack.errorReason})")
+                failSession("Enrollment rejected (code ${ack.errorReason})", retryable = false)
                 return
             }
             requireNotNull(cursors) { "missing_sync_cursors" }
             val reconciled = requireNotNull(syncSession).start(cursors, SystemClock.elapsedRealtime())
             if (reconciled != DurableResult.OK) {
-                failSession("Sync recovery required ($reconciled)")
+                failSession("Sync recovery required ($reconciled)", retryable = false)
                 return
             }
             if (!identityStore.setEnrolled(true)) {
-                failSession("Enrollment could not be saved")
+                failSession("Enrollment could not be saved", retryable = false)
                 return
             }
             peerAuthorized = true
-            handler.removeCallbacks(helloTimeout)
+            handler.removeCallbacks(phaseTimeout)
             report(GattState.SYNCHRONIZING, "Restoring saved updates")
             pollSync()
         } catch (_: IllegalArgumentException) {
-            failSession("Note4 returned an invalid handshake")
+            failSession("Note4 returned an invalid handshake", retryable = false)
         }
     }
 
@@ -484,7 +507,8 @@ class BleGattClient(
         val now = SystemClock.elapsedRealtime()
         sync.poll(now, ::queueFrame)
         if (sync.status != SyncSessionStatus.ACTIVE) {
-            failSession("Sync interrupted (${sync.status}); saved updates will retry on reconnect")
+            failSession("Sync interrupted (${sync.status}); saved updates will retry on reconnect",
+                retryable = sync.status == SyncSessionStatus.TIMEOUT)
             return
         }
         if (sync.converged()) {
@@ -503,6 +527,23 @@ class BleGattClient(
     }
 
     @Synchronized
+    fun isCurrentSnapshot(snapshot: GattSnapshot): Boolean = latestSnapshot === snapshot
+
+    @Synchronized
+    fun sendWeather(weather: WeatherSnapshot): Boolean {
+        val payload = runCatching { WeatherSync.encode(weather) }.getOrNull() ?: return false
+        if (durableQueue?.enqueue(WeatherSync.KEY, payload) != true) return false
+        pollSync()
+        return true
+    }
+
+    @Synchronized
+    fun hasOfflineQueue(): Boolean = durableQueue != null
+
+    @Synchronized
+    fun pendingUpdates(): Int = durableQueue?.snapshot()?.size ?: 0
+
+    @Synchronized
     fun readDurableState(key: Int): DurableEntry? = durableQueue?.incoming(key)
 
     @Synchronized
@@ -513,9 +554,9 @@ class BleGattClient(
         return true
     }
 
-    private fun failSession(detail: String) {
+    private fun failSession(detail: String, retryable: Boolean = true) {
         closeInternal(report = false)
-        report(GattState.FAULT, detail)
+        report(GattState.FAULT, detail, retryable)
     }
 
     private fun writeDescriptor(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor): Boolean =
@@ -541,11 +582,24 @@ class BleGattClient(
         gatt.writeCharacteristic(characteristic)
     }
 
-    private fun report(newState: GattState, detail: String) {
+    private fun report(newState: GattState, detail: String, retryable: Boolean = false) {
         val previous = state
+        if (previous != newState) {
+            handler.removeCallbacks(phaseTimeout)
+            val timeout = when (newState) {
+                GattState.CONNECTING, GattState.SUBSCRIBING -> 30_000L
+                GattState.PAIRING -> 90_000L
+                GattState.DISCOVERING, GattState.VERIFYING_LINK, GattState.NEGOTIATING_PROTOCOL -> 15_000L
+                else -> 0L
+            }
+            phaseDeadlineAt = if (timeout == 0L) 0 else SystemClock.elapsedRealtime() + timeout
+            if (timeout > 0) handler.postDelayed(phaseTimeout, timeout)
+        }
         state = newState
         event("gatt_state", "from=$previous to=$newState detail=${detail.replace(' ', '_')}")
-        listener(GattSnapshot(newState, detail, receivedFrames, sessionId))
+        val snapshot = GattSnapshot(newState, detail, receivedFrames, sessionId, retryable)
+        latestSnapshot = snapshot
+        listener(snapshot)
     }
 
     private fun event(name: String, fields: String) {

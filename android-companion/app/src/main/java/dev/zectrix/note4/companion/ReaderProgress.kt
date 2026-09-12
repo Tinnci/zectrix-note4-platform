@@ -20,7 +20,7 @@ object ReaderProgressCodec {
         val name = progress.bookId.toByteArray(Charsets.UTF_8)
         require(name.toString(Charsets.UTF_8) == progress.bookId)
         require(name.size in 1..63 && progress.bookId !in setOf(".", ".."))
-        require(progress.bookId.none { it.code < 0x20 || it == '/' || it == '\\' })
+        require(progress.bookId.none { it.code < 0x20 || it.code == 0x7f || it == '/' || it == '\\' })
         require(progress.sourceBytes in 0..0xffff_ffffL && progress.offset in 0..0xffff_ffffL)
         require(progress.chapter in 0..65535 && progress.perMille in 0..1000)
         val output = ByteBuffer.allocate(15 + name.size).order(ByteOrder.LITTLE_ENDIAN)
