@@ -1,4 +1,5 @@
 #include "zectrix_micro_app_controller.h"
+#include "zectrix_app_storage.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -10,6 +11,18 @@
 namespace zectrix::app {
 namespace {
 constexpr SceneId Id(MicroAppScene scene) { return static_cast<SceneId>(scene); }
+static_assert(package::kSourceLimit == runtime::kSourceLimit);
+static_assert(package::kInstructionLimit == runtime::kInstructionLimit);
+
+bool ReadMetadata(storage::BookFile& file, package::Metadata& metadata) {
+    std::array<uint8_t, package::kHeaderSize> header{};
+    package::Metadata candidate;
+    if (!file.Read(0, header.data(), header.size()) ||
+        !package::ReadHeader(header.data(), header.size(), file.Size(), candidate) ||
+        !file.Read(header.size(), candidate.icon.data(), candidate.IconBytes())) return false;
+    metadata = candidate;
+    return true;
+}
 }
 
 sdk::Status MicroAppController::Start() {
@@ -34,6 +47,15 @@ void MicroAppController::Refresh(const char* cursor, bool previous) {
     bool more = false;
     storage_result_ = library_.List(entries_.data(), entries_.size(), &count_, &more,
                                     cursor ? boundary.data() : nullptr, previous);
+    metadata_ = {};
+    if (storage_result_ == ESP_OK) {
+        for (std::size_t i = 0; i < count_; ++i) {
+            if (!storage::AppStorage::Packaged(entries_[i].name.data())) continue;
+            // Discovery reads at most 288 bytes per entry and never loads Lua.
+            storage::BookFile file;
+            if (library_.Open(entries_[i].name.data(), &file) == ESP_OK) ReadMetadata(file, metadata_[i]);
+        }
+    }
     if (storage_result_ == ESP_OK && !count_ && cursor) { Refresh(); return; }
     selected_ = 0;
     if (storage_result_ != ESP_OK) {
@@ -74,16 +96,28 @@ bool MicroAppController::OnSceneEvent(void* context, const SceneEvent& event) {
 void MicroAppController::Open() {
     engine_.Stop();
     ReleaseSource();
+    current_ = {};
+    source_text_ = {};
     storage_result_ = library_.Open(name_.data(), &file_);
     if (storage_result_ != ESP_OK) return;
-    if (!file_.Size() || file_.Size() > runtime::kSourceLimit) {
+    if (storage::AppStorage::Packaged(name_.data())) {
+        if (!ReadMetadata(file_, current_)) {
+            storage_result_ = ESP_ERR_INVALID_ARG;
+            return;
+        }
+        source_size_ = current_.source_size;
+        source_offset_ = current_.SourceOffset();
+    } else {
+        source_size_ = file_.Size();
+    }
+    if (!source_size_ || source_size_ > runtime::kSourceLimit) {
         storage_result_ = ESP_ERR_INVALID_SIZE;
         return;
     }
 #ifdef ESP_PLATFORM
-    source_ = static_cast<uint8_t*>(heap_caps_malloc(file_.Size(), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    source_ = static_cast<uint8_t*>(heap_caps_malloc(source_size_, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
 #else
-    source_ = static_cast<uint8_t*>(std::malloc(file_.Size()));
+    source_ = static_cast<uint8_t*>(std::malloc(source_size_));
 #endif
     if (!source_) storage_result_ = ESP_ERR_NO_MEM;
 }
@@ -96,7 +130,7 @@ void MicroAppController::ReleaseSource() {
     std::free(source_);
 #endif
     source_ = nullptr;
-    loaded_ = 0;
+    loaded_ = source_size_ = source_offset_ = 0;
 }
 
 void MicroAppController::Load() {
@@ -104,15 +138,30 @@ void MicroAppController::Load() {
         scenes_.Replace(Id(MicroAppScene::Error));
         return;
     }
-    const auto size = std::min<uint32_t>(1024, file_.Size() - loaded_);
-    if (!file_.Read(loaded_, source_ + loaded_, size)) {
+    const auto size = std::min<uint32_t>(1024, source_size_ - loaded_);
+    if (!file_.Read(source_offset_ + loaded_, source_ + loaded_, size)) {
         storage_result_ = ESP_FAIL;
         scenes_.Replace(Id(MicroAppScene::Error));
         return;
     }
+    if (source_offset_ && !source_text_.Feed(source_ + loaded_, size)) {
+        storage_result_ = ESP_ERR_INVALID_ARG;
+        scenes_.Replace(Id(MicroAppScene::Error));
+        return;
+    }
     loaded_ += size;
-    if (loaded_ != file_.Size()) return;
-    const bool started = engine_.Start(source_, loaded_);
+    if (loaded_ != source_size_) return;
+    if (source_offset_ && !source_text_.Complete()) {
+        storage_result_ = ESP_ERR_INVALID_ARG;
+        scenes_.Replace(Id(MicroAppScene::Error));
+        return;
+    }
+    runtime::Options options;
+    if (source_offset_) {
+        options = {static_cast<int>(current_.instructions),
+            bool(current_.permissions & package::kDisplay), bool(current_.permissions & package::kInput)};
+    }
+    const bool started = engine_.Start(source_, loaded_, options);
     ReleaseSource();
     if (started && engine_.exit_requested()) {
         engine_.Stop();

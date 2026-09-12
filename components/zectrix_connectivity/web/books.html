@@ -20,7 +20,7 @@
 <div class="shell">
 <header><div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i></span>Note4</div><span class="badge"><span class="dot"></span><span id="connection">LOCAL WI-FI</span></span></header>
 <main>
-<div class="intro"><div><p class="eyebrow">A shelf for your next chapter</p><h1>Your pocket library.</h1><p class="sub">Send books to your Note4, then settle into a quiet page.</p></div><button id="finish" class="outline" hidden>Finish session</button></div>
+<div class="intro"><div><p class="eyebrow">A shelf for your next chapter</p><h1>Your pocket library.</h1><p class="sub">Bring your books and pocket apps to Note4.</p></div><button id="finish" class="outline" hidden>Finish session</button></div>
 <section id="unlock" class="card unlock" aria-labelledby="unlock-title">
 <h2 id="unlock-title">Connect to your reader</h2><p>Enter the access code on your Note4's Send Books screen. In hotspot mode, it is also the Wi-Fi password.</p>
 <form id="code-form"><label for="code" class="code-label">Access code</label><div class="code-row"><input id="code" type="password" required minlength="12" maxlength="16" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="12-character code"><button class="primary" type="submit">Open library</button></div></form>
@@ -29,29 +29,31 @@
 <section id="saved" class="card saved" hidden><p class="eyebrow">Ready to read</p><h2 id="saved-title">Books sent.</h2><p id="saved-detail">Wi-Fi is turning off. Press OK on your Note4 to open Book Reader.</p></section>
 <div id="workspace" class="workspace" hidden>
 <section class="card section" aria-labelledby="upload-title">
-<div class="section-head"><h2 id="upload-title">Add to your shelf</h2><span class="small">TXT · EPUB</span></div>
-<label id="drop" class="drop" for="files"><svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M8 28v6h24v-6M20 6v21m-8-13 8-8 8 8"/></svg><strong>Drop your books here</strong><span class="small">or <span class="choose">choose files</span> from your device</span><input id="files" class="visually-hidden" type="file" accept=".txt,.epub" multiple></label>
-<p class="hint">UTF-8 text and unencrypted EPUB. Filenames can use up to 63 UTF-8 bytes. Existing books are never overwritten.</p>
-<ul id="queue" class="queue" aria-label="Selected books"></ul>
+<div class="section-head"><h2 id="upload-title">Add to your Note4</h2><span id="formats" class="small">TXT · EPUB</span></div>
+<label id="drop" class="drop" for="files"><svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M8 28v6h24v-6M20 6v21m-8-13 8-8 8 8"/></svg><strong>Drop your files here</strong><span class="small">or <span class="choose">choose files</span> from your device</span><input id="files" class="visually-hidden" type="file" accept=".txt,.epub" multiple></label>
+<p id="upload-hint" class="hint">UTF-8 text and unencrypted EPUB. Existing files are never overwritten.</p>
+<ul id="queue" class="queue" aria-label="Selected files"></ul>
 <div class="actions"><button id="send" class="primary" disabled>Upload &amp; finish</button><button id="clear" class="plain" disabled>Clear</button><button id="cancel" class="plain danger" hidden>Cancel upload</button></div>
 <p id="notice" class="notice" role="status" aria-live="polite"></p>
 </section>
 <section class="card section" aria-labelledby="library-title">
 <div class="section-head"><h2 id="library-title">On your Note4 <span id="count" class="small"></span></h2><button id="refresh" class="plain">Refresh</button></div>
-<div class="capacity"><div class="capacity-line"><span id="space">Reading storage…</span><span>Book storage</span></div><progress id="storage" max="1" value="0" aria-label="Used book storage"></progress></div>
-<ul id="library" class="library" aria-label="Books on your reader"></ul>
-<p class="hint">The reader shows the first 32 books in filename order. This page can manage the whole library.</p>
+<div class="capacity"><div class="capacity-line"><span id="space">Reading storage…</span><span>Content storage</span></div><progress id="storage" max="1" value="0" aria-label="Used content storage"></progress></div>
+<ul id="library" class="library" aria-label="Books and apps on your Note4"></ul>
+<p id="library-hint" class="hint">Open your books in Book Reader.</p>
 </section>
 </div>
 </main>
 <footer><span>Made for a little more reading.</span><span>Wi-Fi switches off after you finish or leave the session idle.</span></footer>
 </div>
-<dialog id="delete-dialog" aria-labelledby="delete-title"><h2 id="delete-title">Delete this book?</h2><p id="delete-name"></p><p class="hint">This removes the file from your Note4. Keep a copy on your computer if you want to read it again.</p><div class="actions"><button id="keep" class="outline">Keep book</button><button id="delete-confirm" class="primary">Delete book</button></div></dialog>
+<dialog id="delete-dialog" aria-labelledby="delete-title"><h2 id="delete-title">Delete this file?</h2><p id="delete-name"></p><p class="hint">This removes the file from your Note4. Keep a copy on your computer if you want to use it again.</p><div class="actions"><button id="keep" class="outline">Keep file</button><button id="delete-confirm" class="primary">Delete file</button></div></dialog>
 <script>
 (() => {
   const $ = id => document.getElementById(id);
   const bytes = value => value < 1024 ? `${value} B` : value < 1048576 ? `${(value / 1024).toFixed(1)} KB` : `${(value / 1048576).toFixed(2)} MB`;
-  let code = '', selected = [], working = false, ended = false, xhr = null, deleting = null;
+  let code = '', selected = [], working = false, ended = false, xhr = null, deleting = null, appsSupported = false;
+  const isApp = name => /\.(zapp|lua)$/i.test(name);
+  const filePath = name => `/api/${isApp(name) ? 'apps' : 'books'}/${encodeURIComponent(name)}`;
   const note = (text, error = false, target = 'notice') => { $(target).textContent = text; $(target).classList.toggle('error', error); };
   const element = (tag, text, className) => { const el = document.createElement(tag); el.textContent = text; if (className) el.className = className; return el; };
   function controls() {
@@ -82,21 +84,38 @@
     if (working || ended) return;
     const rejected = [];
     for (const file of files) {
-      if (!/\.(txt|epub)$/i.test(file.name) || /[\x00-\x1f\x7f/\\]/.test(file.name) || new TextEncoder().encode(file.name).length > 63) { rejected.push(file.name); continue; }
+      const app = isApp(file.name), packageFile = /\.zapp$/i.test(file.name);
+      if (!/^.+\.(txt|epub|zapp|lua)$/i.test(file.name) || /[\x00-\x1f\x7f/\\]/.test(file.name) ||
+          new TextEncoder().encode(file.name).length > (app ? 47 : 63) ||
+          (app && (!appsSupported || file.size < (packageFile ? 193 : 1) || file.size > (packageFile ? 33056 : 32768)))) {
+        rejected.push(file.name); continue;
+      }
       if (!selected.some(item => item.file.name === file.name)) selected.push({ file, state: bytes(file.size), percent: 0 });
     }
-    note(rejected.length ? `Choose TXT or EPUB files with shorter names: ${rejected.join(', ')}` : 'Books will be saved in order. Wi-Fi turns off when the batch finishes.', !!rejected.length);
+    note(rejected.length ? `Unsupported file, size or filename: ${rejected.join(', ')}` : 'Files will be saved in order. Wi-Fi turns off when the batch finishes.', !!rejected.length);
     renderQueue(); $('files').value = '';
   }
-  async function refresh() {
-    const books = []; let after = '', page;
+  async function list(collection) {
+    const files = []; let after = '', page;
     do {
-      page = await (await request('/api/books' + (after ? `?after=${encodeURIComponent(after)}` : ''))).json();
-      books.push(...page.files);
+      page = await (await request(`/api/${collection}` + (after ? `?after=${encodeURIComponent(after)}` : ''))).json();
+      files.push(...page.files);
       const next = page.files.at(-1)?.name;
       if (page.more && (!next || next === after)) throw new Error('Could not read the next library page.');
       after = next;
     } while (page.more);
+    return { files, page };
+  }
+  async function refresh() {
+    const { files: books, page } = await list('books');
+    appsSupported = page.apps_supported === true;
+    if (appsSupported) books.push(...(await list('apps')).files);
+    $('files').accept = appsSupported ? '.txt,.epub,.zapp,.lua' : '.txt,.epub';
+    $('formats').textContent = appsSupported ? 'TXT · EPUB · ZAPP · LUA' : 'TXT · EPUB';
+    $('upload-hint').textContent = appsSupported ?
+      'Books: TXT or EPUB. Apps: ZAPP packages or Lua source. Use short filenames (books: 63 bytes; apps: 47). Existing files are never overwritten.' :
+      'UTF-8 text and unencrypted EPUB. Use short filenames (63 bytes). Apps are unavailable in this firmware.';
+    $('library-hint').textContent = appsSupported ? 'Open books in Book Reader and installed apps in Home > Apps.' : 'Open your books in Book Reader.';
     $('count').textContent = `(${books.length})`;
     $('space').textContent = `${bytes(page.available)} available`;
     $('storage').max = page.total; $('storage').value = page.used;
@@ -105,16 +124,16 @@
       const actions = element('div', '', 'book-actions');
       const download = element('button', 'Download', 'plain'); download.setAttribute('aria-label', `Download ${book.name}`);
       download.onclick = () => operate(async () => {
-        const blob = await (await request(`/api/books/${encodeURIComponent(book.name)}`)).blob();
+        const blob = await (await request(filePath(book.name))).blob();
         const url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url; link.download = book.name;
         document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
       });
       const remove = element('button', 'Delete', 'plain danger'); remove.setAttribute('aria-label', `Delete ${book.name}`);
       remove.onclick = () => { deleting = book.name; $('delete-name').textContent = book.name; $('delete-dialog').showModal(); };
       actions.append(download, remove); details.append(element('div', book.name, 'book-title'), element('div', bytes(book.size), 'small'), actions);
-      row.append(element('span', book.name.toLowerCase().endsWith('.epub') ? 'EPUB' : 'TXT', 'book-icon'), details); return row;
+      row.append(element('span', book.name.split('.').at(-1).toUpperCase(), 'book-icon'), details); return row;
     }));
-    if (!books.length) { const empty = element('li', '', 'empty'); empty.append(element('strong', 'A fresh shelf.'), element('span', 'Add a book to make it yours.')); $('library').append(empty); }
+    if (!books.length) { const empty = element('li', '', 'empty'); empty.append(element('strong', 'A fresh shelf.'), element('span', appsSupported ? 'Add a book or app to make it yours.' : 'Add a book to make it yours.')); $('library').append(empty); }
     controls();
   }
   async function operate(action) {
@@ -127,17 +146,20 @@
     await request('/api/finish', { method: 'POST' });
     ended = true; $('workspace').hidden = true; $('finish').hidden = true; $('saved').hidden = false;
     $('connection').textContent = 'SESSION FINISHED';
-    $('saved-title').textContent = uploaded ? 'Books sent. Time to read.' : 'Your library is ready.';
+    const apps = uploaded && selected.some(item => isApp(item.file.name));
+    $('saved-title').textContent = uploaded ? (apps ? 'Files saved. Ready to explore.' : 'Books sent. Time to read.') : 'Your library is ready.';
+    $('saved-detail').textContent = apps ? 'Wi-Fi is turning off. Return to Home > Apps on Note4 to open your installed apps.' :
+      'Wi-Fi is turning off. Press OK on your Note4 to open Book Reader.';
   }
   function upload(item) {
     return new Promise((resolve, reject) => {
-      xhr = new XMLHttpRequest(); xhr.open('PUT', `/api/books/${encodeURIComponent(item.file.name)}`);
+      xhr = new XMLHttpRequest(); xhr.open('PUT', filePath(item.file.name));
       xhr.setRequestHeader('Authorization', `Bearer ${code}`); xhr.responseType = 'json'; xhr.timeout = 125000;
       xhr.upload.onprogress = event => { item.percent = event.lengthComputable ? Math.round(event.loaded * 100 / event.total) : 0; item.state = item.percent === 100 ? 'Saving…' : `${item.percent}%`; renderQueue(); };
       const failed = message => { item.state = 'Not saved'; xhr = null; renderQueue(); reject(new Error(message)); };
-      xhr.onerror = () => failed('Connection lost. Reopen Send Books on Note4 if needed, then retry.');
-      xhr.ontimeout = () => failed('The upload timed out. Please send the book again.');
-      xhr.onabort = () => failed('Upload cancelled. Previously saved books are kept.');
+      xhr.onerror = () => failed('Connection lost. Reopen Send Books and check the library before retrying.');
+      xhr.ontimeout = () => failed('The upload timed out. Check the library before sending the file again.');
+      xhr.onabort = () => failed('Upload cancelled. Previously saved files are kept. Refresh to check the last file.');
       xhr.onload = () => {
         if (xhr.status !== 200) { failed(xhr.response?.error || `Upload failed (${xhr.status}).`); return; }
         item.state = 'Saved'; item.percent = 100; xhr = null; renderQueue(); resolve();
@@ -164,7 +186,7 @@
   $('finish').onclick = () => operate(() => finish());
   $('refresh').onclick = () => operate(refresh);
   $('keep').onclick = () => $('delete-dialog').close();
-  $('delete-confirm').onclick = () => { const name = deleting; $('delete-dialog').close(); operate(async () => { await request(`/api/books/${encodeURIComponent(name)}`, { method: 'DELETE' }); await refresh(); note('Book deleted.'); }); };
+  $('delete-confirm').onclick = () => { const name = deleting; $('delete-dialog').close(); operate(async () => { await request(filePath(name), { method: 'DELETE' }); await refresh(); note('File deleted.'); }); };
 })();
 </script>
 </body>

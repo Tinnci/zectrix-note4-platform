@@ -304,8 +304,118 @@ static void StyledViewport() {
     }
 }
 
+static void Packages(const fs::path& root, const fs::path& packages, const fs::path& previews) {
+    fs::create_directory(root);
+    storage::BookStorage books(root.c_str());
+    const auto calculator = Read(packages / "Calculator.zapp"), cards = Read(packages / "Flashcards.zapp");
+    Install(books, "A.zapp", calculator);
+    Install(books, "B.ZAPP", cards);
+    Library library(books);
+    app::MicroAppController controller(library);
+    assert(sdk::IsOk(controller.Start()));
+    assert(library.opens == 2 && controller.engine().heap().live == 0);
+    assert(std::string(controller.metadata(0)->name.data()) == "Calculator");
+    assert(controller.metadata(0)->icon_side == 16 && controller.metadata(1)->icon_side == 32);
+    Click(controller); Loaded(controller);
+    assert(controller.scene() == MicroAppScene::Running && std::string(controller.title()) == "Calculator");
+    assert(controller.engine().instruction_limit() == 10000);
+    Back(controller); Click(controller, sdk::Button::Down); Click(controller); Loaded(controller);
+    assert(controller.scene() == MicroAppScene::Running && controller.engine().instruction_limit() == 5000);
+    Click(controller);
+    assert(HasText(controller.engine().frame(), "Electrophoretic display"));
+    Preview(controller, previews / "packaged-flashcards.pbm");
+    controller.Stop();
+    assert(books.BeginManagement() == ESP_OK);
+    assert(library.apps.Remove("A.zapp") == BookWriteResult::Ok && library.apps.Remove("B.ZAPP") == BookWriteResult::Ok);
+    assert(books.EndManagement() == ESP_OK);
+
+    auto replace = [&](const std::string& source, unsigned quota, unsigned permissions) {
+        controller.Stop();
+        std::string package = calculator.substr(0, 192);
+        for (unsigned i = 0; i < 4; ++i) {
+            package[12 + i] = static_cast<char>(quota >> (8 * i));
+            package[16 + i] = static_cast<char>(source.size() >> (8 * i));
+        }
+        package[10] = static_cast<char>(permissions);
+        package += source;
+        assert(books.BeginManagement() == ESP_OK);
+        const auto removed = library.apps.Remove("App.zapp");
+        assert(removed == BookWriteResult::Ok || removed == BookWriteResult::NotFound);
+        assert(books.EndManagement() == ESP_OK);
+        Install(books, "App.zapp", package);
+        assert(sdk::IsOk(controller.Start()));
+        assert(controller.engine().heap().live == 0 && controller.metadata(0));
+        Click(controller);
+    };
+    replace("local n=0; function on_event() return true end; function on_render() n=n+1; note4.text(0,0,n) end", 1000, 3);
+    Loaded(controller);
+    assert(HasText(controller.engine().frame(), "1"));
+    controller.Presented(false);
+    for (int i = 0; i < 8; ++i) controller.Tick();
+    assert(HasText(controller.engine().frame(), "1"));
+    Click(controller);
+    assert(HasText(controller.engine().frame(), "2"));
+
+    replace("function on_render() note4.text(0,0,'static') end; function on_event() while true do end end", 1000, 1);
+    Loaded(controller); Click(controller);
+    assert(controller.scene() == MicroAppScene::Running && HasText(controller.engine().frame(), "static"));
+    replace("function on_render() note4.fill(0,0,10,10) end", 1000, 0);
+    Loaded(controller);
+    assert(controller.scene() == MicroAppScene::Error && controller.engine().error() == runtime::Error::Permission);
+    replace("while true do end", 100, 3);
+    Loaded(controller);
+    assert(controller.scene() == MicroAppScene::Error && controller.engine().error() == runtime::Error::Instructions);
+    assert(controller.engine().heap().live == 0);
+
+    const std::string source = "function on_render() end";
+    replace(source + std::string(runtime::kSourceLimit - source.size(), ' '), 10000, 3);
+    controller.Tick();
+    assert(controller.busy() && books.BeginManagement() == ESP_ERR_INVALID_STATE);
+    Back(controller);
+    assert(controller.engine().heap().live == 0 && books.BeginManagement() == ESP_OK);
+    assert(books.EndManagement() == ESP_OK);
+    Click(controller); Loaded(controller);
+    assert(controller.scene() == MicroAppScene::Running);
+    controller.Stop();
+
+    // Disk corruption is checked again at launch, including externally placed files.
+    auto corrupt = calculator;
+    corrupt[6] = 2;
+    std::ofstream(root / ".app-App.zapp", std::ios::binary | std::ios::trunc).write(corrupt.data(), corrupt.size());
+    assert(sdk::IsOk(controller.Start()) && !controller.metadata(0));
+    Click(controller); Loaded(controller);
+    assert(controller.scene() == MicroAppScene::Error && controller.storage_result() == ESP_ERR_INVALID_ARG);
+    assert(controller.engine().heap().live == 0 && books.BeginManagement() == ESP_OK);
+    assert(books.EndManagement() == ESP_OK);
+    controller.Stop();
+    corrupt = calculator;
+    corrupt[192] = 0;
+    std::ofstream(root / ".app-App.zapp", std::ios::binary | std::ios::trunc).write(corrupt.data(), corrupt.size());
+    assert(sdk::IsOk(controller.Start()) && controller.metadata(0));
+    Click(controller); Loaded(controller);
+    assert(controller.scene() == MicroAppScene::Error && controller.storage_result() == ESP_ERR_INVALID_ARG);
+    assert(controller.engine().heap().live == 0);
+    controller.Stop();
+
+    ZectrixCanvas icons;
+    icons.Clear();
+    package::Metadata meta;
+    meta.icon_side = 32;
+    meta.icon[4] = 0x40;
+    icons.SetClip({20, 20, 16, 16});
+    ui::DrawMicroAppIcon(icons, meta, 20, 20);
+    assert((icons.data()[20 * 50 + 20 / 8] & (0x80 >> (20 % 8))) == 0);
+    for (int y = 0; y < 300; ++y) for (int x = 0; x < 400; ++x) {
+        const bool ink = !(icons.data()[y * 50 + x / 8] & (0x80 >> (x % 8)));
+        assert(ink == (x == 20 && y == 20));
+    }
+    ui::DrawMicroAppIcon(icons, meta, 20, 20, 16, true);
+    assert((icons.data()[20 * 50 + 20 / 8] & (0x80 >> (20 % 8))) != 0);
+    assert(icons.clip().x == 20 && icons.clip().width == 16);
+}
+
 int main(int argc, char** argv) {
-    assert(argc == 3);
+    assert(argc == 4);
     char pattern[] = "/tmp/note4-micro-apps-XXXXXX";
     const auto* temporary = mkdtemp(pattern);
     assert(temporary);
@@ -314,6 +424,7 @@ int main(int argc, char** argv) {
     Scenes(root, argv[1], argv[2]);
     Faults(root / "faults", argv[2]);
     StyledViewport();
+    Packages(root / "packages", argv[3], argv[2]);
     fs::remove_all(root);
     std::cout << "Micro-apps: storage isolation, paging, pilots, exit, recovery, clipped views and 100 lifetimes passed.\n";
 }

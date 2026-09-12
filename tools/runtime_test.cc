@@ -9,8 +9,8 @@
 
 using namespace zectrix::runtime;
 
-static bool Start(Engine& engine, const std::string& source) {
-    return engine.Start(reinterpret_cast<const uint8_t*>(source.data()), source.size());
+static bool Start(Engine& engine, const std::string& source, Options options = {}) {
+    return engine.Start(reinterpret_cast<const uint8_t*>(source.data()), source.size(), options);
 }
 static std::string Read(const std::string& path) {
     std::ifstream file(path);
@@ -123,6 +123,36 @@ int main(int argc, char** argv) {
     assert(engine.heap().live == 0 && !engine.exit_requested());
     assert(Start(engine, "function on_render() if io or os or package or debug or coroutine or load or setmetatable then note4.text(0,0,'unsafe') else note4.text(0,0,'restricted') end end"));
     assert(engine.Draw() && HasText(engine.frame(), "restricted"));
+    engine.Stop();
+    for (const int quota : {0, 99, 10001, -1}) {
+        assert(!Start(engine, cards, {quota, true, true}));
+        assert(engine.error() == Error::InvalidSource && engine.heap().live == 0);
+    }
+    const std::string loop = "local n = 0; for i = 1,1000 do n = n + i end; ";
+    for (int phase = 0; phase < 3; ++phase) {
+        const auto source = (phase == 0 ? loop : "") + std::string("function on_event() ") +
+            (phase == 1 ? loop : "") + "end; function on_render() " + (phase == 2 ? loop : "") + "end";
+        assert(Start(engine, source) && engine.Handle(Key::Ok) && engine.Draw());
+        const auto started = Start(engine, source, {100, true, true});
+        if (phase == 0) assert(!started);
+        else {
+            assert(started);
+            assert(!(phase == 1 ? engine.Handle(Key::Ok) : engine.Draw()));
+        }
+        assert(engine.error() == Error::Instructions && engine.heap().live == 0);
+    }
+    assert(Start(engine, "function on_event() while true do end end; function on_render() note4.text(0,0,'static') end",
+                 {10000, true, false}));
+    assert(engine.Draw() && engine.Handle(Key::Ok) && !engine.redraw_requested() && engine.active());
+    assert(HasText(engine.frame(), "static"));
+    for (const char* drawing : {"note4.text(0,0,'denied')", "note4.rect(0,0,1,1)", "note4.fill(0,0,1,1)"}) {
+        assert(Start(engine, std::string("note4.permissions = 3; function on_render() ") + drawing + " end",
+                     {10000, false, true}));
+        assert(!engine.Draw() && engine.error() == Error::Permission && engine.heap().live == 0);
+    }
+    assert(Start(engine, "function on_render() end; function on_event() note4.exit() end", {100, false, true}));
+    assert(engine.Draw() && engine.Handle(Key::Ok) && engine.exit_requested());
+    assert(Start(engine, cards) && engine.instruction_limit() == kInstructionLimit && engine.Draw());
     engine.Stop();
     std::cout << "Runtime: pilots, quota, malformed code, draw bounds and 1024 fault/restart lifetimes passed.\n";
 }

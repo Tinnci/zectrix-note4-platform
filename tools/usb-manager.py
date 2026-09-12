@@ -16,6 +16,7 @@ import time
 
 import serial
 from serial.tools import list_ports
+from zapp import PACKAGE_LIMIT, PackageError, inspect_package
 
 HEADER = struct.Struct("<4sBBHII")
 PAYLOAD_SIZE = 1024
@@ -214,14 +215,21 @@ class Client:
         name_limit = 47 if application else 63
         if not 0 < len(name) <= name_limit or not source.is_file():
             raise HostError(f"use a regular file and a name of at most {name_limit} UTF-8 bytes")
-        if application and not name.lower().endswith(b".lua"):
-            raise HostError("micro-apps must be Lua source files ending in .lua")
+        packaged = application and name.lower().endswith(b".zapp")
+        if application and not (packaged or name.lower().endswith(b".lua")):
+            raise HostError("micro-apps must be .zapp packages or .lua source files")
         with source.open("rb") as file:
             size = os.fstat(file.fileno()).st_size
             if size > 0xFFFFFFFF:
                 raise HostError("file exceeds the device size limit")
-            if application and not 0 < size <= 32768:
-                raise HostError("micro-app source must contain 1–32768 bytes")
+            if application and not 0 < size <= (PACKAGE_LIMIT if packaged else 32768):
+                raise HostError("micro-app exceeds its package or source size limit")
+            if packaged:
+                try:
+                    inspect_package(file.read(PACKAGE_LIMIT + 1))
+                except PackageError as error:
+                    raise HostError(f"invalid .zapp: {error}") from error
+                file.seek(0)
             self.request(APP_BEGIN if application else BEGIN, struct.pack("<I", size) + name)
             offset = 0
             while offset < size:
@@ -277,7 +285,7 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     for command in ("ports", "info", "list", "app-list"):
         commands.add_parser(command)
-    for command, description in (("put", "import a TXT/EPUB book"), ("app-put", "install a Lua micro-app")):
+    for command, description in (("put", "import a TXT/EPUB book"), ("app-put", "install a .zapp package or Lua source")):
         put = commands.add_parser(command, help=description + " without overwriting")
         put.add_argument("source", type=Path)
         put.add_argument("--name")

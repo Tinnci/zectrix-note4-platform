@@ -9,6 +9,9 @@ USB descriptor or public application SDK API is required.
 E2.2 adds independently installed [Lua micro-apps](MICRO_APPS.md) through the
 same owner. `app-list`, `app-put`, `app-get` and `app-remove` operate on the app
 namespace; the existing book commands and settings keep their behavior.
+E2.3 extends these operations to [`.zapp` packages](ZAPP_PACKAGES.md). The USB
+client checks packages before sending, and firmware independently validates
+their headers and source while receiving. No wire operation or frame changes.
 
 ## Transport choice
 
@@ -187,12 +190,13 @@ Transferred contents retain the existing reader's format limitations.
 | 10 SetSetting | u8 key, u32 value | Empty |
 | 11 Close | Empty | Empty, followed by the text maintenance prompt |
 | 12 AppList | Empty or last app filename | Same paged entry layout as List, for apps only |
-| 13 AppReadOpen | App filename | u32 source size; following Read operations export this app |
-| 14 AppUploadBegin | u32 source size, app filename | Empty; following UploadChunk/UploadCommit install this app |
+| 13 AppReadOpen | App filename | u32 file size; following Read operations export this app |
+| 14 AppUploadBegin | u32 file size, app filename | Empty; following UploadChunk/UploadCommit install this app |
 | 15 AppRemove | App filename | Empty after removal; rejected while a transfer is open |
 
-App names pass `AppStorage::ValidName`: at most 47 UTF-8 bytes with `.lua`
-suffix, without path/control characters. Sources contain 1–32,768 bytes. The
+App names pass `AppStorage::ValidName`: at most 47 UTF-8 bytes with `.lua` or
+`.zapp` suffix, without path/control characters. Sources contain 1–32,768 bytes;
+packages contain at most 33,056 bytes including their header/icon. The
 foreground never executes code during these operations. They share the one
 transfer handle and storage lease with books and return `Unavailable` when
 the runtime module is disabled. USB Manager reports imported files and app
@@ -222,7 +226,8 @@ arrays; neither framing nor drawing allocates per packet. File open and the
 existing stdio/SPIFFS implementation can allocate their own handles/buffers.
 
 The 64-bit Host build reports Channel 1,120 bytes, Protocol 3,328 bytes,
-BookSession 2,744 bytes and UI controller 104 bytes. Channel/Protocol live in
+BookSession 2,944 bytes (including E2.3 package validation) and UI controller
+104 bytes. Channel/Protocol live in
 the Platform allocation; BookSession/controller live only with the foreground
 app. These are Host `sizeof` measurements, not ESP32 runtime heap readings.
 The existing 4 KiB CLI stack, 512-byte RX ring, 512-byte native TX ring,

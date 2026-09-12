@@ -43,6 +43,7 @@ host_tests=(
     test-utilities.sh
     test-wifi-backend.sh
     test-wifi-http.sh
+    test-zapp.sh
 )
 
 "$repo_root/tools/check-architecture-boundaries.sh" --self-test

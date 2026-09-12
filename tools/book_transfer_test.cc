@@ -1,6 +1,7 @@
 #include "zectrix_book_web.h"
 #include "zectrix_book_storage.h"
 #include "zectrix_book_transfer_controller.h"
+#include "sdkconfig.h"
 
 #include <algorithm>
 #include <cassert>
@@ -244,6 +245,83 @@ void Lifecycle(const fs::path& root) {
     }
 }
 
+void AppHttp(const fs::path& root, const fs::path& package) {
+    fs::create_directory(root);
+    storage::BookStorage books(root.c_str());
+    assert(books.BeginManagement() == ESP_OK);
+    BookWebApi api;
+    api.Start(books, kCode, 0);
+    const auto data = Contents(package);
+    assert(data.size() > 1024);
+    Request listing(BookHttpMethod::Get, "/api/books");
+    Check(api, listing, 200);
+#if CONFIG_ZECTRIX_ENABLE_RUNTIME
+    assert(listing.output.find("\"apps_supported\":true") != std::string::npos);
+    for (auto method : {BookHttpMethod::Get, BookHttpMethod::Put, BookHttpMethod::Delete}) {
+        Request denied(method, "/api/apps/Calculator.zapp", data);
+        denied.authorization.clear();
+        Check(api, denied, 401);
+        assert(!denied.offset);
+    }
+    Request installed(BookHttpMethod::Put, "/api/apps/Calculator.zapp", data);
+    Check(api, installed, 200);
+    assert(installed.max_read <= 1024 && Contents(root / ".app-Calculator.zapp") == data);
+    assert(api.Progress().uploaded == 1);
+    Request duplicate(BookHttpMethod::Put, "/api/apps/Calculator.zapp", data);
+    Check(api, duplicate, 409);
+    Request exported(BookHttpMethod::Get, "/api/apps/Calculator.zapp");
+    Check(api, exported, 200);
+    assert(exported.output == data && exported.attachment == "Calculator.zapp");
+    Request book_list(BookHttpMethod::Get, "/api/books"), app_list(BookHttpMethod::Get, "/api/apps");
+    Check(api, book_list, 200); Check(api, app_list, 200);
+    assert(book_list.output.find("Calculator") == std::string::npos);
+    assert(app_list.output.find("Calculator.zapp") != std::string::npos);
+    for (const auto* path : {"/api/books/Calculator.zapp", "/api/apps/book.txt", "/api/apps/.zapp",
+                             "/api/apps/%2e%2e%2fescape.zapp", "/api/apps?after=book.txt"}) {
+        Request invalid(BookHttpMethod::Get, path);
+        Check(api, invalid, 400);
+    }
+    Request oversized(BookHttpMethod::Put, "/api/apps/large.zapp");
+    oversized.content_length = 33057;
+    Check(api, oversized, 413);
+    for (int fault = 0; fault < 5; ++fault) {
+        auto damaged = data;
+        if (fault == 0) damaged[8] = 2;
+        if (fault == 1) damaged[10] = 4;
+        if (fault == 2) damaged.back() = '\xc2';
+        Request interrupted(BookHttpMethod::Put, "/api/apps/bad.zapp", damaged);
+        if (fault == 3) interrupted.fail_after = 200;
+        if (fault == 4) interrupted.after_read = [&] { api.Cancel(); };
+        Check(api, interrupted, fault < 3 ? 400 : 408);
+        assert(!fs::exists(root / ".app-bad.zapp") && !fs::exists(root / ".upload.part"));
+        api.Start(books, kCode, 0);
+    }
+    Request retry(BookHttpMethod::Put, "/api/apps/bad.zapp", data);
+    Check(api, retry, 200);
+    Request raw(BookHttpMethod::Put, "/api/apps/Plain.lua", "while true do end");
+    Check(api, raw, 200);
+    for (unsigned i = 0; i < 35; ++i) {
+        char name[32]; std::snprintf(name, sizeof(name), ".app-A%03u.zapp", i);
+        std::ofstream(root / name, std::ios::binary).write(data.data(), data.size());
+    }
+    Request first(BookHttpMethod::Get, "/api/apps"), next(BookHttpMethod::Get, "/api/apps?after=A031.zapp");
+    Check(api, first, 200); Check(api, next, 200);
+    assert(first.output.find("A031.zapp") != std::string::npos && first.output.find("A032.zapp") == std::string::npos);
+    assert(next.output.find("A032.zapp") != std::string::npos && next.output.find("\"more\":false") != std::string::npos);
+    Request remove(BookHttpMethod::Delete, "/api/apps/Calculator.zapp");
+    Check(api, remove, 200);
+    assert(!fs::exists(root / ".app-Calculator.zapp"));
+#else
+    assert(listing.output.find("\"apps_supported\":false") != std::string::npos);
+    for (auto method : {BookHttpMethod::Get, BookHttpMethod::Put, BookHttpMethod::Delete}) {
+        Request disabled(method, "/api/apps/Calculator.zapp", data);
+        Check(api, disabled, 503);
+        assert(!disabled.offset && !fs::exists(root / ".upload.part"));
+    }
+#endif
+    assert(books.EndManagement() == ESP_OK);
+}
+
 void Scenes() {
     using namespace app;
     constexpr sdk::InputEvent ok{sdk::Button::Ok, sdk::InputAction::Click};
@@ -290,9 +368,11 @@ void Scenes() {
 }  // namespace
 
 int main(int argc, char** argv) {
-    assert(argc == 2);
+    assert(argc == 3);
+    fs::create_directories(argv[1]);
     StorageAndHttp(fs::path(argv[1]) / "http");
     Lifecycle(fs::path(argv[1]) / "lifecycle");
     Scenes();
+    AppHttp(fs::path(argv[1]) / "apps", argv[2]);
     std::puts("PASS: streamed web books, interrupted uploads, storage isolation, radio lifecycle and transfer scenes.");
 }

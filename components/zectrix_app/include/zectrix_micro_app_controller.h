@@ -31,12 +31,17 @@ public:
     MicroAppScene scene() const { return static_cast<MicroAppScene>(scenes_.current()); }
     bool busy() const { return scene() == MicroAppScene::Loading; }
     const storage::BookEntry& entry(std::size_t index) const { return entries_[index]; }
+    const package::Metadata* metadata(std::size_t index) const {
+        return metadata_[index].icon_side ? &metadata_[index] : nullptr;
+    }
     std::size_t count() const { return count_; }
     std::size_t rows() const { return count_ + previous_ + more_; }
     std::size_t selected() const { return selected_; }
     unsigned page() const { return page_; }
     bool previous() const { return previous_; }
     const char* name() const { return name_.data(); }
+    const char* title() const { return current_.icon_side ? current_.name.data() : name(); }
+    const package::Metadata& current_metadata() const { return current_; }
     esp_err_t storage_result() const { return storage_result_; }
     const runtime::Engine& engine() const { return engine_; }
 
@@ -61,9 +66,12 @@ private:
     runtime::Engine engine_;
     storage::BookFile file_;
     std::array<storage::BookEntry, kPageSize> entries_{};
+    std::array<package::Metadata, kPageSize> metadata_{};
+    package::Metadata current_{};
+    package::TextValidator source_text_;
     std::array<char, 64> name_{};
     uint8_t* source_ = nullptr;
-    uint32_t loaded_ = 0;
+    uint32_t loaded_ = 0, source_size_ = 0, source_offset_ = 0;
     std::size_t count_ = 0, selected_ = 0;
     unsigned page_ = 0;
     esp_err_t storage_result_ = ESP_OK;

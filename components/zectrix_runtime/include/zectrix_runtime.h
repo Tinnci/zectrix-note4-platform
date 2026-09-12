@@ -17,7 +17,7 @@ inline constexpr int kInstructionLimit = 10000;
 inline constexpr int kWidth = 376, kHeight = 192;
 
 enum class Key : uint8_t { Up = 1, Down, Ok };
-enum class Error : uint8_t { None, InvalidSource, Memory, Instructions, Guest, Drawing };
+enum class Error : uint8_t { None, InvalidSource, Memory, Instructions, Guest, Drawing, Permission };
 enum class DrawKind : uint8_t { Text, Rect, Fill };
 
 struct DrawCommand {
@@ -36,6 +36,11 @@ struct Frame {
 
 struct HeapStats { std::size_t live = 0, peak = 0, rejected = 0; };
 
+struct Options {
+    int instructions = kInstructionLimit;
+    bool display = true, input = true;
+};
+
 // One foreground owner calls this object serially. No tasks or hardware calls.
 class Engine final {
 public:
@@ -44,7 +49,7 @@ public:
     Engine(const Engine&) = delete;
     Engine& operator=(const Engine&) = delete;
 
-    bool Start(const uint8_t* source, std::size_t size);
+    bool Start(const uint8_t* source, std::size_t size, Options options = {});
     bool Handle(Key key);
     bool Draw();
     void Stop();
@@ -55,6 +60,7 @@ public:
     Error error() const { return error_; }
     const char* detail() const { return detail_.data(); }
     HeapStats heap() const { return heap_; }
+    int instruction_limit() const { return options_.instructions; }
 
 private:
     enum class Phase : uint8_t { Idle, Initialize, Event, Render };
@@ -79,6 +85,7 @@ private:
     lua_State* callback_ = nullptr;
     std::size_t heap_limit_;
     HeapStats heap_{};
+    Options options_{};
     Frame frame_{};
     std::array<char, 128> detail_{};
     Error error_ = Error::None;

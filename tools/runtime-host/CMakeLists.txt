@@ -28,5 +28,5 @@ target_include_directories(micro_app_test PRIVATE "${repo}/tools/host_include"
 target_compile_definitions(micro_app_test PRIVATE CONFIG_ZECTRIX_ENABLE_READER=0)
 target_compile_options(micro_app_test PRIVATE -Wall -Wextra -Werror)
 target_link_libraries(micro_app_test PRIVATE note4_runtime)
-add_test(NAME micro_apps COMMAND micro_app_test "${repo}/apps" "${CMAKE_CURRENT_BINARY_DIR}")
+add_test(NAME micro_apps COMMAND micro_app_test "${repo}/apps" "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/packages")
 set_tests_properties(micro_apps PROPERTIES TIMEOUT 30)

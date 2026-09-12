@@ -7,6 +7,7 @@
 #include <mutex>
 
 #include "esp_err.h"
+#include "zectrix_app_package.h"
 
 namespace zectrix::storage {
 
@@ -42,6 +43,8 @@ private:
     std::array<char, 256> target_{}, temporary_{};
     uint32_t expected_ = 0, received_ = 0;
     BookWriteResult error_ = BookWriteResult::Ok;
+    package::Validator package_;
+    bool packaged_ = false;
 };
 
 class BookFile {
