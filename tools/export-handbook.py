@@ -27,6 +27,8 @@ th { background: #e4e9dc; } pre { overflow-x: auto; padding: 1rem; background: #
 code { font-size: .87em; } blockquote { border-left: 3px solid #7c8f6c; padding-left: 1rem; margin-left: 0; }
 .edition { color: #58614f; font-size: .9rem; } .toc { padding: .5rem 1.5rem; background: #e7eadf; }
 @media print { html { background: white; } body { max-width: none; font-size: 11pt; }
+              pre { white-space: pre-wrap; overflow: visible; }
+              table { display: table; width: 100%; }
               img, tr, pre { break-inside: avoid; } h2, h3 { break-after: avoid; } }
 """
 

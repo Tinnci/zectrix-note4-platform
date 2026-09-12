@@ -134,6 +134,9 @@ resolution. Run `shellcheck tools/*.sh` and `actionlint` for shell/workflow
 validation. Firmware builds execute before native capacity reports.
 
 The handbook is inspected at desktop and phone widths after HTML export.
+Print styles wrap long commands and use native table layout so paper copies
+retain complete filenames and table columns. Both languages are also checked
+with print media at A4 and Letter content widths (698px and 720px).
 The standard local package is unpacked and checked against the built images;
 both example packages are inspected with the shipped host tools. Recorded
 iteration results are in the [release notes](releases/v1.2.0.md).
