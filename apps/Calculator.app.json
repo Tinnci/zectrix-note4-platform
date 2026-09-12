@@ -1,0 +1,11 @@
+{
+  "format_version": 1,
+  "guest_api": 1,
+  "name": "Calculator",
+  "version": "1.0.0",
+  "author": "Note4",
+  "entry": "Calculator.lua",
+  "icon": "Calculator.pbm",
+  "permissions": ["display", "input"],
+  "instruction_quota": 10000
+}

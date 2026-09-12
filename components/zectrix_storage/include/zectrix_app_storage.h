@@ -9,9 +9,18 @@ namespace zectrix::storage {
 class AppStorage final {
 public:
     static constexpr std::size_t kNameSize = 48;
-    static constexpr uint32_t kSourceLimit = 32768;
+    static constexpr uint32_t kSourceLimit = package::kSourceLimit;
     explicit AppStorage(BookStorage& storage) : storage_(storage) {}
     static bool ValidName(const char* name) { return BookStorage::ValidAppName(name); }
+    static bool Packaged(const char* name) {
+        if (!name) return false;
+        const char* suffix = std::strrchr(name, '.');
+        if (!suffix || std::strlen(suffix) != 5) return false;
+        const char extension[] = ".zapp";
+        for (unsigned i = 0; i < 5; ++i) if ((suffix[i] | 0x20) != extension[i]) return false;
+        return true;
+    }
+    static uint32_t SizeLimit(const char* name) { return Packaged(name) ? package::kPackageLimit : kSourceLimit; }
     esp_err_t List(BookEntry* entries, std::size_t capacity, std::size_t* count,
                    bool* more, const char* cursor = nullptr, bool previous = false) {
         return storage_.ListImpl(entries, capacity, count, more, cursor, true, previous);

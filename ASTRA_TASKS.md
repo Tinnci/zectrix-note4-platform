@@ -412,13 +412,17 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Added segmented Full/Minimal ZIP and application-image packaging with source/build manifests, license notices and download SHA256SUMS. Uploaded the assets to a `v1.2.0-preview.1` draft and verified a downloaded copy; production release publication remains R2.1. See [docs/RELEASE_PREPARATION.md](docs/RELEASE_PREPARATION.md).
   - Verified all 40 local Host targets, ShellCheck, package extraction/address/data-preservation/failure tests, native image descriptors, Full/Minimal builds and profile comparison. Fixed the GCC fixture include and firmware-container uv dependency exposed by remote CI; Host, Android and ESP32-S3 jobs pass. Draft images remain 2,495,312 / 521,648 bytes, with unchanged static RAM.
 
-- [ ] **E2.3: 极客应用分发与打包工具链探索 (`.zapp` Package Specification & CLI Toolchain)**
+- [x] **E2.3: 极客应用分发与打包工具链探索 (`.zapp` Package Specification & CLI Toolchain)**
   - **背景与愿景**：
     - 在 E2.2 动态沙箱原型落地后，为第三方开发者提供友好的外部构建与单文件打包规范（对标 Flipper Zero `.fap` 与 Android `.apk` 思想）。
   - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
     1. *容器格式与元数据设计*：设计轻量自包含格式（如 `.zapp`），如何将 16x16 / 32x32 单色图标、应用名称、版本号、作者、权限声明、指令配额（Quota）与编译字节码打包为单一可交换二进制文件？
     2. *极客命令行构建工具*：开发极简的打包与校验工具（使用 `bun` 或 `python`），支持开发者一键执行 `zapp build` 与 `zapp pack`；
     3. *USB / Wi-Fi 传包协同*：与现有的 USB Manager 及 Web 传书通道无缝衔接，实现通过浏览器或命令行拖拽安装第三方应用。
+  - Added portable version-1 `.zapp` containers with 16/32-pixel monochrome icons, UTF-8 names/authors, independent app/API versions, declared display/input permissions and enforced 100–10,000 instruction quotas. Packages carry source compiled by the bounded Lua VM at launch; external bytecode remains rejected.
+  - Shipped dependency-free `zapp build`, `pack` and `inspect` commands through uv, with Calculator/Flashcards manifests and original PBM icons. Added bounded metadata discovery and icon/version/author presentation to Apps without changing native scene or SDK ownership. See [docs/ZAPP_PACKAGES.md](docs/ZAPP_PACKAGES.md).
+  - Integrated streaming package validation into the existing storage transaction, USB app operations and authenticated Wi-Fi library. Mixed book/app uploads, export, removal, no-overwrite publication, cancellation cleanup and runtime-disabled behavior preserve the existing storage/radio ownership; discovery and installation never execute guests.
+  - Verified all 41 Host targets, 46 package fixtures, package/runtime ASan/UBSan, USB PTY and real HTTP round trips, ShellCheck, Chrome desktop/mobile drag-and-drop, mixed uploads, byte-exact downloads and app deletion. Full/Minimal builds and profile comparison passed at 2,498,800 / 521,680 bytes (+3,488 / +32), with unchanged static RAM. Hardware was not flashed in this iteration.
 
 - [ ] **C2.1: 官方伴侣端（Android Companion）深度端到端联调与 NFC 碰一碰实测 (Companion App & NDEF Qualification)**
   - **背景与愿景**：

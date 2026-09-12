@@ -313,6 +313,10 @@ List -> Loading -> Running/Error. It owns one bounded Lua guest and copied
 commands inside the content viewport. Guest files are discovered in pages and
 do not modify the static SDK catalog. Host-render retries reuse the completed
 frame; Back and shutdown close both source handles and the guest.
+E2.3 [packages](ZAPP_PACKAGES.md) add copied per-page metadata and bounded
+header/icon reads. Launch validates compatibility, source, permissions and quota
+before executing; installation through USB or Wi-Fi never creates an application
+instance. These files still do not change the native SDK registry.
 
 `SceneManager` uses a static handler table and fixed storage for eight private
 scene IDs, eight stack entries and one `uint32_t` state value per scene. Only

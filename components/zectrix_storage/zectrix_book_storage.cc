@@ -73,7 +73,8 @@ bool BookStorage::ValidName(const char* name) { return BookName(name); }
 bool BookStorage::ValidAppName(const char* name) {
     if (!ObjectName(name, AppStorage::kNameSize)) return false;
     const char* suffix = std::strrchr(name, '.');
-    return suffix && suffix != name && strcasecmp(suffix, ".lua") == 0;
+    return suffix && suffix != name &&
+        (strcasecmp(suffix, ".lua") == 0 || strcasecmp(suffix, ".zapp") == 0);
 }
 
 bool BookFile::Read(uint32_t offset, void* output, std::size_t size) {
@@ -234,7 +235,7 @@ esp_err_t BookStorage::OpenImpl(const char* name, BookFile* file, bool managed, 
     if (!S_ISREG(info.st_mode) || info.st_size < 0 ||
         static_cast<uint64_t>(info.st_size) > LONG_MAX ||
         static_cast<uint64_t>(info.st_size) > UINT32_MAX ||
-        (application && (info.st_size == 0 || static_cast<uint64_t>(info.st_size) > AppStorage::kSourceLimit)))
+        (application && (info.st_size == 0 || static_cast<uint64_t>(info.st_size) > AppStorage::SizeLimit(name))))
         return ESP_ERR_INVALID_SIZE;
     auto* opened = std::fopen(path, "rb");
     if (!opened) return ESP_FAIL;
@@ -304,8 +305,10 @@ BookWriteResult BookStorage::UploadImpl(const char* name, uint32_t size, BookUpl
     if (!upload || upload->owner_) return BookWriteResult::Busy;
     std::lock_guard<std::mutex> lock(mutex_);
     if (!managing_ || uploading_ || readers_) return BookWriteResult::Busy;
-    if ((application && (!size || size > AppStorage::kSourceLimit)) ||
+    if ((application && (!size || size > AppStorage::SizeLimit(name))) ||
         !Path(name, upload->target_.data(), upload->target_.size(), application)) return BookWriteResult::Invalid;
+    upload->packaged_ = application && AppStorage::Packaged(name);
+    if (upload->packaged_ && size < package::kHeaderSize + 32 + 1) return BookWriteResult::Invalid;
     struct stat info{};
     if (FileInfo(upload->target_.data(), &info)) return BookWriteResult::Exists;
     if (errno != ENOENT) return BookWriteResult::IoError;
@@ -318,6 +321,7 @@ BookWriteResult BookStorage::UploadImpl(const char* name, uint32_t size, BookUpl
     upload->expected_ = size;
     upload->received_ = 0;
     upload->error_ = BookWriteResult::Ok;
+    upload->package_.Reset(size);
     upload->owner_ = this;
     uploading_ = true;
     return BookWriteResult::Ok;
@@ -341,6 +345,7 @@ BookWriteResult BookStorage::RemoveImpl(const char* name, bool application) {
 BookWriteResult BookUpload::Write(const void* data, std::size_t size) {
     if (error_ != BookWriteResult::Ok) return error_;
     if (!file_ || (size && !data) || size > expected_ - received_) return BookWriteResult::Invalid;
+    if (packaged_ && !package_.Feed(data, size)) return error_ = BookWriteResult::Invalid;
     // A short write may already have advanced the file. Replaying that chunk
     // on this handle could publish duplicate or truncated data.
     if (size && std::fwrite(data, 1, size, file_) != size)
@@ -352,6 +357,7 @@ BookWriteResult BookUpload::Write(const void* data, std::size_t size) {
 BookWriteResult BookUpload::Commit() {
     if (error_ != BookWriteResult::Ok) return error_;
     if (!file_ || received_ != expected_) return BookWriteResult::Invalid;
+    if (packaged_ && !package_.Complete()) return error_ = BookWriteResult::Invalid;
     if (std::fflush(file_) != 0 || fsync(fileno(file_)) != 0)
         return error_ = errno == ENOSPC ? BookWriteResult::NoSpace : BookWriteResult::IoError;
     const int closed = std::fclose(file_);

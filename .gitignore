@@ -4,6 +4,7 @@
 /sdkconfig
 /sdkconfig.old
 /managed_components/
+/apps/dist/
 /android-companion/.gradle/
 /android-companion/.kotlin/
 /android-companion/**/build/
@@ -14,4 +15,3 @@ __pycache__/
 *.py[cod]
 *.log
 .astra_*
-

@@ -1,6 +1,6 @@
 import { mkdir, readdir } from 'node:fs/promises';
 
-const [binary, root] = Bun.argv.slice(2);
+const [binary, root, packageFile] = Bun.argv.slice(2);
 const code = 'ABCDEFGH2345';
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 await mkdir(root);
@@ -41,8 +41,25 @@ try {
   let response = await request('api/books');
   let listing = await response.json();
   assert(listing.files.length === 32 && listing.more && listing.files[31].name === 'A031.txt', 'First library page is wrong.');
+  assert(listing.apps_supported === true, 'App support is not advertised.');
   listing = await (await request('api/books?after=A031.txt')).json();
   assert(listing.files.length === 8 && !listing.more, 'Second library page is wrong.');
+
+  const app = new Uint8Array(await Bun.file(packageFile).arrayBuffer());
+  response = await request('api/apps/Calculator.zapp', { method: 'PUT', body: app });
+  assert(response.ok && (await response.json()).ok, 'Package upload failed.');
+  const exportedApp = new Uint8Array(await (await request('api/apps/Calculator.zapp')).arrayBuffer());
+  assert(exportedApp.length === app.length && exportedApp.every((value, i) => value === app[i]), 'Package export changed bytes.');
+  const appList = await (await request('api/apps')).json();
+  assert(appList.files.length === 1 && appList.files[0].name === 'Calculator.zapp', 'Installed app is missing.');
+  response = await request('api/apps/Calculator.zapp', { method: 'PUT', body: app });
+  assert(response.status === 409, 'Duplicate package replaced an app.'); await response.text();
+  const invalidApp = app.slice(); invalidApp[6] = 2;
+  response = await request('api/apps/bad.zapp', { method: 'PUT', body: invalidApp });
+  assert(response.status === 400, 'Unsupported guest API was installed.'); await response.text();
+  assert(!(await readdir(root)).includes('.app-bad.zapp'), 'Malformed app became visible.');
+  response = await request('api/apps/Calculator.zapp', { method: 'DELETE' });
+  assert(response.ok, 'App removal failed.'); await response.text();
 
   const name = '书"&稿.epub';
   const body = Uint8Array.from({ length: 131072 }, (_, i) => i % 256);

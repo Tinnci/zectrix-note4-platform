@@ -129,11 +129,14 @@ int Engine::Finish(lua_State* state, int, std::intptr_t) {
     return 0;
 }
 
-bool Engine::Start(const uint8_t* source, std::size_t size) {
+bool Engine::Start(const uint8_t* source, std::size_t size, Options options) {
     Stop();
     heap_ = {};
     error_ = Error::None;
     detail_[0] = 0;
+    options_ = options;
+    if (options.instructions < 100 || options.instructions > kInstructionLimit)
+        return Fail(Error::InvalidSource, "unsupported instruction quota");
     if (!source || !size || size > kSourceLimit) return Fail(Error::InvalidSource, "invalid script size");
     owner_ = lua_newstate(Allocate, this);
     if (!owner_) return Fail(Error::Memory, "script memory limit");
@@ -146,7 +149,7 @@ bool Engine::Start(const uint8_t* source, std::size_t size) {
     // The loader is protected internally. Binary Lua chunks are never accepted.
     const int loaded = luaL_loadbufferx(callback_, reinterpret_cast<const char*>(source), size, "app", "t");
     if (!Result(loaded)) return false;
-    lua_sethook(callback_, Budget, LUA_MASKCOUNT, kInstructionLimit);
+    lua_sethook(callback_, Budget, LUA_MASKCOUNT, options_.instructions);
     int results = 0;
     if (!Result(lua_resume(callback_, owner_, 0, &results))) return false;
     phase_ = Phase::Idle;
@@ -162,20 +165,25 @@ bool Engine::Run(Phase phase) {
     if (!Result(lua_resetthread(callback_))) return false;
     lua_settop(callback_, 0);
     lua_pushcfunction(callback_, Invoke);
-    lua_sethook(callback_, Budget, LUA_MASKCOUNT, kInstructionLimit);
+    lua_sethook(callback_, Budget, LUA_MASKCOUNT, options_.instructions);
     int results = 0;
     if (!Result(lua_resume(callback_, owner_, 0, &results))) return false;
     phase_ = Phase::Idle;
     return true;
 }
 
-bool Engine::Handle(Key key) { key_ = key; redraw_ = false; return Run(Phase::Event); }
+bool Engine::Handle(Key key) {
+    key_ = key;
+    redraw_ = false;
+    return options_.input ? Run(Phase::Event) : active();
+}
 bool Engine::Draw() { frame_.count = frame_.text_size = 0; return Run(Phase::Render); }
 
 bool Engine::Result(int status) {
     if (status == LUA_OK) return true;
     const auto error = status == LUA_YIELD ? Error::Instructions : status == LUA_ERRMEM ? Error::Memory :
-        status == LUA_ERRSYNTAX ? Error::InvalidSource : error_ == Error::Drawing ? Error::Drawing : Error::Guest;
+        status == LUA_ERRSYNTAX ? Error::InvalidSource :
+        error_ == Error::Drawing || error_ == Error::Permission ? error_ : Error::Guest;
     // Error objects can be arbitrary values. Only copy an existing Lua string.
     const char* message = callback_ && lua_type(callback_, -1) == LUA_TSTRING ? lua_tostring(callback_, -1) : nullptr;
     return Fail(error, status == LUA_YIELD ? "script instruction limit" : message ? message : "script failed");
@@ -208,6 +216,10 @@ int Engine::Coordinate(lua_State* state, int index, int upper) {
 
 int Engine::Text(lua_State* state) {
     auto& self = Self(state);
+    if (!self.options_.display) {
+        self.error_ = Error::Permission;
+        return luaL_error(state, "display permission not declared");
+    }
     if (self.phase_ != Phase::Render) return luaL_error(state, "drawing outside on_render");
     const auto x = Coordinate(state, 1, kWidth - 1), y = Coordinate(state, 2, kHeight - 1);
     std::size_t size = 0;
@@ -230,6 +242,10 @@ int Engine::Text(lua_State* state) {
 
 int Engine::Rectangle(lua_State* state, DrawKind kind) {
     auto& self = Self(state);
+    if (!self.options_.display) {
+        self.error_ = Error::Permission;
+        return luaL_error(state, "display permission not declared");
+    }
     if (self.phase_ != Phase::Render) return luaL_error(state, "drawing outside on_render");
     const auto x = Coordinate(state, 1, kWidth - 1), y = Coordinate(state, 2, kHeight - 1);
     const auto width = Coordinate(state, 3, kWidth - x), height = Coordinate(state, 4, kHeight - y);

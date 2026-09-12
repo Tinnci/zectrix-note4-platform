@@ -4,6 +4,11 @@ E2.2 adds an optional **Apps** Home destination for independently installed Lua
 source files. Calculator and Flashcards are examples in [`apps/`](../apps/).
 Installing, exporting or removing one does not rebuild or reflash firmware.
 
+E2.3 adds [`.zapp` packages and the developer CLI](ZAPP_PACKAGES.md), including
+icons/metadata, per-app quotas and permissions, and USB/Wi-Fi installation.
+Plain `.lua` remains compatible. The package guide describes the current
+distribution format; the original guest interface below still applies.
+
 ## Runtime choice
 
 This pilot selects **Lua 5.4.9**, one of the alternatives measured in
@@ -60,9 +65,9 @@ persistent guest data API.
 
 Uploads never overwrite an existing name. An interrupted upload is discarded;
 an uncertain commit or remove is not retried automatically. Reconnect and
-inspect `app-list`/`app-get` before repeating a mutation. Plain `.lua` sources,
-not `.zapp` containers or Lua bytecode, are the pilot format. Package metadata,
-stores, signing and Wi-Fi app transfer belong to later work such as E2.3.
+inspect `app-list`/`app-get` before repeating a mutation. Both `.lua` sources and
+E2.3 `.zapp` packages carry source compiled at launch. External Lua bytecode,
+stores and signing are not supported. Wi-Fi supports both installed formats.
 
 ## Guest interface
 
@@ -127,9 +132,10 @@ and the drawing functions shown above.
 | Resource | Bound / owner |
 | --- | --- |
 | Installed source | 1–32,768 bytes; UTF-8 basename of at most 47 bytes ending in `.lua` (case insensitive), no slash or control characters |
+| Installed package | `.zapp`, at most 33,056 bytes including metadata and 16/32-pixel icon; same filename bound; source size remains 1–32,768 bytes |
 | Loading | One file and a source buffer; read at most 1 KiB per idle callback, yield one RTOS tick between slices |
 | Lua allocation | 128 KiB including the runtime's allocation headers; PSRAM on ESP32-S3, accounted allocation on Host; underlying heap-manager metadata is additional |
-| Execution | 10,000 Lua instructions per initialization/event/render invocation; count-hook yield terminates the instance |
+| Execution | At most 10,000 Lua instructions per initialization/event/render invocation; packages may request 100–10,000; count-hook yield terminates the instance |
 | Native parser/C calls | `LUAI_MAXCCALLS=16`; parsing also has the source/heap bounds |
 | Foreground work | Serial SDK callbacks; no extra task, radio, guest filesystem or background timer |
 | Drawing | One complete copied command buffer; only physical presentation is retried after a display failure |
@@ -156,7 +162,7 @@ boundary against bugs in the native interpreter.
 ## Storage and USB ownership
 
 `AppStorage` is a façade over the existing `BookStorage` mount and management
-lease, with physical names `.app-<name>.lua`. Public book name validation still
+lease, with physical names `.app-<name>.lua` or `.app-<name>.zapp`. Public book name validation still
 accepts only TXT/EPUB. Listings, reads, uploads and removals resolve their own
 namespace; app operations cannot target books. Directory scans retain only a
 sorted page. A previous-page scan selects the preceding bounded suffix and

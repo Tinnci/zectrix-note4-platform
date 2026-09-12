@@ -44,7 +44,7 @@ private:
         std::snprintf(state.guest_name.data(), state.guest_name.size(), "%s", controller_.name());
         const auto heap = controller_.engine().heap();
         state.heap_live = heap.live; state.heap_peak = heap.peak; state.heap_rejected = heap.rejected;
-        state.heap_limit = runtime::kHeapLimit; state.instruction_limit = runtime::kInstructionLimit;
+        state.heap_limit = runtime::kHeapLimit; state.instruction_limit = controller_.engine().instruction_limit();
 #endif
     }
     class Library final : public app::MicroAppLibrary {

@@ -7,6 +7,8 @@ if [ "${ZECTRIX_RUNTIME_SANITIZE:-0}" = 1 ]; then
     build="$repo/build-runtime-host-sanitized"
     flags="-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer"
 fi
+"$repo/tools/zapp" build "$repo/apps/Calculator.app.json" -o "$build/packages/Calculator.zapp"
+"$repo/tools/zapp" build "$repo/apps/Flashcards.app.json" -o "$build/packages/Flashcards.zapp"
 args=(-S "$repo/tools/runtime-host" -B "$build" -DCMAKE_BUILD_TYPE=Debug
     "-DCMAKE_C_FLAGS=$flags" "-DCMAKE_CXX_FLAGS=$flags" "-DCMAKE_EXE_LINKER_FLAGS=$flags")
 if [ -n "${ZECTRIX_LUA_SOURCE_DIR:-}" ]; then

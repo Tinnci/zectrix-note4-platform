@@ -1,0 +1,11 @@
+{
+  "format_version": 1,
+  "guest_api": 1,
+  "name": "Flashcards",
+  "version": "1.0.0",
+  "author": "Note4",
+  "entry": "Flashcards.lua",
+  "icon": "Flashcards.pbm",
+  "permissions": ["display", "input"],
+  "instruction_quota": 5000
+}

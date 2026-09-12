@@ -4,6 +4,12 @@ L1.3 adds **SEND BOOKS** to the Launcher. A phone or computer can upload,
 download and delete TXT/EPUB files through a local web page. No companion app
 or internet connection is required.
 
+E2.3 extends the same session to [`.zapp` packages and Lua apps](ZAPP_PACKAGES.md)
+when the runtime is enabled. The page discovers support from `apps_supported`,
+accepts a mixed book/app batch and lists both namespaces. Installed apps open
+from **Home > Apps** after leaving Send Books; OK on the completed transfer
+screen retains its existing Book Reader action.
+
 ## Send books
 
 1. Initialize the content partition once with the explicit `books-flash`
@@ -63,6 +69,7 @@ case.
 | File request | 120-second deadline, with a 1-second socket read/write timeout. |
 | Successful batch | The browser finishes the session immediately. Firmware allows 500 ms for the final reply before shutdown. |
 | Filename | Valid UTF-8, at most 63 bytes, `.txt` or `.epub`, without separators or control characters. |
+| App filename/size | At most 47 UTF-8 bytes, `.zapp` or `.lua`; packages at most 33,056 bytes, raw sources 1–32,768 bytes. |
 | Capacity | Upload admission leaves 25 percent of the reported SPIFFS capacity for metadata and garbage collection. The page shows the remaining upload allowance. |
 | Library | The web page loads 32 entries per request and can manage all eligible files. The reader shows the first 32 names in byte order. |
 
@@ -118,12 +125,20 @@ trusted home network. Station mode does not encrypt HTTP traffic.
 | `PUT /api/books/<encoded-name>` | Upload raw bytes with `Content-Length`. |
 | `GET /api/books/<encoded-name>` | Download bytes as an attachment. |
 | `DELETE /api/books/<encoded-name>` | Delete one book, with an empty body. |
+| `GET /api/apps` | List apps and shared capacity; same pagination, plus `?after=<encoded-name>`. |
+| `PUT /api/apps/<encoded-name>` | Install a package or Lua source with exact `Content-Length`. |
+| `GET /api/apps/<encoded-name>` | Export the complete installed file. |
+| `DELETE /api/apps/<encoded-name>` | Remove one app, with an empty body. |
 | `POST /api/finish` | End the session, with an empty body. |
 
 Names use UTF-8 percent encoding. Responses distinguish unauthorized (`401`),
 invalid filename (`400`), missing file (`404`), existing name or busy (`409`),
 interrupted/timed-out upload (`408`), oversized request (`413`), ended session
 (`503`) and insufficient storage (`507`). File operations are serialized.
+Both list responses include `apps_supported`. Disabled app operations return
+`503`; invalid package structure or compatibility returns `400`. App uploads
+validate incrementally before publication and never execute code. The same
+authorization, cancellation, storage lease and radio shutdown apply to apps.
 
 ## Development and verification
 

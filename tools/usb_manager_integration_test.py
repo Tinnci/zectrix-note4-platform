@@ -178,6 +178,48 @@ class IntegrationTest(unittest.TestCase):
         self.assertEqual(exported.read_bytes(), source.read_bytes())
         self.assertFalse((self.device.root / ".app-Flashcards.lua").exists())
 
+    def test_zapp_build_usb_install_and_validation(self):
+        package = self.root / "计算器.zapp"
+        subprocess.run([sys.executable, str(TOOL.with_name("zapp.py")), "build",
+                        str(TOOL.parent.parent / "apps/Calculator.app.json"), "-o", str(package)],
+                       check=True, capture_output=True, timeout=10)
+        data = package.read_bytes()
+        client = self.device.connect()
+        self.assertEqual(client.put(package, application=True), len(data))
+        self.assertEqual(list(client.books()), [])
+        self.assertEqual(list(client.apps()), [{"name": package.name, "size": len(data)}])
+        exported = self.root / "export.zapp"
+        client.get(package.name, exported, application=True)
+        self.assertEqual(exported.read_bytes(), data)
+        with self.assertRaisesRegex(usb.DeviceError, "already exists"):
+            client.put(package, application=True)
+        bad = bytearray(data)
+        bad[6] = 2
+        malformed = self.root / "bad.zapp"
+        malformed.write_bytes(bad)
+        request_id = client.request_id
+        with self.assertRaisesRegex(usb.HostError, "invalid .zapp"):
+            client.put(malformed, application=True)
+        self.assertEqual(client.request_id, request_id)
+        # Bypass the client validator: firmware must reject incompatible headers too.
+        client.request(usb.APP_BEGIN, struct.pack("<I", len(bad)) + b"bad.zapp")
+        with self.assertRaises(usb.DeviceError):
+            client.request(usb.CHUNK, struct.pack("<I", 0) + bad[:1020])
+        self.assertFalse((self.device.root / ".app-bad.zapp").exists())
+        self.assertFalse((self.device.root / ".upload.part").exists())
+        client.request(usb.APP_BEGIN, struct.pack("<I", len(data)) + b"partial.zapp")
+        client.request(usb.CHUNK, struct.pack("<I", 0) + data[:159])
+        self.device.disconnect()
+        client = self.device.connect()
+        self.assertFalse((self.device.root / ".app-partial.zapp").exists())
+        self.assertFalse((self.device.root / ".upload.part").exists())
+        client.request(usb.APP_REMOVE, package.name.encode())
+        self.device.disconnect()
+        result = subprocess.run([sys.executable, str(TOOL), "--port", self.device.port, "app-put", str(package)],
+                                check=True, capture_output=True, text=True, timeout=10)
+        self.assertIn("Completed", result.stderr)
+        self.assertEqual((self.device.root / (".app-" + package.name)).read_bytes(), data)
+
     def test_cancel_and_malformed_input_recovery(self):
         client = self.device.connect()
         client.request(usb.BEGIN, struct.pack("<I", 9) + b"interrupted.txt")
