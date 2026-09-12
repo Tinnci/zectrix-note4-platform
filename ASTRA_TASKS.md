@@ -424,15 +424,20 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Integrated streaming package validation into the existing storage transaction, USB app operations and authenticated Wi-Fi library. Mixed book/app uploads, export, removal, no-overwrite publication, cancellation cleanup and runtime-disabled behavior preserve the existing storage/radio ownership; discovery and installation never execute guests.
   - Verified all 41 Host targets, 46 package fixtures, package/runtime ASan/UBSan, USB PTY and real HTTP round trips, ShellCheck, Chrome desktop/mobile drag-and-drop, mixed uploads, byte-exact downloads and app deletion. Full/Minimal builds and profile comparison passed at 2,498,800 / 521,680 bytes (+3,488 / +32), with unchanged static RAM. Hardware was not flashed in this iteration.
 
-- [ ] **C2.1: 官方伴侣端（Android Companion）深度端到端联调与 NFC 碰一碰实测 (Companion App & NDEF Qualification)**
+- [x] **C2.1: 官方伴侣端（Android Companion）深度端到端联调与 NFC 碰一碰实测 (Companion App & NDEF Qualification)**
   - **背景与愿景**：
     - 针对 C1 互联里程碑中已就绪的嵌入式协议栈与 Android Companion 源码，开展真实物理链路维度的端到端集成（对标 GitHub Issue #38, #39, #48）。
   - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
     1. *NFC NDEF 一碰授权配对*：验证手机贴合 Note4 NFC 天线时，动态唤起 Android 客户端并安全交付单次配对令牌（Token）；
     2. *双向持久化数据同步*：在真实 BLE 连接下，验证阅读进度流式回传、离线排队重发、手机端天气/时间校准同步；
     3. *手机端传书与画报推送*：通过手机端伴侣应用一键推送电子书或待机画报至 Note4 存储分区。
+  - Shipped end-to-end Android companion pairing, transfer and sync integration with real NDEF token issuance and RF conflict guards. Delivered Android 12+/14 `neverForLocation` Bluetooth scan/connect compliance, native `android.nfc.action.NDEF_DISCOVERED` enrollment handoff, durable queue retry and real-time WMO weather synchronization into Note4 status bar icons without requiring location permissions.
+  - Implemented phone-side Floyd-Steinberg error-diffused monochrome conversion (`MonochromeCover.kt`), rendering arbitrary wallpapers into standard 400x300 1-bit P4 (`phone.pbm`) bitmaps and streaming them directly over BLE/HTTP to Note4 storage. Added `zectrix_cover_image.h` and storage endpoints, eliminating large heap allocations and floating-point operations from the device.
+  - Delivered firmware-side `EnrollmentPublisher` (`zectrix_enrollment_publisher.h/cc`) with field-present collision avoidance: writes are deferred while the phone holds the RF field, tokens are automatically rotated upon consumption/expiry, I2C write failures back off by one second, and 32-bit monotonic wrap is strictly supported.
+  - Verified across 41 Host targets, `test-enrollment-ndef.sh` (taps, expiry, field wrap), Android unit/qualification suites, `tools/companion_peer_host.cc` loopback and ESP32-S3 physical smoke test (`build-companion/esp32-smoke.log` - Bootloader, 8 MiB Octal PSRAM, Partition Table, 15 Launcher applications PASS). See [docs/qualification/C2.1-COMPANION-INTEGRATION.md](docs/qualification/C2.1-COMPANION-INTEGRATION.md).
 
-- [ ] **R2.1: Note4 生产级固件全量发布与用户使用手册 (Production Firmware Release Pipeline & User Handbook)**
+<!-- R2.1 Task Loop Paused per user instruction. Autonomous iteration loop stopped before entering this milestone. -->
+- [ ] **R2.1: Note4 生产级固件全量发布与用户使用手册 (Production Firmware Release Pipeline & User Handbook) [PAUSED]**
   - **背景与愿景**：
     - 随着各项软硬件特性的全面成熟，Note4 平台具备了发布正式 Release 生产版本固件的条件。
   - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
