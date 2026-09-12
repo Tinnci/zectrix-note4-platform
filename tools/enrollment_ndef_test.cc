@@ -1,4 +1,5 @@
 #include "zectrix_enrollment_ndef.h"
+#include "zectrix_enrollment_publisher.h"
 
 #include <array>
 #include <cassert>
@@ -10,6 +11,137 @@ namespace {
 
 using zectrix::companion::EnrollmentNdefPayload;
 using zectrix::companion::EnrollmentNdefStatus;
+using namespace zectrix::companion;
+
+struct Clock final : PairingBootstrapClock {
+    uint32_t now = 0;
+    uint32_t MonotonicMilliseconds() const override { return now; }
+};
+
+struct Random final : PairingBootstrapRandom {
+    unsigned calls = 0;
+    bool available = true;
+    bool Fill(BootstrapToken* token) override {
+        ++calls;
+        token->fill(static_cast<uint8_t>(calls));
+        return available;
+    }
+};
+
+struct Publication {
+    Clock clock;
+    Random random;
+    PairingBootstrap bootstrap;
+    EnrollmentPublisher publisher;
+    unsigned writes = 0;
+    bool writable = true;
+    bool field = false;
+    EnrollmentNdefPayload tag{};
+
+    explicit Publication(BootstrapConfig config = {}) : bootstrap(clock, random, config) {}
+
+    bool Refresh() {
+        return publisher.Refresh(bootstrap, clock.now, field, [this](const BootstrapMaterial& material) {
+            assert(!field);
+            ++writes;
+            if (!writable) return false;
+            EnrollmentNdefPayload payload{};
+            payload.generation = material.generation;
+            payload.token = material.token;
+            std::vector<uint8_t> message(EnrollmentNdefMessageSize());
+            std::size_t size = 0;
+            assert(EncodeEnrollmentNdefMessage(payload, message.data(), message.size(), &size) == EnrollmentNdefStatus::kOk);
+            assert(DecodeEnrollmentNdefMessage(message.data(), size, &tag) == EnrollmentNdefStatus::kOk);
+            return true;
+        });
+    }
+
+    uint32_t Wake() const { return publisher.NextWakeMs(bootstrap, clock.now, field); }
+    BootstrapStatus Tap() { return publisher.OpenPairingWindow(bootstrap); }
+    BootstrapStatus Prove(const EnrollmentNdefPayload& proof, bool save = true) {
+        return bootstrap.ValidateAndPersistEnrollmentProof(42, proof.generation,
+            proof.token.data(), proof.token.size(), [save]() { return save; });
+    }
+};
+
+void TestRepeatedTapsAndFailedIdentitySave() {
+    Publication device;
+    device.field = true;
+    assert(!device.Refresh() && device.Wake() == UINT32_MAX);
+    assert(device.random.calls == 0 && device.writes == 0);
+    assert(device.Tap() == BootstrapStatus::kInvalidState);
+    device.field = false;
+    assert(device.Refresh());
+    assert(device.Wake() == 120000);
+    const auto first = device.tag;
+    assert(!device.Refresh() && device.writes == 1);
+    assert(device.Prove(first) == BootstrapStatus::kInvalidState);
+    assert(device.Tap() == BootstrapStatus::kOk);
+    device.field = true;
+    assert(device.Prove(first) == BootstrapStatus::kOk);
+    assert(device.Prove(first) == BootstrapStatus::kAlreadyConsumed);
+    assert(!device.Refresh() && device.Wake() == UINT32_MAX);
+    device.field = false;
+    assert(device.Wake() == 0 && device.Refresh());
+    assert(device.tag.generation != first.generation && device.tag.token != first.token);
+    assert(device.Tap() == BootstrapStatus::kOk);
+    assert(device.Prove(first) == BootstrapStatus::kGenerationMismatch);
+    assert(device.Prove(device.tag, false) == BootstrapStatus::kStoreError);
+    assert(device.Prove(device.tag) == BootstrapStatus::kAlreadyConsumed);
+    assert(device.Refresh() && device.writes == 3);
+    assert(device.Tap() == BootstrapStatus::kOk && device.Prove(device.tag) == BootstrapStatus::kOk);
+}
+
+void TestPublicationFailureRetriesWithoutAuthorizingStaleBytes() {
+    Publication device;
+    assert(device.Refresh());
+    const auto old = device.tag;
+    device.clock.now = 120000;
+    device.writable = false;
+    assert(!device.Refresh() && device.Wake() == 1000);
+    assert(device.writes == 2 && device.tag.token == old.token);
+    assert(device.Tap() == BootstrapStatus::kInvalidState);
+    assert(device.Prove(old) == BootstrapStatus::kInvalidState);
+    device.clock.now += 999;
+    assert(!device.Refresh() && device.writes == 2 && device.Wake() == 1);
+    device.clock.now += 1;
+    device.writable = true;
+    assert(device.Refresh());
+    assert(device.Tap() == BootstrapStatus::kOk);
+    assert(device.Prove(old) != BootstrapStatus::kOk);
+    assert(device.Prove(device.tag) == BootstrapStatus::kOk);
+
+    device.random.available = false;
+    assert(!device.Refresh() && device.Wake() == 1000);
+    assert(device.Tap() == BootstrapStatus::kInvalidState);
+    device.clock.now += 1000;
+    device.random.available = true;
+    assert(device.Refresh());
+    device.bootstrap.Cancel();
+    device.publisher.Reset();
+    assert(device.Tap() == BootstrapStatus::kInvalidState);
+    assert(device.Wake() == 0 && device.Refresh());
+}
+
+void TestHeldFieldExpiryAndMonotonicWrap() {
+    Publication device({120000, 50000});
+    device.clock.now = UINT32_MAX - 60000;
+    assert(device.Refresh());
+    assert(device.Tap() == BootstrapStatus::kOk);
+    assert(device.Wake() == 50000);
+    device.clock.now += 49999;
+    assert(device.Wake() == 1 && !device.Refresh());
+    device.field = true;
+    device.clock.now += 10002;
+    assert(device.clock.now == 0);
+    assert(!device.Refresh() && device.Wake() == UINT32_MAX);
+    assert(device.Prove(device.tag) == BootstrapStatus::kExpired);
+    assert(!device.Refresh() && device.writes == 1);
+    device.field = false;
+    assert(device.Wake() == 0 && device.Refresh());
+    assert(device.Tap() == BootstrapStatus::kOk);
+    assert(device.Prove(device.tag) == BootstrapStatus::kOk);
+}
 
 void TestRoundTrip() {
     EnrollmentNdefPayload original{};
@@ -118,6 +250,9 @@ void TestRejections() {
 }  // namespace
 
 int main() {
+    TestRepeatedTapsAndFailedIdentitySave();
+    TestPublicationFailureRetriesWithoutAuthorizingStaleBytes();
+    TestHeldFieldExpiryAndMonotonicWrap();
     TestRoundTrip();
     TestRejections();
     return 0;

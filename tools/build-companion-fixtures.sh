@@ -9,6 +9,7 @@ flags=(-std=c++17 -Wall -Wextra -Werror -pedantic -pthread)
 "${CXX:-c++}" "${flags[@]}" -I"$companion/include" \
     "$companion/zectrix_companion_protocol.cc" "$companion/zectrix_companion_identity.cc" \
     "$companion/zectrix_enrollment_ndef.cc" "$companion/zectrix_pairing_bootstrap.cc" \
+    "$companion/zectrix_enrollment_publisher.cc" \
     "$companion/zectrix_sync_engine.cc" "$companion/zectrix_sync_session.cc" \
     "$root_dir/tools/companion_peer_host.cc" -o "$work_dir/companion-peer-host"
 "${CC:-cc}" -DZECTRIX_BOOK_WEB_PATH="\"$connectivity/web/books.html\"" \

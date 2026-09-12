@@ -2,6 +2,7 @@
 #include "zectrix_companion_protocol.h"
 #include "zectrix_clock_sync.h"
 #include "zectrix_enrollment_ndef.h"
+#include "zectrix_enrollment_publisher.h"
 #include "zectrix_pairing_bootstrap.h"
 #include "zectrix_sync_session.h"
 #include "zectrix_weather_sync.h"
@@ -94,6 +95,8 @@ int main(int argc, char** argv) {
     SyncSession session(engine);
     FragmentReassembler fragments;
     Clock clock; Random random; PairingBootstrap bootstrap(clock, random);
+    EnrollmentPublisher enrollment_publisher;
+    std::vector<uint8_t> published_ndef;
     uint32_t sequence = 1;
     uint16_t frame_id = 1;
     std::string line;
@@ -152,19 +155,20 @@ int main(int argc, char** argv) {
         else if (command == "writes") std::cout << store.writes;
         else if (command == "fail-save") { store.fail_next = true; std::cout << "ok"; }
         else if (command == "ndef") {
-            assert(bootstrap.Prepare() == BootstrapStatus::kOk);
-            BootstrapMaterial material;
-            assert(bootstrap.Material(&material) == BootstrapStatus::kOk);
-            EnrollmentNdefPayload payload;
-            payload.flags = kEnrollmentNdefFlagBleAddressValid;
-            payload.ble_address_type = 0;
-            payload.ble_address = {0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc};
-            payload.device_id.fill(0x42);
-            payload.generation = material.generation; payload.token = material.token;
-            std::vector<uint8_t> bytes(EnrollmentNdefMessageSize()); std::size_t size = 0;
-            assert(EncodeEnrollmentNdefMessage(payload, bytes.data(), bytes.size(), &size) == EnrollmentNdefStatus::kOk);
-            std::cout << Hex(bytes.data(), size);
-        } else if (command == "field") std::cout << static_cast<unsigned>(bootstrap.OpenPairingWindow());
+            enrollment_publisher.Refresh(bootstrap, clock.now, false, [&](const BootstrapMaterial& material) {
+                EnrollmentNdefPayload payload;
+                payload.flags = kEnrollmentNdefFlagBleAddressValid;
+                payload.ble_address_type = 0;
+                payload.ble_address = {0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc};
+                payload.device_id.fill(0x42);
+                payload.generation = material.generation; payload.token = material.token;
+                published_ndef.resize(EnrollmentNdefMessageSize()); std::size_t size = 0;
+                assert(EncodeEnrollmentNdefMessage(payload, published_ndef.data(), published_ndef.size(), &size) == EnrollmentNdefStatus::kOk);
+                return true;
+            });
+            assert(!published_ndef.empty());
+            std::cout << Hex(published_ndef.data(), published_ndef.size());
+        } else if (command == "field") std::cout << static_cast<unsigned>(enrollment_publisher.OpenPairingWindow(bootstrap));
         else if (command == "time") { input >> clock.now; std::cout << "ok"; }
         else if (command == "proof") {
             unsigned fail = 0; input >> value >> fail;
