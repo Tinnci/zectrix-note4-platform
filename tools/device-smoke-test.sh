@@ -4,11 +4,11 @@ set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 profile=""
-usage() { printf 'Usage: %s [--profile full|minimal]\n' "$0"; }
+usage() { printf 'Usage: %s [--profile full|minimal|reader]\n' "$0"; }
 case "${1:-}" in
     --profile)
         case "${2:-}" in
-            full|minimal) profile="$2"; shift 2 ;;
+            full|minimal|reader) profile="$2"; shift 2 ;;
             *) usage >&2; exit 2 ;;
         esac ;;
     --help|-h) usage; exit 0 ;;

@@ -4,7 +4,8 @@ G1.2 prepares the `v1.2.0-preview.1` draft for the Note4 ESP32-S3. It contains
 Full and Minimal firmware from one source revision. The package label identifies
 this preview; `manifest.json` also records the firmware's existing Git-derived
 version, source commit, dirty state, ESP-IDF revision and native partition map.
-Publishing the production release and user handbook remains R2.1.
+R2.1's production workflow and bilingual handbook are now documented in
+[Releasing](RELEASING.md). This page retains the earlier G1.2 preview evidence.
 
 ## Build and package
 

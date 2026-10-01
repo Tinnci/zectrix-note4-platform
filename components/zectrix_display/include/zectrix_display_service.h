@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 #include "esp_err.h"
 #include "zectrix_display_state.h"
@@ -15,6 +16,9 @@ enum class DisplayIntent : uint8_t {
     Quality,
     FullClean,
 };
+
+enum class DisplayOrientation : uint8_t { Standard = 0, Inverted = 1 };
+inline constexpr char kOrientationSettingKey[] = "ui.orientation";
 
 class DisplayService {
 public:
@@ -37,6 +41,8 @@ public:
     esp_err_t BeginBatch();
     esp_err_t EndBatch();
     bool IsPowered() const;
+    esp_err_t SetOrientation(DisplayOrientation orientation);
+    DisplayOrientation orientation() const { return orientation_; }
 
     // Auto/Fast compare the full frame unless an explicit packed patch is
     // supplied. Unchanged pixels cause no refresh. The full frame remains the
@@ -64,6 +70,12 @@ public:
     const PhysicsParameters& physics_parameters() const { return physics_.parameters(); }
 
 private:
+    esp_err_t PresentPhysical1Bpp(DisplayIntent intent, const uint8_t* frame,
+        std::size_t size, const Rect& region, const uint8_t* patch, std::size_t patch_size);
+    esp_err_t PresentPhysical4Bpp(DisplayIntent intent, const uint8_t* frame, std::size_t size);
+    DisplayOrientation orientation_ = DisplayOrientation::Standard;
+    std::unique_ptr<uint8_t[]> rotated_;
+    bool orientation_changed_ = false;
     explicit DisplayService(void* driver_handle) : driver_handle_(driver_handle) {}
     struct Observation;
     Observation StartObservation() const;

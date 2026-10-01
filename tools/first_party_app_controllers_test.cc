@@ -421,6 +421,8 @@ int main() {
     settings.SaveCompleted(true);
     setting = settings.Handle({Button::Ok, Action::Click});
     assert(setting.decision == SettingsDecision::Save && setting.auto_showcase);
+    settings.Handle({Button::Down, Action::Click});
+    assert(settings.Handle({Button::Ok, Action::Click}).decision == SettingsDecision::SaveOrientation);
     assert(settings.Handle({Button::Ok, Action::LongPress}).decision ==
            SettingsDecision::Back);
     assert(settings.Handle({Button::Down, Action::LongPress}).decision ==

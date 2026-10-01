@@ -1,5 +1,9 @@
 # Quick start
 
+For ready-to-flash packages, button navigation, book transfer and app
+installation, use the illustrated [English handbook](HANDBOOK.md) or
+[中文手册](HANDBOOK_zh.md). The steps below build firmware from source.
+
 ## 1. Install ESP-IDF
 
 Install the project-qualified ESP-IDF v5.5.2 baseline and open an ESP-IDF-

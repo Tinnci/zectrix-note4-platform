@@ -2,6 +2,10 @@
 
 [English](README.md) | 简体中文
 
+**从这里开始：**[图文使用手册](docs/HANDBOOK_zh.md) ·
+[English handbook](docs/HANDBOOK.md) · [固件发布流程](docs/RELEASING.md) ·
+[v1.2.0 发布说明](docs/releases/v1.2.0.md)。
+
 本项目是由 **[Tinnci](https://github.com/Tinnci)** 维护的独立固件框架与应用平台，适用于搭载 SSD2683 黑白墨水屏的 ESP32-S3 设备（基于 Note4 硬件布局）。
 
 项目保留原有板级支持和 SSD2683 显示驱动作为经过验证的硬件基线，并在其上增加系统服务、多应用运行时、电子书引擎、稳定 SDK、伴侣设备连接和受控维护接口。
@@ -44,12 +48,14 @@
 | M3 | 已完成 | 静态应用生命周期和首批内置应用 |
 | M4 | 已完成 | 源码稳定 SDK v1 和统一软硬件退出门 |
 | C1 | 进行中 | 伴侣协议、持久同步、安全 BLE/Android 路径和 NFC 辅助注册；完整硬件验收尚未结束 |
-| D1 | 进行中 | USB 会话、平台诊断、日志流和 Host 模拟器已实现；输入观察和硬件验收尚未结束 |
+| D1 | 已实现，USB 验收开放 | USB 会话、系统/显示状态、日志与输入观察、受控维护、前台健康恢复和 Host 模拟器 |
 | M5 | 进行中 | A/B 分区校验、固件流式校验和启动确认看门狗已实现；升级交付流程与硬件验收尚未结束 |
 | R1 | 进行中 | 最小脏矩形局刷、相同画面跳过与自适应全刷策略已实现；硬件验收尚未结束 |
 | L1 | 已实现 | 常驻状态栏、场景导航、TXT/EPUB 流式阅读、局域网书库管理与待机画报；实际睡眠唤醒与待机电流仍待硬件测量 |
-| S1 | 进行中 | 已接入按接口类型查询的服务注册表和统一生命周期；Kconfig 裁剪与应用条件装配将在 S1.2/S1.3 实现 |
-| E2 | Lua 试点已实现 | 可分页发现应用，通过 USB 独立安装、导出和移除脚本；计算器、闪卡及有配额的运行时已接入，打包工具链留待 E2.3 |
+| S1 | 已实现 | 服务注册表、Kconfig 裁剪、应用条件装配、RTC 恢复/编辑和 Full/Minimal 构建；RTC 保持与待机电流仍待测量 |
+| E1 | 已实现 | 主页磁贴、统一导航、无线协调、双语界面、USB 管理、随身工具和状态图标；物理 USB 验收仍开放 |
+| E2 | 已实现 | 有配额的 Lua 应用、独立 `.zapp` 打包、USB/Wi-Fi 安装，以及计算器/闪卡示例 |
+| R2 | 发布工具与手册 | Full/Reader/Minimal 矩阵、分段固件与独立书库初始化包、双语离线手册和草稿/发布流程 |
 
 [服务注册表](docs/SERVICE_REGISTRY.md) 使用 16 个固定槽位，统一服务启动和失败清理。
 注册表自身不分配堆内存；缺失或已停止的服务返回空指针，现有 Platform 访问器仍返回
@@ -72,7 +78,7 @@ Note4 平台具备算法级点阵排版引擎、模块化场景状态机以及�
 | :--- | :---: | :---: |
 | **磁贴仪表盘主屏 (Home Dashboard)**<br>• 常驻 24px 顶部状态栏<br>• 阅读进度概览卡片与一键续读<br>• 快速应用导航磁贴 | ![Home ZH](docs/screenshots/home_zh.png) | ![Home EN](docs/screenshots/home_en.png) |
 | **流式电子书阅读 (Streamed E-Reader)**<br>• TXT 与 EPUB 原生轻量解析<br>• 算法级加粗/斜体/衬线排版<br>• CJK 字符智能避头尾与分页 | ![Reader ZH](docs/screenshots/reader_zh.png) | ![Reader EN](docs/screenshots/reader_en.png) |
-| **桌面待机画报 (Ambient Sleep Cover)**<br>• 日历日期与最新阅读进度仪表盘<br>• 灵感格言与微安级掉电休眠<br>• 支持仪表盘/风景画报/纯白留白 | ![Sleep ZH](docs/screenshots/sleep_dashboard_zh.png) | ![Sleep EN](docs/screenshots/sleep_dashboard_en.png) |
+| **桌面待机画报 (Ambient Sleep Cover)**<br>• 日历日期与最新阅读进度仪表盘<br>• 灵感格言与休眠期间静态留屏<br>• 支持仪表盘/风景画报/纯白留白 | ![Sleep ZH](docs/screenshots/sleep_dashboard_zh.png) | ![Sleep EN](docs/screenshots/sleep_dashboard_en.png) |
 | **局域网 Web 传书 (Local Web Transfer)**<br>• 浏览器拖拽上传 TXT/EPUB<br>• 临时便携热点或已有 Wi-Fi 局域网<br>• 传书结束无线射频自动断电 | ![Transfer ZH](docs/screenshots/book_transfer_zh.png) | ![Transfer EN](docs/screenshots/book_transfer_en.png) |
 | **随身极客工具箱 (Pocket Tools)**<br>• 静音番茄专注钟<br>• 1900–2199 离线万年历<br>• 防误触计数器与重置撤销 | ![Tools ZH](docs/screenshots/calendar_zh.png) | ![Tools EN](docs/screenshots/calendar_en.png) |
 

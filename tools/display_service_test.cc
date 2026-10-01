@@ -271,6 +271,43 @@ void TestCreationAndInputErrors() {
     assert(packets.empty() && gpio_writes == 0 && Inspect(*service).refresh_count == 0);
 }
 
+void TestScreenDirection() {
+    Reset();
+    auto service = CreateService();
+    using Orientation = zectrix::display::DisplayOrientation;
+    assert(service->SetOrientation(static_cast<Orientation>(2)) == ESP_ERR_INVALID_ARG);
+    Frame logical, physical;
+    logical.fill(0xff);
+    physical.fill(0xff);
+    PutBit(logical.data(), 50, 19, 31, false);
+    PutBit(physical.data(), 50, 380, 268, false);
+    assert(service->SetOrientation(Orientation::Inverted) == ESP_OK);
+    Present(*service, logical);
+    CheckFull(physical);
+    ClearTraffic();
+    Present(*service, logical);
+    assert(packets.empty());
+    // Packed patches rotate their pixels and window together.
+    PutBit(logical.data(), 50, 0, 0, false);
+    const uint8_t patch = 0x7f;
+    assert(service->Present1Bpp(DisplayIntent::Fast, logical.data(), logical.size(),
+        {0, 0, 8, 1}, &patch, 1) == ESP_OK);
+    const uint8_t unaligned_patch[] = {0x7f, 0xff};
+    assert(service->Present1Bpp(DisplayIntent::Fast, logical.data(), logical.size(),
+        {1, 1, 9, 1}, unaligned_patch, sizeof(unaligned_patch)) == ESP_OK);
+    assert(service->SetOrientation(Orientation::Standard) == ESP_OK);
+    ClearTraffic();
+    Present(*service, logical);
+    CheckFull(logical);
+    std::array<uint8_t, DisplayService::kFrameBytes4Bpp> gray{};
+    gray[0] = 0x12;
+    gray.back() = 0x34;
+    assert(service->SetOrientation(Orientation::Inverted) == ESP_OK);
+    assert(service->Present4Bpp(DisplayIntent::Quality, gray.data(), gray.size()) == ESP_OK);
+    assert(gray[0] == 0x12 && gray.back() == 0x34);
+    assert(Inspect(*service).preview[0] == 0x43);
+}
+
 void TestAutomaticRefreshAndBudget() {
     Reset();
     auto service = CreateService();
@@ -2145,6 +2182,7 @@ int main() {
     zectrix::i18n::SetLanguage(language && std::strcmp(language, "zh") == 0 ?
         zectrix::i18n::Language::Chinese : zectrix::i18n::Language::English);
     TestCreationAndInputErrors();
+    TestScreenDirection();
     TestAutomaticRefreshAndBudget();
     TestHighContrastAndSparseChanges();
     TestAccumulatedChanges();

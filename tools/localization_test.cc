@@ -430,8 +430,10 @@ void TestLanguageScenes() {
         assert(SetLanguage(Language::English));
         settings.Handle(back);
     } else {
-        assert(settings.option_count() == 1);
+        assert(settings.option_count() == 2);
         assert(settings.Handle(ok).decision == SettingsDecision::Save);
+        assert(settings.Handle(down).decision == SettingsDecision::RenderFast);
+        assert(settings.Handle(ok).decision == SettingsDecision::SaveOrientation);
     }
     assert(settings.Handle(back).decision == SettingsDecision::Back);
     settings.Stop();

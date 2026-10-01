@@ -68,6 +68,12 @@ class ModuleConfigTest(unittest.TestCase):
         self.assertEqual(saved.read_text(), "CONFIG_ZECTRIX_ENABLE_READER=y\n")
         self.assertTrue((developer / "CMakeCache.txt").exists())
 
+    def test_offline_reader_keeps_usb_and_content_without_radios(self):
+        options = self.resolve(defaults=((ROOT / "sdkconfig.defaults").read_text(),
+                                        (ROOT / "tools/profiles/reader.defaults").read_text()))
+        enabled = {name for name, value in options.items() if value}
+        self.assertEqual(enabled, {"UI_CHINESE", "READER", "BOOK_STORAGE", "USB_CLI", "USB_HOST", "UPDATE"})
+
     def test_parent_disables_requested_network_children(self):
         options = self.resolve("CONFIG_ZECTRIX_ENABLE_CONNECTIVITY=n\n"
                                "CONFIG_ZECTRIX_ENABLE_WIFI=y\n"

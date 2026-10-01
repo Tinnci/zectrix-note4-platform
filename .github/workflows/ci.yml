@@ -8,6 +8,11 @@ on:
     branches:
       - main
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      skip_firmware:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -103,6 +108,7 @@ jobs:
 
   firmware:
     name: ESP32-S3 firmware
+    if: ${{ !inputs.skip_firmware }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:

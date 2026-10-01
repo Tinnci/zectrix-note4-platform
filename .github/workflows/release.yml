@@ -1,0 +1,158 @@
+name: Firmware release
+
+on:
+  push:
+    tags: ['v[0-9]*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release tag (empty uses version.txt)
+        type: string
+        default: ''
+      publish:
+        description: Publish the completed draft after checks and uploads
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}-${{ inputs.version }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  metadata:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          base="v$(cat version.txt)"
+          version="${REQUESTED_VERSION:-$base}"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then version="$GITHUB_REF_NAME"; fi
+          [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9]+([.-][A-Za-z0-9]+)*)?$ ]]
+          [[ "$version" = "$base" || "$version" = "$base-"* ]]
+          printf 'value=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+  checks:
+    uses: ./.github/workflows/ci.yml
+    with:
+      skip_firmware: true
+
+  firmware:
+    needs: metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [full, minimal, reader]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Build and package the selected profile
+        uses: espressif/esp-idf-ci-action@e6f5c74232b1ccd4c97ed641f1e48553853f1fd5 # v1.2.0
+        env:
+          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+          RELEASE_PROFILE: ${{ matrix.profile }}
+        with:
+          esp_idf_version: v5.5.2
+          target: esp32s3
+          extra_docker_args: -e RELEASE_VERSION -e RELEASE_PROFILE
+          command: |
+            apt-get update && apt-get install --yes --no-install-recommends jq curl ca-certificates &&
+            curl --fail --silent --show-error --location https://astral.sh/uv/install.sh |
+            env UV_UNMANAGED_INSTALL=/usr/local/bin sh &&
+            bash tools/build-release.sh --version "$RELEASE_VERSION" --profile "$RELEASE_PROFILE" --output "build-release-$RELEASE_PROFILE"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: firmware-download-${{ matrix.profile }}
+          path: build-release-${{ matrix.profile }}/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    needs: [metadata, checks, firmware]
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: publish-${{ needs.metadata.outputs.version }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+      PUBLISH: ${{ github.event_name == 'push' || inputs.publish }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: firmware-download-*
+          path: downloads
+      - name: Install uv
+        run: |
+          curl --fail --silent --show-error --location https://astral.sh/uv/install.sh |
+            env UV_UNMANAGED_INSTALL="$RUNNER_TEMP/uv" sh
+          printf '%s\n' "$RUNNER_TEMP/uv" >> "$GITHUB_PATH"
+      - name: Assemble the download set
+        run: |
+          uv run --no-project tools/firmware_package.py --version "$RELEASE_VERSION" --output build-release \
+            --collect downloads/firmware-download-full downloads/firmware-download-minimal downloads/firmware-download-reader
+          jq -e --arg commit "$(git rev-parse HEAD)" \
+            'length == 3 and all(.[]; .source_commit == $commit and .source_dirty == false)' \
+            build-release/manifest.json > /dev/null
+      - name: Upload the complete draft and optionally publish
+        run: |
+          notes="docs/releases/v$(cat version.txt).md"
+          test -f "$notes"
+          source_commit=$(git rev-parse HEAD)
+          if tag_commit=$(git rev-parse --verify "refs/tags/$RELEASE_VERSION^{commit}" 2>/dev/null); then
+            if [ "$tag_commit" != "$source_commit" ]; then
+              printf 'Release tag refers to a different source commit: %s\n' "$tag_commit" >&2
+              exit 1
+            fi
+          fi
+          prerelease=(--prerelease=false)
+          if [[ "$RELEASE_VERSION" = *-* ]]; then prerelease=(--prerelease); fi
+          if state=$(gh release view "$RELEASE_VERSION" --json isDraft --jq .isDraft); then
+            if [ "$state" != true ]; then
+              printf 'Release already published: %s\n' "$RELEASE_VERSION" >&2
+              exit 1
+            fi
+            gh release upload "$RELEASE_VERSION" build-release/* --clobber
+            gh release edit "$RELEASE_VERSION" --target "$source_commit" \
+              --title "Note4 Open Platform $RELEASE_VERSION" --notes-file "$notes" "${prerelease[@]}"
+          else
+            gh release create "$RELEASE_VERSION" build-release/* --draft --target "$source_commit" \
+              --title "Note4 Open Platform $RELEASE_VERSION" --notes-file "$notes" "${prerelease[@]}"
+          fi
+          gh release view "$RELEASE_VERSION" --json assets --jq '.assets[].name' |
+            while IFS= read -r asset; do
+              if [ ! -f "build-release/$asset" ]; then
+                gh release delete-asset "$RELEASE_VERSION" "$asset" --yes
+              fi
+            done
+          verify_dir=$(mktemp -d)
+          trap 'rm -rf "$verify_dir"' EXIT
+          gh release download "$RELEASE_VERSION" --dir "$verify_dir"
+          (cd "$verify_dir" && sha256sum --check "$GITHUB_WORKSPACE/build-release/SHA256SUMS")
+          if [ "$PUBLISH" = true ]; then
+            gh release edit "$RELEASE_VERSION" --draft=false
+          fi
+          gh release view "$RELEASE_VERSION" --json url,isDraft,tagName

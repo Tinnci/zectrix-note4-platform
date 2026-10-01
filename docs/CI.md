@@ -39,9 +39,13 @@ idf.py size
 tools/capture-build-provenance.sh
 ```
 
-G1.2's [release preparation](RELEASE_PREPARATION.md) reuses these builds and
-the Full/Minimal profiles to create draft downloads. Packaging tests run with
-the existing firmware-budget Host target; no additional required CI job is added.
+The [release workflow](RELEASING.md) reuses CI through `workflow_call` for Host
+and Android checks, alongside its Full/Minimal/Reader ESP32-S3 matrix. The
+reused CI skips its duplicate firmware job. Version-tag pushes publish after
+complete draft upload/download verification; manual runs default to drafts.
+Packaging tests run with the existing firmware-budget Host target; no
+additional required branch-status check is added. G1.2's earlier preview
+remains documented in [Release preparation](RELEASE_PREPARATION.md).
 
 CI does not replace real-device qualification. BLE pairing, NFC routing, USB
 reconnect, Wi-Fi behavior, e-paper output, current draw, sleep and coexistence

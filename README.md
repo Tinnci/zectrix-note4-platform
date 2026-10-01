@@ -2,6 +2,10 @@
 
 English | [中文](README_zh.md)
 
+**Start here:** [Illustrated user handbook](docs/HANDBOOK.md) ·
+[中文手册](docs/HANDBOOK_zh.md) · [Firmware release workflow](docs/RELEASING.md) ·
+[v1.2.0 release notes](docs/releases/v1.2.0.md).
+
 An independent, modular firmware framework and application platform for
 ESP32-S3 e-paper devices (targeting the Note4 hardware layout), developed and
 maintained by [Tinnci](https://github.com/Tinnci).
@@ -61,14 +65,15 @@ qualification and pull-request integration work.
 | M3 | Complete | Static application lifecycle and first-party applications |
 | M4 | Complete | Source-stable SDK v1 and unified software/hardware exit gate |
 | C1 | Qualification open | Protocol, durable sync, secure BLE/Android enrollment, phone HTTPS and direct Wi-Fi implemented; physical end-to-end and RF/power evidence remains open |
-| D1 | Partially implemented | USB sessions, system/display diagnostics, log streaming and host simulator delivered; other status commands, input observation, confirmed mutations and USB qualification remain open |
+| D1 | Implemented; USB qualification open | USB sessions, copied system/display status, log/input observation, confirmed maintenance, foreground health/recovery and Host simulation |
 | M5 | Architecture complete | Measured A/B layout, streamed firmware verification and boot confirmation implemented; trusted delivery and physical rollback follow-ups remain open |
 | R1 | Implemented | Minimal dirty-region updates, unchanged-frame suppression and adaptive full-refresh policy delivered; panel measurements remain open |
 | Q1 | Implemented | Contract regression, concurrency/cleanup fixes and terminal/durable-replay audits delivered |
 | L1 | Implemented | Status bar, scene navigation, streamed TXT/EPUB reader, local Wi-Fi book management and ambient sleep covers; physical sleep/wake and standby-current measurements remain open |
 | S1 | Implemented | Typed service registry, selectable modules, conditional application composition, RTC restoration/editor and Full/Minimal regression; physical RTC retention and standby-current measurements remain open |
-| E1 | Implemented | E1.1–E1.8 deliver Home, navigation, radio arbitration, Chinese/English UI and USB book/settings management; physical USB transfer qualification remains open |
-| E2 | Lua pilot implemented | E2.1 compares engines and budgets; E2.2 adds Apps discovery, bounded Lua execution, USB script installation and Calculator/Flashcards; packaging remains E2.3 |
+| E1 | Implemented | E1.1–E1.10 deliver Home, navigation, radio arbitration, Chinese/English UI, USB management, Pocket Tools and status icons; physical USB qualification remains open |
+| E2 | Implemented | Bounded Lua apps, portable `.zapp` packaging, USB/Wi-Fi installation and independent Calculator/Flashcards examples |
+| R2 | Release tooling and guides | Full/Reader/Minimal build matrix, segmented firmware and optional library initialization, offline bilingual handbooks and draft/publication workflow |
 
 The [service registry](docs/SERVICE_REGISTRY.md) provides optional typed lookup,
 ordered startup and failure cleanup with 16 fixed slots and no registry heap
@@ -114,7 +119,7 @@ The Note4 platform features an algorithmic typography engine, modular scene arch
 | :--- | :---: | :---: |
 | **Home Dashboard**<br>• Persistent 24px status bar<br>• Reading overview & fast resume<br>• Fast application tiles | ![Home EN](docs/screenshots/home_en.png) | ![Home ZH](docs/screenshots/home_zh.png) |
 | **Streamed E-Reader**<br>• TXT & EPUB streaming<br>• Algorithmic styling (bold/italic)<br>• CJK line wrapping & pagination | ![Reader EN](docs/screenshots/reader_en.png) | ![Reader ZH](docs/screenshots/reader_zh.png) |
-| **Ambient Sleep Cover**<br>• Daily calendar & reading snapshot<br>• Microamp deep-sleep standby<br>• Landscape, dashboard, or blank | ![Sleep EN](docs/screenshots/sleep_dashboard_en.png) | ![Sleep ZH](docs/screenshots/sleep_dashboard_zh.png) |
+| **Ambient Sleep Cover**<br>• Daily calendar & reading snapshot<br>• Static image retained during sleep<br>• Landscape, dashboard, or blank | ![Sleep EN](docs/screenshots/sleep_dashboard_en.png) | ![Sleep ZH](docs/screenshots/sleep_dashboard_zh.png) |
 | **Local Web Transfer**<br>• Drag-and-drop TXT/EPUB upload<br>• AP hotspot or saved Wi-Fi station<br>• Auto-shutdown on complete | ![Transfer EN](docs/screenshots/book_transfer_en.png) | ![Transfer ZH](docs/screenshots/book_transfer_zh.png) |
 | **Pocket Tools & Calendar**<br>• Focus Pomodoro timer<br>• 1900–2199 Gregorian calendar<br>• Bounded tally counter | ![Tools EN](docs/screenshots/calendar_en.png) | ![Tools ZH](docs/screenshots/calendar_zh.png) |
 

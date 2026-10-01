@@ -69,7 +69,9 @@ void Reset() {
 
 template <typename Predicate>
 void WaitFor(Predicate ready) {
-    const auto deadline = std::chrono::steady_clock::now() + 2s;
+    // Fragmented I/O spans many worker sleeps; host timer coalescing is not
+    // USB throughput. Keep a bounded wait without timing out valid progress.
+    const auto deadline = std::chrono::steady_clock::now() + 10s;
     while (!ready() && std::chrono::steady_clock::now() < deadline) {
         std::this_thread::sleep_for(1ms);
     }

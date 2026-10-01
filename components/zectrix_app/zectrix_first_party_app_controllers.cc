@@ -104,7 +104,10 @@ bool SettingsController::Event(void* context, const SceneEvent& event) {
             self.language_ = static_cast<i18n::Language>(self.selected());
             self.action_ = SettingsDecision::SaveLanguage;
             self.dirty_ = self.quality_ = true;
-        } else if (self.option_count() > 1 && self.selected() == 0) {
+        } else if (self.selected() == self.option_count() - 1) {
+            self.action_ = SettingsDecision::SaveOrientation;
+            self.dirty_ = self.quality_ = true;
+        } else if (i18n::LanguageCount() > 1 && self.selected() == 0) {
             self.scenes_.SetState(static_cast<SceneId>(SettingsPage::Language), static_cast<uint32_t>(self.language_));
             self.scenes_.Push(static_cast<SceneId>(SettingsPage::Language));
         } else {
