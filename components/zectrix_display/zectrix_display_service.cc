@@ -105,7 +105,86 @@ void DisplayService::StartMetrics(Observation* observation) const {
         static_cast<zectrix_epd_handle_t>(driver_handle_), &observation->before) == ESP_OK;
 }
 
-esp_err_t DisplayService::Present1Bpp(
+esp_err_t DisplayService::SetOrientation(DisplayOrientation orientation) {
+    if (orientation != DisplayOrientation::Standard && orientation != DisplayOrientation::Inverted)
+        return ESP_ERR_INVALID_ARG;
+    if (orientation == orientation_) return ESP_OK;
+    if (orientation == DisplayOrientation::Inverted && !rotated_) {
+        rotated_.reset(new (std::nothrow) uint8_t[kFrameBytes4Bpp]);
+        if (!rotated_) return ESP_ERR_NO_MEM;
+    }
+    orientation_ = orientation;
+    orientation_changed_ = true;
+    return ESP_OK;
+}
+
+namespace {
+void RotatePacked(const uint8_t* source, uint8_t* destination, std::size_t size, bool gray) {
+    for (std::size_t i = 0; i < size; ++i) {
+        uint8_t value = source[size - i - 1];
+        if (gray) value = static_cast<uint8_t>((value << 4) | (value >> 4));
+        else {
+            value = static_cast<uint8_t>(((value & 0x55) << 1) | ((value >> 1) & 0x55));
+            value = static_cast<uint8_t>(((value & 0x33) << 2) | ((value >> 2) & 0x33));
+            value = static_cast<uint8_t>((value << 4) | (value >> 4));
+        }
+        destination[i] = value;
+    }
+}
+}
+
+esp_err_t DisplayService::Present1Bpp(DisplayIntent intent, const uint8_t* frame,
+    std::size_t size, const Rect& region, const uint8_t* patch, std::size_t patch_size) {
+    if (!frame || size != kFrameBytes1Bpp) return ESP_ERR_INVALID_ARG;
+    Rect physical_region = region;
+    if (orientation_ == DisplayOrientation::Inverted) {
+        RotatePacked(frame, rotated_.get(), size, false);
+        frame = rotated_.get();
+        if (patch || patch_size) {
+            if (!patch || region.x < 0 || region.y < 0 || region.width <= 0 || region.height <= 0 ||
+                region.x > kPanelWidth - region.width || region.y > kPanelHeight - region.height ||
+                patch_size != static_cast<std::size_t>((region.width + 7) / 8) * region.height)
+                return ESP_ERR_INVALID_ARG;
+            auto* destination = rotated_.get() + size;
+            const auto stride = static_cast<std::size_t>((region.width + 7) / 8);
+            std::memset(destination, 0xff, patch_size);
+            for (int y = 0; y < region.height; ++y) {
+                for (int x = 0; x < region.width; ++x) {
+                    if ((patch[static_cast<std::size_t>(y) * stride + x / 8] & (0x80 >> (x & 7))) == 0) {
+                        const int dx = region.width - x - 1, dy = region.height - y - 1;
+                        destination[static_cast<std::size_t>(dy) * stride + dx / 8] &=
+                            static_cast<uint8_t>(~(0x80 >> (dx & 7)));
+                    }
+                }
+            }
+            patch = rotated_.get() + size;
+            physical_region.x = kPanelWidth - region.x - region.width;
+            physical_region.y = kPanelHeight - region.y - region.height;
+        }
+    }
+    if (orientation_changed_ && (intent == DisplayIntent::Auto || intent == DisplayIntent::Fast)) {
+        intent = DisplayIntent::Quality;
+        patch = nullptr;
+        patch_size = 0;
+        physical_region = {};
+    }
+    const auto result = PresentPhysical1Bpp(intent, frame, size, physical_region, patch, patch_size);
+    if (result == ESP_OK) orientation_changed_ = false;
+    return result;
+}
+
+esp_err_t DisplayService::Present4Bpp(DisplayIntent intent, const uint8_t* frame, std::size_t size) {
+    if (!frame || size != kFrameBytes4Bpp) return ESP_ERR_INVALID_ARG;
+    if (orientation_ == DisplayOrientation::Inverted) {
+        RotatePacked(frame, rotated_.get(), size, true);
+        frame = rotated_.get();
+    }
+    const auto result = PresentPhysical4Bpp(intent, frame, size);
+    if (result == ESP_OK) orientation_changed_ = false;
+    return result;
+}
+
+esp_err_t DisplayService::PresentPhysical1Bpp(
     DisplayIntent intent, const uint8_t* full_framebuffer,
     std::size_t full_framebuffer_size, const Rect& partial_region,
     const uint8_t* partial_pixels, std::size_t partial_size) {
@@ -179,7 +258,7 @@ esp_err_t DisplayService::Present1Bpp(
     return RecordRefresh(observation, err, full ? full_framebuffer : nullptr);
 }
 
-esp_err_t DisplayService::Present4Bpp(DisplayIntent intent, const uint8_t* framebuffer, std::size_t size) {
+esp_err_t DisplayService::PresentPhysical4Bpp(DisplayIntent intent, const uint8_t* framebuffer, std::size_t size) {
     if (intent != DisplayIntent::Quality) return ESP_ERR_NOT_SUPPORTED;
     if (framebuffer == nullptr || size != kFrameBytes4Bpp) return ESP_ERR_INVALID_ARG;
     auto observation = StartObservation();

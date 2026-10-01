@@ -48,6 +48,11 @@ void TerminalApp::Run() {
     power_ = &platform_.Power();
     time_ = &platform_.Time();
     storage_ = &platform_.Storage();
+    uint32_t orientation = 0;
+    if (storage_->GetUInt32(display::kOrientationSettingKey, &orientation) == ESP_OK && orientation <= 1) {
+        const auto restored = display_->SetOrientation(static_cast<display::DisplayOrientation>(orientation));
+        if (restored != ESP_OK) ESP_LOGW(kTag, "screen direction restore failed: %s", esp_err_to_name(restored));
+    }
     system_ = &platform_.System();
 #if CONFIG_ZECTRIX_ENABLE_USB_HOST
     usb_host_ = platform_.Services().Get<host::Channel>();

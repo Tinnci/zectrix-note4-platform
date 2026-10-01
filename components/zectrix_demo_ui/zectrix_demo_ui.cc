@@ -159,20 +159,22 @@ esp_err_t ZectrixDemoUi::ShowSettings(const zectrix::app::SettingsController& se
               Tr(languages ? Text::NavApplyBack : Text::NavChangeBack));
     const auto count = languages ? zectrix::i18n::LanguageCount() : settings.option_count();
     for (std::size_t i = 0; i < count; ++i) {
-        const int y = 64 + static_cast<int>(i) * 62;
+        const int y = 64 + static_cast<int>(i) * 52;
         const bool selected = settings.selected() == i;
         canvas_.FillRect(16, y, 368, 42, selected);
         canvas_.Rect(16, y, 368, 42);
-        const bool language_option = !languages && count > 1 && i == 0;
+        const bool language_option = !languages && zectrix::i18n::LanguageCount() > 1 && i == 0;
+        const bool orientation_option = !languages && i == count - 1;
         const char* label = languages ? zectrix::i18n::LanguageName(static_cast<zectrix::i18n::Language>(i)) :
-            Tr(language_option ? Text::Language : Text::AutoShowcase);
+            Tr(orientation_option ? Text::DisplayLabel : language_option ? Text::Language : Text::AutoShowcase);
         canvas_.TextFitted(28, y + 13, label, languages ? 300 : 200, selected);
         const char* value = languages ? (static_cast<zectrix::i18n::Language>(i) == zectrix::i18n::CurrentLanguage() ? "*" : "") :
             language_option ? zectrix::i18n::LanguageName(zectrix::i18n::CurrentLanguage()) :
+            orientation_option ? (display_->orientation() == zectrix::display::DisplayOrientation::Inverted ? "180 deg" : "0 deg") :
             Tr(settings.auto_showcase() ? Text::On : Text::Off);
         canvas_.Text(372 - canvas_.TextWidth(value), y + 13, value, 1, selected);
     }
-    canvas_.TextFitted(16, 210, Tr(languages || (count > 1 && settings.selected() == 0) ?
+    canvas_.TextFitted(16, 220, Tr(languages || (zectrix::i18n::LanguageCount() > 1 && settings.selected() == 0) ?
         Text::LanguageHint : Text::ShowcaseIdle), 368);
     canvas_.TextFitted(16, 246, status, 368);
     return full_refresh ? RefreshFull() : RefreshAuto();

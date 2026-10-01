@@ -62,13 +62,24 @@ private:
         if (result.decision == Decision::SaveLanguage) {
             owner_->language_saved_ = i18n::SaveLanguage(*owner_->storage_, result.language) == ESP_OK;
             status_ = owner_->language_saved_ ? i18n::Text::Saved : i18n::Text::LanguageSaveFailed;
+        } else if (result.decision == Decision::SaveOrientation) {
+            using Orientation = display::DisplayOrientation;
+            const auto previous = owner_->display_->orientation();
+            const auto next = previous == Orientation::Standard ? Orientation::Inverted : Orientation::Standard;
+            auto saved = owner_->display_->SetOrientation(next);
+            if (saved == ESP_OK) {
+                saved = owner_->storage_->SetUInt32(display::kOrientationSettingKey, static_cast<uint32_t>(next));
+                if (saved != ESP_OK) owner_->display_->SetOrientation(previous);
+            }
+            status_ = saved == ESP_OK ? i18n::Text::Saved : i18n::Text::SaveFailed;
         } else if (result.decision == Decision::Save) {
             const auto saved = owner_->storage_->SetUInt32(app::kAutoShowcaseSettingKey,
                                                            result.auto_showcase ? 1 : 0);
             controller_.SaveCompleted(saved == ESP_OK);
             status_ = saved == ESP_OK ? i18n::Text::Saved : i18n::Text::SaveFailed;
         }
-        const bool quality = result.decision == Decision::RenderQuality || result.decision == Decision::SaveLanguage;
+        const bool quality = result.decision == Decision::RenderQuality || result.decision == Decision::SaveLanguage ||
+            result.decision == Decision::SaveOrientation;
         return context.RequestRender({0, 0, 400, 300}, quality ? sdk::RenderIntent::Quality : sdk::RenderIntent::Fast)
             ? sdk::Status::Ok : sdk::Status::InternalError;
     }
