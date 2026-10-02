@@ -49,12 +49,13 @@ ControlStatus PlatformControlDispatcher::Take(ControlTicket ticket,
     if (state_ != State::kComplete && !closing_ && clock_() - submitted_ms_ >= kOwnerRequestTimeoutMs) {
         const bool unknown = state_ == State::kExecuting && IsMutation(request_.operation);
         if (state_ == State::kExecuting) abandoned_ = true;
-        else state_ = State::kIdle;
+        else { state_ = State::kIdle; ClearRequestSecrets(&request_); }
         return unknown ? ControlStatus::kUnknownOutcome : ControlStatus::kTimeout;
     }
     if (state_ != State::kComplete) return ControlStatus::kPending;
     if (status_ == ControlStatus::kOk) *result = result_;
     state_ = State::kIdle;
+    ClearRequestSecrets(&request_);
     return status_;
 }
 
@@ -64,7 +65,7 @@ ControlStatus PlatformControlDispatcher::Cancel(ControlTicket ticket) {
     const bool unknown = IsMutation(request_.operation) &&
         (state_ == State::kExecuting || (state_ == State::kComplete && status_ == ControlStatus::kOk));
     if (state_ == State::kExecuting) abandoned_ = true;
-    else state_ = State::kIdle;
+    else { state_ = State::kIdle; ClearRequestSecrets(&request_); }
     return unknown ? ControlStatus::kUnknownOutcome : ControlStatus::kCancelledBeforeStart;
 }
 
@@ -78,13 +79,15 @@ bool PlatformControlDispatcher::Dispatch() {
         return true;
     }
     state_ = State::kExecuting;
-    const ControlRequest request = request_;
+    ControlRequest request = request_;
     lock.unlock();
     result_ = {};
     const ControlStatus status = owner_.Inspect(request, &result_);
+    ClearRequestSecrets(&request);
     lock.lock();
     status_ = closing_ ? (IsMutation(request.operation) ? ControlStatus::kUnknownOutcome : ControlStatus::kUnavailable) : status;
     state_ = abandoned_ ? State::kIdle : State::kComplete;
+    ClearRequestSecrets(&request_);
     idle_.notify_all();
     return true;
 }
@@ -98,6 +101,7 @@ void PlatformControlDispatcher::Shutdown() {
         state_ = State::kComplete;
     }
     idle_.wait(lock, [this] { return state_ != State::kExecuting; });
+    ClearRequestSecrets(&request_);
 }
 
 }  // namespace zectrix::cli

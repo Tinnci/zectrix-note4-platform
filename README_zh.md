@@ -72,13 +72,15 @@
 
 ## 界面与功能展示 (UI & Feature Showcase)
 
-Note4 平台具备算法级点阵排版引擎、模块化场景状态机以及原生中英双语界面支持。所有界面均基于 400x300 1-bit 单色墨水屏像素对齐渲染，兼顾低残影局部刷新与高对比度美学。
+原生中英双语界面：应用使用 400×300 横屏，日历锁屏另支持 300×400 竖屏。
+以下截图来自当前固件画布，不是实机照片。参见[方向支持与预览生成](docs/UI_PREVIEW.md)。
 
 | 场景与功能 | 简体中文界面 | English UI |
 | :--- | :---: | :---: |
 | **磁贴仪表盘主屏 (Home Dashboard)**<br>• 常驻 24px 顶部状态栏<br>• 阅读进度概览卡片与一键续读<br>• 快速应用导航磁贴 | ![Home ZH](docs/screenshots/home_zh.png) | ![Home EN](docs/screenshots/home_en.png) |
 | **流式电子书阅读 (Streamed E-Reader)**<br>• TXT 与 EPUB 原生轻量解析<br>• 算法级加粗/斜体/衬线排版<br>• CJK 字符智能避头尾与分页 | ![Reader ZH](docs/screenshots/reader_zh.png) | ![Reader EN](docs/screenshots/reader_en.png) |
 | **桌面待机画报 (Ambient Sleep Cover)**<br>• 日历日期与最新阅读进度仪表盘<br>• 灵感格言与休眠期间静态留屏<br>• 支持仪表盘/风景画报/纯白留白 | ![Sleep ZH](docs/screenshots/sleep_dashboard_zh.png) | ![Sleep EN](docs/screenshots/sleep_dashboard_en.png) |
+| **竖屏日历锁屏**<br>• 电量与六周月历<br>• 每日定时唤醒刷新 | ![Portrait ZH](docs/screenshots/sleep_portrait_zh.png) | ![Portrait EN](docs/screenshots/sleep_portrait_en.png) |
 | **局域网 Web 传书 (Local Web Transfer)**<br>• 浏览器拖拽上传 TXT/EPUB<br>• 临时便携热点或已有 Wi-Fi 局域网<br>• 传书结束无线射频自动断电 | ![Transfer ZH](docs/screenshots/book_transfer_zh.png) | ![Transfer EN](docs/screenshots/book_transfer_en.png) |
 | **随身极客工具箱 (Pocket Tools)**<br>• 静音番茄专注钟<br>• 1900–2199 离线万年历<br>• 防误触计数器与重置撤销 | ![Tools ZH](docs/screenshots/calendar_zh.png) | ![Tools EN](docs/screenshots/calendar_en.png) |
 

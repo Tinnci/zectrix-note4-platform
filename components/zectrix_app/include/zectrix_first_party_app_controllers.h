@@ -8,7 +8,7 @@
 
 namespace zectrix::app {
 
-enum class ConnectivityPage : SceneId { Actions, Forget };
+enum class ConnectivityPage : SceneId { Actions, Forget, Configuration, ForgetWifi, BackgroundLimits };
 enum class ConnectivityDecision : uint8_t {
     None,
     RenderFast,
@@ -18,6 +18,14 @@ enum class ConnectivityDecision : uint8_t {
     ClearBonds,
     Back,
     Shutdown,
+    CyclePolicy,
+    CycleBackground,
+    ToggleRemoteCover,
+    ClearWifi,
+    ToggleTelemetry,
+    CycleBudget,
+    CycleBattery,
+    ToggleQuietHours,
 };
 
 class ConnectivityController {
@@ -34,7 +42,8 @@ public:
 private:
     static void Enter(void* context, SceneId scene);
     static bool Event(void* context, const SceneEvent& event);
-    inline static constexpr SceneHandler kHandlers[] = {{Enter, Event, nullptr}, {Enter, Event, nullptr}};
+    inline static constexpr SceneHandler kHandlers[] = {
+        {Enter, Event, nullptr}, {Enter, Event, nullptr}, {Enter, Event, nullptr}, {Enter, Event, nullptr}, {Enter, Event, nullptr}};
     SceneManager scenes_{kHandlers, std::size(kHandlers), this};
     ConnectivityDecision action_ = ConnectivityDecision::None;
     bool dirty_ = false, quality_ = false;
@@ -59,6 +68,7 @@ enum class SettingsDecision : uint8_t {
     Save,
     SaveLanguage,
     SaveOrientation,
+    SaveSleepOrientation,
     Back,
     Shutdown,
 };
@@ -86,7 +96,7 @@ public:
     i18n::Language language() const { return language_; }
     SettingsPage page() const { return static_cast<SettingsPage>(scenes_.current()); }
     std::size_t selected() const { return scenes_.state(scenes_.current()); }
-    std::size_t option_count() const { return i18n::LanguageCount() > 1 ? 3 : 2; }
+    std::size_t option_count() const { return i18n::LanguageCount() > 1 ? 4 : 3; }
 
 private:
     static void Enter(void* context, SceneId scene);

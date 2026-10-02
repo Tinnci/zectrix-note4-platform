@@ -306,6 +306,23 @@ void TestScreenDirection() {
     assert(service->Present4Bpp(DisplayIntent::Quality, gray.data(), gray.size()) == ESP_OK);
     assert(gray[0] == 0x12 && gray.back() == 0x34);
     assert(Inspect(*service).preview[0] == 0x43);
+    Frame portrait;
+    portrait.fill(0xff);
+    // x=17, y=31: the 300-bit scanline starts halfway through a byte.
+    const auto bit = 31 * 300 + 17;
+    portrait[bit / 8] &= static_cast<uint8_t>(~(0x80 >> (bit & 7)));
+    physical.fill(0xff);
+    PutBit(physical.data(), 50, 368, 17, false);
+    ClearTraffic();
+    assert(service->PresentPortrait1Bpp(portrait.data(), portrait.size()) == ESP_OK);
+    CheckFull(physical);
+    assert(service->orientation() == Orientation::Inverted);
+    assert(service->PresentPortrait1Bpp(nullptr, portrait.size()) == ESP_ERR_INVALID_ARG);
+    // Returning to apps retains their preference and forces a full refresh.
+    assert(service->SetOrientation(Orientation::Standard) == ESP_OK);
+    ClearTraffic();
+    Present(*service, logical);
+    CheckFull(logical);
 }
 
 void TestAutomaticRefreshAndBudget() {
@@ -970,7 +987,7 @@ void TestUiTraffic() {
                 clock_bytes, menu_bytes);
 }
 
-void SavePreview(const ZectrixCanvas& canvas, const char* name) {
+void SavePreview(const ZectrixCanvas& canvas, const char* name, bool portrait = false) {
     const char* directory = std::getenv("ZECTRIX_UI_PREVIEW_DIR");
     if (!directory) return;
     char path[1024];
@@ -978,8 +995,18 @@ void SavePreview(const ZectrixCanvas& canvas, const char* name) {
         zectrix::i18n::CurrentLanguage() == zectrix::i18n::Language::Chinese ? "zh-" : "", name);
     FILE* output = std::fopen(path, "wb");
     assert(output);
-    std::fprintf(output, "P4\n400 300\n");
-    for (size_t i = 0; i < canvas.size(); ++i) std::fputc(canvas.data()[i] ^ 0xff, output);
+    const int width = portrait ? 300 : 400, height = portrait ? 400 : 300;
+    std::fprintf(output, "P4\n%d %d\n", width, height);
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; x += 8) {
+            uint8_t byte = 0;
+            for (int dx = 0; dx < 8 && x + dx < width; ++dx) {
+                const auto bit = y * width + x + dx;
+                if ((canvas.data()[bit / 8] & (0x80 >> (bit & 7))) == 0) byte |= 0x80 >> dx;
+            }
+            std::fputc(byte, output);
+        }
+    }
     assert(std::fclose(output) == 0);
 }
 
@@ -1949,6 +1976,42 @@ void TestSleepCoverComposition() {
     snapshot.has_reading = true;
     std::strcpy(snapshot.reading.book_id.data(), "风从海上来——旅途中的阅读笔记.epub");
     snapshot.reading.progress_per_mille = 425;
+
+    ui.SetSleepPortrait(true);
+    snapshot.clock.value = {2025, 3, 31, 0, 8, 4, 0};
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard, true) == ESP_OK);
+    SavePreview(ui.canvas(), "sleep-portrait", true);
+    assert(ui.canvas().width() == 400 && ui.canvas().height() == 300);
+    Frame portrait_before;
+    std::memcpy(portrait_before.data(), ui.canvas().data(), portrait_before.size());
+    snapshot.power.battery_percent = 40;
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard, true) == ESP_OK);
+    // Battery changes affect only the portrait header, not the month or footer.
+    constexpr size_t portrait_header_bytes = 38 * 300 / 8;
+    assert(std::memcmp(portrait_before.data(), ui.canvas().data(), portrait_header_bytes) != 0);
+    assert(std::memcmp(portrait_before.data() + portrait_header_bytes,
+        ui.canvas().data() + portrait_header_bytes, portrait_before.size() - portrait_header_bytes) == 0);
+    snapshot.power.battery_percent = 82;
+    snapshot.clock.value = {2021, 2, 28, 0, 8, 4, 0};
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard, true) == ESP_OK);
+    SavePreview(ui.canvas(), "sleep-portrait-four-weeks", true);
+    snapshot.clock.value = {2024, 2, 29, 0, 8, 4, 0};
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard, true) == ESP_OK);
+    SavePreview(ui.canvas(), "sleep-portrait-leap", true);
+    snapshot.clock.value = {2025, 3, 31, 0, 8, 4, 0};
+    ClearTraffic();
+    ui.UpdateStatus(status);
+    assert(ui.RefreshPending() == ESP_OK && packets.empty());
+    assert(ui.ShowSleepCoverMenu(SleepCoverStyle::Dashboard, SleepCoverStyle::Dashboard, nullptr, true) == ESP_OK);
+    snapshot.clock.source = zectrix::time::ClockSource::Uptime;
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard) == ESP_OK);
+    SavePreview(ui.canvas(), "sleep-portrait-unset", true);
+    fail_command = 0xe9;
+    assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard) == ESP_FAIL);
+    assert(ui.canvas().width() == 400 && ui.canvas().height() == 300);
+    fail_command = -1;
+    ui.SetSleepPortrait(false);
+    snapshot.clock = {{2026, 9, 9, 0, 20, 27, 0}, zectrix::time::ClockSource::Rtc};
 
     assert(ui.ShowSleepCoverMenu(SleepCoverStyle::Dashboard, SleepCoverStyle::Dashboard, nullptr, true) == ESP_OK);
     SavePreview(ui.canvas(), "sleep-menu");

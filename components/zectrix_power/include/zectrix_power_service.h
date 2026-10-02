@@ -47,11 +47,15 @@ public:
         return true;
     }
     WakeReason GetWakeReason() const;
+    bool IsScheduledWake() const;
 
     // Platform stops peripheral consumers before calling this final transition.
     // Releases devices, arms a released power button, turns off rails and sleeps.
     // The optional owner hook runs after cleanup/wake setup, before cutting power.
-    [[noreturn]] void Shutdown(void (*ready)(void*) = nullptr, void* context = nullptr);
+    // A nonzero timer keeps the battery latch on for autonomous lock-screen
+    // refresh. Timer setup failure falls back to the existing rail-off path.
+    [[noreturn]] void Shutdown(void (*ready)(void*) = nullptr, void* context = nullptr,
+                              uint64_t wake_after_us = 0);
 
 private:
     explicit PowerService(ZectrixBoard& board) : board_(&board) {}

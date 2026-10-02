@@ -12,6 +12,9 @@ host_tests=(
     test-companion-identity.sh
     test-companion-protocol.sh
     test-connectivity-policy.sh
+    test-connectivity-settings.sh
+    test-edge-display.sh
+    test-ha-bridge.sh
     test-display-service.sh
     test-display-state.sh
     test-enrollment-ndef.sh

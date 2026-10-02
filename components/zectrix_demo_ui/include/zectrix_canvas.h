@@ -17,7 +17,11 @@ public:
 
     struct Clip { int x, y, width, height; };
     void SetClip(Clip clip);
-    void ResetClip() { clip_ = {0, 0, kWidth, kHeight}; }
+    // Portrait frames use tightly packed scanlines (no per-row padding).
+    void SetPortrait(bool portrait) { portrait_ = portrait; ResetClip(); }
+    int width() const { return portrait_ ? kHeight : kWidth; }
+    int height() const { return portrait_ ? kWidth : kHeight; }
+    void ResetClip() { clip_ = {0, 0, width(), height()}; }
     Clip clip() const { return clip_; }
 
     void Clear(bool white = true);
@@ -41,6 +45,7 @@ public:
 private:
     std::array<uint8_t, kFrameBytes> pixels_ = {};
     Clip clip_{0, 0, kWidth, kHeight};
+    bool portrait_ = false;
 };
 
 #endif  // ZECTRIX_CANVAS_H_

@@ -51,9 +51,10 @@ The mountain illustration uses the existing monochrome canvas primitives.
 
 **AS OF** marks when the snapshot was taken. Preview captures on selection;
 shutdown captures again after foreground exit. The calendar, quote and battery
-value stay static throughout sleep. L1.4 adds manual sleep, with no automatic
-idle sleep, periodic refresh or timer wake. It is a retained display surface,
-not an access-control lock.
+value stay static between refreshes. With a valid clock, the calendar wakes
+around local 00:01, refreshes and sleeps without opening the app shell.
+Other covers remain static. This adds neither idle sleep nor an access-control
+lock. See [screen direction](SCREEN_DIRECTION.md) for portrait and power behavior.
 
 ## Scene, display and power ownership
 
@@ -61,7 +62,8 @@ The Sleep Cover application uses the existing bounded `SceneManager` for
 Choose -> Preview. Input callbacks request deferred navigation or rendering.
 Failed preview commits request a Quality retry through the next idle callback.
 The implementation uses the shared 15,000-byte 1bpp canvas and existing glyphs;
-it adds no framebuffer allocation, image decoder or render task.
+landscape rendering adds no framebuffer allocation, image decoder or render
+task. Portrait submission uses DisplayService's reusable rotation buffer.
 
 Shutdown runs on the application owner:
 
@@ -72,8 +74,9 @@ Shutdown runs on the application owner:
 4. Suppress pending status updates for the final surface. Release DisplayService
    and the remaining platform consumers without repainting the panel.
 5. Release board peripherals, turn off the LED/audio rail and keep the existing
-   100 ms delay. Prepare button wake, release the battery latch, retain the
-   existing second 100 ms delay and enter deep sleep if USB still supplies power.
+   100 ms delay. Prepare button wake. For a valid daily dashboard, arm the daily
+   timer and retain the battery latch during deep sleep. Otherwise release the
+   latch, retain the second 100 ms delay, and deep sleep if USB supplies power.
 
 Display or wake setup failure is logged and does not skip cleanup or rail-off.
 Existing GPIO holds retain the disabled rails. The application never controls
@@ -88,8 +91,9 @@ before normal button sampling resumes.
 
 If DOWN stays held past the bound, or wake configuration fails, USB-powered
 sleep has no button wake; use reset or power cycling. Battery-powered shutdown
-continues to use the board's hardware latch. Neither the retained calendar nor
-the quote schedules a wake.
+continues to use the board's hardware latch. Quote, picture and blank covers
+do not schedule wakes. Calendar sleep also falls back to latch-off when button
+wake cannot be armed, timer setup fails, the clock is invalid, or battery is low.
 
 ## Companion pictures and weather
 

@@ -300,6 +300,20 @@ void TestDateHints() {
 }  // namespace
 
 int main() {
+    {
+        std::array<uint8_t, kMaximumWifiPageBytes> page{};
+        WifiHttpResponse response;
+        assert(!response.Begin(page.data(), page.size()));  // Existing resources remain 2048B.
+        assert(response.Begin(page.data(), page.size(), true));
+        const std::string header = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: 15032\r\n\r\n";
+        assert(response.Feed(reinterpret_cast<const uint8_t*>(header.data()), header.size()) == WifiDriverResult::kPending);
+        std::array<uint8_t, kMaximumWifiPageBytes> bytes{}; bytes.fill(0xff);
+        assert(response.Feed(bytes.data(), bytes.size()) == WifiDriverResult::kReady && response.BodySize() == bytes.size());
+        assert(!response.Begin(page.data(), page.size() + 1, true));
+        assert(response.Begin(page.data(), page.size(), true));
+        const std::string overflow = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: 15033\r\n\r\n";
+        assert(response.Feed(reinterpret_cast<const uint8_t*>(overflow.data()), overflow.size()) == WifiDriverResult::kResponseTooLarge);
+    }
     TestFramingAndValidation();
     TestNonBlockingClientAndReuse();
     TestDateHints();

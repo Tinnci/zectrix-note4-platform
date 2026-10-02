@@ -18,7 +18,7 @@ void ConnectivityController::Stop() {
 
 void ConnectivityController::Enter(void* context, SceneId scene) {
     auto& self = *static_cast<ConnectivityController*>(context);
-    if (scene == Id(ConnectivityPage::Forget)) self.scenes_.SetState(scene, 0);
+    if (scene == Id(ConnectivityPage::Forget) || scene == Id(ConnectivityPage::ForgetWifi)) self.scenes_.SetState(scene, 0);
     self.dirty_ = self.quality_ = true;
 }
 
@@ -27,13 +27,27 @@ bool ConnectivityController::Event(void* context, const SceneEvent& event) {
     if (event.type != SceneEvent::Type::Input) return false;
     const auto key = MapNavigation(event.input);
     const bool actions = self.page() == ConnectivityPage::Actions;
+    const bool configuration = self.page() == ConnectivityPage::Configuration;
+    const bool limits = self.page() == ConnectivityPage::BackgroundLimits;
     if (key == Navigation::Previous || key == Navigation::Next) {
-        self.scenes_.SetState(self.scenes_.current(), MoveSelection(self.selected(), actions ? 3 : 2, key));
+        self.scenes_.SetState(self.scenes_.current(), MoveSelection(self.selected(), configuration ? 6 : actions ? 4 : limits ? 3 : 2, key));
         self.dirty_ = true;
     } else if (key == Navigation::Confirm) {
-        if (!actions) {
-            if (self.selected() == 1) self.action_ = ConnectivityDecision::ClearBonds;
+        if (limits) {
+            self.action_ = self.selected() == 0 ? ConnectivityDecision::CycleBudget :
+                self.selected() == 1 ? ConnectivityDecision::CycleBattery : ConnectivityDecision::ToggleQuietHours;
+        } else if (configuration) {
+            if (self.selected() == 5) self.scenes_.Push(Id(ConnectivityPage::ForgetWifi));
+            else if (self.selected() == 4) self.scenes_.Push(Id(ConnectivityPage::BackgroundLimits));
+            else if (self.selected() == 3) self.action_ = ConnectivityDecision::ToggleTelemetry;
+            else self.action_ = self.selected() == 0 ? ConnectivityDecision::CyclePolicy :
+                self.selected() == 1 ? ConnectivityDecision::CycleBackground : ConnectivityDecision::ToggleRemoteCover;
+        } else if (!actions) {
+            if (self.selected() == 1) self.action_ = self.page() == ConnectivityPage::ForgetWifi ?
+                ConnectivityDecision::ClearWifi : ConnectivityDecision::ClearBonds;
             self.scenes_.Pop();
+        } else if (self.selected() == 3) {
+            self.scenes_.Push(Id(ConnectivityPage::Configuration));
         } else if (self.selected() == 2) {
             self.scenes_.Push(Id(ConnectivityPage::Forget));
         } else {
@@ -105,6 +119,8 @@ bool SettingsController::Event(void* context, const SceneEvent& event) {
             self.action_ = SettingsDecision::SaveLanguage;
             self.dirty_ = self.quality_ = true;
         } else if (self.selected() == self.option_count() - 1) {
+            self.action_ = SettingsDecision::SaveSleepOrientation;
+        } else if (self.selected() == self.option_count() - 2) {
             self.action_ = SettingsDecision::SaveOrientation;
             self.dirty_ = self.quality_ = true;
         } else if (i18n::LanguageCount() > 1 && self.selected() == 0) {

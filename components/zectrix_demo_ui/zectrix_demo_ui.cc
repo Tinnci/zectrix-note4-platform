@@ -117,7 +117,6 @@ esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
             canvas_.FillRect(16, y, 368, box_height, true);
             canvas_.TextFitted(28, y + (box_height - 16) / 2, items[i], 344, true);
         } else {
-            canvas_.Rect(16, y, 368, box_height);
             canvas_.TextFitted(28, y + (box_height - 16) / 2, items[i], 344);
         }
     }
@@ -159,22 +158,26 @@ esp_err_t ZectrixDemoUi::ShowSettings(const zectrix::app::SettingsController& se
               Tr(languages ? Text::NavApplyBack : Text::NavChangeBack));
     const auto count = languages ? zectrix::i18n::LanguageCount() : settings.option_count();
     for (std::size_t i = 0; i < count; ++i) {
-        const int y = 64 + static_cast<int>(i) * 52;
+        const int y = 54 + static_cast<int>(i) * 45;
         const bool selected = settings.selected() == i;
         canvas_.FillRect(16, y, 368, 42, selected);
         canvas_.Rect(16, y, 368, 42);
         const bool language_option = !languages && zectrix::i18n::LanguageCount() > 1 && i == 0;
-        const bool orientation_option = !languages && i == count - 1;
+        const bool sleep_orientation_option = !languages && i == count - 1;
+        const bool orientation_option = !languages && i == count - 2;
         const char* label = languages ? zectrix::i18n::LanguageName(static_cast<zectrix::i18n::Language>(i)) :
-            Tr(orientation_option ? Text::DisplayLabel : language_option ? Text::Language : Text::AutoShowcase);
+            Tr(sleep_orientation_option ? Text::SleepCover : orientation_option ? Text::DisplayLabel :
+                language_option ? Text::Language : Text::AutoShowcase);
         canvas_.TextFitted(28, y + 13, label, languages ? 300 : 200, selected);
         const char* value = languages ? (static_cast<zectrix::i18n::Language>(i) == zectrix::i18n::CurrentLanguage() ? "*" : "") :
             language_option ? zectrix::i18n::LanguageName(zectrix::i18n::CurrentLanguage()) :
+            sleep_orientation_option ? (sleep_portrait_ ? "90 deg" : "0 deg") :
             orientation_option ? (display_->orientation() == zectrix::display::DisplayOrientation::Inverted ? "180 deg" : "0 deg") :
             Tr(settings.auto_showcase() ? Text::On : Text::Off);
         canvas_.Text(372 - canvas_.TextWidth(value), y + 13, value, 1, selected);
     }
-    canvas_.TextFitted(16, 220, Tr(languages || (zectrix::i18n::LanguageCount() > 1 && settings.selected() == 0) ?
+    if (count < 4) canvas_.TextFitted(16, 220, Tr(languages ||
+        (zectrix::i18n::LanguageCount() > 1 && settings.selected() == 0) ?
         Text::LanguageHint : Text::ShowcaseIdle), 368);
     canvas_.TextFitted(16, 246, status, 368);
     return full_refresh ? RefreshFull() : RefreshAuto();
@@ -187,21 +190,21 @@ esp_err_t ZectrixDemoUi::ShowConnectivity(const char* state,
                                           bool full_refresh) {
     DrawFrame(Tr(Text::PhoneConnection), Tr(Text::NavSelectBack));
     canvas_.Text(24, 58, "BLE:");
-    canvas_.Text(64, 58, state == nullptr ? Tr(Text::Unknown) : state);
+    canvas_.TextFitted(64, 58, state == nullptr ? Tr(Text::Unknown) : state, 312);
     if (passkey != nullptr) {
-        canvas_.TextCentered(88, Tr(Text::EnterCodeOnPhone));
-        canvas_.TextCentered(108, passkey, 2);
+        canvas_.TextCentered(80, Tr(Text::EnterCodeOnPhone));
+        canvas_.TextCentered(100, passkey, 2);
     } else {
-        canvas_.Text(24, 88, Tr(Text::PairNewPhoneHint));
-        canvas_.Text(24, 108, Tr(Text::PairingWindow));
+        canvas_.TextFitted(24, 84, Tr(Text::PairNewPhoneHint), 352);
+        canvas_.TextFitted(24, 108, Tr(Text::PairingWindow), 352);
     }
     const char* kActions[] = {
-        Tr(Text::PairNewPhone), Tr(Text::FetchTestDocument), Tr(Text::ForgetTrustedPhone)};
+        Tr(Text::PairNewPhone), Tr(Text::FetchTestDocument), Tr(Text::ForgetTrustedPhone), Tr(Text::ConnectionSettings)};
     for (size_t i = 0; i < std::size(kActions); ++i) {
-        const int y = 142 + static_cast<int>(i) * 32;
+        const int y = 140 + static_cast<int>(i) * 26;
         const bool focused = i == selected;
-        canvas_.FillRect(20, y, 360, 26, focused);
-        canvas_.Text(30, y + 5, kActions[i], 1, focused);
+        canvas_.FillRect(20, y, 360, 24, focused);
+        canvas_.TextFitted(30, y + 4, kActions[i], 340, focused);
     }
     DrawFittedText(canvas_, 24, 248, status == nullptr ? "" : status, 352);
     return full_refresh ? RefreshFull()

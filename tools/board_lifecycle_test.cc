@@ -824,6 +824,7 @@ const char* esp_err_to_name(esp_err_t error) { return error == ESP_OK ? "ESP_OK"
 int64_t esp_timer_get_time() { return static_cast<int64_t>(xTaskGetTickCount()) * 1000; }
 void esp_rom_delay_us(uint32_t) {}
 esp_sleep_wakeup_cause_t esp_sleep_get_wakeup_cause() { return ESP_SLEEP_WAKEUP_UNDEFINED; }
+esp_err_t esp_sleep_enable_timer_wakeup(uint64_t) { return ESP_OK; }
 esp_err_t esp_sleep_enable_ext1_wakeup_io(uint64_t mask, esp_sleep_ext1_wakeup_mode_t mode) {
     assert(mode == ESP_EXT1_WAKEUP_ANY_LOW && mask == (1ULL << ZECTRIX_BUTTON_DOWN));
     assert(rtc_mode[ZECTRIX_BUTTON_DOWN] && rtc_pullup[ZECTRIX_BUTTON_DOWN] && !rtc_pulldown[ZECTRIX_BUTTON_DOWN]);

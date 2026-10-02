@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cstdio>
 #include <cstring>
 #include <new>
 
@@ -24,6 +25,8 @@ struct WifiHttpClient::Impl {
     bool closed = false;
     bool eof = false;
     bool finished = false;
+    std::array<char, 64> host{};
+    std::array<char, 144> url{};
 
     static Impl* Context(esp_transport_handle_t transport) {
         return static_cast<Impl*>(esp_transport_get_context_data(transport));
@@ -33,7 +36,7 @@ struct WifiHttpClient::Impl {
                        int port, int) {
         const auto* self = Context(transport);
         return !self->closed && port == 443 && host != nullptr &&
-            std::strcmp(host, "zectrix.com") == 0 ? 1 : -1;
+            std::strcmp(host, self->host.data()) == 0 ? 1 : -1;
     }
 
     static int CloseTransport(esp_transport_handle_t transport) {
@@ -118,9 +121,12 @@ WifiHttpClient::~WifiHttpClient() {
 }
 
 bool WifiHttpClient::Begin(WifiHttpStream& stream, uint8_t* body,
-                            std::size_t capacity) {
+                            std::size_t capacity, const char* host, const char* path, bool binary_page, const char* token, const PageTelemetry& telemetry) {
     if (impl_ == nullptr || impl_->client != nullptr ||
-        !impl_->response.Begin(body, capacity)) return false;
+        !host || !path || std::strlen(host) >= impl_->host.size() || std::strlen(path) >= 64 ||
+        !impl_->response.Begin(body, capacity, binary_page)) return false;
+    std::snprintf(impl_->host.data(), impl_->host.size(), "%s", host);
+    std::snprintf(impl_->url.data(), impl_->url.size(), "https://%s%s", host, path);
     impl_->stream = &stream;
     impl_->transport = esp_transport_init();
     if (impl_->transport == nullptr) return false;
@@ -131,7 +137,7 @@ bool WifiHttpClient::Begin(WifiHttpStream& stream, uint8_t* body,
                            &Impl::DestroyTransport);
     esp_transport_set_async_connect_func(impl_->transport, &Impl::Connect);
     esp_http_client_config_t config{};
-    config.url = "https://zectrix.com/robots.txt";
+    config.url = impl_->url.data();
     config.method = HTTP_METHOD_GET;
     config.transport_type = HTTP_TRANSPORT_OVER_SSL;
     config.transport = impl_->transport;
@@ -140,14 +146,36 @@ bool WifiHttpClient::Begin(WifiHttpStream& stream, uint8_t* body,
     config.disable_auto_redirect = true;
     config.max_authorization_retries = -1;
     config.buffer_size = 512;
-    config.buffer_size_tx = 256;
+    config.buffer_size_tx = 512;
     config.user_agent = "Zectrix-Note4/1";
     impl_->client = esp_http_client_init(&config);
     if (impl_->client == nullptr) { Close(); return false; }
-    if (esp_http_client_set_header(impl_->client, "Accept", "text/plain") != ESP_OK ||
+    if (esp_http_client_set_header(impl_->client, "Accept", binary_page ? "application/octet-stream" : "text/plain") != ESP_OK ||
         esp_http_client_set_header(impl_->client, "Accept-Encoding", "identity") != ESP_OK ||
         esp_http_client_set_header(impl_->client, "Connection", "close") != ESP_OK) {
         Close(); return false;
+    }
+    if (token && *token) {
+        if (!binary_page || std::strlen(token) > 64) { Close(); return false; }
+        for (const char* p = token; *p; ++p) if (*p < 0x21 || *p > 0x7e) { Close(); return false; }
+        char authorization[72]{};
+        std::snprintf(authorization, sizeof(authorization), "Bearer %s", token);
+        const auto saved = esp_http_client_set_header(impl_->client, "Authorization", authorization);
+        volatile char* clear = authorization;
+        for (std::size_t i = 0; i < sizeof(authorization); ++i) clear[i] = 0;
+        if (saved != ESP_OK) { Close(); return false; }
+    }
+    if (binary_page && telemetry.valid) {
+        if (telemetry.battery > 100 || telemetry.interval_seconds < 300 || telemetry.interval_seconds > 86400) { Close(); return false; }
+        char value[16];
+        std::snprintf(value, sizeof(value), "%u", telemetry.battery);
+        auto saved = esp_http_client_set_header(impl_->client, "X-Note4-Battery", value);
+        std::snprintf(value, sizeof(value), "%u", telemetry.millivolts);
+        saved |= esp_http_client_set_header(impl_->client, "X-Note4-Millivolts", value);
+        saved |= esp_http_client_set_header(impl_->client, "X-Note4-Charging", telemetry.charging ? "1" : "0");
+        std::snprintf(value, sizeof(value), "%lu", static_cast<unsigned long>(telemetry.interval_seconds));
+        saved |= esp_http_client_set_header(impl_->client, "X-Note4-Interval", value);
+        if (saved != ESP_OK) { Close(); return false; }
     }
     return true;
 }

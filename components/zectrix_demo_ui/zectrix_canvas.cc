@@ -105,8 +105,8 @@ void PaintRun(ZectrixCanvas& canvas, int x, int y, const char* text, const char*
 }  // namespace
 
 void ZectrixCanvas::Clear(bool white) {
-    if (clip_.x == 0 && clip_.y == 0 && clip_.width == kWidth &&
-        clip_.height == kHeight) {
+    if (clip_.x == 0 && clip_.y == 0 && clip_.width == width() &&
+        clip_.height == height()) {
         pixels_.fill(white ? 0xff : 0x00);
     } else {
         FillRect(clip_.x, clip_.y, clip_.width, clip_.height, !white);
@@ -114,12 +114,12 @@ void ZectrixCanvas::Clear(bool white) {
 }
 
 void ZectrixCanvas::SetClip(Clip clip) {
-    const int left = std::clamp(clip.x, 0, kWidth);
-    const int top = std::clamp(clip.y, 0, kHeight);
+    const int left = std::clamp(clip.x, 0, width());
+    const int top = std::clamp(clip.y, 0, height());
     const int right = static_cast<int>(std::clamp<int64_t>(
-        static_cast<int64_t>(clip.x) + std::max(0, clip.width), left, kWidth));
+        static_cast<int64_t>(clip.x) + std::max(0, clip.width), left, width()));
     const int bottom = static_cast<int>(std::clamp<int64_t>(
-        static_cast<int64_t>(clip.y) + std::max(0, clip.height), top, kHeight));
+        static_cast<int64_t>(clip.y) + std::max(0, clip.height), top, height()));
     clip_ = {left, top, right - left, bottom - top};
 }
 
@@ -128,8 +128,9 @@ void ZectrixCanvas::Pixel(int x, int y, bool black) {
         y < clip_.y || y >= clip_.y + clip_.height) {
         return;
     }
-    uint8_t& byte = pixels_[static_cast<size_t>(y) * kStride + x / 8];
-    const uint8_t mask = static_cast<uint8_t>(1U << (7 - (x & 7)));
+    const auto bit = static_cast<size_t>(y) * width() + x;
+    uint8_t& byte = pixels_[bit / 8];
+    const uint8_t mask = static_cast<uint8_t>(1U << (7 - (bit & 7)));
     if (black) {
         byte &= static_cast<uint8_t>(~mask);
     } else {
@@ -141,8 +142,8 @@ void ZectrixCanvas::FillRect(int x, int y, int width, int height,
                              bool black) {
     const int left = std::max(0, x);
     const int top = std::max(0, y);
-    const int right = std::min(kWidth, x + width);
-    const int bottom = std::min(kHeight, y + height);
+    const int right = std::min(this->width(), x + width);
+    const int bottom = std::min(this->height(), y + height);
     for (int py = top; py < bottom; ++py) {
         for (int px = left; px < right; ++px) {
             Pixel(px, py, black);
@@ -187,7 +188,7 @@ void ZectrixCanvas::Text(int x, int y, const char* text, int scale,
 
 void ZectrixCanvas::TextCentered(int y, const char* text, int scale,
                                  bool inverted, TextStyle style) {
-    Text((kWidth - TextWidth(text, scale, style)) / 2, y, text, scale, inverted, style);
+    Text((width() - TextWidth(text, scale, style)) / 2, y, text, scale, inverted, style);
 }
 
 int ZectrixCanvas::TextWidth(const char* text, int scale, TextStyle style) const {

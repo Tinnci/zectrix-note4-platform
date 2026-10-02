@@ -12,6 +12,9 @@
 #include "zectrix_platform.h"
 #include "zectrix_health_supervisor.h"
 #include "zectrix_sleep_cover.h"
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+#include "zectrix_edge_settings.h"
+#endif
 #if CONFIG_ZECTRIX_ENABLE_USB_CLI
 #include "zectrix_cli_control.h"
 #endif
@@ -105,6 +108,16 @@ private:
                                bool preview = false, bool preference_saved = true);
     app::ReadingOverview ReadReadingOverview();
     [[noreturn]] void PowerOff();
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+    void LoadEdgeConfiguration();
+    bool RefreshEdgeOnWake();
+    esp_err_t PresentEdgeCover();
+    uint64_t NextWakeDelay();
+    connectivity::EdgeSettings edge_settings_{};
+    int64_t edge_next_sync_at_ = 0;
+    bool edge_configuration_valid_ = false;
+    bool edge_schedule_failure_ = false;
+#endif
     template <typename Controller> void BindScenes(Controller& controller) {
 #if CONFIG_ZECTRIX_ENABLE_USB_CLI
         controller.ObserveScenes(&scene_snapshot_);
@@ -158,6 +171,7 @@ private:
 #endif
     zectrix::app::SleepCoverStyle sleep_cover_style_ = zectrix::app::kSleepCoverDefault;
     bool sleep_cover_saved_ = true;
+    bool sleep_portrait_ = zectrix::app::kSleepPortraitDefault;
     bool language_saved_ = true;
     zectrix::power::PowerSnapshot power_snapshot_{};
     zectrix::ui::StatusBarState status_{};

@@ -38,6 +38,15 @@ const SleepQuote& QuoteForSleep(const SleepCalendar& calendar) {
     return quotes[calendar.valid ? calendar.day_number % std::size(quotes) : 0];
 }
 
+uint64_t SleepRefreshDelayUs(SleepCoverStyle style, const time::ClockSnapshot& clock) {
+    if (style != SleepCoverStyle::Dashboard || !CalendarForSleep(clock).valid ||
+        clock.value.second < 0 || clock.value.second > 59) return 0;
+    const auto& value = clock.value;
+    // Always target the next day, including when booting just after midnight.
+    const uint64_t elapsed = value.hour * 3600 + value.minute * 60 + value.second;
+    return (86400 - elapsed + 60) * 1000000ULL;
+}
+
 sdk::Status SleepCoverController::Start(SleepCoverStyle selected) {
     if (scenes_.depth()) return sdk::Status::InvalidState;
     const auto result = scenes_.Start(0);

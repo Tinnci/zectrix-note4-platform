@@ -293,6 +293,30 @@ void TestConnectivityNavigation() {
     assert(connection.page() == ConnectivityPage::Forget);
     assert(connection.Handle(ok) == ConnectivityDecision::ClearBonds);
     assert(connection.page() == ConnectivityPage::Actions && connection.selected() == 2);
+    assert(connection.Handle(down) == ConnectivityDecision::RenderFast && connection.selected() == 3);
+    assert(connection.Handle(ok) == ConnectivityDecision::RenderQuality && connection.page() == ConnectivityPage::Configuration);
+    assert(connection.Handle(ok) == ConnectivityDecision::CyclePolicy);
+    connection.Handle(down);
+    assert(connection.Handle(ok) == ConnectivityDecision::CycleBackground);
+    connection.Handle(down);
+    assert(connection.Handle(ok) == ConnectivityDecision::ToggleRemoteCover);
+    connection.Handle(down);
+    assert(connection.Handle(ok) == ConnectivityDecision::ToggleTelemetry);
+    connection.Handle(down);
+    assert(connection.Handle(ok) == ConnectivityDecision::RenderQuality && connection.page() == ConnectivityPage::BackgroundLimits);
+    assert(connection.Handle(ok) == ConnectivityDecision::CycleBudget);
+    connection.Handle(down);
+    assert(connection.Handle(ok) == ConnectivityDecision::CycleBattery);
+    connection.Handle(down);
+    assert(connection.Handle(ok) == ConnectivityDecision::ToggleQuietHours);
+    assert(connection.Handle(back) == ConnectivityDecision::RenderQuality && connection.page() == ConnectivityPage::Configuration);
+    connection.Handle(down);
+    assert(connection.Handle(ok) == ConnectivityDecision::RenderQuality && connection.page() == ConnectivityPage::ForgetWifi);
+    assert(connection.selected() == 0);
+    assert(connection.Handle(ok) == ConnectivityDecision::RenderQuality && connection.page() == ConnectivityPage::Configuration);
+    connection.Handle(ok); connection.Handle(down);
+    assert(connection.Handle(ok) == ConnectivityDecision::ClearWifi && connection.page() == ConnectivityPage::Configuration);
+    assert(connection.Handle(back) == ConnectivityDecision::RenderQuality && connection.page() == ConnectivityPage::Actions);
     assert(connection.Handle(down) == ConnectivityDecision::RenderFast && connection.selected() == 0);
     connection.Presented(false);
     assert(connection.Tick() == ConnectivityDecision::RenderQuality);
@@ -423,6 +447,8 @@ int main() {
     assert(setting.decision == SettingsDecision::Save && setting.auto_showcase);
     settings.Handle({Button::Down, Action::Click});
     assert(settings.Handle({Button::Ok, Action::Click}).decision == SettingsDecision::SaveOrientation);
+    settings.Handle({Button::Down, Action::Click});
+    assert(settings.Handle({Button::Ok, Action::Click}).decision == SettingsDecision::SaveSleepOrientation);
     assert(settings.Handle({Button::Ok, Action::LongPress}).decision ==
            SettingsDecision::Back);
     assert(settings.Handle({Button::Down, Action::LongPress}).decision ==

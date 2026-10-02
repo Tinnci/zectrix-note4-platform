@@ -248,7 +248,9 @@ and uses `Platform::Shutdown()` for cleanup and the final power transition.
 Display failure attempts one white clear and cannot veto shutdown. L1.4 retains
 the existing rail delays and adds a bounded released-button wait before GPIO18
 wake setup and latch release. Wake starts a fresh boot and application lifecycle.
-The static cover schedules no automatic idle sleep, timer wake or refresh.
+No automatic idle sleep is added. The platform can wake and refresh the daily
+calendar; other covers remain static. OTA trials require normal Home confirmation.
+See `SCREEN_DIRECTION.md` for portrait scope and fallbacks.
 
 ## Lifecycle
 

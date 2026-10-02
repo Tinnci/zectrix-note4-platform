@@ -52,6 +52,8 @@ public:
     BleLink& operator=(const BleLink&) = delete;
 
     companion::LinkResult Initialize();
+    // Dedicated non-connectable mode; callers stop it after a bounded burst.
+    companion::LinkResult InitializeTelemetry(uint8_t percent, uint16_t millivolts, bool charging);
 
     // Initialize starts slow, non-pairable advertising so an existing bonded
     // peer can reconnect. Start temporarily replaces it with a time-bounded,

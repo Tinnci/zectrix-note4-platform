@@ -1,4 +1,5 @@
 #include "zectrix_ble_link.h"
+#include "zectrix_bthome.h"
 
 #include <algorithm>
 #include <atomic>
@@ -6,6 +7,7 @@
 #include <new>
 
 #include "esp_random.h"
+#include "esp_attr.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -31,6 +33,7 @@ namespace {
 
 constexpr char kTag[] = "zectrix_ble";
 constexpr char kDeviceName[] = "Zectrix Note4";
+RTC_DATA_ATTR uint8_t kTelemetryPacket = 0;
 constexpr int32_t kDefaultPairingWindowMs = 120000;
 constexpr int32_t kReconnectAdvertisingForever = BLE_HS_FOREVER;
 constexpr uint16_t kNoConnection = BLE_HS_CONN_HANDLE_NONE;
@@ -106,6 +109,8 @@ struct BleLink::Impl {
     std::atomic<int32_t> advertise_window_ms{kDefaultPairingWindowMs};
     BleState state = BleState::kStopped;
     bool initialized = false;
+    bool telemetry_only = false;
+    std::array<uint8_t, 12> telemetry{};
     bool synchronized = false;
     bool pairing_requested = false;
     bool pairing_authorized = false;
@@ -150,6 +155,7 @@ struct BleLink::Impl {
     // The session task owns ProcessAdvertiseRequest(); xSemaphoreGive() is a
     // non-blocking wake, so host callbacks never wait on a full event queue.
     void RequestAdvertise(bool pairing, int32_t pairing_window_ms) {
+        if (telemetry_only && state != BleState::kIdle) return;
         const AdvertiseIntent intent = pairing
             ? AdvertiseIntent::kPairing
             : AdvertiseIntent::kReconnect;
@@ -376,7 +382,7 @@ struct BleLink::Impl {
                 if (pairing_expired) {
                     ESP_LOGI(kTag, "event=pairing_window_closed reason=expired");
                 }
-                instance->RequestAdvertise(false, kDefaultPairingWindowMs);
+                if (!instance->telemetry_only) instance->RequestAdvertise(false, kDefaultPairingWindowMs);
                 return 0;
             }
 
@@ -518,14 +524,18 @@ struct BleLink::Impl {
                 const_cast<char*>(kDeviceName));
             fields.name_len = sizeof(kDeviceName) - 1;
             fields.name_is_complete = 1;
+            if (telemetry_only) {
+                fields.svc_data_uuid16 = telemetry.data();
+                fields.svc_data_uuid16_len = telemetry.size();
+            }
             result = ble_gap_adv_set_fields(&fields);
             if (result != 0) {
                 ESP_LOGW(kTag, "advertise: set fields failed: %d", result);
                 break;
             }
             ble_hs_adv_fields response{};
-            response.uuids128 = const_cast<ble_uuid128_t*>(&kServiceUuid);
-            response.num_uuids128 = 1;
+            response.uuids128 = telemetry_only ? nullptr : const_cast<ble_uuid128_t*>(&kServiceUuid);
+            response.num_uuids128 = telemetry_only ? 0 : 1;
             response.uuids128_is_complete = 1;
             result = ble_gap_adv_rsp_set_fields(&response);
             if (result != 0) {
@@ -539,13 +549,13 @@ struct BleLink::Impl {
             // the local pairing window. This is not a whitelist/directed
             // advertisement.
             ble_gap_adv_params parameters{};
-            parameters.conn_mode = BLE_GAP_CONN_MODE_UND;
+            parameters.conn_mode = telemetry_only ? BLE_GAP_CONN_MODE_NON : BLE_GAP_CONN_MODE_UND;
             parameters.disc_mode = BLE_GAP_DISC_MODE_GEN;
             // Advertising intervals are in 0.625 ms units: pairing 160-240
             // units (100-150 ms), reconnect 2560-3200 units (1.6-2.0 s).
-            parameters.itvl_min = pairing ? 0x00a0 : 0x0a00;
-            parameters.itvl_max = pairing ? 0x00f0 : 0x0c80;
-            const int32_t duration = pairing ? pairing_window_ms
+            parameters.itvl_min = pairing || telemetry_only ? 0x00a0 : 0x0a00;
+            parameters.itvl_max = pairing || telemetry_only ? 0x00f0 : 0x0c80;
+            const int32_t duration = telemetry_only ? 2000 : pairing ? pairing_window_ms
                                              : kReconnectAdvertisingForever;
             result = ble_gap_adv_start(own_address_type, nullptr, duration,
                                        &parameters, GapEvent, nullptr);
@@ -555,7 +565,7 @@ struct BleLink::Impl {
                 xSemaphoreGive(lock);
                 ESP_LOGI(kTag,
                          "event=advertising_started mode=%s duration_ms=%ld",
-                         pairing ? "pairing" : "reconnect",
+                         telemetry_only ? "bthome" : pairing ? "pairing" : "reconnect",
                          static_cast<long>(duration));
             } else {
                 ESP_LOGW(kTag, "advertise: start failed: %d", result);
@@ -735,6 +745,7 @@ companion::LinkResult BleLink::Initialize() {
         release_primitives();
         return companion::LinkResult::kTransportError;
     }
+    if (!impl_->telemetry_only) {
     kCharacteristics[1].val_handle = &impl_->notify_value_handle;
     const int count_result = ble_gatts_count_cfg(kServices);
     if (count_result != 0) {
@@ -754,6 +765,7 @@ companion::LinkResult BleLink::Initialize() {
     }
     ESP_LOGD(kTag, "initialize: gatts configured");
     ble_store_config_init();
+    }
     impl_->initialized = true;
     impl_->state = BleState::kIdle;
     nimble_port_freertos_init(Impl::HostTask);
@@ -761,11 +773,19 @@ companion::LinkResult BleLink::Initialize() {
     return companion::LinkResult::kOk;
 }
 
+companion::LinkResult BleLink::InitializeTelemetry(uint8_t percent, uint16_t millivolts, bool charging) {
+    if (!impl_ || impl_->initialized) return companion::LinkResult::kBusy;
+    impl_->telemetry_only = true;
+    impl_->telemetry = BTHomePower(++kTelemetryPacket, percent, millivolts, charging);
+    return Initialize();
+}
+
 companion::LinkResult BleLink::Start() {
     return Start(static_cast<uint32_t>(kDefaultPairingWindowMs));
 }
 
 companion::LinkResult BleLink::Start(uint32_t pairing_window_ms) {
+    if (impl_ && impl_->telemetry_only) return companion::LinkResult::kUnavailable;
     if (impl_ == nullptr || !impl_->initialized) {
         return companion::LinkResult::kUnavailable;
     }

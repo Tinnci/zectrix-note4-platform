@@ -402,6 +402,26 @@ void TestReflectionAndConfirmation() {
     assert(Run(executor, dispatcher, "time get").find("2024-02-29") != std::string::npos);
     assert(Run(executor, dispatcher, "time sync").find("source=companion") != std::string::npos);
     assert(Run(executor, dispatcher, "connectivity status").find("peer_authorized=0") != std::string::npos);
+    const auto policy_confirm = Confirmation(executor, "connectivity policy offline");
+    assert(Run(executor, dispatcher, policy_confirm.c_str()).find("configuration saved") != std::string::npos);
+    assert(owner.last_request.operation == ControlOperation::kConnectivityConfigure && owner.last_request.values[0] == 3);
+    const auto wifi_confirm = Confirmation(executor, "connectivity wifi-set test-network test-password");
+    assert(wifi_confirm.find("test-password") == std::string::npos);
+    Run(executor, dispatcher, wifi_confirm.c_str());
+    assert(owner.last_request.config == ControlRequest::Config::WifiSet && std::strcmp(owner.last_request.text2.data(), "test-password") == 0);
+    const auto source_confirm = Confirmation(executor, "connectivity source display.example.com /note4/page");
+    Run(executor, dispatcher, source_confirm.c_str());
+    assert(owner.last_request.config == ControlRequest::Config::EdgeSource);
+    const auto sync_confirm = Confirmation(executor, "connectivity background 1 21600 15000 20 1320 420");
+    Run(executor, dispatcher, sync_confirm.c_str());
+    assert(owner.last_request.config == ControlRequest::Config::EdgeSync && owner.last_request.values[5] == 420);
+    const auto token_confirm = Confirmation(executor, "connectivity token 0123456789abcdef0123456789abcdef");
+    assert(token_confirm.find("0123456789abcdef") == std::string::npos);
+    Run(executor, dispatcher, token_confirm.c_str());
+    assert(owner.last_request.config == ControlRequest::Config::EdgeToken);
+    const auto bthome_confirm = Confirmation(executor, "connectivity bthome 1");
+    Run(executor, dispatcher, bthome_confirm.c_str());
+    assert(owner.last_request.config == ControlRequest::Config::EdgeTelemetry && owner.last_request.values[0] == 1);
     assert(Run(executor, dispatcher, "app list").find("last-native-app") != std::string::npos);
     assert(Run(executor, dispatcher, "app current").find("foreground=micro-apps") != std::string::npos);
     const auto scenes = Run(executor, dispatcher, "scene dump");
@@ -409,7 +429,9 @@ void TestReflectionAndConfirmation() {
     assert(scenes.find("view[3]") != std::string::npos && scenes.find("limit=131072") != std::string::npos);
     BoundedOutput output;
     for (const char* invalid : {"sleep now", "storage wipe all", "time sync 123", "time sync 1709179200000 50401",
-             "time sync 1709179200000x 0", "time sync 99999999999999999999999999999 0", "time sync 0 0"}) {
+             "time sync 1709179200000x 0", "time sync 99999999999999999999999999999 0", "time sync 0 0",
+             "connectivity policy random", "connectivity background 1 1 15000 20 0 0",
+             "connectivity background 1 3600 15000 19 0 0", "connectivity remote-cover 2", "connectivity bthome 2"}) {
         output.Clear();
         assert(executor.Execute(Parse(invalid), &output) == ExecuteStatus::kInvalidArguments);
         assert(!dispatcher.Dispatch());

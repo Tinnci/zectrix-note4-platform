@@ -34,6 +34,7 @@ public:
         display_ = display;
     }
     void SetTime(zectrix::time::TimeService* time) { time_ = time; }
+    void SetSleepPortrait(bool portrait) { sleep_portrait_ = portrait; }
     void UpdateStatus(const zectrix::ui::StatusBarState& state);
     esp_err_t RefreshPending();
     esp_err_t ShowImage1Bpp(const uint8_t* pixels, size_t size);
@@ -97,6 +98,9 @@ public:
     esp_err_t RefreshAuto();
 
 private:
+    bool sleep_portrait_ = false;
+    esp_err_t ShowPortraitCalendar(const zectrix::app::SleepCoverSnapshot& snapshot,
+                                   bool preview, bool preference_saved);
     void BeginContent();
     void OverlayGrayStatus();
     void DrawFrame(const char* title, const char* footer);

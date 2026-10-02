@@ -4,6 +4,9 @@ Status: C1 design baseline. Protocol version: 1.0.
 
 ## Ownership
 
+See [CONNECTIVITY_CONFIGURATION.md](CONNECTIVITY_CONFIGURATION.md) for
+configuration, background sync and wake scheduling.
+
 `SyncEngine` owns durable revisions, outbox state, receive cursors and command
 dedupe records. `ConnectivityPolicy` selects a path. `CompanionProtocol` owns
 wire validation and message semantics. `BleLink` and `WifiLink` own transport

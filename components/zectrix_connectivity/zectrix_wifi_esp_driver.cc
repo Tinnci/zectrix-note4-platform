@@ -61,6 +61,7 @@ WifiDriverResult PollTcpConnection(esp_tls_t* tls) {
 // lwIP cannot cancel a submitted DNS query. A reference owned by its callback
 // keeps this small context alive after a timeout, without retaining a driver.
 struct DnsQuery {
+    std::array<char, 64> host{};
     std::atomic<unsigned> references{2};
     std::atomic<bool> cancelled{false};
     std::atomic<WifiDriverResult> result{WifiDriverResult::kPending};
@@ -90,7 +91,7 @@ struct DnsQuery {
         }
         ip_addr_t address{};
         const err_t result = dns_gethostbyname_addrtype(
-            kResourceHost, &address, &Complete, query, LWIP_DNS_ADDRTYPE_IPV4);
+            query->host.data(), &address, &Complete, query, LWIP_DNS_ADDRTYPE_IPV4);
         if (result != ERR_INPROGRESS) {
             Complete(nullptr, result == ERR_OK ? &address : nullptr, query);
         }
@@ -127,6 +128,10 @@ struct EspWifiBackendDriver::Impl
     DnsQuery* dns = nullptr;
     WifiHttpClient http;
     bool http_started = false;
+    std::array<char, 64> host{}, path{};
+    bool page_source = false;
+    PageTelemetry page_telemetry;
+    std::array<char, 65> page_token{};
     time::TimeSample clock_sample{};
     bool clock_pending = false, clock_captured = false;
 #endif
@@ -429,6 +434,17 @@ WifiDriverResult EspWifiBackendDriver::PollIp() {
 }
 
 #if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
+bool EspWifiBackendDriver::ConfigurePageSource(const char* host, const char* path, const char* token, const PageTelemetry& telemetry) {
+    if (!impl_ || impl_->claimed || !host || !path || !*host || *path != '/' ||
+        !token || std::strlen(token) >= impl_->page_token.size() ||
+        std::strlen(host) >= impl_->host.size() || std::strlen(path) >= impl_->path.size()) return false;
+    std::strcpy(impl_->host.data(), host); std::strcpy(impl_->path.data(), path);
+    impl_->page_source = true;
+    impl_->page_telemetry = telemetry;
+    std::strcpy(impl_->page_token.data(), token);
+    return true;
+}
+
 WifiDriverResult EspWifiBackendDriver::Resolve(
     companion::ResourceCapability capability) {
     if (impl_ == nullptr || !Supported(capability)) {
@@ -439,6 +455,7 @@ WifiDriverResult EspWifiBackendDriver::Resolve(
     if (impl_->dns == nullptr) {
         impl_->dns = new (std::nothrow) DnsQuery();
         if (impl_->dns == nullptr) return WifiDriverResult::kDnsFailure;
+        std::strcpy(impl_->dns->host.data(), impl_->page_source ? impl_->host.data() : kResourceHost);
         if (tcpip_try_callback(&DnsQuery::Start, impl_->dns) != ERR_OK) {
             impl_->dns->Release();
             impl_->ReleaseDns();
@@ -470,7 +487,7 @@ WifiDriverResult EspWifiBackendDriver::OpenTls(
     esp_tls_cfg_t config{};
     config.non_block = true;
     config.timeout_ms = 20;
-    config.common_name = kResourceHost;
+    config.common_name = impl_->page_source ? impl_->host.data() : kResourceHost;
     config.crt_bundle_attach = esp_crt_bundle_attach;
     esp_tls_conn_state_t state;
     if (esp_tls_get_conn_state(impl_->tls, &state) != ESP_OK) {
@@ -499,7 +516,10 @@ WifiDriverResult EspWifiBackendDriver::Fetch(
     const auto link = PollIp();
     if (link != WifiDriverResult::kReady) return link;
     if (!impl_->http_started) {
-        if (!impl_->http.Begin(*impl_, body, capacity)) return WifiDriverResult::kUnavailable;
+        if (!impl_->http.Begin(*impl_, body, capacity,
+                impl_->page_source ? impl_->host.data() : kResourceHost,
+                impl_->page_source ? impl_->path.data() : "/robots.txt", impl_->page_source,
+                impl_->page_source ? impl_->page_token.data() : "", impl_->page_telemetry)) return WifiDriverResult::kUnavailable;
         impl_->http_started = true;
     }
     const auto result = impl_->http.Poll(body_size);
@@ -511,6 +531,7 @@ WifiDriverResult EspWifiBackendDriver::Fetch(
 }
 
 #else
+bool EspWifiBackendDriver::ConfigurePageSource(const char*, const char*, const char*, const PageTelemetry&) { return false; }
 WifiDriverResult EspWifiBackendDriver::Resolve(companion::ResourceCapability) {
     return WifiDriverResult::kUnavailable;
 }

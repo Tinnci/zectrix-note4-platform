@@ -1,6 +1,7 @@
 #include "zectrix_book_storage.h"
 #include "zectrix_app_storage.h"
 #include "zectrix_cover_image.h"
+#include "zectrix_edge_page.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -159,6 +160,11 @@ esp_err_t BookStorage::Mount() {
 
 bool BookStorage::Path(const char* name, char* output, std::size_t capacity, Content kind) const {
     const bool application = kind == Content::App;
+    if (kind == Content::Edge) {
+        if (!name || std::strcmp(name, edge::kName) != 0) return false;
+        const int size = std::snprintf(output, capacity, "%s/.edge-page.bin", root_.data());
+        return size > 0 && static_cast<std::size_t>(size) < capacity;
+    }
     if (kind == Content::Cover ? (!name || std::strcmp(name, cover::kName) != 0) :
         !(application ? ValidAppName(name) : BookName(name))) return false;
     const int size = std::snprintf(output, capacity, "%s/%s%s", root_.data(),
@@ -248,6 +254,15 @@ esp_err_t BookStorage::OpenImpl(const char* name, BookFile* file, bool managed, 
         return ESP_ERR_INVALID_SIZE;
     auto* opened = std::fopen(path, "rb");
     if (!opened) return ESP_FAIL;
+    if (kind == Content::Edge) {
+        uint8_t header[edge::kHeaderSize];
+        edge::Page page;
+        if (info.st_size != edge::kFileSize || std::fread(header, 1, sizeof(header), opened) != sizeof(header) ||
+            !edge::Decode(header, info.st_size, &page) || std::fseek(opened, 0, SEEK_SET) != 0) {
+            std::fclose(opened);
+            return ESP_ERR_INVALID_SIZE;
+        }
+    }
     if (kind == Content::Cover) {
         char header[cover::kHeaderSize];
         if (info.st_size != cover::kFileSize || std::fread(header, 1, sizeof(header), opened) != sizeof(header) ||
@@ -322,6 +337,14 @@ BookWriteResult BookStorage::BeginCoverUpload(uint32_t size, BookUpload* upload)
     return UploadImpl(cover::kName, size, upload, Content::Cover);
 }
 
+esp_err_t BookStorage::OpenEdgePage(BookFile* file) {
+    return OpenImpl(edge::kName, file, false, Content::Edge);
+}
+
+BookWriteResult BookStorage::BeginEdgePageUpload(BookUpload* upload) {
+    return UploadImpl(edge::kName, edge::kFileSize, upload, Content::Edge);
+}
+
 BookWriteResult BookStorage::UploadImpl(const char* name, uint32_t size, BookUpload* upload, Content kind) {
     const bool application = kind == Content::App;
     if (kind == Content::Cover && size != cover::kFileSize) return BookWriteResult::Invalid;
@@ -331,11 +354,15 @@ BookWriteResult BookStorage::UploadImpl(const char* name, uint32_t size, BookUpl
     if ((application && (!size || size > AppStorage::SizeLimit(name))) ||
         !Path(name, upload->target_.data(), upload->target_.size(), kind)) return BookWriteResult::Invalid;
     upload->cover_ = kind == Content::Cover;
+    upload->edge_ = kind == Content::Edge;
+    upload->edge_header_ = {};
     upload->packaged_ = application && AppStorage::Packaged(name);
     if (upload->packaged_ && size < package::kHeaderSize + 32 + 1) return BookWriteResult::Invalid;
     struct stat info{};
-    if (FileInfo(upload->target_.data(), &info)) return BookWriteResult::Exists;
-    if (errno != ENOENT) return BookWriteResult::IoError;
+    if (FileInfo(upload->target_.data(), &info)) {
+        if (!upload->edge_) return BookWriteResult::Exists;
+        if (!S_ISREG(info.st_mode)) return BookWriteResult::Invalid;
+    } else if (errno != ENOENT) return BookWriteResult::IoError;
     BookSpace space;
     if (ReadSpace(&space) != ESP_OK) return BookWriteResult::IoError;
     if (size > space.available) return BookWriteResult::NoSpace;
@@ -375,6 +402,10 @@ BookWriteResult BookUpload::Write(const void* data, std::size_t size) {
         std::memcmp(data, cover::kHeader + received_, std::min<std::size_t>(size, cover::kHeaderSize - received_)) != 0)
         return error_ = BookWriteResult::Invalid;
     if (packaged_ && !package_.Feed(data, size)) return error_ = BookWriteResult::Invalid;
+    if (edge_ && received_ < edge_header_.size() && size) {
+        std::memcpy(edge_header_.data() + received_, data,
+                    std::min<std::size_t>(size, edge_header_.size() - received_));
+    }
     // A short write may already have advanced the file. Replaying that chunk
     // on this handle could publish duplicate or truncated data.
     if (size && std::fwrite(data, 1, size, file_) != size)
@@ -387,6 +418,8 @@ BookWriteResult BookUpload::Commit() {
     if (error_ != BookWriteResult::Ok) return error_;
     if (!file_ || received_ != expected_) return BookWriteResult::Invalid;
     if (packaged_ && !package_.Complete()) return error_ = BookWriteResult::Invalid;
+    edge::Page page;
+    if (edge_ && !edge::Decode(edge_header_.data(), expected_, &page)) return error_ = BookWriteResult::Invalid;
     if (std::fflush(file_) != 0 || fsync(fileno(file_)) != 0)
         return error_ = errno == ENOSPC ? BookWriteResult::NoSpace : BookWriteResult::IoError;
     const int closed = std::fclose(file_);
@@ -394,8 +427,11 @@ BookWriteResult BookUpload::Commit() {
     if (closed != 0) return error_ = BookWriteResult::IoError;
     std::lock_guard<std::mutex> lock(owner_->mutex_);
     struct stat info{};
-    if (FileInfo(target_.data(), &info)) return error_ = BookWriteResult::Exists;
-    if (errno != ENOENT || std::rename(temporary_.data(), target_.data()) != 0) return error_ = BookWriteResult::IoError;
+    if (FileInfo(target_.data(), &info)) {
+        if (!edge_) return error_ = BookWriteResult::Exists;
+        if (!S_ISREG(info.st_mode)) return error_ = BookWriteResult::Invalid;
+    } else if (errno != ENOENT) return error_ = BookWriteResult::IoError;
+    if (std::rename(temporary_.data(), target_.data()) != 0) return error_ = BookWriteResult::IoError;
     owner_->uploading_ = false;
     owner_ = nullptr;
     return BookWriteResult::Ok;
