@@ -46,7 +46,7 @@ public:
     [[noreturn]] void Reboot();
     // Called by the application owner after its final display update. Releases
     // service-owned peripherals before PowerService cuts rails and sleeps.
-    [[noreturn]] void Shutdown();
+    [[noreturn]] void Shutdown(uint64_t wake_after_us = 0);
 
     // Initialize() must return ESP_OK before an application calls an accessor.
     // A contract violation stops in an assertion instead of dereferencing an

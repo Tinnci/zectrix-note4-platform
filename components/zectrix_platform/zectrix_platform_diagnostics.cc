@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 
 namespace zectrix {
 
@@ -134,6 +135,61 @@ cli::ControlStatus PlatformDiagnostics::Inspect(const cli::ControlRequest& reque
             if (request.operation == cli::ControlOperation::kStorageWipe) return cli::ControlStatus::kUnavailable;
 #endif
             return delegate_ ? delegate_->ScheduleMaintenance(request.operation) : cli::ControlStatus::kUnavailable;
+        case cli::ControlOperation::kConnectivityConfigure: {
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+            auto* service = services_.Get<connectivity::ConnectivityService>();
+            if (!service) return cli::ControlStatus::kUnavailable;
+            using Config = cli::ControlRequest::Config;
+            if (!std::memchr(request.text1.data(), 0, request.text1.size()) ||
+                !std::memchr(request.text2.data(), 0, request.text2.size())) return cli::ControlStatus::kInvalidArgument;
+            if (request.config == Config::EdgeToken) {
+                err = service->ConfigureEdgeToken(request.text1.data());
+                break;
+            }
+            if (request.config == Config::Policy) {
+                if (request.values[0] > 3) return cli::ControlStatus::kInvalidArgument;
+                const auto set = service->SetUserPolicy(static_cast<companion::UserConnectivityPolicy>(request.values[0]));
+                return set == connectivity::ConnectivityResult::kOk ? cli::ControlStatus::kOk : cli::ControlStatus::kUnavailable;
+            }
+            if (request.config == Config::WifiSet || request.config == Config::WifiClear) {
+                connectivity::WifiCredentials credentials{};
+                if (request.config == Config::WifiSet) {
+                    if (std::strlen(request.text1.data()) > 32) return cli::ControlStatus::kInvalidArgument;
+                    std::strcpy(credentials.ssid.data(), request.text1.data());
+                    std::strcpy(credentials.passphrase.data(), request.text2.data());
+                    if (!connectivity::ValidateWifiCredentials(credentials)) {
+                        connectivity::ClearWifiCredentials(&credentials);
+                        return cli::ControlStatus::kInvalidArgument;
+                    }
+                }
+                const auto set = request.config == Config::WifiSet ? service->ConfigureWifi(credentials) : service->ClearWifiConfiguration();
+                connectivity::ClearWifiCredentials(&credentials);
+                return set == connectivity::ConnectivityResult::kOk ? cli::ControlStatus::kOk :
+                    set == connectivity::ConnectivityResult::kBusy ? cli::ControlStatus::kBusy : cli::ControlStatus::kUnavailable;
+            }
+            connectivity::EdgeSettings settings;
+            err = service->LoadEdgeSettings(&settings);
+            if (err != ESP_OK) break;
+            if (request.config == Config::EdgeSource) {
+                if (std::strlen(request.text1.data()) >= 64 || std::strlen(request.text2.data()) >= 64) return cli::ControlStatus::kInvalidArgument;
+                std::strcpy(settings.host.data(), request.text1.data()); std::strcpy(settings.path.data(), request.text2.data());
+            } else if (request.config == Config::EdgeDisplay) {
+                if (request.values[0] > 1) return cli::ControlStatus::kInvalidArgument;
+                settings.show_page = request.values[0];
+            } else if (request.config == Config::EdgeTelemetry) {
+                if (request.values[0] > 1) return cli::ControlStatus::kInvalidArgument;
+                settings.bthome_enabled = request.values[0];
+            } else if (request.config == Config::EdgeSync) {
+                if (request.values[0] > 1 || request.values[3] > 100 || request.values[4] >= 1440 || request.values[5] >= 1440) return cli::ControlStatus::kInvalidArgument;
+                settings.enabled = request.values[0]; settings.interval_seconds = request.values[1]; settings.budget_ms = request.values[2];
+                settings.minimum_battery_percent = request.values[3]; settings.quiet_start_minute = request.values[4]; settings.quiet_end_minute = request.values[5];
+            } else return cli::ControlStatus::kInvalidArgument;
+            err = service->ConfigureEdgeSettings(settings);
+#else
+            return cli::ControlStatus::kUnavailable;
+#endif
+            break;
+        }
         case cli::ControlOperation::kConnectivity: {
 #if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
             const auto* service = services_.Get<connectivity::ConnectivityService>();
@@ -141,6 +197,16 @@ cli::ControlStatus PlatformDiagnostics::Inspect(const cli::ControlRequest& reque
             connectivity::ConnectivitySnapshot state;
             if (!service->TrySnapshot(&state)) return cli::ControlStatus::kBusy;
             auto& c = result->connectivity;
+            c.policy = static_cast<uint8_t>(state.user_policy);
+            c.credentials = state.wifi_credentials_available;
+            connectivity::EdgeSettings settings;
+            c.config_valid = service->LoadEdgeSettings(&settings) == ESP_OK;
+            c.background = settings.enabled; c.remote_display = settings.show_page;
+            c.bthome = settings.bthome_enabled;
+            c.interval_seconds = settings.interval_seconds; c.budget_ms = settings.budget_ms;
+            c.minimum_battery = settings.minimum_battery_percent;
+            c.quiet_start = settings.quiet_start_minute; c.quiet_end = settings.quiet_end_minute;
+            c.source_host = settings.host; c.source_path = settings.path;
             constexpr const char* ble[] = {"stopped", "idle", "advertising", "pairing", "securing", "secure", "link-ready", "negotiated-local", "fault"};
             constexpr const char* wifi[] = {"stopped", "loading-credentials", "starting-station", "associating", "waiting-ip", "resolving", "opening-tls", "transferring", "stopping", "stop-failed"};
             constexpr const char* radio[] = {"companion", "wifi-burst", "shared-idle", "wifi-stopping"};

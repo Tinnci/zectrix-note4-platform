@@ -6,8 +6,10 @@
 
 #include "zectrix_wifi_backend.h"
 #include "zectrix_time_sync.h"
+#include "zectrix_edge_settings.h"
 
 namespace zectrix::connectivity {
+constexpr std::size_t kMaximumWifiPageBytes = 15032;
 
 // A borrowed, already verified TLS stream. It never blocks for network I/O.
 class WifiHttpStream {
@@ -28,7 +30,8 @@ public:
     WifiHttpClient(const WifiHttpClient&) = delete;
     WifiHttpClient& operator=(const WifiHttpClient&) = delete;
 
-    bool Begin(WifiHttpStream& stream, uint8_t* body, std::size_t capacity);
+    bool Begin(WifiHttpStream& stream, uint8_t* body, std::size_t capacity,
+               const char* host = "zectrix.com", const char* path = "/robots.txt", bool binary_page = false, const char* token = "", const PageTelemetry& telemetry = {});
     WifiDriverResult Poll(std::size_t* body_size);
     bool ClockSample(time::TimeSample* sample) const;
     void Close();
@@ -45,7 +48,7 @@ public:
     static constexpr std::size_t kMaximumHeaderBytes = 4096;
     static constexpr std::size_t kMaximumHeaderLineBytes = 512;
 
-    bool Begin(uint8_t* body, std::size_t capacity);
+    bool Begin(uint8_t* body, std::size_t capacity, bool binary_page = false);
     WifiDriverResult Feed(const uint8_t* data, std::size_t size, int64_t received_us = 0);
     WifiDriverResult EndOfStream();
     std::size_t BodySize() const { return body_size_; }
@@ -78,6 +81,7 @@ private:
     time::TimeSample clock_{};
     int64_t received_us_ = 0;
     bool date_seen_ = false, date_invalid_ = false;
+    bool binary_page_ = false;
 };
 
 }  // namespace zectrix::connectivity

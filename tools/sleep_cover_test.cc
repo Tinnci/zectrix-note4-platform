@@ -17,6 +17,17 @@ int main() {
 
     time::ClockSnapshot clock{{2026, 9, 9, 6, 20, 27, 0}, time::ClockSource::Rtc};
     auto calendar = CalendarForSleep(clock);
+    assert(SleepRefreshDelayUs(SleepCoverStyle::Dashboard, clock) == (86400ULL - 20 * 3600 - 27 * 60 + 60) * 1000000);
+    assert(SleepRefreshDelayUs(SleepCoverStyle::Blank, clock) == 0);
+    assert(SleepRefreshDelayUs(SleepCoverStyle::Quote, clock) == 0);
+    assert(SleepRefreshDelayUs(SleepCoverStyle::Picture, clock) == 0);
+    auto midnight = clock;
+    midnight.value.hour = midnight.value.minute = midnight.value.second = 0;
+    assert(SleepRefreshDelayUs(SleepCoverStyle::Dashboard, midnight) == 86460000000ULL);
+    midnight.value.hour = 23; midnight.value.minute = midnight.value.second = 59;
+    assert(SleepRefreshDelayUs(SleepCoverStyle::Dashboard, midnight) == 61000000ULL);
+    midnight.source = time::ClockSource::Uptime;
+    assert(SleepRefreshDelayUs(SleepCoverStyle::Dashboard, midnight) == 0);
     assert(calendar.valid && calendar.days == 30 && calendar.first_weekday == 1 && calendar.weekday == 2);
     const auto day = calendar.day_number;
     const auto* quote = &QuoteForSleep(calendar);

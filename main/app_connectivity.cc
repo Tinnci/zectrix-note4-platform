@@ -88,7 +88,37 @@ public:
     sdk::Status Render(const sdk::RenderRequest& request) override {
         const bool quality = request.intent == sdk::RenderIntent::Quality;
         esp_err_t result;
-        if (controller_.page() == app::ConnectivityPage::Forget) {
+        if (controller_.page() == app::ConnectivityPage::BackgroundLimits) {
+            connectivity::EdgeSettings settings;
+            const auto loaded = owner_->connectivity_->LoadEdgeSettings(&settings);
+            char budget[80], battery[80], quiet[80];
+            std::snprintf(budget, sizeof(budget), "%s: %lu ms", Tr(Text::NetworkBudget), static_cast<unsigned long>(settings.budget_ms));
+            std::snprintf(battery, sizeof(battery), "%s: %u%%", Tr(Text::MinimumBattery), settings.minimum_battery_percent);
+            if (settings.quiet_start_minute == settings.quiet_end_minute) std::snprintf(quiet, sizeof(quiet), "%s: %s", Tr(Text::QuietHours), Tr(Text::Off));
+            else std::snprintf(quiet, sizeof(quiet), "%s: %02u:%02u-%02u:%02u", Tr(Text::QuietHours),
+                settings.quiet_start_minute / 60, settings.quiet_start_minute % 60, settings.quiet_end_minute / 60, settings.quiet_end_minute % 60);
+            const char* items[] = {budget, battery, quiet};
+            result = owner_->ui_.ShowMenu(Tr(Text::BackgroundLimits), items, std::size(items), controller_.selected(),
+                loaded == ESP_OK ? status_ : Tr(Text::LoadFailedDefault), quality);
+        } else if (controller_.page() == app::ConnectivityPage::Configuration) {
+            const auto snapshot = owner_->connectivity_->Snapshot();
+            connectivity::EdgeSettings settings;
+            const auto loaded = owner_->connectivity_->LoadEdgeSettings(&settings);
+            const Text routes[] = {Text::RouteAutomatic, Text::RoutePhone, Text::RouteWifi, Text::Offline};
+            char route[80], background[80], cover[80], telemetry[80];
+            const auto policy = static_cast<unsigned>(snapshot.user_policy);
+            std::snprintf(route, sizeof(route), "%s: %s", Tr(Text::ResourceRouting), Tr(routes[policy < 4 ? policy : 3]));
+            if (settings.enabled) std::snprintf(background, sizeof(background), "%s: %lu s", Tr(Text::BackgroundRefresh), static_cast<unsigned long>(settings.interval_seconds));
+            else std::snprintf(background, sizeof(background), "%s: %s", Tr(Text::BackgroundRefresh), Tr(Text::Off));
+            std::snprintf(cover, sizeof(cover), "%s: %s", Tr(Text::RemoteCover), Tr(settings.show_page ? Text::On : Text::Off));
+            std::snprintf(telemetry, sizeof(telemetry), "%s: %s", Tr(Text::BTHomeTelemetry), Tr(settings.bthome_enabled ? Text::On : Text::Off));
+            const char* items[] = {route, background, cover, telemetry, Tr(Text::BackgroundLimits), Tr(Text::ClearWifi)};
+            result = owner_->ui_.ShowMenu(Tr(Text::ConnectionSettings), items, std::size(items), controller_.selected(),
+                loaded == ESP_OK ? status_ : Tr(Text::LoadFailedDefault), quality);
+        } else if (controller_.page() == app::ConnectivityPage::ForgetWifi) {
+            const char* items[] = {Tr(Text::KeepWifi), Tr(Text::ClearWifi)};
+            result = owner_->ui_.ShowMenu(Tr(Text::ForgetWifi), items, std::size(items), controller_.selected(), Tr(Text::NavConfirmCancel), quality);
+        } else if (controller_.page() == app::ConnectivityPage::Forget) {
             const char* kItems[] = {Tr(Text::KeepTrustedPhone), Tr(Text::ForgetPhoneSync)};
             result = owner_->ui_.ShowMenu(Tr(Text::ForgetPhone), kItems, std::size(kItems),
                 controller_.selected(), Tr(Text::NavConfirmCancel), quality);
@@ -115,6 +145,34 @@ private:
             return sdk::Status::Ok;
         }
         if (decision == Decision::None) return sdk::Status::Ok;
+        if (decision == Decision::CyclePolicy) {
+            const auto current = owner_->connectivity_->Snapshot().user_policy;
+            const auto next = static_cast<companion::UserConnectivityPolicy>((static_cast<unsigned>(current) + 1) % 4);
+            status_ = Tr(owner_->connectivity_->SetUserPolicy(next) == connectivity::ConnectivityResult::kOk ? Text::Saved : Text::DefaultNotSaved);
+        } else if (decision == Decision::CycleBackground || decision == Decision::ToggleRemoteCover ||
+                   decision == Decision::ToggleTelemetry || decision == Decision::CycleBudget ||
+                   decision == Decision::CycleBattery || decision == Decision::ToggleQuietHours) {
+            connectivity::EdgeSettings settings;
+            auto saved = owner_->connectivity_->LoadEdgeSettings(&settings);
+            if (saved == ESP_OK) {
+                if (decision == Decision::ToggleRemoteCover) settings.show_page = !settings.show_page;
+                else if (decision == Decision::ToggleTelemetry) settings.bthome_enabled = !settings.bthome_enabled;
+                else if (decision == Decision::CycleBudget) settings.budget_ms = settings.budget_ms < 15000 ? 15000 : settings.budget_ms < 30000 ? 30000 : 5000;
+                else if (decision == Decision::CycleBattery) settings.minimum_battery_percent = settings.minimum_battery_percent < 40 ? 40 : settings.minimum_battery_percent < 60 ? 60 : 20;
+                else if (decision == Decision::ToggleQuietHours) {
+                    const bool enable = settings.quiet_start_minute == settings.quiet_end_minute;
+                    settings.quiet_start_minute = enable ? 1320 : 0; settings.quiet_end_minute = enable ? 420 : 0;
+                }
+                else if (!settings.enabled) { settings.enabled = true; settings.interval_seconds = 3600; }
+                else if (settings.interval_seconds < 21600) settings.interval_seconds = 21600;
+                else if (settings.interval_seconds < 86400) settings.interval_seconds = 86400;
+                else settings.enabled = false;
+                saved = owner_->connectivity_->ConfigureEdgeSettings(settings);
+            }
+            status_ = Tr(saved == ESP_OK ? Text::Saved : saved == ESP_ERR_INVALID_ARG ? Text::ConfigurePageSource : Text::DefaultNotSaved);
+        } else if (decision == Decision::ClearWifi) {
+            status_ = Tr(owner_->connectivity_->ClearWifiConfiguration() == connectivity::ConnectivityResult::kOk ? Text::Saved : Text::ResourceBusy);
+        }
         if (decision == Decision::StartPairing) {
             const auto result = owner_->connectivity_->StartLocalPairing();
             status_ = result == zectrix::connectivity::ConnectivityResult::kOk

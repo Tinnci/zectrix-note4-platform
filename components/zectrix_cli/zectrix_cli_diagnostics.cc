@@ -48,7 +48,15 @@ constexpr CommandDescriptor kTime[] = {
          Handler::kTimeSync, Execution::kOwnerRequest, Access::kConfirm),
 };
 constexpr CommandDescriptor kConnectivity[] = {
-    Leaf("status", "Cached radio and authorized peer state", "connectivity status", Handler::kConnectivity),
+    Leaf("status", "Radio and trusted peer status", "connectivity status", Handler::kConnectivity),
+    Leaf("policy", "Resource route; offline does not turn off BLE", "connectivity policy <automatic|phone|wifi|offline>", Handler::kConnectivityConfigure, Execution::kOwnerRequest, Access::kConfirm),
+    Leaf("wifi-set", "Save Wi-Fi; omit password from diagnostics", "connectivity wifi-set <ssid> <passphrase>", Handler::kWifiSet, Execution::kOwnerRequest, Access::kConfirm),
+    Leaf("wifi-clear", "Clear Wi-Fi credentials only", "connectivity wifi-clear", Handler::kWifiClear, Execution::kOwnerRequest, Access::kConfirm),
+    Leaf("source", "Set HTTPS page host and path", "connectivity source <host> </path>", Handler::kEdgeSource, Execution::kOwnerRequest, Access::kConfirm),
+    Leaf("background", "Set refresh interval, budget, battery and quiet hours", "connectivity background <0|1> <interval-s> <budget-ms> <min-battery> <quiet-start-min> <quiet-end-min>", Handler::kEdgeSync, Execution::kOwnerRequest, Access::kConfirm),
+    Leaf("remote-cover", "Show fresh cached page during sleep", "connectivity remote-cover <0|1>", Handler::kEdgeDisplay, Execution::kOwnerRequest, Access::kConfirm),
+    Leaf("bthome", "Public battery broadcast on scheduled wakes", "connectivity bthome <0|1>", Handler::kEdgeTelemetry, Execution::kOwnerRequest, Access::kConfirm),
+    Leaf("token", "Set read-only page token; '-' removes it", "connectivity token <token|->", Handler::kEdgeToken, Execution::kOwnerRequest, Access::kConfirm),
 };
 constexpr CommandDescriptor kApps[] = {
     Leaf("list", "Compiled application catalog", "app list", Handler::kApps),
@@ -191,7 +199,7 @@ ExecuteStatus DiagnosticExecutor::Execute(const Invocation& invocation,
                                           BoundedOutput* output) {
     if (output == nullptr || invocation.count == 0) return ExecuteStatus::kInvalidArguments;
     if (active_ != Handler::kNone) return ExecuteStatus::kBusy;
-    if (std::strcmp(invocation[0], "confirm") != 0) confirmation_token_ = 0;
+    if (std::strcmp(invocation[0], "confirm") != 0) { confirmation_token_ = 0; ClearRequestSecrets(&confirmation_); }
     Resolution resolution;
     const auto resolved = Resolve(kCommands, std::size(kCommands), invocation, &resolution);
     if (resolved == ResolveStatus::kIncompleteCommand) return ExecuteStatus::kInvalidArguments;
@@ -203,9 +211,11 @@ ExecuteStatus DiagnosticExecutor::Execute(const Invocation& invocation,
         const bool valid = arguments == 1 && Number(invocation[resolution.argument_index], &token) &&
             token != 0 && token == confirmation_token_ && clock_() < confirmation_deadline_;
         confirmation_token_ = 0;
-        if (!valid) return ExecuteStatus::kDenied;
+        if (!valid) { ClearRequestSecrets(&confirmation_); return ExecuteStatus::kDenied; }
         confirmation_.confirmed = true;
-        return Submit(confirmation_handler_, confirmation_);
+        const auto submitted = Submit(confirmation_handler_, confirmation_);
+        ClearRequestSecrets(&confirmation_);
+        return submitted;
     }
     if (command.handler == Handler::kHelp) return Help(invocation, output);
     if (command.handler == Handler::kHostStart) {
@@ -214,7 +224,8 @@ ExecuteStatus DiagnosticExecutor::Execute(const Invocation& invocation,
         return binary_ != nullptr && binary_->Start(output) ? ExecuteStatus::kBinary
                                                           : ExecuteStatus::kUnavailable;
     }
-    if (command.handler != Handler::kLogFollow && command.handler != Handler::kTimeSync &&
+    const bool configuration = command.handler >= Handler::kConnectivityConfigure && command.handler <= Handler::kEdgeDisplay;
+    if (!configuration && command.handler != Handler::kLogFollow && command.handler != Handler::kTimeSync &&
         command.handler != Handler::kDisplayTelemetry && arguments != 0) {
         return ExecuteStatus::kInvalidArguments;
     }
@@ -266,6 +277,47 @@ ExecuteStatus DiagnosticExecutor::Execute(const Invocation& invocation,
         case Handler::kPower: request.operation = ControlOperation::kPower; break;
         case Handler::kTime: request.operation = ControlOperation::kTime; break;
         case Handler::kConnectivity: request.operation = ControlOperation::kConnectivity; break;
+        case Handler::kConnectivityConfigure: {
+            if (arguments != 1) return ExecuteStatus::kInvalidArguments;
+            constexpr const char* policies[] = {"automatic", "phone", "wifi", "offline"};
+            bool found = false;
+            for (uint32_t i = 0; i < std::size(policies); ++i) if (std::strcmp(invocation[resolution.argument_index], policies[i]) == 0) {
+                request.values[0] = i; found = true;
+            }
+            if (!found) return ExecuteStatus::kInvalidArguments;
+            request.operation = ControlOperation::kConnectivityConfigure;
+            break;
+        }
+        case Handler::kWifiSet: case Handler::kEdgeSource:
+            if (arguments != 2) return ExecuteStatus::kInvalidArguments;
+            std::snprintf(request.text1.data(), request.text1.size(), "%s", invocation[resolution.argument_index]);
+            std::snprintf(request.text2.data(), request.text2.size(), "%s", invocation[resolution.argument_index + 1]);
+            if (handler == Handler::kWifiSet && (std::strlen(request.text1.data()) > 32 || !request.text1[0])) return ExecuteStatus::kInvalidArguments;
+            if (handler == Handler::kEdgeSource && (std::strlen(request.text1.data()) >= 64 || std::strlen(request.text2.data()) >= 64)) return ExecuteStatus::kInvalidArguments;
+            request.config = handler == Handler::kWifiSet ? ControlRequest::Config::WifiSet : ControlRequest::Config::EdgeSource;
+            request.operation = ControlOperation::kConnectivityConfigure;
+            break;
+        case Handler::kEdgeToken:
+            if (arguments != 1) return ExecuteStatus::kInvalidArguments;
+            if (std::strcmp(invocation[resolution.argument_index], "-") != 0)
+                std::snprintf(request.text1.data(), request.text1.size(), "%s", invocation[resolution.argument_index]);
+            request.config = ControlRequest::Config::EdgeToken;
+            request.operation = ControlOperation::kConnectivityConfigure;
+            break;
+        case Handler::kWifiClear:
+            if (arguments != 0) return ExecuteStatus::kInvalidArguments;
+            request.config = ControlRequest::Config::WifiClear;
+            request.operation = ControlOperation::kConnectivityConfigure;
+            break;
+        case Handler::kEdgeSync: case Handler::kEdgeDisplay: case Handler::kEdgeTelemetry:
+            if (arguments != (handler == Handler::kEdgeSync ? 6u : 1u)) return ExecuteStatus::kInvalidArguments;
+            for (std::size_t i = 0; i < arguments; ++i) if (!Number(invocation[resolution.argument_index + i], &request.values[i])) return ExecuteStatus::kInvalidArguments;
+            if (request.values[0] > 1 || (handler == Handler::kEdgeSync &&
+                (request.values[1] < 300 || request.values[1] > 86400 || request.values[2] < 1000 || request.values[2] > 60000 ||
+                 request.values[3] < 20 || request.values[3] > 100 || request.values[4] >= 1440 || request.values[5] >= 1440))) return ExecuteStatus::kInvalidArguments;
+            request.config = handler == Handler::kEdgeSync ? ControlRequest::Config::EdgeSync : handler == Handler::kEdgeTelemetry ? ControlRequest::Config::EdgeTelemetry : ControlRequest::Config::EdgeDisplay;
+            request.operation = ControlOperation::kConnectivityConfigure;
+            break;
         case Handler::kApps:
         case Handler::kCurrentApp: request.operation = ControlOperation::kApps; break;
         case Handler::kScenes: request.operation = ControlOperation::kScenes; break;
@@ -337,6 +389,7 @@ void DiagnosticExecutor::Cancel() {
 }
 
 ExecuteStatus DiagnosticExecutor::CancelStatus() {
+    ClearRequestSecrets(&confirmation_);
     cancellation_.Cancel();
     const auto status = ticket_.id != 0 ? dispatcher_.Cancel(ticket_) : ControlStatus::kOk;
     confirmation_token_ = 0;
@@ -534,6 +587,8 @@ ExecuteStatus DiagnosticExecutor::FormatResult(BoundedOutput* output) {
             static_cast<long long>(t.accepted_age_ms), static_cast<long long>(t.sync.correction_ms), static_cast<unsigned long>(t.sync.rejected));
         else output->Append("Automatic sync uses existing authorized Companion/verified HTTPS traffic.\r\nNo extra connection; schedulers use monotonic time.");
         more = page_ < 2;
+    } else if (active_ >= Handler::kConnectivityConfigure && active_ <= Handler::kEdgeDisplay) {
+        output->Append("Connectivity configuration saved. Background changes apply on next sleep/wake.");
     } else if (active_ == Handler::kConnectivity) {
         const auto& c = result_.connectivity;
         if (page_ == 0) Format(output, "radio=%.23s wifi=%.23s mode=%s resource_busy=%u book_transfer=%u\r\nssid=%.32s ip=%.15s",
@@ -541,9 +596,13 @@ ExecuteStatus DiagnosticExecutor::FormatResult(BoundedOutput* output) {
             c.ssid.data(), c.address[0] ? c.address.data() : "unavailable");
         else if (page_ == 1) Format(output, "mac_valid=%u mac=%02x:%02x:%02x:%02x:%02x:%02x\r\nrssi_valid=%u rssi_dbm=%d (association sample)",
             c.mac_valid, c.mac[0], c.mac[1], c.mac[2], c.mac[3], c.mac[4], c.mac[5], c.rssi_valid, c.rssi);
-        else Format(output, "ble=%.23s session=%lu pairing=%u\r\nencrypted=%u authenticated=%u bonded=%u negotiated=%u peer_authorized=%u",
+        else if (page_ == 2) Format(output, "ble=%.23s session=%lu pairing=%u\r\nencrypted=%u authenticated=%u bonded=%u negotiated=%u peer_authorized=%u",
             c.ble.data(), static_cast<unsigned long>(c.session), c.pairing, c.encrypted, c.authenticated, c.bonded, c.negotiated, c.authorized);
-        more = page_ < 2;
+        else if (page_ == 3) Format(output, "policy=%u wifi_credentials=%u config_valid=%u background=%u remote_cover=%u bthome=%u\r\ninterval_s=%lu budget_ms=%lu min_battery=%u quiet=%u..%u",
+            c.policy, c.credentials, c.config_valid, c.background, c.remote_display, c.bthome,
+            static_cast<unsigned long>(c.interval_seconds), static_cast<unsigned long>(c.budget_ms), c.minimum_battery, c.quiet_start, c.quiet_end);
+        else Format(output, "source=https://%.63s%.63s", c.source_host.data(), c.source_path.data());
+        more = page_ < 4;
     } else if (active_ == Handler::kApps || active_ == Handler::kCurrentApp) {
         const auto& a = result_.apps;
         if (active_ == Handler::kCurrentApp || page_ == 0) Format(output, "applications=%u foreground=%.31s generation=%lu lifecycle=%u error=%u",

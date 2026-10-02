@@ -17,6 +17,29 @@ constexpr Text kMonths[] = {Text::Jan, Text::Feb, Text::Mar, Text::Apr, Text::Ma
 constexpr Text kWeekdays[] = {Text::Monday, Text::Tuesday, Text::Wednesday, Text::Thursday,
     Text::Friday, Text::Saturday, Text::Sunday};
 
+// Both orientations keep Monday-first placement and a single, solid today marker.
+void DrawMonthGrid(ZectrixCanvas& canvas, const SleepCalendar& calendar, int today,
+                   int left, int heading_y, int top, int column_width, int row_height) {
+    constexpr Text weekdays[] = {Text::WeekMon, Text::WeekTue, Text::WeekWed, Text::WeekThu,
+        Text::WeekFri, Text::WeekSat, Text::WeekSun};
+    const int cell_width = column_width - 2;
+    for (unsigned col = 0; col < 7; ++col) {
+        const char* label = Tr(weekdays[col]);
+        canvas.Text(left + col * column_width + (cell_width - canvas.TextWidth(label)) / 2,
+                    heading_y, label);
+    }
+    char label[4];
+    for (unsigned day = 1; day <= calendar.days; ++day) {
+        const unsigned cell = calendar.first_weekday + day - 1;
+        const int x = left + (cell % 7) * column_width;
+        const int y = top + (cell / 7) * row_height;
+        const bool active = static_cast<int>(day) == today;
+        if (active) canvas.FillRect(x, y - 2, cell_width, 20, true);
+        std::snprintf(label, sizeof(label), "%u", day);
+        canvas.Text(x + (cell_width - canvas.TextWidth(label)) / 2, y, label, 1, active);
+    }
+}
+
 void DrawLandscape(ZectrixCanvas& canvas, unsigned variation) {
     const int sun_x = 265 + static_cast<int>(variation % 3) * 20;
     for (int y = -13; y <= 13; ++y) {
@@ -56,20 +79,7 @@ void DrawCalendar(ZectrixCanvas& canvas, const SleepCoverSnapshot& snapshot, con
     canvas.Text(16, 130, Tr(kWeekdays[calendar.weekday]));
     std::snprintf(line, sizeof(line), Tr(Text::AsOfTime), date.hour, date.minute);
     canvas.Text(16, 152, line);
-    constexpr Text weekdays[] = {Text::WeekMon, Text::WeekTue, Text::WeekWed, Text::WeekThu,
-        Text::WeekFri, Text::WeekSat, Text::WeekSun};
-    for (unsigned col = 0; col < 7; ++col) {
-        const auto* label = Tr(weekdays[col]);
-        canvas.Text(186 + col * 28 + (26 - canvas.TextWidth(label)) / 2, 32, label);
-    }
-    for (unsigned day = 1; day <= calendar.days; ++day) {
-        const unsigned cell = calendar.first_weekday + day - 1;
-        const int x = 186 + (cell % 7) * 28, y = 54 + (cell / 7) * 19;
-        const bool today = static_cast<int>(day) == date.day;
-        if (today) canvas.FillRect(x, y - 1, 26, 18, true);
-        std::snprintf(line, sizeof(line), "%u", day);
-        canvas.Text(x + (26 - canvas.TextWidth(line)) / 2, y, line, 1, today);
-    }
+    DrawMonthGrid(canvas, calendar, date.day, 186, 32, 54, 28, 20);
 }
 
 #if CONFIG_ZECTRIX_ENABLE_READER
@@ -121,6 +131,8 @@ esp_err_t ZectrixDemoUi::ShowSleepCover(const SleepCoverSnapshot& snapshot, Slee
                                        bool preview, bool preference_saved, const SleepCoverImage* picture) {
     if (display_ == nullptr) return ESP_ERR_INVALID_STATE;
     style = SleepCoverSetting(static_cast<uint32_t>(style));
+    if (sleep_portrait_ && style == SleepCoverStyle::Dashboard)
+        return ShowPortraitCalendar(snapshot, preview, preference_saved);
     if (!preview && style == SleepCoverStyle::Blank) return ClearDisplay();
     if (preview) BeginContent();
     else {
@@ -192,4 +204,47 @@ esp_err_t ZectrixDemoUi::ShowSleepCover(const SleepCoverSnapshot& snapshot, Slee
     // Commit the final surface directly. Pending status invalidations stay dormant.
     sleep_surface_ = true;
     return display_->Present1Bpp(zectrix::display::DisplayIntent::FullClean, canvas_.data(), canvas_.size());
+}
+
+esp_err_t ZectrixDemoUi::ShowPortraitCalendar(const SleepCoverSnapshot& snapshot,
+                                            bool preview, bool preference_saved) {
+    gray_frame_.reset();
+    canvas_.SetPortrait(true);
+    struct RestoreCanvas {
+        ZectrixCanvas& canvas;
+        ~RestoreCanvas() { canvas.SetPortrait(false); }
+    } restore{canvas_};
+    canvas_.Clear();
+    const auto calendar = CalendarForSleep(snapshot.clock);
+    canvas_.TextFitted(16, 12, Tr(Text::OfflineCalendar), 180, false, ZectrixCanvas::TextStyle::Bold);
+    char battery[24];
+    if (snapshot.power.battery_valid && !snapshot.power.battery_absent)
+        std::snprintf(battery, sizeof(battery), "%u%%", std::min<unsigned>(snapshot.power.battery_percent, 100));
+    else std::snprintf(battery, sizeof(battery), "--%%");
+    canvas_.Text(284 - canvas_.TextWidth(battery), 12, battery);
+    canvas_.Line(16, 37, 283, 37);
+    if (calendar.valid) {
+        const auto& date = snapshot.clock.value;
+        char label[48];
+        std::snprintf(label, sizeof(label), Tr(Text::MonthYear), date.year, Tr(kMonths[date.month - 1]));
+        canvas_.TextCentered(50, label);
+        std::snprintf(label, sizeof(label), "%02d", date.day);
+        canvas_.TextCentered(78, label, 4);
+        canvas_.TextCentered(143, Tr(kWeekdays[calendar.weekday]));
+        DrawMonthGrid(canvas_, calendar, date.day, 17, 170, 190, 38, 24);
+        std::snprintf(label, sizeof(label), Tr(Text::AsOfTime), date.hour, date.minute);
+        canvas_.TextCentered(358, label);
+    } else {
+        canvas_.TextCentered(100, Tr(Text::TimeNotSet), 2);
+        canvas_.TextCentered(190, Tr(Text::SetClockForCalendar));
+    }
+    canvas_.Line(16, 354, 283, 354);
+    canvas_.TextFitted(16, 334, snapshot.weather_line[0] ? snapshot.weather_line.data() :
+        Tr(QuoteForSleep(calendar).first_text, QuoteForSleep(calendar).first), 268);
+    canvas_.FillRect(0, 378, 300, 22, true);
+    canvas_.TextFitted(8, 381, preview ? Tr(preference_saved ? Text::PreviewControls :
+        Text::UnsavedPreviewControls) : Tr(Text::WakeHint), 284, true);
+    // Also suppress landscape status redraws while viewing the portrait preview.
+    sleep_surface_ = true;
+    return display_->PresentPortrait1Bpp(canvas_.data(), canvas_.size());
 }

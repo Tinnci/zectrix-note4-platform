@@ -56,6 +56,9 @@ public:
                           std::size_t partial_size = 0);
     esp_err_t Present4Bpp(DisplayIntent intent, const uint8_t* framebuffer,
                           std::size_t size);
+    // Native 300x400 lock-screen canvas, tightly packed, clockwise to the panel.
+    // Does not change the application orientation preference.
+    esp_err_t PresentPortrait1Bpp(const uint8_t* frame, std::size_t size);
 
     const State& state() const { return state_model_.state(); }
     bool CanUsePartial() const { return state_model_.CanUsePartial(); }

@@ -196,7 +196,9 @@ struct Platform::Impl {
         }, [](Impl& self) {
             // Keep a stopped facade available without starting NimBLE's NVS path.
             const auto health = self.health.Snapshot();
-            if (health.storage_error != ESP_OK || health.recovery_boot) {
+            const bool calendar_wake = self.power->IsScheduledWake() &&
+                !self.boot_facade->ReadBootStatus().confirmation_pending;
+            if (health.storage_error != ESP_OK || health.recovery_boot || calendar_wake) {
                 ESP_LOGW("platform", "recovery boot: keeping connectivity stopped");
                 return ESP_OK;
             }
@@ -362,14 +364,14 @@ esp_err_t Platform::ResetUserData(bool factory) {
     std::abort();
 }
 
-[[noreturn]] void Platform::Shutdown() {
+[[noreturn]] void Platform::Shutdown(uint64_t wake_after_us) {
     assert(initialized_ && impl_ != nullptr && impl_->power != nullptr);
     ReleaseServices();
     initialized_ = false;
     // Lookup has been withdrawn, but this owner retains the final power handle.
     impl_->power->Shutdown([](void* context) {
         static_cast<system::HealthSupervisor*>(context)->DisarmForPowerTransition();
-    }, &impl_->health);
+    }, &impl_->health, wake_after_us);
 }
 
 void Platform::ReleaseServices() {

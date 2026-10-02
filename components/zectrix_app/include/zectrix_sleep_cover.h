@@ -17,6 +17,9 @@ constexpr unsigned kSleepCoverStyleCount = 4;
 constexpr unsigned kSleepCoverStyleCount = 3;
 #endif
 constexpr char kSleepCoverSettingKey[] = "ui.sleep_cover";
+constexpr char kSleepPortraitSettingKey[] = "ui.sleep_dir";
+static_assert(sizeof(kSleepPortraitSettingKey) <= 16, "NVS keys allow at most 15 characters");
+constexpr bool kSleepPortraitDefault = true;
 constexpr SleepCoverStyle kSleepCoverDefault = SleepCoverStyle::Dashboard;
 SleepCoverStyle SleepCoverSetting(uint32_t value);
 
@@ -50,6 +53,8 @@ struct SleepQuote {
     i18n::Text second_text = i18n::Text::None;
 };
 SleepCalendar CalendarForSleep(const time::ClockSnapshot& clock);
+// Refresh shortly after the next local midnight; zero means rail-off sleep.
+uint64_t SleepRefreshDelayUs(SleepCoverStyle style, const time::ClockSnapshot& clock);
 const SleepQuote& QuoteForSleep(const SleepCalendar& calendar);
 
 enum class SleepCoverScene : uint8_t { Choose, Preview };

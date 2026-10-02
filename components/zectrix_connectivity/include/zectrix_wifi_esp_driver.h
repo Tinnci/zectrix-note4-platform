@@ -1,4 +1,5 @@
 #pragma once
+#include "zectrix_edge_settings.h"
 
 #include "zectrix_wifi_backend.h"
 #include "zectrix_time_sync.h"
@@ -23,6 +24,9 @@ public:
 
     // Includes diagnostics and failed cleanup; this never grants ownership.
     static bool RadioClaimed();
+    // Dedicated page owner only, before StartStation; never affects the
+    // ConnectivityService's fixed Companion resource driver.
+    bool ConfigurePageSource(const char* host, const char* path, const char* token = "", const PageTelemetry& telemetry = {});
 
     WifiDriverResult StartStation(const WifiCredentials& credentials) override;
     WifiDriverResult PollAssociation() override;

@@ -53,6 +53,9 @@ jobs:
             env BUN_INSTALL="$RUNNER_TEMP/bun" bash -s -- bun-v1.3.14
           printf '%s\n' "$RUNNER_TEMP/bun/bin" >> "$GITHUB_PATH"
 
+      - name: Install HA bridge dependencies
+        run: bun install --cwd tools/ha-bridge --frozen-lockfile
+
       - name: Check shell scripts
         run: shellcheck tools/*.sh
 

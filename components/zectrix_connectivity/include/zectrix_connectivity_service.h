@@ -9,6 +9,7 @@
 #include "zectrix_book_transfer.h"
 #include "zectrix_radio_arbiter.h"
 #include "zectrix_time_sync.h"
+#include "zectrix_edge_settings.h"
 
 namespace zectrix::nfc { class NfcService; }
 namespace zectrix::storage { class StorageService; }
@@ -57,6 +58,7 @@ struct ConnectivitySnapshot {
     bool sync_converged = false;
     std::size_t pending_durable_states = 0;
     bool wifi_credentials_available = false;
+    companion::UserConnectivityPolicy user_policy = companion::UserConnectivityPolicy::kOffline;
     bool resource_busy = false;
     bool book_transfer_active = false;
     // Transfer work at sampling time, not merely an open book-sharing session.
@@ -98,6 +100,14 @@ public:
     ConnectivityResult SetUserPolicy(companion::UserConnectivityPolicy policy);
     // Internal provisioning API. The caller owns local user authorization.
     ConnectivityResult ConfigureWifi(const WifiCredentials& credentials);
+    // Requires local authorization; active Wi-Fi work returns Busy.
+    ConnectivityResult ClearWifiConfiguration();
+    esp_err_t LoadEdgeSettings(EdgeSettings* settings) const;
+    esp_err_t ConfigureEdgeSettings(const EdgeSettings& settings);
+    esp_err_t ConfigureEdgeToken(const char* token);
+    // Local owner only, after Wi-Fi cleanup. Always proceed to shutdown afterward.
+    // Waits at most 6s; a timed-out private worker lives until final deep sleep.
+    ConnectivityResult BroadcastPower(const power::PowerSnapshot& power);
     ConnectivityResult RequestResource(
         const companion::ResourceRequestMessage& request);
     bool TakeResourceResponse(ResourceResponse* response);

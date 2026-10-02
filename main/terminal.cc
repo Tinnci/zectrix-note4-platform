@@ -76,6 +76,38 @@ void TerminalApp::Run() {
     LogHeap("M2-equivalent platform");
     ui_.SetDisplay(display_);
     ui_.SetTime(time_);
+    uint32_t sleep_portrait = app::kSleepPortraitDefault ? 1 : 0;
+    const auto portrait_setting = storage_->GetUInt32(app::kSleepPortraitSettingKey, &sleep_portrait);
+    sleep_portrait_ = portrait_setting == ESP_OK && sleep_portrait <= 1 ? sleep_portrait == 1 : app::kSleepPortraitDefault;
+    ui_.SetSleepPortrait(sleep_portrait_);
+    ESP_LOGI(kTag, "event=sleep_cover_settings style=%u portrait=%u",
+        static_cast<unsigned>(sleep_cover_style_), static_cast<unsigned>(sleep_portrait_));
+    // A trial OTA image must reach the existing Home-frame confirmation path;
+    // an unattended lock-screen wake must never confirm or bypass that trial.
+    if (power_->IsScheduledWake() && !platform_.Boot().ReadBootStatus().confirmation_pending) {
+        ESP_LOGI(kTag, "event=calendar_refresh_wake");
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+        LoadEdgeConfiguration();
+        if (!RefreshEdgeOnWake()) {
+            if (connectivity_ && edge_configuration_valid_ && edge_settings_.bthome_enabled &&
+                !platform_.Health().Snapshot().recovery_boot && platform_.Health().Snapshot().storage_error == ESP_OK) {
+                auto telemetry = edge_settings_;
+                telemetry.enabled = true;
+                const auto clock = time_->Status();
+                const auto now = time_->UnixSeconds();
+                if (clock.utc_offset_known && connectivity::PlanWake(telemetry, now,
+                    clock.utc_offset_seconds, now, 0, true).sync_due)
+                    connectivity_->BroadcastPower(power_->ReadSnapshot());
+            }
+            PowerOff();
+        }
+        // A physical key cancels the burst and returns to the normal UI.
+        if (connectivity_ && connectivity_->Initialize() != connectivity::ConnectivityResult::kOk)
+            ESP_LOGW(kTag, "event=connectivity_interactive_start_failed");
+#else
+        PowerOff();
+#endif
+    }
     UpdateSystemStatus();
     const auto splash = ui_.ShowSplash();
     if (splash != ESP_OK) ESP_LOGW(kTag, "splash unavailable: %s; continuing to Home", esp_err_to_name(splash));
@@ -344,14 +376,30 @@ ControlResult TerminalApp::Wait(uint32_t duration_ms, bool confirm_returns) {
     }
 #endif
     ESP_LOGI(kTag, "presenting sleep cover before shutdown");
-    const esp_err_t cover = PresentSleepCover(sleep_snapshot, sleep_cover_style_);
+    esp_err_t cover = ESP_ERR_NOT_FOUND;
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+    LoadEdgeConfiguration();
+    cover = PresentEdgeCover();
+#endif
+    if (cover != ESP_OK) cover = PresentSleepCover(sleep_snapshot, sleep_cover_style_);
     if (cover != ESP_OK) {
         ESP_LOGW(kTag, "sleep cover failed: %s; attempting blank fallback", esp_err_to_name(cover));
         const auto clear = ui_.ClearDisplay();
         if (clear != ESP_OK) ESP_LOGW(kTag, "blank fallback failed: %s", esp_err_to_name(clear));
     }
     ESP_LOGI(kTag, "releasing platform peripherals before shutdown");
-    platform_.Shutdown();
+    // Measure from the current clock after display I/O and cleanup preparation,
+    // not the earlier cover snapshot, so slow full refreshes do not accumulate.
+    const bool battery_low = sleep_snapshot.power.battery_valid &&
+        !sleep_snapshot.power.external_power_present && sleep_snapshot.power.battery_percent <= 5;
+    auto wake_after_us = battery_low ? 0 : app::SleepRefreshDelayUs(sleep_cover_style_, time_->Now());
+#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+    if (!battery_low) wake_after_us = NextWakeDelay();
+#endif
+    ESP_LOGI(kTag, "event=sleep_cover_presented style=%u portrait=%u result=%s wake_after_us=%llu",
+        static_cast<unsigned>(sleep_cover_style_), static_cast<unsigned>(sleep_portrait_),
+        esp_err_to_name(cover), static_cast<unsigned long long>(wake_after_us));
+    platform_.Shutdown(wake_after_us);
 }
 
 void RunTerminal() {

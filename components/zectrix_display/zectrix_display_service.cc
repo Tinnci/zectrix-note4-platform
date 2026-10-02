@@ -184,6 +184,25 @@ esp_err_t DisplayService::Present4Bpp(DisplayIntent intent, const uint8_t* frame
     return result;
 }
 
+esp_err_t DisplayService::PresentPortrait1Bpp(const uint8_t* frame, std::size_t size) {
+    if (!frame || size != kFrameBytes1Bpp) return ESP_ERR_INVALID_ARG;
+    if (!rotated_) rotated_.reset(new (std::nothrow) uint8_t[kFrameBytes4Bpp]);
+    if (!rotated_) return ESP_ERR_NO_MEM;
+    std::memset(rotated_.get(), 0xff, size);
+    for (int y = 0; y < 400; ++y) {
+        for (int x = 0; x < 300; ++x) {
+            const auto bit = static_cast<std::size_t>(y) * 300 + x;
+            if ((frame[bit / 8] & (0x80 >> (bit & 7))) == 0) {
+                const auto target = static_cast<std::size_t>(x) * 400 + (399 - y);
+                rotated_[target / 8] &= static_cast<uint8_t>(~(0x80 >> (target & 7)));
+            }
+        }
+    }
+    const auto result = PresentPhysical1Bpp(DisplayIntent::FullClean, rotated_.get(), size, {}, nullptr, 0);
+    orientation_changed_ = true;
+    return result;
+}
+
 esp_err_t DisplayService::PresentPhysical1Bpp(
     DisplayIntent intent, const uint8_t* full_framebuffer,
     std::size_t full_framebuffer_size, const Rect& partial_region,

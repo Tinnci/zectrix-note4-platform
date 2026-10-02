@@ -34,6 +34,11 @@ struct ConnectivityInspection {
     bool encrypted = false, authenticated = false, bonded = false, authorized = false;
     bool negotiated = false, pairing = false, transfer = false, busy = false;
     bool rssi_valid = false, mac_valid = false;
+    uint8_t policy = 0, minimum_battery = 20;
+    bool credentials = false, background = false, remote_display = false, bthome = false, config_valid = false;
+    uint32_t interval_seconds = 0, budget_ms = 0;
+    uint16_t quiet_start = 0, quiet_end = 0;
+    std::array<char, 64> source_host{}, source_path{};
 };
 
 struct AppInspection {

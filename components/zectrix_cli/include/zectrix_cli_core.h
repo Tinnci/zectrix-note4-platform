@@ -21,6 +21,7 @@ enum class Handler : uint8_t {
     kDisplayInspect, kDisplayTelemetry, kDisplayModel, kLogFollow, kLogStats, kHostStart,
     kPower, kTime, kConnectivity, kApps, kCurrentApp, kScenes, kInputWatch,
     kTimeSync, kReboot, kSleep, kStorageWipe, kFactoryReset, kConfirm,
+    kConnectivityConfigure, kWifiSet, kWifiClear, kEdgeSource, kEdgeSync, kEdgeToken, kEdgeTelemetry, kEdgeDisplay,
 };
 
 enum class ParseStatus : uint8_t {

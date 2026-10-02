@@ -12,9 +12,12 @@ TickType_t delays[2] = {};
 std::size_t delay_count = 0;
 std::jmp_buf shutdown_jump;
 bool power_ready = false;
+uint64_t timer_us = 0;
+esp_err_t timer_result = ESP_OK;
 }
 
 esp_sleep_wakeup_cause_t esp_sleep_get_wakeup_cause() { return wake_cause; }
+esp_err_t esp_sleep_enable_timer_wakeup(uint64_t value) { timer_us = value; return timer_result; }
 int64_t esp_timer_get_time() { return 1234567; }
 const char* esp_err_to_name(esp_err_t error) { return error == ESP_OK ? "ESP_OK" : "ESP_FAIL"; }
 void vTaskDelay(TickType_t ticks) { delays[delay_count++] = ticks; }
@@ -79,5 +82,27 @@ int main() {
         assert(board.power_events[4] == 5);
         assert(delay_count == 2 && delays[0] == 100 && delays[1] == 100);
     }
+    for (const auto result : {ESP_OK, ESP_FAIL}) {
+        board.power_wake_result = ESP_OK;
+        timer_result = result;
+        board.power_event_count = delay_count = 0;
+        power_ready = false;
+        if (setjmp(shutdown_jump) == 0) service->Shutdown([](void*) { power_ready = true; }, nullptr, 86400000000ULL);
+        assert(timer_us == 86400000000ULL);
+        assert(board.power_event_count == (result == ESP_OK ? 4 : 5));
+        assert(delay_count == (result == ESP_OK ? 1U : 2U));
+        wake_cause = ESP_SLEEP_WAKEUP_TIMER;
+        assert(service->IsScheduledWake() == (result == ESP_OK));
+        wake_cause = ESP_SLEEP_WAKEUP_EXT1;
+        assert(!service->IsScheduledWake());
+    }
+    board.power_wake_result = ESP_FAIL;
+    board.power_event_count = delay_count = 0;
+    timer_us = 0;
+    power_ready = false;
+    if (setjmp(shutdown_jump) == 0) service->Shutdown([](void*) { power_ready = true; }, nullptr, 86400000000ULL);
+    assert(timer_us == 0 && board.power_event_count == 5);
+    wake_cause = ESP_SLEEP_WAKEUP_TIMER;
+    assert(!service->IsScheduledWake());
     delete service;
 }

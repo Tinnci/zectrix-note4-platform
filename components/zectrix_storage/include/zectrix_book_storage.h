@@ -45,6 +45,8 @@ private:
     BookWriteResult error_ = BookWriteResult::Ok;
     package::Validator package_;
     bool packaged_ = false, cover_ = false;
+    bool edge_ = false;
+    std::array<uint8_t, 32> edge_header_{};
 };
 
 class BookFile {
@@ -87,6 +89,8 @@ public:
     esp_err_t OpenCover(BookFile* file, bool managed = false);
     BookWriteResult BeginCoverUpload(uint32_t size, BookUpload* upload);
     BookWriteResult RemoveCover();
+    esp_err_t OpenEdgePage(BookFile* file);
+    BookWriteResult BeginEdgePageUpload(BookUpload* upload);
     // Explicit maintenance only. Readers, uploads and management must exit first.
     esp_err_t Wipe();
 
@@ -94,7 +98,7 @@ private:
     friend class BookFile;
     friend class BookUpload;
     friend class AppStorage;
-    enum class Content : uint8_t { Book, App, Cover };
+    enum class Content : uint8_t { Book, App, Cover, Edge };
     void ReaderClosed();
     static bool ValidAppName(const char* name);
     esp_err_t ListImpl(BookEntry* entries, std::size_t capacity, std::size_t* count,

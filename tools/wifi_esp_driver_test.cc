@@ -585,7 +585,7 @@ int esp_tls_conn_new_async(const char* host, int length, int port, const esp_tls
 struct WifiHttpClient::Impl { uint8_t* body; };
 WifiHttpClient::WifiHttpClient() = default;
 WifiHttpClient::~WifiHttpClient() { Close(); }
-bool WifiHttpClient::Begin(WifiHttpStream&, uint8_t* body, std::size_t capacity) {
+bool WifiHttpClient::Begin(WifiHttpStream&, uint8_t* body, std::size_t capacity, const char*, const char*, bool, const char*, const PageTelemetry&) {
     assert(wifi_started && tls_objects == 1 && !http_active && capacity >= 5);
     impl_ = new Impl{body};
     http_active = true;

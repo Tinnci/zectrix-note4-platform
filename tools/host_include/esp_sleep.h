@@ -20,6 +20,7 @@ enum esp_sleep_wakeup_cause_t {
 };
 
 esp_sleep_wakeup_cause_t esp_sleep_get_wakeup_cause();
+esp_err_t esp_sleep_enable_timer_wakeup(uint64_t time_in_us);
 enum esp_sleep_ext1_wakeup_mode_t { ESP_EXT1_WAKEUP_ANY_LOW, ESP_EXT1_WAKEUP_ANY_HIGH };
 esp_err_t esp_sleep_enable_ext1_wakeup_io(uint64_t mask, esp_sleep_ext1_wakeup_mode_t mode);
 [[noreturn]] void esp_deep_sleep_start();

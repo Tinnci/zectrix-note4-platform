@@ -91,8 +91,12 @@ Status: Implementation delivered; physical qualification remains open. This
 milestone is independent of M5 and dynamic application research. The protocol,
 durable synchronization, policy, secure BLE/Android path, NFC-assisted
 enrollment, controlled phone HTTPS resource path, production ESP-IDF Wi-Fi
-driver and direct HTTPS escalation are implemented. Q1 adds callback/cleanup
-regressions and E1.5 adds Wi-Fi/BLE arbitration. GitHub #34–#39 and #48 retain
+driver and direct HTTPS escalation are implemented. Local wake scheduling,
+budgeted page sync/cache, settings and a
+server-side HA/MQTT bridge now have software implementations; BTHome wake
+telemetry is opt-in. HA deployment and physical qualification remain open.
+Q1 adds callback/cleanup regressions; E1.5 adds Wi-Fi/BLE arbitration.
+GitHub #34–#39 and #48 retain
 their specified Android/Note4 and RF/power evidence requirements. #29 and #38
 remain open until their dependencies and end-to-end evidence are complete.
 
@@ -124,9 +128,9 @@ can develop beside C1. The backlog's D1.1 USB Serial/JTAG
 sessions and D1.2 owner-dispatched system/heap/task/uptime/display diagnostics
 and bounded log observation are implemented. D1.3 adds an interactive host
 simulator with terminal, pipe and reconnect integration tests. Q1 hardens USB
-reconnect and shutdown. `power status`, `time get`, `connectivity status`,
-`app list`, `app current`, `input watch` and confirmed mutations remain
-unimplemented in the production command table. Real USB transcripts remain
+reconnect and shutdown. The production table includes power/time/connectivity
+status, app inspection, input observation and confirmed local mutations,
+including network and background-display configuration. Real USB transcripts remain
 required by #42–#47. Mutating connectivity commands retain the applicable C1
 authorization requirements. See the [scope mapping](GITHUB_TRIAGE.md#issue-decisions).
 

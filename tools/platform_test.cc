@@ -59,6 +59,8 @@ uint64_t health_now_ms = 0;
 unsigned health_feeds = 0;
 zectrix::system::ResetReason reset_reason = zectrix::system::ResetReason::PowerOn;
 bool pending_boot = false;
+bool scheduled_wake = false;
+uint64_t shutdown_timer_us = 0;
 bool boot_confirmed = false;
 unsigned boot_probe_count = 0;
 const zectrix::ServiceRegistry* inspected_registry = nullptr;
@@ -169,7 +171,9 @@ PowerSnapshot PowerService::ReadSnapshot() const {
     return cached_;
 }
 PowerService::~PowerService() { AssertWithdrawn<PowerService>(); events.emplace_back("delete:power"); }
-[[noreturn]] void PowerService::Shutdown(void (*ready)(void*), void* context) {
+bool PowerService::IsScheduledWake() const { return scheduled_wake; }
+[[noreturn]] void PowerService::Shutdown(void (*ready)(void*), void* context, uint64_t timer_us) {
+    shutdown_timer_us = timer_us;
     AssertWithdrawn<PowerService>();
     assert(boot_watchdog_armed);
     if (ready != nullptr) ready(context);
@@ -283,6 +287,14 @@ namespace zectrix::connectivity {
 struct ConnectivityService::Impl {};
 void ConnectivityService::SetNfcService(nfc::NfcService*) {}
 void ConnectivityService::SetStorageService(storage::StorageService*) {}
+esp_err_t ConnectivityService::LoadEdgeSettings(EdgeSettings* settings) const { *settings = {}; return ESP_OK; }
+esp_err_t ConnectivityService::ConfigureEdgeSettings(const EdgeSettings&) { return ESP_OK; }
+esp_err_t ConnectivityService::ConfigureEdgeToken(const char*) { return ESP_OK; }
+ConnectivityResult ConnectivityService::SetUserPolicy(companion::UserConnectivityPolicy) { return ConnectivityResult::kOk; }
+ConnectivityResult ConnectivityService::ConfigureWifi(const WifiCredentials&) { return ConnectivityResult::kOk; }
+ConnectivityResult ConnectivityService::ClearWifiConfiguration() { return ConnectivityResult::kOk; }
+bool ValidateWifiCredentials(const WifiCredentials& credentials) { return credentials.ssid[0] != 0; }
+void ClearWifiCredentials(WifiCredentials* credentials) { *credentials = {}; }
 ConnectivityResult ConnectivityService::Create(ConnectivityService** output) {
     events.emplace_back("create:connectivity");
     if (fail_at == "connectivity") return ConnectivityResult::kUnavailable;
@@ -378,6 +390,31 @@ void TestUnsetClockDoesNotBlockStartup() {
     time_polls = 0;
 }
 
+void TestCalendarWake() {
+    scheduled_wake = true;
+    for (const bool trial : {false, true}) {
+        events.clear();
+        pending_boot = trial;
+        {
+            zectrix::Platform platform;
+            assert(platform.Initialize() == ESP_OK);
+            const auto initialized = std::count(events.begin(), events.end(), "create:connectivity-init");
+            assert(initialized == (trial && CONFIG_ZECTRIX_ENABLE_CONNECTIVITY ? 1 : 0));
+            assert(platform.Boot().ReadBootStatus().confirmation_pending == trial);
+            if (!trial) {
+                try { platform.Shutdown(90000000); } catch (const SleepEntered&) {}
+                assert(shutdown_timer_us == 90000000);
+            } else {
+                assert(boot_watchdog_armed && !boot_confirmed);
+            }
+        }
+    }
+    scheduled_wake = pending_boot = false;
+    shutdown_timer_us = 0;
+    time_polls = 0;
+    events.clear();
+}
+
 void TestDegradedStorageAndHealth() {
     fail_at = "storage-init";
     reset_reason = zectrix::system::ResetReason::Watchdog;
@@ -439,6 +476,7 @@ void TestDegradedStorageAndHealth() {
 int main() {
     host_current_task = reinterpret_cast<void*>(1);
     TestUnsetClockDoesNotBlockStartup();
+    TestCalendarWake();
     TestMaintenanceReset();
     TestDegradedStorageAndHealth();
     {
@@ -687,6 +725,7 @@ int main() {
 int main() {
     host_current_task = reinterpret_cast<void*>(1);
     TestUnsetClockDoesNotBlockStartup();
+    TestCalendarWake();
     TestMaintenanceReset();
     TestDegradedStorageAndHealth();
     ZectrixNfc nfc;

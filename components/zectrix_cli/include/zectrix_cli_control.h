@@ -14,7 +14,7 @@ namespace zectrix::cli {
 enum class ControlOperation : uint8_t {
     kSystemInfo, kHeap, kTasks, kUptime, kDisplay, kPower, kTime, kConnectivity,
     kApps, kScenes, kInput, kDisplayTelemetry, kDisplayModel, kHealth,
-    kTimeSync, kReboot, kSleep, kStorageWipe, kFactoryReset,
+    kTimeSync, kConnectivityConfigure, kReboot, kSleep, kStorageWipe, kFactoryReset,
 };
 constexpr bool IsMutation(ControlOperation operation) { return operation >= ControlOperation::kTimeSync; }
 enum class ControlStatus : uint8_t {
@@ -23,18 +23,28 @@ enum class ControlStatus : uint8_t {
 };
 
 struct ControlRequest {
+    enum class Config : uint8_t { Policy, WifiSet, WifiClear, EdgeSource, EdgeSync, EdgeDisplay, EdgeToken, EdgeTelemetry };
     ControlOperation operation = ControlOperation::kSystemInfo;
     Origin origin = Origin::kUsbLocal;
     bool confirmed = false;
     int64_t unix_ms = 0;
     int32_t offset_seconds = 0;
     uint64_t cursor = 0;
+    Config config = Config::Policy;
+    std::array<char, 65> text1{}, text2{};
+    std::array<uint32_t, 6> values{};
 };
 
 struct ControlTicket {
     uint64_t id = 0;
     uint32_t generation = 0;
 };
+inline void ClearRequestSecrets(ControlRequest* request) {
+    for (auto* data : {request->text1.data(), request->text2.data()}) {
+        volatile char* clear = data;
+        for (std::size_t i = 0; i < request->text1.size(); ++i) clear[i] = 0;
+    }
+}
 
 struct ControlResult {
     system::SystemSnapshot system;

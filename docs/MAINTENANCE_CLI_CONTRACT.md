@@ -167,6 +167,13 @@ Connectivity screen. D1.4 deliberately does not add USB `connectivity pair` or
 physical pairing action. Factory reset is a separate, explicit USB recovery
 operation that also clears bonds.
 
+Confirmed USB writes configure resource routing, Wi-Fi, HTTPS page source/token,
+background refresh and remote covers. They cannot change BLE pairing or bonds.
+Confirmation/status output excludes passwords and tokens; request secrets are
+cleared after handoff or cancellation. See
+[CONNECTIVITY_CONFIGURATION.md](CONNECTIVITY_CONFIGURATION.md) for commands,
+defaults, storage limits and page format.
+
 E1.8's `host start 1` lends transport ownership to a bounded binary handler
 when the user has opened USB Manager. It changes the transport mode only;
 book/settings requests execute on that application's foreground owner. It

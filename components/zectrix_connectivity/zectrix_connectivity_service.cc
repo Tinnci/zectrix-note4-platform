@@ -18,6 +18,7 @@
 #include "freertos/task.h"
 
 #include "zectrix_ble_link.h"
+#include "zectrix_connectivity_settings.h"
 #include "zectrix_companion_identity.h"
 #include "zectrix_companion_protocol.h"
 #include "zectrix_clock_sync.h"
@@ -195,6 +196,8 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
 #endif
     }
     companion::ConnectivityConditions resource_conditions{};
+    // Provisioning status is independent of whether HTTPS was compiled in.
+    bool wifi_credentials_available = false;
     uint32_t resource_sequence = 0;
     uint32_t resource_phone_session = 0;
     uint32_t next_outbound_sequence = 1;
@@ -1048,15 +1051,17 @@ ConnectivityResult ConnectivityService::Initialize() {
         ResourceClient(*impl_->wifi_backend, *impl_));
     if (impl_->resource_client == nullptr) return ConnectivityResult::kUnavailable;
     impl_->resource_conditions.battery_percent = 0;
-#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
-    impl_->resource_conditions.wifi_credentials_available = impl_->wifi_credentials->Available();
+#if CONFIG_ZECTRIX_ENABLE_WIFI
+    impl_->wifi_credentials_available = impl_->wifi_credentials->Available();
 #endif
-    uint32_t stored_policy = 0;
-    if (impl_->storage_service != nullptr &&
-        impl_->storage_service->GetUInt32("conn_policy", &stored_policy) == ESP_OK &&
-        stored_policy <= static_cast<uint32_t>(companion::UserConnectivityPolicy::kOffline)) {
-        impl_->resource_conditions.user_policy =
-            static_cast<companion::UserConnectivityPolicy>(stored_policy);
+#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
+    impl_->resource_conditions.wifi_credentials_available = impl_->wifi_credentials_available;
+#endif
+    const esp_err_t policy_result = StoredConnectivitySettings(impl_->storage_service)
+        .LoadPolicy(&impl_->resource_conditions.user_policy);
+    if (policy_result != ESP_OK) {
+        ESP_LOGW(kTag, "event=connectivity_settings_load result=%s policy=offline",
+                 esp_err_to_name(policy_result));
     }
 
     const ConnectivityResult result = Map(impl_->ble.Initialize());
@@ -1208,7 +1213,8 @@ bool ConnectivityService::ReadSnapshot(ConnectivitySnapshot* output, bool wait) 
         impl_->peer_authorized_session_id.load() == ble.session_id;
     if (impl_->resource_mutex != nullptr && impl_->resource_client != nullptr) {
         if (xSemaphoreTake(impl_->resource_mutex, wait ? portMAX_DELAY : 0) != pdTRUE) return false;
-        snapshot.wifi_credentials_available = impl_->resource_conditions.wifi_credentials_available;
+        snapshot.wifi_credentials_available = impl_->wifi_credentials_available;
+        snapshot.user_policy = impl_->resource_conditions.user_policy;
         snapshot.resource_busy = impl_->resource_client->Busy();
         snapshot.wifi_state = impl_->resource_client->WifiState();
         snapshot.wifi_data_active = snapshot.wifi_state == WifiBackendState::kTransferring;
@@ -1278,8 +1284,7 @@ ConnectivityResult ConnectivityService::SetUserPolicy(companion::UserConnectivit
         xSemaphoreGive(impl_->resource_mutex);
         return ConnectivityResult::kInvalidState;
     }
-    const esp_err_t saved = impl_->storage_service == nullptr ? ESP_ERR_INVALID_STATE
-        : impl_->storage_service->SetUInt32("conn_policy", static_cast<uint32_t>(policy));
+    const esp_err_t saved = StoredConnectivitySettings(impl_->storage_service).SavePolicy(policy);
     if (saved == ESP_OK) impl_->resource_conditions.user_policy = policy;
     xSemaphoreGive(impl_->resource_mutex);
     impl_->ble.WakeSessionWaiter();
@@ -1301,6 +1306,7 @@ ConnectivityResult ConnectivityService::ConfigureWifi(const WifiCredentials& cre
         return ConnectivityResult::kBusy;
     }
     const esp_err_t saved = impl_->wifi_credentials->Save(credentials);
+    if (saved == ESP_OK) impl_->wifi_credentials_available = true;
 #if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP
     if (saved == ESP_OK) impl_->resource_conditions.wifi_credentials_available = true;
 #endif
@@ -1314,6 +1320,97 @@ ConnectivityResult ConnectivityService::ConfigureWifi(const WifiCredentials&) {
     return ConnectivityResult::kUnavailable;
 }
 #endif
+
+ConnectivityResult ConnectivityService::ClearWifiConfiguration() {
+#if CONFIG_ZECTRIX_ENABLE_WIFI
+    if (impl_ == nullptr || !impl_->initialized.load() || impl_->wifi_credentials == nullptr) {
+        return ConnectivityResult::kInvalidState;
+    }
+    xSemaphoreTake(impl_->resource_mutex, portMAX_DELAY);
+    if (!impl_->initialized.load()) {
+        xSemaphoreGive(impl_->resource_mutex);
+        return ConnectivityResult::kInvalidState;
+    }
+    if (impl_->resource_client->WifiBusy() || impl_->BookBusy()) {
+        xSemaphoreGive(impl_->resource_mutex);
+        return ConnectivityResult::kBusy;
+    }
+    const esp_err_t erased = impl_->wifi_credentials->Erase();
+    const bool cleared = erased == ESP_OK || erased == ESP_ERR_NOT_FOUND;
+    if (cleared) {
+        impl_->wifi_credentials_available = false;
+        impl_->resource_conditions.wifi_credentials_available = false;
+    }
+    xSemaphoreGive(impl_->resource_mutex);
+    impl_->ble.WakeSessionWaiter();
+    return cleared ? ConnectivityResult::kOk : ConnectivityResult::kUnavailable;
+#else
+    return ConnectivityResult::kUnavailable;
+#endif
+}
+
+esp_err_t ConnectivityService::LoadEdgeSettings(EdgeSettings* settings) const {
+    return StoredEdgeSettings(impl_ ? impl_->storage_service : nullptr).Load(settings);
+}
+
+esp_err_t ConnectivityService::ConfigureEdgeSettings(const EdgeSettings& settings) {
+    return StoredEdgeSettings(impl_ ? impl_->storage_service : nullptr).Save(settings);
+}
+esp_err_t ConnectivityService::ConfigureEdgeToken(const char* token) {
+    return StoredEdgeSettings(impl_ ? impl_->storage_service : nullptr).SaveToken(token);
+}
+
+ConnectivityResult ConnectivityService::BroadcastPower(const power::PowerSnapshot& power) {
+    if (!impl_ || impl_->initialized.load()) return ConnectivityResult::kBusy;
+    EdgeSettings settings;
+    if (LoadEdgeSettings(&settings) != ESP_OK || !settings.bthome_enabled ||
+        !power.battery_valid || power.battery_absent ||
+        !EdgePowerAllowed(settings, power.external_power_present, true, power.battery_percent))
+        return ConnectivityResult::kUnavailable;
+    // IDF nimble_port_stop waits forever internally. A worker owns its entire
+    // lifetime so a timeout never frees memory still used by that worker.
+    // The owner must proceed to shutdown after this operation, not start BLE.
+    struct Work {
+        BleLink link;
+        power::PowerSnapshot sample;
+        SemaphoreHandle_t done = xSemaphoreCreateBinary();
+        std::atomic<unsigned> references{2};
+        ConnectivityResult result = ConnectivityResult::kTransportError;
+        ~Work() { if (done) vSemaphoreDelete(done); }
+        static void Release(Work* work) { if (work->references.fetch_sub(1) == 1) delete work; }
+    };
+    auto* work = new (std::nothrow) Work;
+    if (!work) return ConnectivityResult::kUnavailable;
+    if (!work->done) { delete work; return ConnectivityResult::kUnavailable; }
+    work->sample = power;
+    const auto task = [](void* argument) {
+        auto* w = static_cast<Work*>(argument);
+        if (w->link.InitializeTelemetry(w->sample.battery_percent, w->sample.battery_mv, w->sample.charging) == companion::LinkResult::kOk) {
+            const int64_t deadline = esp_timer_get_time() + 3000000;
+            bool advertised = false;
+            while (esp_timer_get_time() < deadline) {
+                w->link.ProcessAdvertiseRequest();
+                const auto state = w->link.State();
+                if (state == BleState::kFault) break;
+                if (state == BleState::kAdvertising) advertised = true;
+                if (advertised && state == BleState::kIdle) break;
+                vTaskDelay(pdMS_TO_TICKS(10));
+            }
+            w->link.Stop();
+            w->result = advertised ? ConnectivityResult::kOk : ConnectivityResult::kTransportError;
+        }
+        xSemaphoreGive(w->done);
+        Work::Release(w);
+        vTaskDelete(nullptr);
+    };
+    if (xTaskCreate(task, "bthome", 4096, work, 4, nullptr) != pdPASS) {
+        delete work; return ConnectivityResult::kUnavailable;
+    }
+    const bool stopped = xSemaphoreTake(work->done, pdMS_TO_TICKS(6000)) == pdTRUE;
+    const auto result = stopped ? work->result : ConnectivityResult::kTransportError;
+    Work::Release(work);
+    return result;
+}
 
 ConnectivityResult ConnectivityService::RequestResource(
     const companion::ResourceRequestMessage& request) {

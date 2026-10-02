@@ -87,13 +87,14 @@ bool Utf8(const uint8_t* data, std::size_t size) {
 
 }  // namespace
 
-bool WifiHttpResponse::Begin(uint8_t* body, std::size_t capacity) {
+bool WifiHttpResponse::Begin(uint8_t* body, std::size_t capacity, bool binary_page) {
     *this = {};
-    if (body == nullptr || capacity == 0 || capacity > kMaximumWifiResourceBytes) {
+    if (body == nullptr || capacity == 0 || capacity > (binary_page ? kMaximumWifiPageBytes : kMaximumWifiResourceBytes)) {
         return false;
     }
     body_ = body;
     body_capacity_ = capacity;
+    binary_page_ = binary_page;
     state_ = State::kStatus;
     return true;
 }
@@ -217,7 +218,7 @@ void WifiHttpResponse::ProcessHeader(bool trailer) {
         // A cache's Date is not the time at which this response was received.
         date_invalid_ = true;
     } else if (Equal(name, "content-type")) {
-        if (trailer || content_type_seen_ || !PlainText(value)) Fail();
+        if (trailer || content_type_seen_ || !(binary_page_ ? Equal(Trim(value), "application/octet-stream") : PlainText(value))) Fail();
         else content_type_seen_ = true;
     } else if (Equal(name, "content-length")) {
         if (trailer || length_seen_ || value.empty()) { Fail(); return; }
@@ -241,7 +242,7 @@ void WifiHttpResponse::ProcessHeader(bool trailer) {
 }
 
 void WifiHttpResponse::Complete() {
-    if (body_size_ == 0 || !Utf8(body_, body_size_)) Fail();
+    if (body_size_ == 0 || (!binary_page_ && !Utf8(body_, body_size_))) Fail();
     else state_ = State::kDone;
 }
 
