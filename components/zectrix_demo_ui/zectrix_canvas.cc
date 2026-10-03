@@ -5,6 +5,8 @@
 #include <cstdlib>
 
 #include "zectrix_ascii_font_8x16.h"
+#include "zectrix_large_digits.h"
+#include "zectrix_digit_codec.h"
 #include "zectrix_styled_glyph.h"
 #include "zectrix_utf8.h"
 #include "sdkconfig.h"
@@ -189,6 +191,31 @@ void ZectrixCanvas::Text(int x, int y, const char* text, int scale,
 void ZectrixCanvas::TextCentered(int y, const char* text, int scale,
                                  bool inverted, TextStyle style) {
     Text((width() - TextWidth(text, scale, style)) / 2, y, text, scale, inverted, style);
+}
+
+int ZectrixCanvas::LargeNumberWidth(unsigned value) const {
+    if (value > 99) return 0;
+    const auto base = static_cast<unsigned>(digit_style_) * 10;
+    return kZectrixDigitGlyphs[base + value / 10].width + 3 + kZectrixDigitGlyphs[base + value % 10].width;
+}
+
+void ZectrixCanvas::LargeNumber(int x, int y, unsigned value, bool inverted) {
+    const int width = LargeNumberWidth(value);
+    if (value > 99 || x >= clip_.x + clip_.width || y >= clip_.y + clip_.height ||
+        static_cast<int64_t>(x) + width <= clip_.x ||
+        static_cast<int64_t>(y) + kLargeNumberHeight <= clip_.y) return;
+    if (inverted) FillRect(x, y, width, kLargeNumberHeight, true);
+    const unsigned digits[] = {value / 10, value % 10};
+    int origin = x;
+    for (const auto digit : digits) {
+        const auto& glyph = kZectrixDigitGlyphs[static_cast<unsigned>(digit_style_) * 10 + digit];
+        const auto* data = kZectrixDigitData + glyph.offset;
+        ZectrixDecodeDigit<kZectrixDigitUsesXor, kZectrixDigitUsesColumn>(data, glyph.size, glyph.width, kLargeNumberHeight, glyph.codec,
+            [&](unsigned col, unsigned row, bool black) {
+                if (black) Pixel(origin + static_cast<int>(col), y + static_cast<int>(row), !inverted);
+            });
+        origin += glyph.width + 3;
+    }
 }
 
 int ZectrixCanvas::TextWidth(const char* text, int scale, TextStyle style) const {

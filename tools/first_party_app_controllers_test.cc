@@ -449,6 +449,8 @@ int main() {
     assert(settings.Handle({Button::Ok, Action::Click}).decision == SettingsDecision::SaveOrientation);
     settings.Handle({Button::Down, Action::Click});
     assert(settings.Handle({Button::Ok, Action::Click}).decision == SettingsDecision::SaveSleepOrientation);
+    settings.Handle({Button::Down, Action::Click});
+    assert(settings.Handle({Button::Ok, Action::Click}).decision == SettingsDecision::SaveDigitStyle);
     assert(settings.Handle({Button::Ok, Action::LongPress}).decision ==
            SettingsDecision::Back);
     assert(settings.Handle({Button::Down, Action::LongPress}).decision ==

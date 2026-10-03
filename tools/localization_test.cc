@@ -200,6 +200,47 @@ bool Ink(const ZectrixCanvas& canvas, int x, int y) {
     return !(canvas.data()[y * ZectrixCanvas::kStride + x / 8] & (0x80 >> (x & 7)));
 }
 
+void TestLargeNumbers() {
+    ZectrixCanvas normal, inverse;
+    const auto before = allocations;
+    for (unsigned style = 0; style < zectrix::ui::kDigitStyleCount; ++style) {
+      normal.SetDigitStyle(static_cast<zectrix::ui::DigitStyle>(style));
+      inverse.SetDigitStyle(static_cast<zectrix::ui::DigitStyle>(style));
+      for (unsigned day = 0; day <= 99; ++day) {
+        normal.Clear(); inverse.Clear(false);
+        normal.LargeNumber(10, 20, day);
+        inverse.LargeNumber(10, 20, day, true);
+        bool ink = false;
+        for (int y = 0; y < 300; ++y) for (int x = 0; x < 400; ++x) {
+            assert(Ink(normal, x, y) != Ink(inverse, x, y));
+            if (Ink(normal, x, y)) {
+                ink = true;
+                assert(x >= 10 && x < 10 + normal.LargeNumberWidth(day) && y >= 20 && y < 68);
+            }
+        }
+        assert(ink);
+      }
+      assert(normal.LargeNumberWidth(11) < normal.LargeNumberWidth(88));
+    }
+    normal.SetDigitStyle(static_cast<zectrix::ui::DigitStyle>(255));
+    assert(normal.digit_style() == zectrix::ui::DigitStyle::Serif);
+    normal.Clear();
+    normal.LargeNumber(0, 0, 100);
+    normal.LargeNumber(INT_MIN, INT_MIN, 31);
+    normal.LargeNumber(INT_MAX, INT_MAX, 31);
+    for (std::size_t i = 0; i < normal.size(); ++i) assert(normal.data()[i] == 0xff);
+    normal.SetClip({20, 24, 4, 5});
+    normal.LargeNumber(10, 20, 88);
+    bool clipped_ink = false;
+    for (int y = 0; y < 300; ++y) for (int x = 0; x < 400; ++x)
+        if (Ink(normal, x, y)) {
+            clipped_ink = true;
+            assert(x >= 20 && x < 24 && y >= 24 && y < 29);
+        }
+    assert(clipped_ink);
+    assert(allocations == before);
+}
+
 void TestStatusIcons() {
     using namespace zectrix::ui;
     StatusBarState state;
@@ -208,6 +249,28 @@ void TestStatusIcons() {
     state.minute = 34;
     ZectrixCanvas normal, inverse, clipped;
     const auto before = allocations;
+    // Radio-off badges are centered five-pixel diagonals with no hooked ends.
+    DrawStatusBar(normal, state);
+    DrawStatusBar(inverse, state, true);
+    for (const int left : {272, 304})
+        for (int y = 8; y < 15; ++y)
+            for (int x = left; x < left + 7; ++x) {
+                const bool slash = y >= 9 && y <= 13 && x - left == 14 - y;
+                assert(Ink(normal, x, y) == slash);
+                assert(Ink(inverse, x, y) != slash);
+            }
+    state.ble = state.wifi = RadioIndicator::Active;
+    DrawStatusBar(normal, state);
+    // Independently specified endpoints and straight stems; arrows cannot touch.
+    const int arrows[][2] = {{1,0},{0,1},{1,1},{2,1},{1,2},{5,2},{1,3},{5,3},
+        {1,4},{5,4},{4,5},{5,5},{6,5},{5,6}};
+    for (const int left : {272, 304})
+        for (int y = 0; y < 7; ++y)
+            for (int x = 0; x < 7; ++x) {
+                bool arrow = false;
+                for (const auto& pixel : arrows) arrow |= pixel[0] == x && pixel[1] == y;
+                assert(Ink(normal, left + x, 8 + y) == arrow);
+            }
     unsigned previous_fill = 0;
     for (const uint8_t percent : {0, 5, 20, 50, 80, 100}) {
         state.battery_percent = percent;
@@ -430,12 +493,14 @@ void TestLanguageScenes() {
         assert(SetLanguage(Language::English));
         settings.Handle(back);
     } else {
-        assert(settings.option_count() == 3);
+        assert(settings.option_count() == 4);
         assert(settings.Handle(ok).decision == SettingsDecision::Save);
         assert(settings.Handle(down).decision == SettingsDecision::RenderFast);
         assert(settings.Handle(ok).decision == SettingsDecision::SaveOrientation);
         settings.Handle(down);
         assert(settings.Handle(ok).decision == SettingsDecision::SaveSleepOrientation);
+        settings.Handle(down);
+        assert(settings.Handle(ok).decision == SettingsDecision::SaveDigitStyle);
     }
     assert(settings.Handle(back).decision == SettingsDecision::Back);
     settings.Stop();
@@ -446,6 +511,7 @@ void TestLanguageScenes() {
 int main() {
     TestCatalogAndGlyphs();
     TestTypography();
+    TestLargeNumbers();
     TestStatusIcons();
     TestLanguagePersistence();
     TestLanguageScenes();

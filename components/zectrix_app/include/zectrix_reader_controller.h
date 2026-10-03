@@ -33,6 +33,11 @@ public:
     ReaderNotice notice() const { return notice_; }
     bool remote_available() const;
     bool busy() const { return engine_.busy(); }
+    // Portrait pages are 284 x 308 inside a 300 x 400 screen; applies to the next book opening.
+    static constexpr int kPortraitPageWidth = 284;
+    static constexpr int kPortraitPageHeight = 308;
+    void SetPortrait(bool portrait) { portrait_ = portrait; }
+    bool portrait() const { return portrait_; }
 
 private:
     static void EnterScene(void* context, SceneId scene);
@@ -71,6 +76,7 @@ private:
     bool dirty_ = false;
     bool quality_ = false;
     bool started_ = false;
+    bool portrait_ = false;
 };
 
 }  // namespace zectrix::app

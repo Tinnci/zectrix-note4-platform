@@ -69,6 +69,7 @@ enum class SettingsDecision : uint8_t {
     SaveLanguage,
     SaveOrientation,
     SaveSleepOrientation,
+    SaveDigitStyle,
     Back,
     Shutdown,
 };
@@ -96,7 +97,7 @@ public:
     i18n::Language language() const { return language_; }
     SettingsPage page() const { return static_cast<SettingsPage>(scenes_.current()); }
     std::size_t selected() const { return scenes_.state(scenes_.current()); }
-    std::size_t option_count() const { return i18n::LanguageCount() > 1 ? 4 : 3; }
+    std::size_t option_count() const { return i18n::LanguageCount() > 1 ? 5 : 4; }
 
 private:
     static void Enter(void* context, SceneId scene);

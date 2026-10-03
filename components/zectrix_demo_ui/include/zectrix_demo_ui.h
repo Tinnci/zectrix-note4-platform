@@ -35,6 +35,8 @@ public:
     }
     void SetTime(zectrix::time::TimeService* time) { time_ = time; }
     void SetSleepPortrait(bool portrait) { sleep_portrait_ = portrait; }
+    void SetDigitStyle(zectrix::ui::DigitStyle style) { canvas_.SetDigitStyle(style); }
+    zectrix::ui::DigitStyle digit_style() const { return canvas_.digit_style(); }
     void UpdateStatus(const zectrix::ui::StatusBarState& state);
     esp_err_t RefreshPending();
     esp_err_t ShowImage1Bpp(const uint8_t* pixels, size_t size);
@@ -101,9 +103,20 @@ private:
     bool sleep_portrait_ = false;
     esp_err_t ShowPortraitCalendar(const zectrix::app::SleepCoverSnapshot& snapshot,
                                    bool preview, bool preference_saved);
-    void BeginContent();
+    // Portrait-capable screens follow the display orientation; all others stay landscape.
+    void UseCanvasMode(bool portrait);
+    void ConfigureViewports();
+    void BeginContent(bool portrait_capable = false);
     void OverlayGrayStatus();
-    void DrawFrame(const char* title, const char* footer);
+    void DrawFrame(const char* title, const char* footer, bool portrait_capable = false);
+    // Portrait footers use two lines, so the footer rule sits higher (360 vs 369).
+    int FooterTop() const { return canvas_.height() - (canvas_.portrait() ? 40 : 31); }
+    // Word/CJK wrapped text; the final allowed line is ellipsized. Returns lines drawn.
+    int WrapText(int x, int y, const char* text, int max_width, int line_height, int max_lines,
+                 bool center = false, bool inverted = false);
+    esp_err_t ShowLauncherPortrait(const zectrix::app::LauncherController& launcher,
+                                   const zectrix::time::ClockSnapshot& clock,
+                                   const zectrix::app::ReadingOverview& reading, bool full_refresh);
     static void DrawFittedText(ZectrixCanvas& canvas, int x, int y, const char* text,
                                int max_width, bool inverted = false);
     void DrawTestStrip(

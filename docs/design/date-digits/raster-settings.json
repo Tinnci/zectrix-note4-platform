@@ -1,0 +1,310 @@
+{
+  "height": 48,
+  "codecs": [
+    "raw",
+    "rle",
+    "column_rle"
+  ],
+  "glyphs": [
+    {
+      "style": 0,
+      "digit": 0,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 0,
+      "digit": 1,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 0,
+      "digit": 2,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 0,
+      "digit": 3,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 0,
+      "digit": 4,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 0,
+      "digit": 5,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 0,
+      "digit": 6,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 0,
+      "digit": 7,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 0,
+      "digit": 8,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 0,
+      "digit": 9,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 1,
+      "digit": 0,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 1,
+      "digit": 1,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 1,
+      "digit": 2,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 1,
+      "digit": 3,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 1,
+      "digit": 4,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 1,
+      "digit": 5,
+      "method": "lanczos",
+      "threshold": 128
+    },
+    {
+      "style": 1,
+      "digit": 6,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 1,
+      "digit": 7,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 1,
+      "digit": 8,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 1,
+      "digit": 9,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 2,
+      "digit": 0,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 2,
+      "digit": 1,
+      "method": "lanczos",
+      "threshold": 128
+    },
+    {
+      "style": 2,
+      "digit": 2,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 2,
+      "digit": 3,
+      "method": "lanczos",
+      "threshold": 128
+    },
+    {
+      "style": 2,
+      "digit": 4,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 2,
+      "digit": 5,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 2,
+      "digit": 6,
+      "method": "lanczos",
+      "threshold": 128
+    },
+    {
+      "style": 2,
+      "digit": 7,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 2,
+      "digit": 8,
+      "method": "lanczos",
+      "threshold": 128
+    },
+    {
+      "style": 2,
+      "digit": 9,
+      "method": "lanczos",
+      "threshold": 128
+    },
+    {
+      "style": 3,
+      "digit": 0,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 3,
+      "digit": 1,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 3,
+      "digit": 2,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 3,
+      "digit": 3,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 3,
+      "digit": 4,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 3,
+      "digit": 5,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 3,
+      "digit": 6,
+      "method": "lanczos",
+      "threshold": 128
+    },
+    {
+      "style": 3,
+      "digit": 7,
+      "method": "lanczos",
+      "threshold": 128
+    },
+    {
+      "style": 3,
+      "digit": 8,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 3,
+      "digit": 9,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 4,
+      "digit": 0,
+      "method": "lanczos",
+      "threshold": 128
+    },
+    {
+      "style": 4,
+      "digit": 1,
+      "method": "lanczos",
+      "threshold": 128
+    },
+    {
+      "style": 4,
+      "digit": 2,
+      "method": "area",
+      "threshold": 128
+    },
+    {
+      "style": 4,
+      "digit": 3,
+      "method": "lanczos",
+      "threshold": 150
+    },
+    {
+      "style": 4,
+      "digit": 4,
+      "method": "lanczos",
+      "threshold": 150
+    },
+    {
+      "style": 4,
+      "digit": 5,
+      "method": "lanczos",
+      "threshold": 150
+    },
+    {
+      "style": 4,
+      "digit": 6,
+      "method": "lanczos",
+      "threshold": 150
+    },
+    {
+      "style": 4,
+      "digit": 7,
+      "method": "lanczos",
+      "threshold": 150
+    },
+    {
+      "style": 4,
+      "digit": 8,
+      "method": "lanczos",
+      "threshold": 150
+    },
+    {
+      "style": 4,
+      "digit": 9,
+      "method": "lanczos",
+      "threshold": 150
+    }
+  ]
+}

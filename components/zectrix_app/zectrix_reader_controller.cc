@@ -171,6 +171,9 @@ void ReaderController::BeginPage() {
         return;
     }
     resume_only_ = false;
+    // Orientation changes only apply between books, so pagination starts fresh.
+    engine_.SetPageSize(portrait_ ? kPortraitPageWidth : reader::Page::kWidth,
+                        portrait_ ? kPortraitPageHeight : reader::Page::kHeight);
     result_ = engine_.Seek(resume ? mark->position : reader::Position{},
                            resume ? mark->font : reader::FontSize::Small);
 }

@@ -49,7 +49,7 @@ void TerminalApp::Run() {
     time_ = &platform_.Time();
     storage_ = &platform_.Storage();
     uint32_t orientation = 0;
-    if (storage_->GetUInt32(display::kOrientationSettingKey, &orientation) == ESP_OK && orientation <= 1) {
+    if (storage_->GetUInt32(display::kOrientationSettingKey, &orientation) == ESP_OK && orientation <= 3) {
         const auto restored = display_->SetOrientation(static_cast<display::DisplayOrientation>(orientation));
         if (restored != ESP_OK) ESP_LOGW(kTag, "screen direction restore failed: %s", esp_err_to_name(restored));
     }
@@ -80,6 +80,9 @@ void TerminalApp::Run() {
     const auto portrait_setting = storage_->GetUInt32(app::kSleepPortraitSettingKey, &sleep_portrait);
     sleep_portrait_ = portrait_setting == ESP_OK && sleep_portrait <= 1 ? sleep_portrait == 1 : app::kSleepPortraitDefault;
     ui_.SetSleepPortrait(sleep_portrait_);
+    uint32_t digit_style = 0;
+    if (storage_->GetUInt32(ui::kDigitStyleSettingKey, &digit_style) != ESP_OK) digit_style = 0;
+    ui_.SetDigitStyle(ui::NormalizeDigitStyle(digit_style));
     ESP_LOGI(kTag, "event=sleep_cover_settings style=%u portrait=%u",
         static_cast<unsigned>(sleep_cover_style_), static_cast<unsigned>(sleep_portrait_));
     // A trial OTA image must reach the existing Home-frame confirmation path;

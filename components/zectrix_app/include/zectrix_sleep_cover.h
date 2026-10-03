@@ -52,6 +52,7 @@ struct SleepQuote {
     i18n::Text first_text = i18n::Text::None;
     i18n::Text second_text = i18n::Text::None;
 };
+constexpr unsigned kSleepQuoteCount = 31;
 SleepCalendar CalendarForSleep(const time::ClockSnapshot& clock);
 // Refresh shortly after the next local midnight; zero means rail-off sleep.
 uint64_t SleepRefreshDelayUs(SleepCoverStyle style, const time::ClockSnapshot& clock);

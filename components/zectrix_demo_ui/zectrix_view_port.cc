@@ -6,10 +6,13 @@ namespace zectrix::ui {
 
 bool ViewPortScheduler::Configure(std::size_t id, const ViewPort& viewport) {
     const auto& r = viewport.bounds;
-    if (composing_ || id >= kCapacity || r.x < 0 || r.y < 0 ||
-        r.width <= 0 || r.height <= 0 || r.x > ZectrixCanvas::kWidth ||
-        r.y > ZectrixCanvas::kHeight || r.width > ZectrixCanvas::kWidth - r.x ||
-        r.height > ZectrixCanvas::kHeight - r.y) return false;
+    // A viewport must fit the landscape (400 x 300) or the portrait (300 x 400) canvas.
+    const auto fits = [&](int width, int height) {
+        return r.x <= width && r.y <= height && r.width <= width - r.x && r.height <= height - r.y;
+    };
+    if (composing_ || id >= kCapacity || r.x < 0 || r.y < 0 || r.width <= 0 || r.height <= 0 ||
+        !(fits(ZectrixCanvas::kWidth, ZectrixCanvas::kHeight) ||
+          fits(ZectrixCanvas::kHeight, ZectrixCanvas::kWidth))) return false;
     slots_[id] = {viewport, true, true, true, false, false};
     return true;
 }

@@ -74,8 +74,7 @@ void DrawCalendar(ZectrixCanvas& canvas, const SleepCoverSnapshot& snapshot, con
     char line[40];
     std::snprintf(line, sizeof(line), Tr(Text::MonthYear), date.year, Tr(kMonths[date.month - 1]));
     canvas.Text(16, 32, line);
-    std::snprintf(line, sizeof(line), "%02d", date.day);
-    canvas.Text(14, 55, line, 4);
+    canvas.LargeNumber(16, 64, date.day);
     canvas.Text(16, 130, Tr(kWeekdays[calendar.weekday]));
     std::snprintf(line, sizeof(line), Tr(Text::AsOfTime), date.hour, date.minute);
     canvas.Text(16, 152, line);
@@ -105,7 +104,9 @@ void DrawReading(ZectrixCanvas& canvas, const SleepCoverSnapshot& snapshot) {
 
 esp_err_t ZectrixDemoUi::ShowSleepCoverMenu(SleepCoverStyle selected, SleepCoverStyle active,
                                            const char* status, bool full_refresh) {
-    DrawFrame(Tr(Text::SleepCover), Tr(Text::NavCoverPreview));
+    DrawFrame(Tr(Text::SleepCover), Tr(Text::NavCoverPreview), true);
+    const bool portrait = canvas_.portrait();
+    const int width = canvas_.width(), height = canvas_.height();
     const char* styles[] = {Tr(Text::DailyDashboard), Tr(Text::QuietLandscape), Tr(Text::BlankPrivacy), Tr(Text::PhonePicture)};
     const char* details[] = {
 #if CONFIG_ZECTRIX_ENABLE_READER
@@ -116,14 +117,14 @@ esp_err_t ZectrixDemoUi::ShowSleepCoverMenu(SleepCoverStyle selected, SleepCover
         Tr(Text::LandscapeDetail), Tr(Text::BlankDetail), Tr(Text::PhonePictureDetail)};
     for (unsigned i = 0; i < kSleepCoverStyleCount; ++i) {
         const bool chosen = i == static_cast<unsigned>(selected);
-        const int y = kSleepCoverStyleCount == 4 ? 54 + i * 47 : 54 + i * 62;
-        canvas_.FillRect(16, y, 368, 26, chosen);
-        canvas_.Rect(16, y, 368, 26);
-        canvas_.Text(28, y + 5, styles[i], 1, chosen);
-        if (i == static_cast<unsigned>(active)) canvas_.Text(354, y + 5, "*", 1, chosen);
-        canvas_.Text(16, y + 28, details[i]);
+        const int y = kSleepCoverStyleCount == 4 ? 54 + i * (portrait ? 68 : 47) : 54 + i * (portrait ? 84 : 62);
+        canvas_.FillRect(16, y, width - 32, 26, chosen);
+        canvas_.Rect(16, y, width - 32, 26);
+        canvas_.TextFitted(28, y + 5, styles[i], width - 64, chosen);
+        if (i == static_cast<unsigned>(active)) canvas_.Text(width - 46, y + 5, "*", 1, chosen);
+        WrapText(16, y + 28, details[i], width - 32, 18, portrait ? 2 : 1);
     }
-    canvas_.Text(16, 246, status ? status : Tr(Text::SetCoverHint));
+    WrapText(16, height - (portrait ? 62 : 54), status ? status : Tr(Text::SetCoverHint), width - 32, 18, 1);
     return full_refresh ? RefreshFull() : RefreshAuto();
 }
 
@@ -133,6 +134,8 @@ esp_err_t ZectrixDemoUi::ShowSleepCover(const SleepCoverSnapshot& snapshot, Slee
     style = SleepCoverSetting(static_cast<uint32_t>(style));
     if (sleep_portrait_ && style == SleepCoverStyle::Dashboard)
         return ShowPortraitCalendar(snapshot, preview, preference_saved);
+    // Landscape covers draw on the 400 x 300 canvas even when a portrait screen came before.
+    UseCanvasMode(false);
     if (!preview && style == SleepCoverStyle::Blank) return ClearDisplay();
     if (preview) BeginContent();
     else {
@@ -209,11 +212,11 @@ esp_err_t ZectrixDemoUi::ShowSleepCover(const SleepCoverSnapshot& snapshot, Slee
 esp_err_t ZectrixDemoUi::ShowPortraitCalendar(const SleepCoverSnapshot& snapshot,
                                             bool preview, bool preference_saved) {
     gray_frame_.reset();
-    canvas_.SetPortrait(true);
+    UseCanvasMode(true);
     struct RestoreCanvas {
-        ZectrixCanvas& canvas;
-        ~RestoreCanvas() { canvas.SetPortrait(false); }
-    } restore{canvas_};
+        ZectrixDemoUi& ui;
+        ~RestoreCanvas() { ui.UseCanvasMode(false); }
+    } restore{*this};
     canvas_.Clear();
     const auto calendar = CalendarForSleep(snapshot.clock);
     canvas_.TextFitted(16, 12, Tr(Text::OfflineCalendar), 180, false, ZectrixCanvas::TextStyle::Bold);
@@ -228,10 +231,11 @@ esp_err_t ZectrixDemoUi::ShowPortraitCalendar(const SleepCoverSnapshot& snapshot
         char label[48];
         std::snprintf(label, sizeof(label), Tr(Text::MonthYear), date.year, Tr(kMonths[date.month - 1]));
         canvas_.TextCentered(50, label);
-        std::snprintf(label, sizeof(label), "%02d", date.day);
-        canvas_.TextCentered(78, label, 4);
+        canvas_.LargeNumber((canvas_.width() - canvas_.LargeNumberWidth(date.day)) / 2, 82, date.day);
         canvas_.TextCentered(143, Tr(kWeekdays[calendar.weekday]));
-        DrawMonthGrid(canvas_, calendar, date.day, 17, 170, 190, 38, 24);
+        const unsigned weeks = (calendar.first_weekday + calendar.days + 6) / 7;
+        // Six-week months still leave two complete lines for the daily sentence.
+        DrawMonthGrid(canvas_, calendar, date.day, 17, 170, 190, 38, weeks == 6 ? 21 : 24);
         std::snprintf(label, sizeof(label), Tr(Text::AsOfTime), date.hour, date.minute);
         canvas_.TextCentered(358, label);
     } else {
@@ -239,8 +243,13 @@ esp_err_t ZectrixDemoUi::ShowPortraitCalendar(const SleepCoverSnapshot& snapshot
         canvas_.TextCentered(190, Tr(Text::SetClockForCalendar));
     }
     canvas_.Line(16, 354, 283, 354);
-    canvas_.TextFitted(16, 334, snapshot.weather_line[0] ? snapshot.weather_line.data() :
-        Tr(QuoteForSleep(calendar).first_text, QuoteForSleep(calendar).first), 268);
+    if (snapshot.weather_line[0]) {
+        canvas_.TextFitted(16, 334, snapshot.weather_line.data(), 268);
+    } else {
+        const auto& quote = QuoteForSleep(calendar);
+        canvas_.TextCentered(316, Tr(quote.first_text, quote.first));
+        canvas_.TextCentered(334, Tr(quote.second_text, quote.second));
+    }
     canvas_.FillRect(0, 378, 300, 22, true);
     canvas_.TextFitted(8, 381, preview ? Tr(preference_saved ? Text::PreviewControls :
         Text::UnsavedPreviewControls) : Tr(Text::WakeHint), 284, true);

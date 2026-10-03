@@ -1,6 +1,7 @@
 #include "zectrix_locale.h"
 #include "zectrix_demo_ui.h"
 #include "zectrix_first_party_app_controllers.h"
+#include "zectrix_utf8.h"
 #include "sdkconfig.h"
 
 #include <algorithm>
@@ -22,6 +23,16 @@ constexpr int kTestContentLeft = 16;
 constexpr int kTestContentRight = 384;
 constexpr int64_t kUpdateThrottleUs = 500000;
 
+const char* ScreenDirectionName(zectrix::display::DisplayOrientation orientation) {
+    using Orientation = zectrix::display::DisplayOrientation;
+    switch (orientation) {
+        case Orientation::Portrait: return "90 deg";
+        case Orientation::Inverted: return "180 deg";
+        case Orientation::PortraitInverted: return "270 deg";
+        default: return "0 deg";
+    }
+}
+
 constexpr std::array<ZectrixTestId, 7> kTestOrder = {
     ZectrixTestId::kRf, ZectrixTestId::kAudio, ZectrixTestId::kRtc,
     ZectrixTestId::kCharge, ZectrixTestId::kLed, ZectrixTestId::kButtons,
@@ -41,19 +52,31 @@ void ZectrixDemoUi::DrawFittedText(ZectrixCanvas& canvas, int x, int y, const ch
 ZectrixDemoUi::ZectrixDemoUi(zectrix::display::DisplayService* display)
     : display_(display) {
     canvas_.Clear();
-    viewports_.Configure(kContentViewPort, {{0, kStatusHeight, 400, 300 - kStatusHeight},
+    ConfigureViewports();
+}
+
+void ZectrixDemoUi::ConfigureViewports() {
+    viewports_.Configure(kContentViewPort, {{0, kStatusHeight, canvas_.width(), canvas_.height() - kStatusHeight},
                                           nullptr, nullptr});
-    viewports_.Configure(kStatusViewPort, {{0, 0, 400, kStatusHeight},
+    viewports_.Configure(kStatusViewPort, {{0, 0, canvas_.width(), kStatusHeight},
         [](void* context, ZectrixCanvas& canvas) {
             zectrix::ui::DrawStatusBar(canvas, static_cast<ZectrixDemoUi*>(context)->status_);
         }, this});
 }
 
-void ZectrixDemoUi::BeginContent() {
+void ZectrixDemoUi::UseCanvasMode(bool portrait) {
+    if (canvas_.portrait() == portrait) return;
+    canvas_.SetPortrait(portrait);
+    // Viewport bounds follow the canvas; both regions are redrawn in the new geometry.
+    ConfigureViewports();
+}
+
+void ZectrixDemoUi::BeginContent(bool portrait_capable) {
+    UseCanvasMode(portrait_capable && display_ != nullptr && display_->portrait());
     sleep_surface_ = false;
     gray_frame_.reset();
     viewports_.Invalidate(kStatusViewPort);
-    canvas_.SetClip({0, kStatusHeight, 400, 300 - kStatusHeight});
+    canvas_.SetClip({0, kStatusHeight, canvas_.width(), canvas_.height() - kStatusHeight});
     canvas_.Clear();
 }
 
@@ -63,12 +86,87 @@ void ZectrixDemoUi::UpdateStatus(const zectrix::ui::StatusBarState& state) {
     viewports_.Invalidate(kStatusViewPort);
 }
 
-void ZectrixDemoUi::DrawFrame(const char* title, const char* footer) {
-    BeginContent();
-    canvas_.FillRect(0, kStatusHeight, 400, kHeaderHeight - kStatusHeight, true);
-    canvas_.TextFitted(10, kStatusHeight + 2, title, 380, true, ZectrixCanvas::TextStyle::Bold);
-    canvas_.Line(0, 269, 399, 269);
-    canvas_.TextFitted(8, 277, footer, 384);
+void ZectrixDemoUi::DrawFrame(const char* title, const char* footer, bool portrait_capable) {
+    BeginContent(portrait_capable);
+    const int width = canvas_.width();
+    canvas_.FillRect(0, kStatusHeight, width, kHeaderHeight - kStatusHeight, true);
+    canvas_.TextFitted(10, kStatusHeight + 2, title, width - 20, true, ZectrixCanvas::TextStyle::Bold);
+    const int top = FooterTop();
+    canvas_.Line(0, top, width - 1, top);
+    if (!canvas_.portrait() || canvas_.TextWidth(footer) <= width - 16) {
+        canvas_.TextFitted(8, top + 8, footer, width - 16);
+        return;
+    }
+    // Split between hint groups (two spaces) when the first part fits; otherwise wrap.
+    const char* split = nullptr;
+    for (const char* p = std::strstr(footer, "  "); p; p = std::strstr(p + 2, "  ")) {
+        char head[96];
+        const size_t length = static_cast<size_t>(p - footer);
+        if (length >= sizeof(head)) break;
+        std::memcpy(head, footer, length);
+        head[length] = '\0';
+        if (canvas_.TextWidth(head) > width - 16) break;
+        split = p;
+    }
+    if (!split) {
+        WrapText(8, top + 3, footer, width - 16, 16, 2);
+        return;
+    }
+    char head[96];
+    std::memcpy(head, footer, static_cast<size_t>(split - footer));
+    head[split - footer] = '\0';
+    canvas_.Text(8, top + 3, head);
+    const char* rest = split;
+    while (*rest == ' ') ++rest;
+    canvas_.TextFitted(8, top + 19, rest, width - 16);
+}
+
+int ZectrixDemoUi::WrapText(int x, int y, const char* text, int max_width, int line_height,
+                            int max_lines, bool center, bool inverted) {
+    if (!text || max_width <= 0 || max_lines <= 0) return 0;
+    const char* cursor = text;
+    int lines = 0;
+    while (lines < max_lines && *cursor) {
+        while (*cursor == ' ') ++cursor;
+        if (!*cursor) break;
+        const int line_y = y + lines * line_height;
+        if (lines + 1 == max_lines) {
+            // The last permitted line is ellipsized instead of overflowing.
+            if (center && canvas_.TextWidth(cursor) <= max_width)
+                canvas_.Text(x + (max_width - canvas_.TextWidth(cursor)) / 2, line_y, cursor, 1, inverted);
+            else canvas_.TextFitted(x, line_y, cursor, max_width, inverted);
+            ++lines;
+            break;
+        }
+        char buffer[128];
+        size_t length = 0;
+        const char* scan = cursor;
+        const char* break_after = nullptr;
+        bool overflow = false;
+        while (*scan) {
+            const char* next = scan;
+            const auto cp = zectrix::ui::NextUtf8(next);
+            const size_t add = static_cast<size_t>(next - scan);
+            if (length + add >= sizeof(buffer)) { overflow = true; break; }
+            std::memcpy(buffer + length, scan, add);
+            buffer[length + add] = '\0';
+            if (length && canvas_.TextWidth(buffer) > max_width) { overflow = true; break; }
+            length += add;
+            scan = next;
+            // Latin text breaks after spaces; CJK text may break between any two characters.
+            if (cp == ' ' || cp >= 0x2e80) break_after = scan;
+        }
+        const char* end = !overflow ? scan : break_after ? break_after : scan;
+        size_t count = static_cast<size_t>(end - cursor);
+        while (count && cursor[count - 1] == ' ') --count;
+        std::memcpy(buffer, cursor, count);
+        buffer[count] = '\0';
+        const int left = center ? x + (max_width - canvas_.TextWidth(buffer)) / 2 : x;
+        canvas_.Text(left, line_y, buffer, 1, inverted);
+        cursor = end;
+        ++lines;
+    }
+    return lines;
 }
 
 esp_err_t ZectrixDemoUi::ShowSplash() {
@@ -102,9 +200,10 @@ esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
     if (items == nullptr || count == 0 || selected >= count) {
         return ESP_ERR_INVALID_ARG;
     }
-    DrawFrame(title, footer);
-    constexpr int kListHeight = 208;
-    const size_t visible = std::min<size_t>(count, 8);
+    DrawFrame(title, footer, true);
+    const int width = canvas_.width();
+    const int kListHeight = canvas_.height() - (canvas_.portrait() ? 100 : 92);  // 208 px in landscape
+    const size_t visible = std::min<size_t>(count, canvas_.portrait() ? 11 : 8);
     const size_t first = selected >= visible ? selected - visible + 1 : 0;
     const int row_height = std::min(42, kListHeight / static_cast<int>(visible));
     const int box_height = std::min(34, row_height - 2);
@@ -114,18 +213,18 @@ esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
         const int y = start_y + static_cast<int>(row) * row_height;
         const bool active = i == selected;
         if (active) {
-            canvas_.FillRect(16, y, 368, box_height, true);
-            canvas_.TextFitted(28, y + (box_height - 16) / 2, items[i], 344, true);
+            canvas_.FillRect(16, y, width - 32, box_height, true);
+            canvas_.TextFitted(28, y + (box_height - 16) / 2, items[i], width - 56, true);
         } else {
-            canvas_.TextFitted(28, y + (box_height - 16) / 2, items[i], 344);
+            canvas_.TextFitted(28, y + (box_height - 16) / 2, items[i], width - 56);
         }
     }
     if (count > visible) {
         const size_t thumb_height = std::max<size_t>(8, kListHeight * visible / count);
         const int thumb_offset = static_cast<int>(
             (kListHeight - thumb_height) * first / (count - visible));
-        canvas_.Line(391, start_y, 391, start_y + kListHeight - 1);
-        canvas_.FillRect(389, start_y + thumb_offset, 5,
+        canvas_.Line(width - 9, start_y, width - 9, start_y + kListHeight - 1);
+        canvas_.FillRect(width - 11, start_y + thumb_offset, 5,
                          static_cast<int>(thumb_height), true);
     }
     return full_refresh ? RefreshFull()
@@ -135,7 +234,8 @@ esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
 esp_err_t ZectrixDemoUi::ShowClock(const zectrix::time::DateTime& value,
                                    bool full_refresh, const char* source,
                                    bool calendar_valid) {
-    DrawFrame(Tr(Text::Clock), Tr(Text::NavSetBackOff));
+    DrawFrame(Tr(Text::Clock), Tr(Text::NavSetBackOff), true);
+    const int dy = (canvas_.height() - 300) / 2;  // centers the landscape layout in portrait
     char line[32] = {};
     if (calendar_valid) {
         std::snprintf(line, sizeof(line), "%04d-%02d-%02d", value.year,
@@ -143,10 +243,10 @@ esp_err_t ZectrixDemoUi::ShowClock(const zectrix::time::DateTime& value,
     } else {
         std::snprintf(line, sizeof(line), "%s", Tr(Text::TimeNotSet));
     }
-    canvas_.TextCentered(92, line, 2);
+    canvas_.TextCentered(92 + dy, line, 2);
     std::snprintf(line, sizeof(line), "%02d:%02d", value.hour, value.minute);
-    canvas_.TextCentered(154, line, 3);
-    canvas_.TextCentered(224, source, 1);
+    canvas_.TextCentered(154 + dy, line, 3);
+    canvas_.TextCentered(224 + dy, source, 1);
     return full_refresh ? RefreshFull()
                         : RefreshAuto();
 }
@@ -155,31 +255,37 @@ esp_err_t ZectrixDemoUi::ShowSettings(const zectrix::app::SettingsController& se
                                       bool full_refresh) {
     const bool languages = settings.page() == zectrix::app::SettingsPage::Language;
     DrawFrame(Tr(languages ? Text::Language : Text::Settings),
-              Tr(languages ? Text::NavApplyBack : Text::NavChangeBack));
+              Tr(languages ? Text::NavApplyBack : Text::NavChangeBack), true);
+    const int width = canvas_.width(), height = canvas_.height();
+    const bool portrait = canvas_.portrait();
     const auto count = languages ? zectrix::i18n::LanguageCount() : settings.option_count();
     for (std::size_t i = 0; i < count; ++i) {
-        const int y = 54 + static_cast<int>(i) * 45;
+        // Portrait has spare height, so rows are taller than the landscape 34/42 px pitch.
+        const int pitch = portrait ? (count > 4 ? 46 : 54) : (count > 4 ? 34 : 42);
+        const int y = 54 + static_cast<int>(i) * pitch;
         const bool selected = settings.selected() == i;
-        canvas_.FillRect(16, y, 368, 42, selected);
-        canvas_.Rect(16, y, 368, 42);
+        canvas_.FillRect(16, y, width - 32, pitch - 2, selected);
+        canvas_.Rect(16, y, width - 32, pitch - 2);
         const bool language_option = !languages && zectrix::i18n::LanguageCount() > 1 && i == 0;
-        const bool sleep_orientation_option = !languages && i == count - 1;
-        const bool orientation_option = !languages && i == count - 2;
+        const bool digit_option = !languages && i == count - 1;
+        const bool sleep_orientation_option = !languages && i == count - 2;
+        const bool orientation_option = !languages && i == count - 3;
         const char* label = languages ? zectrix::i18n::LanguageName(static_cast<zectrix::i18n::Language>(i)) :
-            Tr(sleep_orientation_option ? Text::SleepCover : orientation_option ? Text::DisplayLabel :
+            Tr(digit_option ? Text::DateFont : sleep_orientation_option ? Text::SleepCover : orientation_option ? Text::DisplayLabel :
                 language_option ? Text::Language : Text::AutoShowcase);
-        canvas_.TextFitted(28, y + 13, label, languages ? 300 : 200, selected);
+        canvas_.TextFitted(28, y + (portrait ? (pitch - 18) / 2 : 13), label, languages ? width - 100 : (portrait ? 136 : 200), selected);
         const char* value = languages ? (static_cast<zectrix::i18n::Language>(i) == zectrix::i18n::CurrentLanguage() ? "*" : "") :
             language_option ? zectrix::i18n::LanguageName(zectrix::i18n::CurrentLanguage()) :
+            digit_option ? zectrix::ui::DigitStyleName(digit_style()) :
             sleep_orientation_option ? (sleep_portrait_ ? "90 deg" : "0 deg") :
-            orientation_option ? (display_->orientation() == zectrix::display::DisplayOrientation::Inverted ? "180 deg" : "0 deg") :
+            orientation_option ? ScreenDirectionName(display_->orientation()) :
             Tr(settings.auto_showcase() ? Text::On : Text::Off);
-        canvas_.Text(372 - canvas_.TextWidth(value), y + 13, value, 1, selected);
+        canvas_.Text(width - 28 - canvas_.TextWidth(value), y + (portrait ? (pitch - 18) / 2 : 13), value, 1, selected);
     }
-    if (count < 4) canvas_.TextFitted(16, 220, Tr(languages ||
+    if (count < 4) WrapText(16, portrait ? height - 118 : 220, Tr(languages ||
         (zectrix::i18n::LanguageCount() > 1 && settings.selected() == 0) ?
-        Text::LanguageHint : Text::ShowcaseIdle), 368);
-    canvas_.TextFitted(16, 246, status, 368);
+        Text::LanguageHint : Text::ShowcaseIdle), width - 32, 18, portrait ? 2 : 1);
+    canvas_.TextFitted(16, height - (portrait ? 62 : 54), status, width - 32);
     return full_refresh ? RefreshFull() : RefreshAuto();
 }
 
@@ -438,6 +544,10 @@ esp_err_t ZectrixDemoUi::RefreshPending() {
             result = display_->Present4Bpp(zectrix::display::DisplayIntent::Quality,
                 gray_frame_.get(), zectrix::display::DisplayService::kFrameBytes4Bpp);
         }
+    } else if (canvas_.portrait()) {
+        result = display_->PresentPortrait1Bpp(update.quality
+            ? zectrix::display::DisplayIntent::FullClean : zectrix::display::DisplayIntent::Auto,
+            canvas_.data(), canvas_.size());
     } else {
         result = display_->Present1Bpp(update.quality
             ? zectrix::display::DisplayIntent::FullClean : zectrix::display::DisplayIntent::Auto,
@@ -458,6 +568,7 @@ esp_err_t ZectrixDemoUi::ShowImage1Bpp(const uint8_t* pixels, size_t size) {
 esp_err_t ZectrixDemoUi::ShowImagePatch(zectrix::display::Rect r,
                                        const uint8_t* pixels, size_t size) {
     if (gray_frame_) return ESP_ERR_INVALID_STATE;
+    UseCanvasMode(false);
     if (!pixels || r.x < 0 || r.y < 0 || r.width <= 0 || r.height <= 0 ||
         r.x >= 400 || r.y >= 300 || r.width > 400 - r.x || r.height > 300 - r.y)
         return ESP_ERR_INVALID_ARG;
@@ -476,6 +587,7 @@ esp_err_t ZectrixDemoUi::ShowImagePatch(zectrix::display::Rect r,
 esp_err_t ZectrixDemoUi::ShowImage4Bpp(const uint8_t* pixels, size_t size) {
     if (!pixels || size != zectrix::display::DisplayService::kFrameBytes4Bpp)
         return ESP_ERR_INVALID_SIZE;
+    UseCanvasMode(false);
     if (!gray_frame_) gray_frame_.reset(new (std::nothrow) uint8_t[size]);
     if (!gray_frame_) return ESP_ERR_NO_MEM;
     std::memcpy(gray_frame_.get(), pixels, size);
@@ -498,6 +610,7 @@ void ZectrixDemoUi::OverlayGrayStatus() {
 esp_err_t ZectrixDemoUi::ClearDisplay() {
     if (display_ == nullptr) return ESP_ERR_INVALID_STATE;
     gray_frame_.reset();
+    UseCanvasMode(false);
     canvas_.ResetClip();
     canvas_.Clear();
     // Blank sleep and failed-cover recovery must not receive status overlays.

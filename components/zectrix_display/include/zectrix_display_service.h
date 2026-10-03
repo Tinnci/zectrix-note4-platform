@@ -17,7 +17,10 @@ enum class DisplayIntent : uint8_t {
     FullClean,
 };
 
-enum class DisplayOrientation : uint8_t { Standard = 0, Inverted = 1 };
+// Standard/Inverted are landscape 0/180 degrees. Portrait/PortraitInverted are 90/270
+// degrees: portrait-capable screens use a 300x400 canvas; the rest stay landscape
+// (Portrait falls back to Standard, PortraitInverted to Inverted).
+enum class DisplayOrientation : uint8_t { Standard = 0, Inverted = 1, Portrait = 2, PortraitInverted = 3 };
 inline constexpr char kOrientationSettingKey[] = "ui.orientation";
 
 class DisplayService {
@@ -43,6 +46,9 @@ public:
     bool IsPowered() const;
     esp_err_t SetOrientation(DisplayOrientation orientation);
     DisplayOrientation orientation() const { return orientation_; }
+    bool portrait() const {
+        return orientation_ == DisplayOrientation::Portrait || orientation_ == DisplayOrientation::PortraitInverted;
+    }
 
     // Auto/Fast compare the full frame unless an explicit packed patch is
     // supplied. Unchanged pixels cause no refresh. The full frame remains the
@@ -59,6 +65,9 @@ public:
     // Native 300x400 lock-screen canvas, tightly packed, clockwise to the panel.
     // Does not change the application orientation preference.
     esp_err_t PresentPortrait1Bpp(const uint8_t* frame, std::size_t size);
+    // Application portrait frames. The direction follows the stored orientation, and Auto/Fast
+    // may refresh partially once the previous frame was also portrait.
+    esp_err_t PresentPortrait1Bpp(DisplayIntent intent, const uint8_t* frame, std::size_t size);
 
     const State& state() const { return state_model_.state(); }
     bool CanUsePartial() const { return state_model_.CanUsePartial(); }
@@ -79,6 +88,7 @@ private:
     DisplayOrientation orientation_ = DisplayOrientation::Standard;
     std::unique_ptr<uint8_t[]> rotated_;
     bool orientation_changed_ = false;
+    bool portrait_presented_ = false;
     explicit DisplayService(void* driver_handle) : driver_handle_(driver_handle) {}
     struct Observation;
     Observation StartObservation() const;

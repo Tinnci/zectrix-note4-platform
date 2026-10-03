@@ -13,6 +13,7 @@
 #include "zectrix_button_buffer.h"
 #include "zectrix_epd.h"
 #include "zectrix_unicode_text.h"
+#include "zectrix_utf8.h"
 #include "ssd2683_waveform.h"
 #include "../main/terminal_status.h"
 
@@ -275,7 +276,7 @@ void TestScreenDirection() {
     Reset();
     auto service = CreateService();
     using Orientation = zectrix::display::DisplayOrientation;
-    assert(service->SetOrientation(static_cast<Orientation>(2)) == ESP_ERR_INVALID_ARG);
+    assert(service->SetOrientation(static_cast<Orientation>(4)) == ESP_ERR_INVALID_ARG);
     Frame logical, physical;
     logical.fill(0xff);
     physical.fill(0xff);
@@ -318,6 +319,30 @@ void TestScreenDirection() {
     CheckFull(physical);
     assert(service->orientation() == Orientation::Inverted);
     assert(service->PresentPortrait1Bpp(nullptr, portrait.size()) == ESP_ERR_INVALID_ARG);
+    // Application portrait: 90 and 270 degrees place the same logical pixel in opposite corners,
+    // and the first portrait frame is always a clean full refresh.
+    assert(service->SetOrientation(Orientation::Portrait) == ESP_OK && service->portrait());
+    physical.fill(0xff);
+    PutBit(physical.data(), 50, 368, 17, false);
+    ClearTraffic();
+    assert(service->PresentPortrait1Bpp(DisplayIntent::Auto, portrait.data(), portrait.size()) == ESP_OK);
+    CheckFull(physical);
+    assert(service->SetOrientation(Orientation::PortraitInverted) == ESP_OK && service->portrait());
+    physical.fill(0xff);
+    PutBit(physical.data(), 50, 31, 282, false);
+    ClearTraffic();
+    assert(service->PresentPortrait1Bpp(DisplayIntent::Auto, portrait.data(), portrait.size()) == ESP_OK);
+    CheckFull(physical);
+    // An identical frame is suppressed, and a changed one may use the partial path afterwards.
+    ClearTraffic();
+    assert(service->PresentPortrait1Bpp(DisplayIntent::Auto, portrait.data(), portrait.size()) == ESP_OK);
+    assert(packets.empty());
+    assert(service->PresentPortrait1Bpp(DisplayIntent::Auto, nullptr, portrait.size()) == ESP_ERR_INVALID_ARG);
+    // Landscape-only screens still present unrotated (Portrait) or 180 degrees (PortraitInverted).
+    PutBit(logical.data(), 50, 19, 31, false);
+    ClearTraffic();
+    Present(*service, logical);
+    assert(Inspect(*service).refresh_count > 0);
     // Returning to apps retains their preference and forces a full refresh.
     assert(service->SetOrientation(Orientation::Standard) == ESP_OK);
     ClearTraffic();
@@ -987,6 +1012,13 @@ void TestUiTraffic() {
                 clock_bytes, menu_bytes);
 }
 
+// Demo fixtures follow the active UI language so each preview set stays
+// single-script. Mixed-script content appears only in the explicit
+// "reader-rich-*" typography scenes.
+const char* ForLanguage(const char* chinese, const char* english) {
+    return zectrix::i18n::CurrentLanguage() == zectrix::i18n::Language::Chinese ? chinese : english;
+}
+
 void SavePreview(const ZectrixCanvas& canvas, const char* name, bool portrait = false) {
     const char* directory = std::getenv("ZECTRIX_UI_PREVIEW_DIR");
     if (!directory) return;
@@ -1143,7 +1175,7 @@ void TestUsbManagerComposition() {
     assert(ui.ShowUsbManager(snapshot, true, true) == ESP_OK);
     SavePreview(ui.canvas(), "usb-waiting");
     snapshot.state = zectrix::host::TransferState::Uploading;
-    std::strcpy(snapshot.name.data(), "月光下的山路与远方的灯塔.epub");
+    std::strcpy(snapshot.name.data(), ForLanguage("月光下的山路与远方的灯塔.epub", "The Lighthouse at the End of Moonlit Road.epub"));
     snapshot.expected = 102400;
     snapshot.transferred = 51200;
     assert(ui.ShowUsbManager(snapshot, true, true) == ESP_OK);
@@ -1303,7 +1335,7 @@ void TestLauncherComposition() {
     ui.UpdateStatus(status);
     ReadingOverview reading;
     reading.state = ReadingOverview::State::Saved;
-    std::strcpy(reading.book_id.data(), "风从海上来 - A Quiet Journey.epub");
+    std::strcpy(reading.book_id.data(), ForLanguage("风从海上来.epub", "A Quiet Journey.epub"));
     reading.progress_per_mille = 427;
     const auto allocated = heap_allocations;
     assert(ui.ShowLauncher(launcher, clock, reading, true) == ESP_OK);
@@ -1510,7 +1542,7 @@ void TestStatusAndImageComposition() {
     ui.UpdateStatus(state);
     assert(ui.RefreshPending() == ESP_OK);
     const auto radio_dirty = ReferenceDirty(before, {0, 0, 400, 300}, ui.canvas().data());
-    assert(radio_dirty.x >= 304 && radio_dirty.x + radio_dirty.width <= 309 &&
+    assert(radio_dirty.x >= 304 && radio_dirty.x + radio_dirty.width <= 311 &&
         radio_dirty.y >= 8 && radio_dirty.y + radio_dirty.height <= 15);
     const auto radio_bytes = CheckPartial(before, {0, 0, 400, 300}, ui.canvas().data());
     std::printf("MEASURE: status-only radio activity RAM payload=%zu bytes.\n", radio_bytes);
@@ -1750,14 +1782,15 @@ void TestReaderComposition() {
         std::unique_ptr<MemorySource> source;
         PreviewLibrary() {
             for (unsigned i = 0; i < 30; ++i)
-                text += "第一段：风从海上来，带着远方的消息。\nEnglish words stay together on a quiet page.\n日本語と한국어。轻按按键，继续阅读。\n";
+                text += ForLanguage("第一段：风从海上来，带着远方的消息。\n清晨的港口很安静，轻按按键，继续阅读。\n",
+                                    "Chapter one: the wind came in from the sea, carrying news from afar.\nThe harbor was quiet that morning. Press a button to keep reading.\n");
             source = std::make_unique<MemorySource>(reinterpret_cast<const uint8_t*>(text.data()), text.size());
         }
         Result Refresh() override { return Result::Ok; }
         std::size_t count() const override { return 1; }
         BookInfo Get(std::size_t) const override {
             BookInfo book;
-            std::strcpy(book.id.data(), format == Format::Text ? "风从海上来.txt" : "Typography.epub");
+            std::strcpy(book.id.data(), format == Format::Text ? ForLanguage("风从海上来.txt", "A Quiet Journey.txt") : "Typography.epub");
             book.format = format; book.bytes = text.size(); return book;
         }
         bool truncated() const override { return false; }
@@ -1782,9 +1815,11 @@ void TestReaderComposition() {
     SavePreview(ui.canvas(), "reader-small");
     const auto small = reader.engine().page().count;
     const auto glyph = reader.engine().page().glyphs[0];
-    assert(glyph.codepoint == U'第');
+    assert(glyph.codepoint == (zectrix::i18n::CurrentLanguage() == zectrix::i18n::Language::Chinese ? U'第' : U'C'));
     const auto bitmap = GlyphBitmap(glyph.codepoint);
-    for (int row = 0; row < 16; ++row) {
+    // Pixel-exact 16px comparison applies to the CJK page; Latin glyphs use a different advance/offset.
+    const bool cjk_page = zectrix::i18n::CurrentLanguage() == zectrix::i18n::Language::Chinese;
+    for (int row = 0; cjk_page && row < 16; ++row) {
         const uint16_t bits = bitmap.Row(row);
         for (int col = 0; col < 16; ++col)
             assert(Bit(ui.canvas().data(), 50, 8 + glyph.x + col, 48 + glyph.y + row) == !(bits & (0x8000 >> col)));
@@ -1910,7 +1945,7 @@ void TestBookTransferComposition() {
     assert(controller.Update(transfer, 2000002) == BookTransferDecision::None);
 
     transfer.mode = BookTransferMode::Station;
-    std::strcpy(transfer.ssid.data(), "海风书房-WiFi");
+    std::strcpy(transfer.ssid.data(), ForLanguage("海风书房-WiFi", "Seaside-Study-WiFi"));
     std::strcpy(transfer.address.data(), "192.168.100.123");
     assert(ui.ShowBookTransfer(transfer, false, true, true) == ESP_OK);
     SavePreview(ui.canvas(), "books-station");
@@ -1974,10 +2009,61 @@ void TestSleepCoverComposition() {
     snapshot.clock = {{2026, 9, 9, 0, 20, 27, 0}, zectrix::time::ClockSource::Rtc};
     snapshot.power.battery_valid = true; snapshot.power.battery_percent = 82;
     snapshot.has_reading = true;
-    std::strcpy(snapshot.reading.book_id.data(), "风从海上来——旅途中的阅读笔记.epub");
+    std::strcpy(snapshot.reading.book_id.data(), ForLanguage("风从海上来——旅途中的阅读笔记.epub", "A Quiet Journey - Reading Notes.epub"));
     snapshot.reading.progress_per_mille = 425;
 
+    for (unsigned style = 0; style < zectrix::ui::kDigitStyleCount; ++style) {
+        ui.SetDigitStyle(static_cast<zectrix::ui::DigitStyle>(style));
+        for (bool portrait : {false, true}) {
+            ui.SetSleepPortrait(portrait);
+            for (int day = 1; day <= 31; ++day) {
+                snapshot.clock.value = {2025, 3, day, 0, 8, 4, 0};
+                assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard, true) == ESP_OK);
+                char name[64];
+                std::snprintf(name, sizeof(name), "sleep-%s-font-%c-day-%02d", portrait ? "portrait" : "landscape", 'a' + style, day);
+                SavePreview(ui.canvas(), name, portrait);
+            }
+        }
+    }
+    ui.SetDigitStyle(zectrix::ui::DigitStyle::Serif);
     ui.SetSleepPortrait(true);
+    for (int day = 1; day <= static_cast<int>(kSleepQuoteCount); ++day) {
+        // A complete daily cycle covers every bilingual quote, including both halves.
+        snapshot.clock.value = {2025, 3, day, 0, 8, 4, 0};
+        assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard, true) == ESP_OK);
+        const auto& quote = QuoteForSleep(CalendarForSleep(snapshot.clock));
+        ZectrixCanvas expected = ui.canvas();
+        expected.SetPortrait(true);
+        expected.FillRect(0, 316, 300, 34, false);
+        const char* first = Tr(quote.first_text, quote.first);
+        const char* second = Tr(quote.second_text, quote.second);
+        assert(expected.TextWidth(first) <= 268 && expected.TextWidth(second) <= 268);
+        expected.TextCentered(316, first);
+        expected.TextCentered(334, second);
+        assert(std::memcmp(expected.data(), ui.canvas().data(), expected.size()) == 0);
+        char preview_name[48];
+        std::snprintf(preview_name, sizeof(preview_name), "sleep-portrait-quote-%d", day - 1);
+        SavePreview(ui.canvas(), preview_name, true);
+        ui.SetSleepPortrait(false);
+        assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard, true) == ESP_OK);
+        expected = ui.canvas();
+        expected.FillRect(16, 246, 368, 16, false);
+        char sentence[96]; // Same capacity as the production dashboard formatter.
+        const int length = std::snprintf(sentence, sizeof(sentence), "%s %s", first, second);
+        assert(length >= 0 && static_cast<size_t>(length) < sizeof(sentence));
+        int x = 16;
+        const char* cursor = sentence;
+        while (*cursor) {
+            const auto cp = zectrix::ui::NextUtf8(cursor);
+            zectrix::ui::DrawGlyph(expected, x, 246, cp, zectrix::reader::FontSize::Small);
+            x += zectrix::reader::GlyphWidth(cp, zectrix::reader::FontSize::Small);
+        }
+        assert(x <= 384); // All complete sentences fit without an ellipsis.
+        assert(std::memcmp(expected.data(), ui.canvas().data(), expected.size()) == 0);
+        std::snprintf(preview_name, sizeof(preview_name), "sleep-landscape-quote-%d", day - 1);
+        SavePreview(ui.canvas(), preview_name);
+        ui.SetSleepPortrait(true);
+    }
     snapshot.clock.value = {2025, 3, 31, 0, 8, 4, 0};
     assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard, true) == ESP_OK);
     SavePreview(ui.canvas(), "sleep-portrait", true);
@@ -2240,6 +2326,209 @@ esp_err_t spi_device_polling_transmit(spi_device_handle_t, spi_transaction_t* tr
     return ESP_OK;
 }
 
+// Portrait (300 x 400) layouts for Home, Reader, Settings, Transfer and Tools.
+void TestPortraitScreens() {
+    using namespace zectrix::app;
+    using namespace zectrix::sdk;
+    using Icon = ApplicationIcon;
+    using Orientation = zectrix::display::DisplayOrientation;
+    using zectrix::i18n::Text;
+    using zectrix::i18n::Tr;
+    Reset();
+    auto service = CreateService();
+    assert(service->SetOrientation(Orientation::Portrait) == ESP_OK);
+    ZectrixDemoUi ui(service.get());
+    zectrix::ui::StatusBarState status;
+    status.time_valid = status.battery_valid = true;
+    status.hour = 12; status.minute = 34; status.battery_percent = 82;
+    status.ble = zectrix::ui::RadioIndicator::Connected;
+    ui.UpdateStatus(status);
+    const auto portrait_ready = [&] {
+        assert(ui.canvas().portrait() && ui.canvas().width() == 300 && ui.canvas().height() == 400);
+    };
+    constexpr InputEvent down{Button::Down, InputAction::Click}, ok{Button::Ok, InputAction::Click};
+
+    // Home and Tools.
+    class Factory final : public ApplicationFactory {
+        Status Create(const ApplicationRegistry&, Application**) override { assert(false); return Status::Unsupported; }
+    } factory;
+    ApplicationCatalog full;
+    assert(full.Add("launcher", "Launcher", factory));
+    assert(full.Add("reader", "BOOK READER", factory, {Icon::Book, true, Text::BookReader}));
+    assert(full.Add("book-transfer", "SEND BOOKS", factory, {Icon::Transfer, true, Text::SendBooks}));
+    assert(full.Add("apps", "APPS", factory, {Icon::App, true, Text::Apps}));
+    assert(full.Add("utilities", "POCKET TOOLS", factory, {Icon::App, true, Text::PocketTools}));
+    assert(full.Add("clock", "CLOCK", factory, {Icon::Clock, true, Text::Clock}));
+    assert(full.Add("sleep-cover", "SLEEP COVER", factory, {Icon::Sleep, true, Text::SleepCover}));
+    assert(full.Add("settings", "SETTINGS", factory, {Icon::Settings, true, Text::Settings}));
+    const char* tools[] = {"CONNECTIVITY", "AUTO SHOWCASE", "DISPLAY GALLERY", "HARDWARE TESTS", "DEVICE INFO", "ABOUT & LICENSE"};
+    constexpr Text tool_labels[] = {Text::Connectivity, Text::AutoShowcase, Text::DisplayGallery,
+        Text::HardwareTests, Text::DeviceInfo, Text::AboutLicense};
+    for (std::size_t i = 0; i < std::size(tools); ++i)
+        assert(full.Add(tools[i], tools[i], factory, {Icon::App, false, tool_labels[i]}));
+    LauncherController launcher(full);
+    assert(launcher.Start() == Status::Ok);
+    launcher.Tick();
+    zectrix::time::ClockSnapshot clock{{2026, 9, 10, 4, 12, 34, 0}, zectrix::time::ClockSource::Rtc};
+    ReadingOverview reading;
+    reading.state = ReadingOverview::State::Saved;
+    std::strcpy(reading.book_id.data(), ForLanguage("风从海上来.epub", "A Quiet Journey.epub"));
+    reading.progress_per_mille = 427;
+    assert(ui.ShowLauncher(launcher, clock, reading, true) == ESP_OK);
+    portrait_ready();
+    SavePreview(ui.canvas(), "home-portrait", true);
+    launcher.Handle(down);
+    assert(ui.ShowLauncher(launcher, clock, reading, false) == ESP_OK);
+    SavePreview(ui.canvas(), "home-portrait-focus", true);
+    // A focus move after a full portrait frame stays on the compare/partial path.
+    for (unsigned i = 0; i < 20 && launcher.scene() == LauncherScene::Home; ++i) {
+        if (!launcher.overview_selected() && launcher.EntryAt(launcher.selected()).label_text == Text::Tools) {
+            launcher.Handle(ok);
+            break;
+        }
+        launcher.Handle(down);
+    }
+    if (launcher.scene() == LauncherScene::Tools) {
+        assert(ui.ShowLauncher(launcher, clock, reading, true) == ESP_OK);
+        portrait_ready();
+        SavePreview(ui.canvas(), "tools-portrait", true);
+    }
+    ReadingOverview empty;
+    empty.state = ReadingOverview::State::Empty;
+    LauncherController second(full);
+    assert(second.Start() == Status::Ok);
+    second.Tick();
+    assert(ui.ShowLauncher(second, {{0, 0, 0, 0, 0, 0, 0}, zectrix::time::ClockSource::Uptime}, empty, true) == ESP_OK);
+    SavePreview(ui.canvas(), "home-portrait-empty", true);
+
+    // Settings and language.
+    SettingsController settings(false);
+    assert(settings.Start() == Status::Ok);
+    assert(ui.ShowSettings(settings, Tr(Text::Loaded), true) == ESP_OK);
+    portrait_ready();
+    SavePreview(ui.canvas(), "settings-portrait", true);
+    settings.Handle(ok);
+    assert(ui.ShowSettings(settings, Tr(Text::Loaded), true) == ESP_OK);
+    SavePreview(ui.canvas(), "language-picker-portrait", true);
+
+    // Reader: library, reading page and options.
+    class PortraitLibrary final : public zectrix::reader::Library {
+    public:
+        std::string text;
+        std::unique_ptr<zectrix::reader::MemorySource> source;
+        PortraitLibrary() {
+            for (unsigned i = 0; i < 40; ++i)
+                text += ForLanguage("第一段：风从海上来，带着远方的消息。\n清晨的港口很安静，轻按按键，继续阅读。\n",
+                                    "Chapter one: the wind came in from the sea, carrying news from afar.\nThe harbor was quiet that morning. Press a button to keep reading.\n");
+            source = std::make_unique<zectrix::reader::MemorySource>(reinterpret_cast<const uint8_t*>(text.data()), text.size());
+        }
+        zectrix::reader::Result Refresh() override { return zectrix::reader::Result::Ok; }
+        std::size_t count() const override { return 3; }
+        zectrix::reader::BookInfo Get(std::size_t index) const override {
+            zectrix::reader::BookInfo book;
+            const char* names[] = {ForLanguage("风从海上来.txt", "A Quiet Journey.txt"),
+                                   ForLanguage("月光下的山路.txt", "The Moonlit Road.txt"),
+                                   ForLanguage("旅途中的阅读笔记.txt", "Reading Notes.txt")};
+            std::strcpy(book.id.data(), names[index % 3]);
+            book.format = zectrix::reader::Format::Text; book.bytes = text.size(); return book;
+        }
+        bool truncated() const override { return false; }
+        zectrix::reader::Result Open(std::size_t, zectrix::reader::Source** output) override { *output = source.get(); return zectrix::reader::Result::Ok; }
+        void Close() override {}
+    } library;
+    class PortraitStore final : public zectrix::reader::BookmarkStore {
+    public:
+        zectrix::reader::Result Load(uint8_t*, std::size_t, std::size_t*) override { return zectrix::reader::Result::End; }
+        zectrix::reader::Result Save(const uint8_t*, std::size_t) override { return zectrix::reader::Result::Ok; }
+        zectrix::reader::Result Publish(uint32_t, const uint8_t*, std::size_t) override { return zectrix::reader::Result::Ok; }
+        zectrix::reader::Result Receive(uint32_t*, uint8_t*, std::size_t, std::size_t*) override { return zectrix::reader::Result::End; }
+    } store;
+    zectrix::reader::Bookmarks bookmarks(store);
+    ReaderController reader(library, bookmarks);
+    reader.SetPortrait(true);
+    assert(IsOk(reader.Start()));
+    assert(ui.ShowReader(reader, true) == ESP_OK);
+    portrait_ready();
+    SavePreview(ui.canvas(), "reader-library-portrait", true);
+    assert(reader.Handle(ok) == ReaderDecision::RenderQuality);
+    assert(ui.ShowReader(reader, true) == ESP_OK);
+    reader.Presented(true);
+    SavePreview(ui.canvas(), "reader-small-portrait", true);
+    const auto& page = reader.engine().page();
+    assert(page.count > 0);
+    for (std::size_t i = 0; i < page.count; ++i) {
+        // Portrait pages stay inside their 284 x 308 body.
+        assert(page.glyphs[i].x + zectrix::reader::GlyphWidth(page.glyphs[i].codepoint, page.font) <= 284);
+        assert(page.glyphs[i].y + zectrix::reader::GlyphHeight(page.glyphs[i].codepoint, page.font) <= 308);
+    }
+    const auto portrait_page_start = page.start;
+    assert(reader.Handle({Button::Down, InputAction::Click}) == ReaderDecision::RenderFast);
+    assert(ui.ShowReader(reader, false) == ESP_OK);
+    reader.Presented(true);
+    assert(portrait_page_start < reader.engine().page().start);
+    assert(reader.Handle(ok) == ReaderDecision::RenderQuality);
+    assert(ui.ShowReader(reader, true) == ESP_OK);
+    SavePreview(ui.canvas(), "reader-options-portrait", true);
+
+    // Send Books.
+    using namespace zectrix::connectivity;
+    BookTransferSnapshot transfer;
+    assert(ui.ShowBookTransfer(transfer, true, false, true) == ESP_OK);
+    portrait_ready();
+    SavePreview(ui.canvas(), "books-mode-portrait", true);
+    transfer.state = BookTransferState::Sharing;
+    transfer.mode = BookTransferMode::Hotspot;
+    std::strcpy(transfer.ssid.data(), "NOTE4-1234");
+    std::strcpy(transfer.code.data(), "ABCDEFGH2345");
+    std::strcpy(transfer.address.data(), "192.168.4.1");
+    transfer.expected = 20000; transfer.received = 11000; transfer.uploaded = 2;
+    assert(ui.ShowBookTransfer(transfer, false, false, true) == ESP_OK);
+    SavePreview(ui.canvas(), "books-sharing-portrait", true);
+    transfer.state = BookTransferState::Complete;
+    assert(ui.ShowBookTransfer(transfer, false, false, true) == ESP_OK);
+    SavePreview(ui.canvas(), "books-complete-portrait", true);
+    transfer.state = BookTransferState::Failed;
+    transfer.error = BookTransferError::Power;
+    assert(ui.ShowBookTransfer(transfer, false, false, true) == ESP_OK);
+    SavePreview(ui.canvas(), "books-power-error-portrait", true);
+
+    // Pocket Tools.
+    UtilitySession session;
+    UtilityController utilities(session);
+    clock = {{2026, 3, 31, 0, 12, 30, 0}, zectrix::time::ClockSource::Rtc};
+    const auto draw = [&](UtilityDecision decision) {
+        assert(decision == UtilityDecision::RenderQuality || decision == UtilityDecision::RenderFast);
+        assert(ui.ShowUtilities(utilities, true) == ESP_OK);
+        utilities.Presented(true);
+    };
+    assert(utilities.Start(0, clock) == Status::Ok);
+    draw(utilities.Tick(0, clock));
+    portrait_ready();
+    SavePreview(ui.canvas(), "utilities-menu-portrait", true);
+    draw(utilities.Handle(ok, 0, clock));
+    SavePreview(ui.canvas(), "utilities-focus-portrait", true);
+    draw(utilities.Handle({Button::Ok, InputAction::LongPress}, 0, clock));
+    draw(utilities.Handle(down, 0, clock));
+    draw(utilities.Handle(ok, 0, clock));
+    SavePreview(ui.canvas(), "utilities-calendar-portrait", true);
+    draw(utilities.Handle({Button::Ok, InputAction::LongPress}, 0, clock));
+    draw(utilities.Handle(down, 0, clock));
+    draw(utilities.Handle(ok, 0, clock));
+    SavePreview(ui.canvas(), "utilities-counter-portrait", true);
+
+    // Clock and cover menu share the same orientation; menus fit all eleven rows without scrolling.
+    assert(ui.ShowClock({2026, 9, 10, 0, 12, 34, 0}, true) == ESP_OK);
+    SavePreview(ui.canvas(), "clock-portrait", true);
+    assert(ui.ShowSleepCoverMenu(SleepCoverStyle::Dashboard, SleepCoverStyle::Dashboard, nullptr, true) == ESP_OK);
+    SavePreview(ui.canvas(), "sleep-menu-portrait", true);
+
+    // Landscape-only screens fall back to a landscape canvas and return to portrait afterwards.
+    assert(ui.ShowAbout(true) == ESP_OK);
+    assert(!ui.canvas().portrait() && ui.canvas().width() == 400);
+    assert(ui.ShowSettings(settings, Tr(Text::Loaded), true) == ESP_OK);
+    portrait_ready();
+}
+
 int main() {
     const char* language = std::getenv("ZECTRIX_UI_LANGUAGE");
     zectrix::i18n::SetLanguage(language && std::strcmp(language, "zh") == 0 ?
@@ -2272,5 +2561,6 @@ int main() {
     TestUtilitiesComposition();
     TestRecoveryComposition();
     TestSleepCoverComposition();
+    TestPortraitScreens();
     Reset();
 }

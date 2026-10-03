@@ -18,9 +18,17 @@ constexpr uint16_t kWifi[] = {
 };
 
 enum class Mark : uint8_t { None, Off, Ready, Connected, Active, Warning, Charging, Full, Plug, Unknown, Absent };
+// Radio badges have their own seven-pixel slot: separated stems and balanced heads.
+constexpr uint16_t kRadioMarks[][7] = {
+    {0, 0b0000010, 0b0000100, 0b0001000, 0b0010000, 0b0100000, 0},
+    {0, 0b0011100, 0b0100010, 0b0100010, 0b0100010, 0b0011100, 0},
+    {0, 0, 0b0011100, 0b0111110, 0b0011100, 0, 0},
+    {0b0100000, 0b1110000, 0b0100010, 0b0100010, 0b0100010, 0b0000111, 0b0000010},
+    {0b0001000, 0b0001000, 0b0001000, 0b0001000, 0, 0b0001000, 0},
+};
 constexpr uint16_t kMarks[][7] = {
     {0, 0, 0, 0, 0, 0, 0},
-    {0b00001, 0b00001, 0b00010, 0b00100, 0b01000, 0b10000, 0b10000},
+    {0, 0b00001, 0b00010, 0b00100, 0b01000, 0b10000, 0},
     {0, 0b01110, 0b10001, 0b10001, 0b10001, 0b01110, 0},
     {0, 0, 0b01110, 0b01110, 0b01110, 0, 0},
     {0b01000, 0b11100, 0b01000, 0b01010, 0b00010, 0b00111, 0b00010},
@@ -29,7 +37,7 @@ constexpr uint16_t kMarks[][7] = {
     {0, 0, 0b00001, 0b00010, 0b10100, 0b01000, 0},
     {0b01010, 0b01010, 0b11111, 0b10001, 0b01110, 0b00100, 0b00100},
     {0b01110, 0b10001, 0b00110, 0b00100, 0, 0b00100, 0},
-    {0b10001, 0b01010, 0b00100, 0b00100, 0b01010, 0b10001, 0},
+    {0, 0b10001, 0b01010, 0b00100, 0b01010, 0b10001, 0},
 };
 
 void Icon(ZectrixCanvas& canvas, int x, int y, int width, int height,
@@ -41,6 +49,10 @@ void Icon(ZectrixCanvas& canvas, int x, int y, int width, int height,
 
 void Badge(ZectrixCanvas& canvas, int x, int y, Mark mark, bool ink) {
     Icon(canvas, x, y, 5, 7, kMarks[static_cast<unsigned>(mark)], ink);
+}
+
+void RadioBadge(ZectrixCanvas& canvas, int x, int y, Mark mark, bool ink) {
+    Icon(canvas, x, y, 7, 7, kRadioMarks[static_cast<unsigned>(mark) - static_cast<unsigned>(Mark::Off)], ink);
 }
 
 Mark RadioMark(RadioIndicator radio) {
@@ -79,21 +91,23 @@ bool StatusBarState::operator==(const StatusBarState& other) const {
 
 void DrawStatusBar(ZectrixCanvas& canvas, const StatusBarState& state, bool inverted) {
     const bool ink = !inverted;
-    canvas.FillRect(0, 0, ZectrixCanvas::kWidth, kStatusBarHeight, inverted);
+    // Right-hand slots are anchored to the right edge; portrait (300 px) shifts them left by 100.
+    const int dx = canvas.width() - ZectrixCanvas::kWidth;
+    canvas.FillRect(0, 0, canvas.width(), kStatusBarHeight, inverted);
     char text[12];
     if (state.time_valid) std::snprintf(text, sizeof(text), "%02u:%02u", state.hour, state.minute);
     else std::snprintf(text, sizeof(text), "--:--");
     canvas.Text(8, 4, text, 1, inverted);
 
     // Fixed slots prevent radio and charge transitions from shifting neighbors.
-    Icon(canvas, 260, 5, 7, 13, kBluetooth, ink);
-    Badge(canvas, 272, 8, RadioMark(state.ble), ink);
-    Icon(canvas, 288, 7, 13, 9, kWifi, ink);
-    Badge(canvas, 304, 8, RadioMark(state.wifi), ink);
-    Badge(canvas, 320, 8, PowerMark(state), ink);
+    Icon(canvas, 260 + dx, 5, 7, 13, kBluetooth, ink);
+    RadioBadge(canvas, 272 + dx, 8, RadioMark(state.ble), ink);
+    Icon(canvas, 288 + dx, 7, 13, 9, kWifi, ink);
+    RadioBadge(canvas, 304 + dx, 8, RadioMark(state.wifi), ink);
+    Badge(canvas, 320 + dx, 8, PowerMark(state), ink);
 
     // A 20 x 10 silhouette leaves a one-pixel moat around five 2 x 6 cells.
-    constexpr int x = 332, y = 7;
+    const int x = 332 + dx, y = 7;
     canvas.Line(x + 1, y, x + 16, y, ink);
     canvas.Line(x + 1, y + 9, x + 16, y + 9, ink);
     canvas.Line(x, y + 1, x, y + 8, ink);
@@ -109,8 +123,8 @@ void DrawStatusBar(ZectrixCanvas& canvas, const StatusBarState& state, bool inve
         Badge(canvas, x + 6, y + 2, state.battery_absent ? Mark::Absent : Mark::Unknown, ink);
         std::snprintf(text, sizeof(text), "--%%");
     }
-    canvas.Text(392 - canvas.TextWidth(text), 4, text, 1, inverted);
-    canvas.Line(0, kStatusBarHeight - 1, ZectrixCanvas::kWidth - 1, kStatusBarHeight - 1, ink);
+    canvas.Text(392 + dx - canvas.TextWidth(text), 4, text, 1, inverted);
+    canvas.Line(0, kStatusBarHeight - 1, canvas.width() - 1, kStatusBarHeight - 1, ink);
 }
 
 }  // namespace zectrix::ui

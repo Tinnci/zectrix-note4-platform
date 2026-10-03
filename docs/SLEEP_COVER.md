@@ -45,7 +45,7 @@ library; **LAST SAVED READING** describes reading history, not file availability
 
 Calendar data comes from RTC, then valid system time. Uptime or an invalid
 calendar displays **TIME NOT SET**. The month grid handles leap years and six
-week rows, and calculates weekdays from the date. Seven original short quotes
+week rows, and calculates weekdays from the date. Thirty-one original short quotes
 rotate by calendar day; repeated previews on the same day use the same quote.
 The mountain illustration uses the existing monochrome canvas primitives.
 

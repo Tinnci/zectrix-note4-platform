@@ -113,24 +113,41 @@ script can be installed or removed separately.
 
 ## UI and Feature Showcase
 
-Native bilingual UI (English / 简体中文): apps use 400×300 landscape; the calendar lock screen also supports 300×400 portrait. These screenshots are generated from the current firmware canvas, not photographs. See [direction support and preview generation](docs/UI_PREVIEW.md).
+Native bilingual UI (English / 简体中文): supports both 400×300 landscape and 300×400 portrait. These screenshots are generated from the current firmware canvas, not photographs. See [direction support and preview generation](docs/UI_PREVIEW.md).
 
 | Screen / Feature | English UI | 简体中文 UI |
 | :--- | :---: | :---: |
 | **Home Dashboard**<br>• Persistent 24px status bar<br>• Reading overview & fast resume<br>• Fast application tiles | ![Home EN](docs/screenshots/home_en.png) | ![Home ZH](docs/screenshots/home_zh.png) |
 | **Streamed E-Reader**<br>• TXT & EPUB streaming<br>• Algorithmic styling (bold/italic)<br>• CJK line wrapping & pagination | ![Reader EN](docs/screenshots/reader_en.png) | ![Reader ZH](docs/screenshots/reader_zh.png) |
 | **Ambient Sleep Cover**<br>• Daily calendar & reading snapshot<br>• Static image retained during sleep<br>• Landscape, dashboard, or blank | ![Sleep EN](docs/screenshots/sleep_dashboard_en.png) | ![Sleep ZH](docs/screenshots/sleep_dashboard_zh.png) |
-| **Portrait Calendar**<br>• Battery and six-week month grid<br>• Daily scheduled refresh | ![Portrait EN](docs/screenshots/sleep_portrait_en.png) | ![Portrait ZH](docs/screenshots/sleep_portrait_zh.png) |
 | **Local Web Transfer**<br>• Drag-and-drop TXT/EPUB upload<br>• AP hotspot or saved Wi-Fi station<br>• Auto-shutdown on complete | ![Transfer EN](docs/screenshots/book_transfer_en.png) | ![Transfer ZH](docs/screenshots/book_transfer_zh.png) |
 | **Pocket Tools & Calendar**<br>• Focus Pomodoro timer<br>• 1900–2199 Gregorian calendar<br>• Bounded tally counter | ![Tools EN](docs/screenshots/calendar_en.png) | ![Tools ZH](docs/screenshots/calendar_zh.png) |
+
+### Landscape and Portrait (400×300 / 300×400)
+
+The same firmware renders both orientations. Each layout is designed natively for
+its aspect ratio rather than rotating a screenshot. Portrait (90° / 270°) natively covers
+Home dashboard, Streamed Reader, Settings, Web Transfer, Pocket Tools/Calendar, and Sleep Screens;
+Lua micro-apps and system diagnostics remain in landscape (0° / 180°). See [orientation support](docs/UI_PREVIEW.md)
+and [screen direction](docs/SCREEN_DIRECTION.md).
+
+| Screen / Scenario | Landscape 400×300 | Portrait 300×400 |
+| :--- | :---: | :---: |
+| **Home Dashboard**<br>• Landscape: 3-column overview & grid<br>• Portrait: Stacked card & vertical tiles | ![Home Landscape](docs/screenshots/home_en.png) | ![Home Portrait](docs/screenshots/home_portrait_en.png) |
+| **Streamed E-Reader**<br>• Landscape: Wide 384×216 reading surface<br>• Portrait: Tall 284×308 native pagination | ![Reader Landscape](docs/screenshots/reader_en.png) | ![Reader Portrait](docs/screenshots/reader_portrait_en.png) |
+| **System Settings**<br>• Direction cycles 0° → 90° → 180° → 270°<br>• Wrapped multi-line hints & dynamic viewport | ![Settings Landscape](docs/screenshots/settings_en.png) | ![Settings Portrait](docs/screenshots/settings_portrait_en.png) |
+| **Web Book Transfer**<br>• Landscape: Dual-column instruction & IP<br>• Portrait: Vertical flow with large access code | ![Transfer Landscape](docs/screenshots/book_transfer_en.png) | ![Transfer Portrait](docs/screenshots/book_transfer_portrait_en.png) |
+| **Pocket Tools & Calendar**<br>• 7-column calendar, Pomodoro & counter<br>• Dynamic footer hint wrapping | ![Tools Landscape](docs/screenshots/calendar_en.png) | ![Tools Portrait](docs/screenshots/pocket_tools_portrait_en.png) |
+| **Sleep Calendar**<br>• Date, month grid, reading progress (landscape)<br>• Battery, six-week grid (portrait) | ![Landscape calendar](docs/screenshots/sleep_dashboard_en.png) | ![Portrait calendar](docs/screenshots/sleep_portrait_en.png) |
+| **Home Assistant Remote**<br>• Two columns × 4 entities (landscape)<br>• One column, up to 8 entities (portrait) | ![Landscape remote page](docs/screenshots/remote_landscape_en.png) | ![Portrait remote page](docs/screenshots/remote_portrait_en.png) |
 
 ### Status Bar Micro-Icon System (E1.10)
 
 The 24px status bar employs 1-bit monochrome micro-icon masks with fixed slots:
 
-![Status Bar Micro-Icons](docs/screenshots/status_bar_icons.png)
+![Current radio states, normal and inverse](docs/screenshots/status_radio_marks.png)
 
-- **Bluetooth**: Nordic rune with 5-state marks (Off `\`, Ready `○`, Connected `●`, Active `⇅`, Warning `!`).
+- **Bluetooth**: 7×13 rune with centered 7×7 marks: Off `/`, Ready `○`, Connected `●`, separated arrows for activity, Warning `!`. Arrows do not measure directional traffic.
 - **Wi-Fi**: Dual-arc fan with 5-state marks.
 - **Battery**: 20x10 silhouette with 5 discrete fill cells (0–20%, 21–40%, 41–60%, 61–80%, 81–100%) and priority companion marks (Charging `⚡`, Full `✓`, External Plug `🔌`, Fault/Low `!`, Absent `X`).
 
@@ -271,7 +288,8 @@ battery power, shutdown releases the hardware power latch. While powered over
 USB, the board enters deep sleep after presenting the selected cover. Release
 DOWN, then press it again to wake. In **SLEEP COVER**, OK saves a style and opens
 its preview; another OK sleeps. Blank clears the whole panel. The dashboard
-shows an **AS OF** snapshot and does not update during sleep.
+shows an **AS OF** snapshot. With a valid clock, the calendar wakes around local
+00:01 to refresh, then sleeps again. It includes [31 bilingual daily short quotes](docs/SLEEP_QUOTES.md).
 
 ## UI map
 
