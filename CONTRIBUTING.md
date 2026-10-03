@@ -1,60 +1,46 @@
 # Contributing / 参与贡献
 
-Thank you for helping improve the NOTE4 reference demo. Bug reports,
-documentation fixes and focused pull requests are welcome.
+Focused fixes, documentation and reproducible bug reports are welcome.
+欢迎范围清晰的修正、文档改进和可复现的问题报告。
 
-感谢你参与改进 NOTE4 参考 Demo。欢迎提交问题报告、文档修正和范围清晰的
-Pull Request。
+## Report a problem / 报告问题
 
-## Before opening an issue / 提交 Issue 前
+Include device/revision, source commit, ESP-IDF version, power source and the
+smallest reproducer. Remove credentials, Wi-Fi names, MAC addresses and personal
+data from logs. Report security issues through [SECURITY.md](SECURITY.md).
 
-Please include the following information when reporting a problem:
+提供设备与硬件版本、源码提交、ESP-IDF 版本、供电方式和最短复现步骤。
+日志须去除凭据、Wi-Fi 名称、MAC 地址和个人数据；安全问题按上面的专用入口报告。
 
-- the exact device model and hardware revision.
-- the ESP-IDF version (`idf.py --version`).
-- the build or runtime log with credentials, Wi-Fi names, MAC addresses and
-  other personal data removed.
-- the smallest sequence of steps that reproduces the problem.
-- whether the issue occurs on USB power, battery power or both.
+## Change and verify / 修改与验证
 
-提交问题时，请提供准确的设备型号和硬件版本、ESP-IDF 版本、去除凭据和个人信息后的
-日志、最短复现步骤，以及问题发生在 USB 供电、电池供电还是两种情况下。
+Keep one purpose per PR and update the relevant [documentation](docs/README.md).
+Do not commit credentials, device secrets, raw Flash backups, audio captures,
+generated `sdkconfig` or builds. Preserve licenses and upstream attribution.
 
-## Pull requests / 代码贡献
+每个 PR 聚焦一个目的，同步更新相关文档；不提交凭据、设备密钥、Flash 备份、
+录音、生成配置或构建产物，并保留许可证及来源说明。
 
-1. Keep each pull request focused on one change.
-2. Build from a clean checkout with the qualified ESP-IDF 5.5.2 toolchain.
-3. For display or hardware changes, describe the physical device validation
-   performed and attach only non-sensitive evidence.
-4. Update the relevant document under `docs/` when behavior or a public API
-   changes.
-5. Do not commit Wi-Fi credentials, device secrets, raw flash backups, captured
-   audio or generated `sdkconfig` and build directories.
-
-请保持每个 Pull Request 只解决一个明确问题；使用项目验证的 ESP-IDF 5.5.2 从干净
-环境构建；涉及屏幕或硬件时说明真机验证情况；行为或公开 API 变化时同步更新
-`docs/`；严禁提交 Wi-Fi 凭据、设备密钥、原始 Flash 备份、录音、生成的
-`sdkconfig` 或构建目录。
-
-## Validation / 验证
+Run checks appropriate to the change:
 
 ```bash
+git diff --check
 shellcheck tools/*.sh
-tools/test-host.sh
-source tools/activate-dev-env.sh
-tools/check-dev-env.sh
-tools/build-firmware.sh --clean
-idf.py size
-tools/capture-build-provenance.sh
-NOTE4_ANDROID_CLEAN=1 tools/test-android-companion.sh
+tools/test-host.sh --suite ui        # Choose the affected group(s).
+tools/test-host.sh --jobs 2          # Full host suite before integration.
 ```
 
-Pull requests and pushes to `main` run the same host, Android and firmware
-checks in GitHub Actions. See `docs/CI.md` for job and artifact details.
+For firmware changes, use the [qualified environment](docs/PREREQUISITES.md)
+and `tools/build-firmware.sh --profile full`; test other affected profiles too.
+For Android changes, run `tools/test-android-companion.sh`.
+[CI](docs/CI.md) runs host, Android and firmware checks independently.
 
-Do not flash hardware solely to validate a documentation-only change. If a
-hardware write is necessary, confirm that the target is the black-and-white
-NOTE4 and use its exact serial port.
+固件修改使用已验证环境构建 Full 及受影响的其他预设；Android 修改运行对应测试。
+仅文档修改检查内容和链接即可，不需要为此构建或烧录设备。
 
-仅修改文档时无需为了验证而烧录设备。如确需写入硬件，请先确认目标是黑白墨水屏版
-NOTE4，并使用该设备的准确串口。
+Describe physical validation separately from simulation. Flash only an
+explicitly identified black-and-white Note4 with its exact port, after backup.
+Do not claim hardware qualification from host tests.
+
+区分真机验证和模拟测试。烧录前确认黑白 Note4、准确串口并备份，
+不要把主机测试结果当作硬件验收。

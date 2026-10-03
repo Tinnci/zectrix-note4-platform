@@ -1,8 +1,8 @@
 # Ambient sleep cover and dashboard
 
-L1.4 adds **SLEEP COVER** to the Launcher. Choose a daily dashboard, a quiet
-landscape, a blank privacy screen or a phone-supplied picture. The selected surface is drawn before
-power-off and remains visible without keeping the display or radios active.
+Choose a calendar dashboard, landscape, blank privacy cover or phone picture.
+The last frame remains visible with display/radios off. Scheduled calendar and
+remote-page refresh use brief wake cycles; see [wake configuration](CONNECTIVITY_CONFIGURATION.md).
 
 ## Controls
 

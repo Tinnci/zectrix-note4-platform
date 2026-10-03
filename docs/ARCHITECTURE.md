@@ -1,11 +1,8 @@
 # Architecture boundaries
 
-## Purpose
-
-The project develops a low-power application platform for the black-and-white
-Note4 Note 4. ESP-IDF and FreeRTOS remain the operating kernel. This project
-provides board support, system services, a display policy layer and an
-application framework.
+Applications use owned services; services use board support and ESP-IDF.
+This page defines those boundaries. For display internals, see
+[display architecture](DISPLAY_ARCHITECTURE.md); for app authors, see [SDK v2](SDK_V2.md).
 
 ## Dependency direction
 

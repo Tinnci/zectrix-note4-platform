@@ -2,273 +2,91 @@
 
 [English](README.md) | 简体中文
 
-**从这里开始：**[图文使用手册](docs/HANDBOOK_zh.md) ·
-[English handbook](docs/HANDBOOK.md) · [固件发布流程](docs/RELEASING.md) ·
-[v2 迁移指南](docs/NOTE4_MIGRATION.md) · [v2.0.0 开发说明](docs/releases/v2.0.0.md)。
+面向黑白 Note4 的独立社区固件：ESP32-S3、SSD2683 400×300 墨水屏、
+16 MiB Flash、8 MiB PSRAM。由 [Tinnci](https://github.com/Tinnci) 维护，
+不依赖商业固件或 LVGL。
 
-本项目是由 **[Tinnci](https://github.com/Tinnci)** 维护的独立固件框架与应用平台，适用于搭载 SSD2683 黑白墨水屏的 ESP32-S3 设备（基于 Note4 硬件布局）。
+[使用手册](docs/HANDBOOK_zh.md) · [源码构建](docs/QUICK_START.md) ·
+[文档导航](docs/README.md) · [SDK v2 迁移](docs/NOTE4_MIGRATION.md)
 
-项目保留原有板级支持和 SSD2683 显示驱动作为经过验证的硬件基线，并在其上增加系统服务、多应用运行时、电子书引擎、稳定 SDK、伴侣设备连接和受控维护接口。
+## 界面一览
 
-项目目标是让应用通过受控接口使用显示、输入、电源、时间、存储和连接能力，而不直接操作 GPIO、SPI、裸分区、ESP-NimBLE 或 FreeRTOS 对象。工程只依赖本目录中的组件和 ESP-IDF Component Manager 下载的官方依赖，不连接 NOTE4 商业固件，也不依赖 LVGL。本项目不是完整的 NOTE4 消费版固件或云服务。
-
----
-
-## 声明与商标说明
-
-> [!NOTE]
-> **NOTE4** 与 **ZECTRIX** 是 Zectrix Lab / 相关权利人的产品名称或商标。  
-> 本代码库为独立的第三方开源社区项目，**不是**官方发布的固件，与 Zectrix Lab 亦无官方附属、赞助或背书关系。
->
-> 刷入第三方固件存在覆盖连接设备上现有软件的风险，操作前请确认硬件版本与准确串口。
-
-## 从参考 Demo 到应用平台
-
-仓库基于上游
-[`itopinion/zectrix-note4-epd-demo`](https://github.com/itopinion/zectrix-note4-epd-demo)
-的 `ca285c98` 提交建立；来源说明见 [UPSTREAM.md](UPSTREAM.md)。
-
-| 保留的上游基线 | 本仓库新增能力 |
-| --- | --- |
-| SSD2683 1bpp 全刷、局刷和 4bpp 显示路径 | 可复现 ESP-IDF 工具链、构建溯源、硬件验收与原厂恢复流程 |
-| NOTE4 板级适配和外设访问 | 显示、输入、电源、时间、存储和系统服务的单一所有权 |
-| 图库 UI 和硬件能力展示 | 含 Launcher、Reader、Settings、Diagnostics、Clock 的静态应用运行时 |
-| Wi-Fi RF、音频、RTC、充电、LED、按键、NFC 和电池自检 | 具备兼容性与架构检查的源码稳定 C++17 SDK v2 |
-| 基础设备交互和关机流程 | 版本化伴侣协议、持久同步、安全 BLE、Android 伴侣端和 NFC 辅助注册 |
-| 面向硬件的串口诊断 | 有资源边界的维护 CLI、平台诊断和交互式 Host 模拟器 |
-
-## 开发状态
-
-项目按 [docs/ROADMAP.md](docs/ROADMAP.md) 中的依赖关系和阶段门推进。
-
-| 阶段 | 状态 | 结果 |
+| 功能 | 横屏 | 竖屏 |
 | --- | --- | --- |
-| M1 | 已完成 | 可复现上游基线、硬件验收与原厂恢复 |
-| M2 | 已完成 | 平台统一管理显示、输入、电源、时间、存储和系统服务 |
-| M3 | 已完成 | 静态应用生命周期和首批内置应用 |
-| M4 | 已完成 | 源码稳定 SDK v2 和统一软硬件退出门 |
-| C1 | 进行中 | 伴侣协议、持久同步、安全 BLE/Android 路径和 NFC 辅助注册；完整硬件验收尚未结束 |
-| D1 | 已实现，USB 验收开放 | USB 会话、系统/显示状态、日志与输入观察、受控维护、前台健康恢复和 Host 模拟器 |
-| M5 | 进行中 | A/B 分区校验、固件流式校验和启动确认看门狗已实现；升级交付流程与硬件验收尚未结束 |
-| R1 | 进行中 | 最小脏矩形局刷、相同画面跳过与自适应全刷策略已实现；硬件验收尚未结束 |
-| L1 | 已实现 | 常驻状态栏、场景导航、TXT/EPUB 流式阅读、局域网书库管理与待机画报；实际睡眠唤醒与待机电流仍待硬件测量 |
-| S1 | 已实现 | 服务注册表、Kconfig 裁剪、应用条件装配、RTC 恢复/编辑和 Full/Minimal 构建；RTC 保持与待机电流仍待测量 |
-| E1 | 已实现 | 主页磁贴、统一导航、无线协调、双语界面、USB 管理、随身工具和状态图标；物理 USB 验收仍开放 |
-| E2 | 已实现 | 有配额的 Lua 应用、独立 `.zapp` 打包、USB/Wi-Fi 安装，以及计算器/闪卡示例 |
-| R2 | 发布工具与手册 | Full/Reader/Minimal 矩阵、分段固件与独立书库初始化包、双语离线手册和草稿/发布流程 |
+| 主页：日历、阅读进度与应用入口 | ![横屏主页](docs/screenshots/home_zh.png) | ![竖屏主页](docs/screenshots/home_portrait_zh.png) |
+| 阅读器：TXT/EPUB 流式阅读与原生重排 | ![横屏阅读](docs/screenshots/reader_zh.png) | ![竖屏阅读](docs/screenshots/reader_portrait_zh.png) |
+| 日历锁屏：月历与每日短句 | ![横屏日历锁屏](docs/screenshots/sleep_dashboard_zh.png) | ![竖屏日历锁屏](docs/screenshots/sleep_portrait_zh.png) |
+| Home Assistant：服务端渲染的远程页面 | ![横屏 HA 页面](docs/screenshots/remote_landscape_zh.png) | ![竖屏 HA 页面](docs/screenshots/remote_portrait_zh.png) |
 
-[服务注册表](docs/SERVICE_REGISTRY.md) 使用 16 个固定槽位，统一服务启动和失败清理。
-注册表自身不分配堆内存；缺失或已停止的服务返回空指针，现有 Platform 访问器仍返回
-同一组服务实例。
+图片为渲染预览，不是真机照片；日期和数据仅作示例。
+[更多界面与预览生成](docs/UI_PREVIEW.md)。
 
-[动态微应用试点](docs/MICRO_APPS.md) 使用受限 Lua 5.4.9，沿用现有场景管理与显示调度。
-在设备上打开“工具 > USB 管理”，使用 `uv run --script tools/usb-manager.py --port <串口> app-put apps/Calculator.lua`
-安装计算器，或安装 `apps/Flashcards.lua` 闪卡示例，再从主页“应用”打开。安装新脚本无需
-重新编译或烧录固件；长按 OK 返回，长按 DOWN 关机。Full 默认启用，Minimal 可完整裁剪运行时。
+## 功能
 
-> [!IMPORTANT]
-> 本项目仅适用于黑白墨水屏版 NOTE4，不适用于 NOTE4C。烧录本固件
-> 会替换连接设备上现有的固件，执行烧录命令前请确认设备型号和准确串口。
+- 阅读 TXT/EPUB、保存进度、安装有资源限额的 Lua 应用。
+- 切换显示方向、锁屏样式与日期数字风格。
+- USB / 局域网 Wi-Fi 传书和安装应用，Android 伴侣配对。
+- 按唤醒和无线预算刷新远程页面缓存；可选 HTTPS/MQTT 桥接和
+  BTHome 电量广播接入 Home Assistant。
+- 平台服务、C++17 SDK v2，以及有界维护 CLI。
 
-## 界面与功能展示 (UI & Feature Showcase)
+主机测试不能代替屏幕效果、待机电流、无线行为和断电 OTA 的真机验证。
+参见[验证与历史记录](docs/README.md#qualification-and-history)。
+源码版本为 **2.0.0**，不代表已发布可下载版本。
 
-原生中英双语界面：全面支持 400×300 横屏与 300×400 竖屏两种原生形态。
-以下截图来自当前固件画布，不是实机照片。参见[方向支持与预览生成](docs/UI_PREVIEW.md)。
+## 构建与测试
 
-| 场景与功能 | 简体中文界面 | English UI |
-| :--- | :---: | :---: |
-| **磁贴仪表盘主屏 (Home Dashboard)**<br>• 常驻 24px 顶部状态栏<br>• 阅读进度概览卡片与一键续读<br>• 快速应用导航磁贴 | ![Home ZH](docs/screenshots/home_zh.png) | ![Home EN](docs/screenshots/home_en.png) |
-| **流式电子书阅读 (Streamed E-Reader)**<br>• TXT 与 EPUB 原生轻量解析<br>• 算法级加粗/斜体/衬线排版<br>• CJK 字符智能避头尾与分页 | ![Reader ZH](docs/screenshots/reader_zh.png) | ![Reader EN](docs/screenshots/reader_en.png) |
-| **桌面待机画报 (Ambient Sleep Cover)**<br>• 日历日期与最新阅读进度仪表盘<br>• 灵感格言与休眠期间静态留屏<br>• 支持仪表盘/风景画报/纯白留白 | ![Sleep ZH](docs/screenshots/sleep_dashboard_zh.png) | ![Sleep EN](docs/screenshots/sleep_dashboard_en.png) |
-| **局域网 Web 传书 (Local Web Transfer)**<br>• 浏览器拖拽上传 TXT/EPUB<br>• 临时便携热点或已有 Wi-Fi 局域网<br>• 传书结束无线射频自动断电 | ![Transfer ZH](docs/screenshots/book_transfer_zh.png) | ![Transfer EN](docs/screenshots/book_transfer_en.png) |
-| **随身极客工具箱 (Pocket Tools)**<br>• 静音番茄专注钟<br>• 1900–2199 离线万年历<br>• 防误触计数器与重置撤销 | ![Tools ZH](docs/screenshots/calendar_zh.png) | ![Tools EN](docs/screenshots/calendar_en.png) |
+支持 Linux 和 macOS。需要 ESP-IDF **5.5.2**（`esp32s3`）、CMake **3.30.5**、
+ccache、uv 和 Bun **1.4.2**。Android 另需 JDK **21**、SDK **37.0**，
+使用仓库内的 Gradle Wrapper。[环境要求与自定义路径](docs/PREREQUISITES.md)。
 
-### 横屏与竖屏 (400×300 / 300×400)
-
-同一固件原生支持两种方向。每种布局都按各自的宽高比单独设计，而不是旋转截图。
-原生竖屏（90° / 270°）已全面覆盖磁贴主页、流式阅读器、系统设置、Web 传书、极客工具箱和待机画报；
-Lua 独立微应用与系统底层诊断维持横屏（0° / 180°）。详见[方向支持与预览生成](docs/UI_PREVIEW.md)
-与[屏幕方向设计](docs/SCREEN_DIRECTION.md)。
-
-| 界面场景 | 横屏 400×300 | 竖屏 300×400 |
-| :--- | :---: | :---: |
-| **磁贴主屏 (Home Dashboard)**<br>• 横屏：三栏式日程卡片与网格磁贴<br>• 竖屏：垂直紧凑堆叠与单列磁贴 | ![主页横屏](docs/screenshots/home_zh.png) | ![主页竖屏](docs/screenshots/home_portrait_zh.png) |
-| **流式阅读器 (Streamed E-Reader)**<br>• 横屏：宽屏 384×216 排版<br>• 竖屏：高屏 284×308 原生重新分页 | ![阅读横屏](docs/screenshots/reader_zh.png) | ![阅读竖屏](docs/screenshots/reader_portrait_zh.png) |
-| **系统设置 (System Settings)**<br>• 屏幕方向支持 0° → 90° → 180° → 270° 循环切换<br>• 双行折行按键操作提示与自适应视口 | ![设置横屏](docs/screenshots/settings_zh.png) | ![设置竖屏](docs/screenshots/settings_portrait_zh.png) |
-| **Web 传书 (Book Transfer)**<br>• 横屏：双列连接说明与 IP 地址<br>• 竖屏：单列纵向流排版与醒目配对码 | ![传书横屏](docs/screenshots/book_transfer_zh.png) | ![传书竖屏](docs/screenshots/book_transfer_portrait_zh.png) |
-| **随身工具箱 (Pocket Tools)**<br>• 7 列万年历、番茄专注钟与计数器<br>• 底部按键提示自适应折行 | ![工具横屏](docs/screenshots/calendar_zh.png) | ![工具竖屏](docs/screenshots/pocket_tools_portrait_zh.png) |
-| **休眠日历 (Sleep Calendar)**<br>• 横屏：日期、月历与阅读进度<br>• 竖屏：电量与六周月历 | ![横屏日历](docs/screenshots/sleep_dashboard_zh.png) | ![竖屏日历](docs/screenshots/sleep_portrait_zh.png) |
-| **Home Assistant 远程页面**<br>• 横屏：双列，每列 4 个实体<br>• 竖屏：单列，最多 8 个实体 | ![横屏远程页面](docs/screenshots/remote_landscape_zh.png) | ![竖屏远程页面](docs/screenshots/remote_portrait_zh.png) |
-
-### 状态栏微型图标系统 (E1.10)
-
-顶部 24px 状态栏全面采用去文本化纯点阵图形设计，划定绝对固定槽位，杜绝状态变迁时的邻近元素抖动：
-
-![最新无线微标，黑白与反色](docs/screenshots/status_radio_marks.png)
-
-- **蓝牙 (BLE)**：7×13 主图标配合居中的 7×7 微标：关闭 `/`、就绪/广播 `○`、已连接 `●`、双箭头表示数据活动、故障 `!`。双箭头不代表上下行流量统计。
-- **Wi-Fi**：对称双同心扇形信号弧（13×9）结合 5 态伴随微标。
-- **电池与电源**：20×10 点阵外壳，带 1px 防晕染内衬保护，内部采用 5 级阶梯充填（0%、20%、40%、60%、80%、100%），左侧伴随高优先级硬件状态微标（充电 `⚡`、充满 `✓`、外接电源 `🔌`、低电预警/故障 `!`、未装电池 `X`）。
-
-## 硬件基线
-
-- 400 × 300 SSD2683 黑白墨水屏
-- 1bpp 全刷、1bpp 局刷与 4bpp / 16 灰阶全刷
-- 灯塔、六步脚印动画和高对比度灰阶山景展示
-- Wi-Fi RF、扬声器/麦克风回环、RTC、充电、电池、LED、三按键和 NFC 自检
-- Flash、PSRAM、MAC 地址、外设与电源状态设备信息页
-- 内置 TRMNL16 界面字库及支持 16px/24px 的 Unifont 中日韩阅读字库
-- 独立 SPIFFS 书库中的 TXT/EPUB 流式阅读、NVS 断点保存与手机持久进度同步
-- 临时 Wi-Fi 热点或已保存家庭网络上的浏览器传书、下载与删除，会话结束自动关闭 Wi-Fi
-- 可保存的日历仪表盘、山水画报与空白隐私屏，展示日期和最近保存的阅读进度
-- 长按下键 3 秒显示所选待机画面、关闭外设并关机
-- ZECTRIX Lab 以 MIT License 开源
-
-## 构建和烧录
-
-需要项目已验证的 ESP-IDF v5.5.2 基线：
+在仓库根目录运行：
 
 ```bash
-# 请在仓库根目录执行以下命令。
-idf.py set-target esp32s3
-idf.py build
-idf.py -p /dev/ttyACM0 flash monitor
+source tools/activate-dev-env.sh
+tools/check-dev-env.sh
+tools/build-firmware.sh --profile full
+tools/test-host.sh --jobs 2
 ```
 
-根据实际情况修改串口。退出监视器使用 `Ctrl+]`。第一次构建会下载音频编解码器
-组件。详细说明见 [docs/QUICK_START.md](docs/QUICK_START.md)。
+`full` 包含完整功能，`reader` 为离线阅读器，`minimal` 保留时钟、设置、
+锁屏和诊断。预设使用独立构建与配置目录，不修改本地 `sdkconfig`。
+[自定义构建](docs/MODULAR_BUILD.md)。
 
-当前分区布局保留 factory 和 NVS 地址，增加两个 3 MiB OTA 槽位。试运行固件须在
-启动确认期限内完成初始化及 Launcher 首帧渲染。首次安装要求、回滚行为、分块 CRC
-和镜像头校验接口及独立配置编译命令见 [ADR-0005](docs/adr/0005-ab-ota-boot-confirmation.md)。
+用 `tools/test-host.sh --list` 查看测试，`--suite ui` 或 `--test reader`
+运行相关子集。Android 验证：`tools/test-android-companion.sh`。
+覆盖范围、报告和 sanitizer 选项见 [CI](docs/CI.md)。
 
-## 电子书阅读
+## 目录
 
-主菜单进入 **BOOK READER**，用上下键选书、OK 打开。阅读时上下键翻页，OK 打开
-字号与阅读位置选项，长按 OK 返回书库。每次显示成功后保存进度；Android 伴侣端
-可以查看进度并回传阅读位置，设备端需手动选择 **USE PHONE POSITION** 才会跳转。
-
-编译会从 `books/` 生成 `build/books.bin`。使用 `idf.py -p 串口 books-flash` 单独
-安装书库；该命令替换整个书籍分区，普通固件刷写保留书库。通过
-`-D "NOTE4_BOOKS_DIR=/书籍目录的绝对路径"` 可选用自己的 TXT/EPUB 目录。
-首次升级须安装新分区表，完整步骤与格式限制见 [docs/READER.md](docs/READER.md)。
-
-首次安装书库后，进入 **SEND BOOKS**，选择创建 Note4 热点或使用已保存的家庭网络。
-手机或电脑连接对应网络，在浏览器打开设备显示的地址并输入访问码。热点密码与访问码
-相同。拖入 TXT/EPUB 文件后点击 **Upload & finish**，完成后自动关闭 Wi-Fi，设备按
-OK 即可阅读。网页还支持下载和删除书籍；同名文件不会被覆盖。使用说明与会话时限见
-[docs/BOOK_TRANSFER.md](docs/BOOK_TRANSFER.md)。
-
-## Host 维护 CLI
-
-Linux 和 macOS 上可用 C++17 编译器运行维护 CLI。模拟器复用固件的解析器、终端
-会话和诊断执行器，硬件数据为模拟值，无需 ESP-IDF 或连接开发板。
-
-```bash
-bash tools/run-cli-host.sh
-# Build once for repeated runs or piped commands.
-bash tools/build-cli-host.sh
-build-host/note4-cli-host --owner-delay-ms 500 --log-burst 80
-printf 'sysinfo\nheap\nepd-inspect\n' | build-host/note4-cli-host
-```
-
-输入 `help` 查看命令。`Ctrl+C` 取消命令，`Ctrl+R` 重连会话，`Ctrl+D` 退出。
-`--owner-delay-ms` 可模拟诊断回复延迟，期间终端保持响应；`--log-interval-ms 0`
-关闭周期日志。管道输入按顺序执行命令，EOF 后完成待处理回复并取消日志流。
-
-运行 `bash tools/test-cli-host.sh` 验证终端和管道交互，或运行
-`bash tools/test-host.sh` 执行完整 Host 测试。测试需要 Python 3 和
-[uv](https://docs.astral.sh/uv/getting-started/installation/)。Python 夹具使用标准库；
-USB 和模块配置测试通过 uv 提供 pyserial、Kconfig 依赖，HTTP／HA 测试使用 Bun。
-执行模型和资源限制见[维护 CLI 契约](docs/MAINTENANCE_CLI_CONTRACT.md)。
-
-Host 测试默认两路并行。使用 `tools/test-host.sh --list` 查看五组测试，
-`--suite ui` 只测显示／阅读器，`--jobs 1 --verbose` 串行排错。
-耗时报告和独立日志位于 `build-host/host-tests/`，完整清单见 [CI 文档](docs/CI.md)。
-
-## 目录结构
-
-```text
-components/note4_epd/       SSD2683 墨水屏公开驱动
-components/note4_board/     NOTE4 引脚与外设适配层
-components/ui/               画布、点阵字库与双语原生 UI
-components/note4_self_test/ 硬件自检实现
-components/note4_platform/  平台组合根
-components/note4_reader/    TXT/EPUB 流式排版、字库与书签
-components/note4_*          系统服务与应用运行时
-android-companion/            开发中的 Android BLE/NFC 伴侣端
-protocol/                     跨端协议黄金向量
-main/assets/                  内嵌显示素材
-books/                        默认书库镜像的源目录
-tools/                        主机测试、检查与素材转换工具
-docs/                         架构、契约与验收记录
-```
-
-## 按键
-
-主屏采用日历/阅读概览卡与应用磁贴。概览卡可继续最近一次本地阅读，独立的
-**BOOK READER** 磁贴进入书库选书；无记录时概览卡也进入书库。上下键依次经过
-概览卡和从左到右、从上到下的磁贴。**TOOLS** 收纳连接、展示、自检及设备信息，
-工具应用长按 OK 返回原工具列表，再次长按返回主屏；两层选择都会保留。
-禁用阅读或网络模块后自动收起对应入口。详见 [主屏设计与验证](docs/HOME.md)
-和 [统一导航](docs/NAVIGATION.md)。
-
-| 操作 | 功能 |
+| 路径 | 内容 |
 | --- | --- |
-| 按下上键 | 上一项 |
-| 按下下键 | 下一项 |
-| 单击 OK | 选择或确认 |
-| 长按 OK 1.5 秒 | 返回上一级或取消当前操作 |
-| 长按下键 3 秒 | 显示所选待机画面、关闭外设并关机 |
+| `main/` | 固件组装、场景与内置资源 |
+| `components/` | 平台服务、驱动、UI、阅读器与应用运行时 |
+| `apps/`、`examples/` | 可安装 Lua 应用与 SDK 示例 |
+| `android-companion/` | Android 伴侣 |
+| `tools/` | 构建、测试、预览、USB 客户端与可选 HA 桥接 |
+| `docs/` | 指南、架构、接口说明和历史证据 |
+| `books/` | 可选初始书库；普通固件构建不会烧录它 |
 
-电池供电时会释放 GPIO17 电源锁存；USB 供电时会在显示待机画面后进入深度睡眠。
-关机后松开下键，再按一次即可唤醒。开机后也需先松开按键，避免误触发关机。
+生成的 `build*` 目录和日志不纳入源码交付。
 
-打开 **SLEEP COVER**，用上下键选择日历仪表盘、山水画报或空白隐私屏；OK 保存
-并预览，再按 OK 休眠，长按 OK 返回。仪表盘展示最近保存的书名与进度，并用
-**AS OF** 标注快照时间；日期有效时，日历于本地约 00:01 自动唤醒刷新后继续休眠。
-内置 [31 组中英双语每日短句](docs/SLEEP_QUOTES.md)。时钟无有效日期时显示
-**TIME NOT SET**。设置保存失败会显示 **NOT SAVED**，本次开机仍可使用所选样式。
-操作、按键释放超时后的恢复方法与验证范围见 [docs/SLEEP_COVER.md](docs/SLEEP_COVER.md)。
+## 安全与授权
 
-## 展示内容
+**不兼容 NOTE4C。** 烧录前确认硬件版本、准确串口并备份数据。
+分区布局变化需要单独迁移，不能只更新应用镜像。
+普通 SDK v2 升级不要擦除 NVS 或初始化书库；新版 Android 包需要重新配对。
+[迁移详情](docs/NOTE4_MIGRATION.md)。
 
-- 自动展示：依次轮播 1bpp 全刷灯塔、1bpp 局刷六步脚印、4bpp 十六灰阶山水画。
-- 显示图库：可单独运行三个刷新场景并查看格式、数据量、耗时和返回值。
-- 硬件测试：Wi-Fi RF、扬声器/麦克风声学回环、RTC、充电、电池、LED、三按键和 NFC。
-- 设备信息：Flash、PSRAM、MAC、RTC/NFC 状态、电池电压及充电状态。
-- 关于页面：Note4 Platform、Tinnci 与 MIT License 信息。
-
-4bpp 刷新前固定执行白色 1bpp 全刷，降低上一画面的残影。显示服务根据分区残影债务、
-温度与电池观测自适应决定全刷；单次大幅黑白翻转仍触发全刷，相同画面跳过刷新。
-模型、标定接口及 `display telemetry` / CSV 导出见
-[显示物理观测与调度](docs/DISPLAY_PHYSICS.md)。
-
-## 量产配置
-
-运行 `idf.py menuconfig`，进入 **Note4 hardware showcase**：
-
-- RF 目标 SSID 留空：扫描到任意 AP 即按展示模式通过。
-- 配置目标 SSID：必须连续 3 次找到该 SSID，且 RSSI 达到门限，默认 `-70 dBm`。
-- NFC URL 默认 `https://github.com/Tinnci/zectrix-note4-platform`；测试会备份 NFC 用户区，临时写入并
-  回读验证，测试结束后恢复原数据。
-
-## 开源与许可证说明
+NOTE4 与 ZECTRIX 是 Zectrix Lab / 相关权利人的产品名称或商标。
+本项目是独立社区项目，不是官方固件，与 Zectrix Lab 无官方附属、赞助或背书关系。
 
 Copyright (c) 2026 Zectrix Lab  
 Copyright (c) 2026 Tinnci  
-本项目采用 [MIT License](LICENSE) 开源。第三方依赖和字库授权见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。EPD 集成接口见 [docs/EPD_API.md](docs/EPD_API.md)，硬件引脚见 [docs/HARDWARE.md](docs/HARDWARE.md)，测试判定见 [docs/TEST_CRITERIA.md](docs/TEST_CRITERIA.md)。欢迎参与改进，提交前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+[MIT License](LICENSE) · [第三方授权](THIRD_PARTY_NOTICES.md) ·
+[上游来源](UPSTREAM.md) · [参与贡献](CONTRIBUTING.md) · [安全报告](SECURITY.md)
 
-## 致谢
-
-感谢开源硬件与软件社区的贡献与启发：
-
-- **[ZECTRIX Lab](https://wiki.zectrix.com/)** — 研发了出色的 Note4 硬件，并开源了初始参考演示工程（`itopinion/zectrix-note4-epd-demo`）。
-- **[CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader)** — 为墨水屏流式排版与局域网文件传输提供了良好的架构参考。
-- **[Flipper Zero](https://github.com/flipperdevices/flipperzero-firmware)** — 为轻量场景状态机与 CDC-ACM 终端交互提供了设计灵感。
-- **Heavyweight Type Foundry 与 GNU Unifont** — 提供基于 SIL OFL 协议的开源字库资源。
-
-## 官方链接
-
-- [ZECTRIX NOTE4 产品网页](https://www.zectrix.com/note4.html)
-- [ZECTRIX 开发者 Wiki](https://wiki.zectrix.com/)
+感谢 [Zectrix Lab](https://wiki.zectrix.com/) 提供硬件与原始参考固件，
+[CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader) 与
+[Flipper Zero](https://github.com/flipperdevices/flipperzero-firmware) 提供设计参考，
+Heavyweight Type Foundry / GNU Unifont 提供 OFL 字体。

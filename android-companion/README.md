@@ -1,7 +1,8 @@
 # Note4 Android companion
 
-This is the Android side of C1. It is a real application, not an SDK sample.
-It uses Android's built-in Kotlin support from Android Gradle Plugin 9.4.
+Android pairing, synchronization and bounded resource gateway for Note4.
+Use the committed Gradle Wrapper; see [build/test setup](../docs/PREREQUISITES.md)
+and [v2 enrollment migration](../docs/NOTE4_MIGRATION.md).
 
 ## Toolchain
 

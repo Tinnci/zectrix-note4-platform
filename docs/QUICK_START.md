@@ -1,117 +1,78 @@
-# Quick start
+# Build from source
 
-For ready-to-flash packages, button navigation, book transfer and app
-installation, use the illustrated [English handbook](HANDBOOK.md) or
-[中文手册](HANDBOOK_zh.md). The steps below build firmware from source.
+For device controls and everyday use, read the [English handbook](HANDBOOK.md)
+or [中文手册](HANDBOOK_zh.md). This guide covers development builds.
 
-## 1. Install ESP-IDF
+## 1. Prepare the environment
 
-Install the project-qualified ESP-IDF v5.5.2 baseline and open an ESP-IDF-
-enabled shell. Confirm that the tools are available:
-
-```bash
-idf.py --version
-```
-
-## 2. Configure and build
-
-From the standalone demo directory:
+Install the [qualified tools](PREREQUISITES.md) on Linux or macOS:
+ESP-IDF 5.5.2 for `esp32s3`, CMake 3.30.5, ccache, uv and Bun 1.4.2.
+From the repository root:
 
 ```bash
 source tools/activate-dev-env.sh
 tools/check-dev-env.sh
-tools/build-firmware.sh --clean
 ```
 
-The build helper fixes the target to `esp32s3`, enables ccache and checks the
-configured target after the build. The supplied defaults select 16 MB flash,
-octal PSRAM, a 3 MiB factory app partition, two 3 MiB OTA application slots,
-a separate 4 MiB book partition and bootloader rollback. If you invoke `idf.py` directly,
-run `idf.py set-target esp32s3` first. Delete a generated `sdkconfig` before
-you change targets or apply revised defaults to a configured copy.
+For an existing checkout with old names/configuration, follow the
+[SDK v2 migration](NOTE4_MIGRATION.md) first. Do not delete saved configuration
+or erase device data just to apply new defaults.
 
-For an existing checkout, see [ADR-0005](adr/0005-ab-ota-boot-confirmation.md)
-for a fresh-configuration build that preserves local settings. The first OTA
-layout installation needs the new bootloader and partition table as well as
-the application. An application-only update cannot migrate the old layout.
-
-## 3. Flash and monitor
+## 2. Build and test
 
 ```bash
-idf.py -p /dev/ttyACM0 flash monitor
+tools/build-firmware.sh --profile full
+tools/test-host.sh --jobs 2
 ```
 
-On Linux, the device can appear as `/dev/ttyACM0` or `/dev/ttyUSB0`. On macOS,
-look for `/dev/cu.usbmodem*`. On Windows, use the corresponding `COM` port.
+The helper sets `esp32s3`, enables ccache and reports size/partition capacity.
+Full output is in `build-full/`. Use `--profile reader` for an offline reader
+or `--profile minimal` for clock/settings/sleep/diagnostics.
+Named profiles preserve the repository-root `sdkconfig`.
+[Custom profiles and menuconfig](MODULAR_BUILD.md).
 
-Exit the monitor with `Ctrl+]`.
+For a targeted test: `tools/test-host.sh --suite ui` or
+`tools/test-host.sh --test reader --jobs 1 --verbose`.
+Android: `tools/test-android-companion.sh`.
+[Coverage and reports](CI.md).
 
-## 4. First run
+## 3. Flash only after checking the device
 
-After the splash screen, use UP/DOWN to move and OK to select. If no key is
-pressed for 15 seconds, Auto Showcase begins only when enabled in Settings
-(off by default). Hold OK for 1.5 seconds to
-return. Hold DOWN for 3 seconds from any normal screen to show the selected
-sleep cover and shut down. Release DOWN, then press it again to wake.
+This firmware targets **black-and-white Note4, not NOTE4C**.
+Confirm the hardware revision, 16 MiB Flash, octal PSRAM and exact serial port.
+Back up settings/content before any layout migration. The first A/B layout
+installation needs the bootloader and partition table as well as the app;
+an application-only update cannot migrate an old layout.
 
-**Book Reader** opens TXT/EPUB books from the independent content partition.
-Use the explicit `books-flash` target to install the bundled guide or your own
-book directory; normal firmware flash preserves that partition. See
-[READER.md](READER.md) for installation, controls and format limits.
-
-After the first library installation, open **Send Books**. Select the Note4
-hotspot or a saved home network. Connect your phone or computer to that network.
-Open the HTTP address shown on Note4. Enter the displayed access code and select
-TXT/EPUB files. **Upload & finish** saves the files and turns Wi-Fi off. Press
-OK on Note4 to read them. See [BOOK_TRANSFER.md](BOOK_TRANSFER.md) for details.
-
-Open **Sleep Cover** to select a daily dashboard, a landscape with a daily line
-or a blank privacy screen. OK saves the choice and previews it; another OK
-sleeps. Hold OK returns. The dashboard shows the last saved reading position
-and the date/time **AS OF** shutdown. It stays static during sleep and shows
-**TIME NOT SET** when no valid clock is available. See
-[SLEEP_COVER.md](SLEEP_COVER.md) for controls and settings.
-
-For a full hardware check, open **Hardware Tests**, select **Run All Tests**,
-and do the on-screen steps. Have the following ready:
-
-- a visible 2.4 GHz Wi-Fi access point.
-- a reasonably quiet environment for the acoustic loopback.
-- USB power and a connected battery for the charging test.
-- an NFC-capable phone for field detection.
-
-## Configuration
+Replace `PORT` with the confirmed device port:
 
 ```bash
-idf.py menuconfig
+idf.py -B build-full -p PORT flash monitor
 ```
 
-Use **Note4 hardware showcase** to set a qualification SSID, RSSI threshold
-and temporary NFC URL. Rebuild and reflash after changing configuration.
+Typical ports: Linux `/dev/ttyACM*` / `/dev/ttyUSB*`,
+macOS `/dev/cu.usbmodem*`. Exit the monitor with `Ctrl+]`.
+Normal firmware flashing preserves books on the matching partition layout.
+The separate `books-flash` operation initializes content: do not use it for
+an ordinary firmware upgrade. [Library setup](READER.md).
 
-## Common problems
+## 4. Use the device
 
-### The component download fails
+UP/DOWN moves focus; OK selects; hold OK returns. Hold DOWN for about three
+seconds to sleep, release it, then press again to wake. USB can keep the rail
+powered while the device sleeps. A held button can disable button wake;
+release it before testing sleep/wake.
 
-Confirm network access to the ESP Component Registry, then retry `idf.py build`.
-The project declares the component and version constraint in
-`main/idf_component.yml`.
+See [Home](HOME.md), [Reader](READER.md), [USB](USB_HOST.md),
+[Wi-Fi transfer](BOOK_TRANSFER.md) and [sleep/wake configuration](SLEEP_COVER.md).
+Automatic calendar/remote refresh depends on a valid clock, configuration
+and wake/radio budgets; a retained image does not imply an active connection.
 
-### The board repeatedly resets after flashing
+## Troubleshooting
 
-Confirm that the target is `esp32s3`. Confirm that the board has 16 MB flash
-and octal PSRAM. Flash the whole project, not only the app image.
-
-### BUSY timeout during an e-paper refresh
-
-Confirm the board revision and display cable, then verify the EPD pin mapping
-in `components/note4_epd/note4_epd.cc`. Do not start a partial refresh
-before a successful full 1bpp base refresh.
-
-### The board does not power off while connected to USB
-
-This is expected. USB keeps the rail powered. The terminal presents its sleep
-cover and enters deep sleep. Release DOWN after shutdown, then press it again
-to wake. If DOWN stays held beyond the roughly five-second release wait, button
-wake is left disabled; reset or power-cycle the board. Disconnect USB to
-validate battery-latch shutdown.
+- Component download: check registry access and `main/idf_component.yml`.
+- Reset loop: verify target, Flash/PSRAM settings and installed partition layout.
+- Display BUSY timeout: check cable/pin mapping; partial refresh needs a valid
+  full mono baseline. [Display ownership](DISPLAY_ARCHITECTURE.md).
+- Sleep/current problems: distinguish USB-powered deep sleep from battery
+  rail shutdown. Host simulation is not a current measurement.
