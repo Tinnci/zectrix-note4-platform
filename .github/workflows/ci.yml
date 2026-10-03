@@ -60,7 +60,18 @@ jobs:
         run: shellcheck tools/*.sh
 
       - name: Run host test suite
-        run: tools/test-host.sh
+        run: tools/test-host.sh --jobs 2
+
+      - name: Upload host timing and failure logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: host-test-report
+          path: |
+            build-host/host-tests/run-*/*.log
+            build-host/host-tests/run-*/results.json
+          if-no-files-found: warn
+          retention-days: 14
 
   android:
     name: Android companion

@@ -178,8 +178,13 @@ printf 'sysinfo\nheap\nepd-inspect\n' | build-host/zectrix-cli-host
 
 运行 `bash tools/test-cli-host.sh` 验证终端和管道交互，或运行
 `bash tools/test-host.sh` 执行完整 Host 测试。测试需要 Python 3 和
-[uv](https://docs.astral.sh/uv/getting-started/installation/)，仅使用 Python 标准库。
+[uv](https://docs.astral.sh/uv/getting-started/installation/)。Python 夹具使用标准库；
+USB 和模块配置测试通过 uv 提供 pyserial、Kconfig 依赖，HTTP／HA 测试使用 Bun。
 执行模型和资源限制见[维护 CLI 契约](docs/MAINTENANCE_CLI_CONTRACT.md)。
+
+Host 测试默认两路并行。使用 `tools/test-host.sh --list` 查看五组测试，
+`--suite ui` 只测显示／阅读器，`--jobs 1 --verbose` 串行排错。
+耗时报告和独立日志位于 `build-host/host-tests/`，完整清单见 [CI 文档](docs/CI.md)。
 
 ## 目录结构
 

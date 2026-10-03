@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$repo_dir/tools/ha-bridge"
-bun test bridge.test.ts ../ui_preview_test.ts
+exec uv run --no-project "$repo_dir/tools/host_tests_test.py"
