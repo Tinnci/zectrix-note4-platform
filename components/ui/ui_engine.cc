@@ -121,6 +121,14 @@ void UiEngine::DrawFrame(const char* title, const char* footer, bool portrait_ca
     canvas_.TextFitted(8, top + 19, rest, width - 16);
 }
 
+zectrix::ui::Rect UiEngine::BeginPage(const char* title, const char* footer, bool portrait_capable) {
+    DrawFrame(title, footer, portrait_capable);
+    const int top = FooterTop();
+    const zectrix::ui::Rect body(0, kHeaderHeight, canvas_.width(), top - kHeaderHeight);
+    canvas_.SetClip(body);
+    return body;
+}
+
 int UiEngine::WrapText(int x, int y, const char* text, int max_width, int line_height,
                             int max_lines, bool center, bool inverted) {
     if (!text || max_width <= 0 || max_lines <= 0) return 0;
@@ -200,7 +208,7 @@ esp_err_t UiEngine::ShowMenu(const char* title,
     if (items == nullptr || count == 0 || selected >= count) {
         return ESP_ERR_INVALID_ARG;
     }
-    DrawFrame(title, footer, true);
+    BeginPage(title, footer, true);
     const int width = canvas_.width();
     const int kListHeight = canvas_.height() - (canvas_.portrait() ? 100 : 92);  // 208 px in landscape
     const size_t visible = std::min<size_t>(count, canvas_.portrait() ? 11 : 8);
@@ -234,7 +242,7 @@ esp_err_t UiEngine::ShowMenu(const char* title,
 esp_err_t UiEngine::ShowClock(const zectrix::time::DateTime& value,
                                    bool full_refresh, const char* source,
                                    bool calendar_valid) {
-    DrawFrame(Tr(Text::Clock), Tr(Text::NavSetBackOff), true);
+    BeginPage(Tr(Text::Clock), Tr(Text::NavSetBackOff), true);
     const int dy = (canvas_.height() - 300) / 2;  // centers the landscape layout in portrait
     char line[32] = {};
     if (calendar_valid) {
@@ -254,7 +262,7 @@ esp_err_t UiEngine::ShowClock(const zectrix::time::DateTime& value,
 esp_err_t UiEngine::ShowSettings(const zectrix::app::SettingsController& settings, const char* status,
                                       bool full_refresh) {
     const bool languages = settings.page() == zectrix::app::SettingsPage::Language;
-    DrawFrame(Tr(languages ? Text::Language : Text::Settings),
+    BeginPage(Tr(languages ? Text::Language : Text::Settings),
               Tr(languages ? Text::NavApplyBack : Text::NavChangeBack), true);
     const int width = canvas_.width(), height = canvas_.height();
     const bool portrait = canvas_.portrait();

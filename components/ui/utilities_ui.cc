@@ -1,4 +1,5 @@
 #include "ui_engine.h"
+#include "layout.h"
 #include "zectrix_locale.h"
 #include "zectrix_utilities.h"
 
@@ -28,20 +29,19 @@ Text TimerControls(const FocusTimer& timer) {
     }
     return Text::NavBackOff;
 }
-}
+}  // namespace
 
 esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_refresh) {
     const auto& session = utilities.session();
     const auto& timer = session.timer;
     const auto phase = timer.phase() == FocusTimer::Phase::Focus ? Text::FocusPhase : Text::BreakPhase;
     char line[128];
-    // Portrait follows the display orientation; centered content shifts by dy.
-    const bool portrait = display_ != nullptr && display_->portrait();
-    const int width = portrait ? 300 : 400, height = portrait ? 400 : 300;
-    const int dy = (height - 300) / 2;
+
     switch (utilities.page()) {
         case UtilityPage::Menu: {
-            DrawFrame(Tr(Text::PocketTools), Tr(Text::NavOpenBack), true);
+            BeginPage(Tr(Text::PocketTools), Tr(Text::NavOpenBack), true);
+            const bool portrait = canvas_.portrait();
+            const int width = canvas_.width(), height = canvas_.height();
             constexpr Text names[] = {Text::FocusTimer, Text::OfflineCalendar, Text::Counter};
             for (std::size_t i = 0; i < std::size(names); ++i) {
                 const int y = 54 + static_cast<int>(i) * (portrait ? 84 : 62);
@@ -59,7 +59,10 @@ esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_
             break;
         }
         case UtilityPage::Focus: {
-            DrawFrame(Tr(Text::FocusTimer), Tr(TimerControls(timer)), true);
+            BeginPage(Tr(Text::FocusTimer), Tr(TimerControls(timer)), true);
+            const bool portrait = canvas_.portrait();
+            const int width = canvas_.width(), height = canvas_.height();
+            const int dy = (height - 300) / 2;
             canvas_.TextCentered(56 + dy, Tr(phase));
             canvas_.TextCentered(80 + dy, Tr(TimerState(timer)));
             std::snprintf(line, sizeof(line), "%u", utilities.timer_minutes());
@@ -73,7 +76,9 @@ esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_
             break;
         }
         case UtilityPage::Calendar: {
-            DrawFrame(Tr(Text::OfflineCalendar), Tr(Text::NavCalendar), true);
+            BeginPage(Tr(Text::OfflineCalendar), Tr(Text::NavCalendar), true);
+            const bool portrait = canvas_.portrait();
+            const int width = canvas_.width(), height = canvas_.height();
             const auto& month = session.month;
             std::snprintf(line, sizeof(line), "%04d - %02d", month.year(), month.month());
             canvas_.TextCentered(53, line, 2);
@@ -110,7 +115,8 @@ esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_
                             Tr(Text::NavOpenBack), full_refresh);
         }
         case UtilityPage::CalendarJump: {
-            DrawFrame(Tr(Text::CalendarJump), Tr(utilities.selected() == 0 ? Text::NavClockNext : Text::NavCalendarJump), true);
+            BeginPage(Tr(Text::CalendarJump), Tr(utilities.selected() == 0 ? Text::NavClockNext : Text::NavCalendarJump), true);
+            const int width = canvas_.width();
             WrapText(16, 62, Tr(Text::CalendarRange), width - 32, 18, 2, true);
             for (unsigned i = 0; i < 2; ++i) {
                 const int y = 99 + static_cast<int>(i) * 52;
@@ -124,8 +130,10 @@ esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_
             WrapText(16, 220, Tr(Text::CalendarKeepsClock), width - 32, 18, 2, true);
             break;
         }
-        case UtilityPage::Counter:
-            DrawFrame(Tr(Text::Counter), Tr(session.count == 0 && session.undo_count ? Text::NavCounterUndo : Text::NavCounterReset), true);
+        case UtilityPage::Counter: {
+            BeginPage(Tr(Text::Counter), Tr(session.count == 0 && session.undo_count ? Text::NavCounterUndo : Text::NavCounterReset), true);
+            const int width = canvas_.width(), height = canvas_.height();
+            const int dy = (height - 300) / 2;
             WrapText(16, 59 + dy, Tr(Text::UtilityCountHint), width - 32, 18, 2, true);
             std::snprintf(line, sizeof(line), "%04u", session.count);
             canvas_.TextCentered(101 + dy, line, 6);
@@ -133,6 +141,7 @@ esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_
             canvas_.TextCentered(215 + dy, line);
             WrapText(16, 246 + dy, Tr(Text::UtilityTemporary), width - 32, 18, 2, true);
             break;
+        }
         default: return ESP_ERR_INVALID_STATE;
     }
     return full_refresh ? RefreshFull() : RefreshAuto();

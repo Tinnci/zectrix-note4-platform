@@ -23,6 +23,7 @@ host_tests=(
     test-firmware-budget.sh
     test-health-supervisor.sh
     test-input-event.sh
+    test-layout.sh
     test-localization.sh
     test-module-config.sh
     test-pairing-bootstrap.sh

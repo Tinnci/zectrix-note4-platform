@@ -109,14 +109,13 @@ private:
     void BeginContent(bool portrait_capable = false);
     void OverlayGrayStatus();
     void DrawFrame(const char* title, const char* footer, bool portrait_capable = false);
+    // Standard page shell: draws frame, status bar and adaptive footer, returning the clipped body rect.
+    zectrix::ui::Rect BeginPage(const char* title, const char* footer, bool portrait_capable = true);
     // Portrait footers use two lines, so the footer rule sits higher (360 vs 369).
     int FooterTop() const { return canvas_.height() - (canvas_.portrait() ? 40 : 31); }
     // Word/CJK wrapped text; the final allowed line is ellipsized. Returns lines drawn.
     int WrapText(int x, int y, const char* text, int max_width, int line_height, int max_lines,
                  bool center = false, bool inverted = false);
-    esp_err_t ShowLauncherPortrait(const zectrix::app::LauncherController& launcher,
-                                   const zectrix::time::ClockSnapshot& clock,
-                                   const zectrix::app::ReadingOverview& reading, bool full_refresh);
     static void DrawFittedText(Canvas& canvas, int x, int y, const char* text,
                                int max_width, bool inverted = false);
     void DrawTestStrip(

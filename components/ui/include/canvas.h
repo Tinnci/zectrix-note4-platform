@@ -7,10 +7,12 @@
 
 #include "zectrix/sdk/text_style.h"
 #include "zectrix_digit_style.h"
+#include "layout.h"
 
 class Canvas {
 public:
     using TextStyle = zectrix::sdk::TextStyle;
+    using Clip = zectrix::ui::Rect;
     static constexpr int kWidth = 400;
     static constexpr int kHeight = 300;
     static constexpr int kStride = kWidth / 8;
@@ -18,7 +20,6 @@ public:
     static constexpr int kLargeNumberWidth = 90;
     static constexpr int kLargeNumberHeight = 48;
 
-    struct Clip { int x, y, width, height; };
     void SetClip(Clip clip);
     // Portrait frames use tightly packed scanlines (no per-row padding).
     void SetPortrait(bool portrait) { portrait_ = portrait; ResetClip(); }

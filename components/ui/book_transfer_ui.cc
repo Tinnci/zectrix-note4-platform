@@ -14,13 +14,11 @@ using zectrix::ui::DrawUtf8Line;
 esp_err_t UiEngine::ShowBookTransfer(const zectrix::connectivity::BookTransferSnapshot& status,
                                         bool choosing_mode, bool station_selected, bool full_refresh) {
     using namespace zectrix::connectivity;
-    // Portrait text wraps inside a 268 px column; landscape keeps its single-line layout.
-    const bool portrait = display_ != nullptr && display_->portrait();
-    const int width = portrait ? 300 : 400, height = portrait ? 400 : 300;
-    const int dy = (height - 300) / 2;
-    const int column = width - 32;
     if (choosing_mode) {
-        DrawFrame(Tr(Text::SendBooks), Tr(Text::NavTransferMode), true);
+        BeginPage(Tr(Text::SendBooks), Tr(Text::NavTransferMode), true);
+        const bool portrait = canvas_.portrait();
+        const int width = canvas_.width();
+        const int column = width - 32;
         const char* choices[] = {Tr(Text::CreateHotspot), Tr(Text::UseHomeWifi)};
         const char* details[] = {Tr(Text::HotspotDetail), Tr(Text::HomeWifiDetail)};
         for (unsigned i = 0; i < 2; ++i) {
@@ -40,10 +38,14 @@ esp_err_t UiEngine::ShowBookTransfer(const zectrix::connectivity::BookTransferSn
         }
     } else if (status.state == BookTransferState::Complete) {
 #if CONFIG_ZECTRIX_ENABLE_READER
-        DrawFrame(Tr(Text::TransferFinished), Tr(Text::NavTransferRead), true);
+        BeginPage(Tr(Text::TransferFinished), Tr(Text::NavTransferRead), true);
 #else
-        DrawFrame(Tr(Text::TransferFinished), Tr(Text::NavTransferHome), true);
+        BeginPage(Tr(Text::TransferFinished), Tr(Text::NavTransferHome), true);
 #endif
+        const bool portrait = canvas_.portrait();
+        const int width = canvas_.width(), height = canvas_.height();
+        const int dy = (height - 300) / 2;
+        const int column = width - 32;
         if (portrait) WrapText(16, 86 + dy, Tr(Text::WifiIsOff), column, 18, 2, true);
         else canvas_.TextCentered(86, Tr(Text::WifiIsOff), 2);
         char count[48];
@@ -51,7 +53,11 @@ esp_err_t UiEngine::ShowBookTransfer(const zectrix::connectivity::BookTransferSn
         WrapText(16, 144 + dy, count, column, 18, 2, true);
         WrapText(16, 194 + dy, Tr(Text::LibraryUpdated), column, 18, 2, true);
     } else if (status.state == BookTransferState::Failed || status.state == BookTransferState::Stopping) {
-        DrawFrame(Tr(Text::BookTransfer), status.state == BookTransferState::Stopping ? Tr(Text::NavRetryStop) : Tr(Text::NavTransferBack), true);
+        BeginPage(Tr(Text::BookTransfer), status.state == BookTransferState::Stopping ? Tr(Text::NavRetryStop) : Tr(Text::NavTransferBack), true);
+        const bool portrait = canvas_.portrait();
+        const int width = canvas_.width(), height = canvas_.height();
+        const int dy = (height - 300) / 2;
+        const int column = width - 32;
         const char* message = Tr(Text::TransferUnavailable);
         const char* detail = Tr(Text::TryHotspot);
         switch (status.error) {
@@ -69,7 +75,9 @@ esp_err_t UiEngine::ShowBookTransfer(const zectrix::connectivity::BookTransferSn
         const int lines = WrapText(16, 108 + dy, message, column, 18, 3, true);
         WrapText(16, 158 + dy + (portrait ? (lines - 1) * 18 : 0), detail, column, 18, 3, true);
     } else {
-        DrawFrame(status.state == BookTransferState::Starting ? Tr(Text::StartingWifi) : Tr(Text::SendBooks), Tr(Text::NavFinishCancel), true);
+        BeginPage(status.state == BookTransferState::Starting ? Tr(Text::StartingWifi) : Tr(Text::SendBooks), Tr(Text::NavFinishCancel), true);
+        const bool portrait = canvas_.portrait();
+        const int column = canvas_.width() - 32;
         if (portrait) {
             int y = 56;
             y += WrapText(16, y, status.mode == BookTransferMode::Hotspot ? Tr(Text::JoinHotspot) : Tr(Text::JoinNetwork), column, 18, 2) * 18 + 4;
