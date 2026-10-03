@@ -1,4 +1,4 @@
-#include "zectrix_runtime.h"
+#include "note4_runtime.h"
 
 #include <cassert>
 #include <cstring>
@@ -7,7 +7,7 @@
 #include <iterator>
 #include <string>
 
-using namespace zectrix::runtime;
+using namespace note4::runtime;
 
 static bool Start(Engine& engine, const std::string& source, Options options = {}) {
     return engine.Start(reinterpret_cast<const uint8_t*>(source.data()), source.size(), options);
@@ -44,11 +44,11 @@ int main(int argc, char** argv) {
     assert(engine.Draw() && engine.frame().count == 34);
     for (unsigned flags = 0; flags < 32; ++flags)
         assert(static_cast<unsigned>(engine.frame().commands[flags].style) == flags);
-    assert(engine.frame().commands[32].style == zectrix::sdk::TextStyle::Regular);
-    assert(engine.frame().commands[33].style == zectrix::sdk::TextStyle::Regular);
+    assert(engine.frame().commands[32].style == note4::sdk::TextStyle::Regular);
+    assert(engine.frame().commands[33].style == note4::sdk::TextStyle::Regular);
     const auto copied = engine.frame();
     engine.Stop();
-    assert(copied.commands[3].style == (zectrix::sdk::TextStyle::Bold | zectrix::sdk::TextStyle::Italic));
+    assert(copied.commands[3].style == (note4::sdk::TextStyle::Bold | note4::sdk::TextStyle::Italic));
     for (const char* flags : {"-1", "32", "256", "1099511627776"}) {
         assert(Start(engine, std::string("function on_render() note4.text(0,0,'bad',1,") + flags + ") end"));
         assert(!engine.Draw() && engine.error() == Error::Drawing && engine.heap().live == 0);

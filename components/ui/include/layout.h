@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <utility>
 
-namespace zectrix::ui {
+namespace note4::ui {
 
 struct Insets {
     int left = 0;
@@ -150,4 +150,4 @@ private:
     int gap_y_ = 0;
 };
 
-}  // namespace zectrix::ui
+}  // namespace note4::ui

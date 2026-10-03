@@ -1,15 +1,15 @@
-#include "zectrix_companion_identity.h"
+#include "note4_companion_identity.h"
 
 #include <array>
 #include <cassert>
 #include <cstring>
 
 int main() {
-    using zectrix::companion::CompanionIdentityRecord;
-    using zectrix::companion::DecodeCompanionIdentityRecord;
-    using zectrix::companion::EncodeCompanionIdentityRecord;
+    using note4::companion::CompanionIdentityRecord;
+    using note4::companion::DecodeCompanionIdentityRecord;
+    using note4::companion::EncodeCompanionIdentityRecord;
 
-    static_assert(zectrix::companion::kCompanionIdentityRecordSize == 28);
+    static_assert(note4::companion::kCompanionIdentityRecordSize == 28);
 
     CompanionIdentityRecord original{};
     original.magic = 0x3150435aU;
@@ -20,7 +20,7 @@ int main() {
     }
     original.enrollment_generation = 0x89abcdefU;
 
-    std::array<uint8_t, zectrix::companion::kCompanionIdentityRecordSize>
+    std::array<uint8_t, note4::companion::kCompanionIdentityRecordSize>
         encoded{};
     EncodeCompanionIdentityRecord(original, encoded.data());
 

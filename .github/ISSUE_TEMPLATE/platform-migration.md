@@ -73,6 +73,6 @@ Temporary exceptions and removal Issues:
 
 Issue closure means that the current acceptance criteria pass. It does not
 freeze the API or ABI. M2 and M3 interfaces have Draft status. M4 defines the
-SDK v1 compatibility policy.
+SDK v2 compatibility policy.
 
 See `docs/PLATFORM_MIGRATION_PRINCIPLES.md`.

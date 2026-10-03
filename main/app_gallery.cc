@@ -1,16 +1,16 @@
-#include "zectrix_locale.h"
+#include "note4_locale.h"
 #include "terminal_internal.h"
 
 #include <cstring>
 #include <iterator>
 
 #include "terminal_assets.h"
-#include "zectrix_gallery_controller.h"
+#include "note4_gallery_controller.h"
 
-using zectrix::i18n::Tr;
-using zectrix::i18n::Text;
+using note4::i18n::Tr;
+using note4::i18n::Text;
 
-namespace zectrix::terminal {
+namespace note4::terminal {
 
 constexpr uint8_t kFootprintMagic[] = {'Z', 'F', 'P', '1'};
 constexpr size_t kAnimationHeaderSize = 8;
@@ -41,7 +41,7 @@ public:
         return sdk::Status::Ok;
     }
     sdk::Status Render(const sdk::RenderRequest& request) override {
-        using zectrix::app::GalleryPage;
+        using note4::app::GalleryPage;
         const bool quality = request.intent == sdk::RenderIntent::Quality;
         if (controller_.page() == GalleryPage::Menu) {
             const char* kItems[] = {
@@ -57,8 +57,8 @@ public:
             const char* kModes[] = {Tr(Text::FullRefresh), Tr(Text::PartialRefresh), Tr(Text::FullPreclear)};
             return ToSdkStatus(owner_->ui_.ShowSceneInfo(kTitles[image], kModes[image],
                 image == 2 ? Tr(Text::FormatGray) : Tr(Text::FormatMono),
-                image == 2 ? zectrix::display::DisplayService::kFrameBytes4Bpp
-                           : zectrix::display::DisplayService::kFrameBytes1Bpp,
+                image == 2 ? note4::display::DisplayService::kFrameBytes4Bpp
+                           : note4::display::DisplayService::kFrameBytes1Bpp,
                 result_.elapsed_ms, result_.error, quality));
         }
 
@@ -93,8 +93,8 @@ public:
     }
 
 private:
-    void Apply(zectrix::app::GalleryDecision decision, sdk::ApplicationContext& context) {
-        using Decision = zectrix::app::GalleryDecision;
+    void Apply(note4::app::GalleryDecision decision, sdk::ApplicationContext& context) {
+        using Decision = note4::app::GalleryDecision;
         if (decision == Decision::Shutdown) context.RequestCommand(sdk::AppCommand::Shutdown());
         else if (decision == Decision::Back) owner_->RequestBack(context);
         else if (decision == Decision::RenderFast || decision == Decision::RenderQuality) {
@@ -116,7 +116,7 @@ private:
         if (!remaining_steps_ || !animation_cursor_ ||
             static_cast<size_t>(kFootprintAnimationEnd - animation_cursor_) < kStepHeaderSize)
             return ESP_ERR_INVALID_SIZE;
-        const zectrix::display::Rect region = {ReadLe16(animation_cursor_),
+        const note4::display::Rect region = {ReadLe16(animation_cursor_),
             ReadLe16(animation_cursor_ + 2), ReadLe16(animation_cursor_ + 4),
             ReadLe16(animation_cursor_ + 6)};
         const size_t size = ReadLe16(animation_cursor_ + 10);
@@ -130,7 +130,7 @@ private:
     }
 
     TerminalApp* owner_;
-    zectrix::app::GalleryController controller_;
+    note4::app::GalleryController controller_;
     SceneResult result_{};
     const uint8_t* animation_cursor_ = nullptr;
     uint16_t remaining_steps_ = 0;
@@ -149,4 +149,4 @@ sdk::Status TerminalApp::CreateShowcase(TerminalApp& owner, sdk::Application** o
     return CreateApplication<ShowcaseApplication>(owner, output);
 }
 
-}  // namespace zectrix::terminal
+}  // namespace note4::terminal

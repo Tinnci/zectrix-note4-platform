@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstdio>
 
-namespace zectrix::ui {
+namespace note4::ui {
 namespace {
 
 // Original row masks, read from left to right. All icons share the same ink path.
@@ -40,18 +40,18 @@ constexpr uint16_t kMarks[][7] = {
     {0, 0b10001, 0b01010, 0b00100, 0b01010, 0b10001, 0},
 };
 
-void Icon(ZectrixCanvas& canvas, int x, int y, int width, int height,
+void Icon(Canvas& canvas, int x, int y, int width, int height,
           const uint16_t* rows, bool ink) {
     for (int row = 0; row < height; ++row)
         for (int column = 0; column < width; ++column)
             if (rows[row] & (1U << (width - column - 1))) canvas.Pixel(x + column, y + row, ink);
 }
 
-void Badge(ZectrixCanvas& canvas, int x, int y, Mark mark, bool ink) {
+void Badge(Canvas& canvas, int x, int y, Mark mark, bool ink) {
     Icon(canvas, x, y, 5, 7, kMarks[static_cast<unsigned>(mark)], ink);
 }
 
-void RadioBadge(ZectrixCanvas& canvas, int x, int y, Mark mark, bool ink) {
+void RadioBadge(Canvas& canvas, int x, int y, Mark mark, bool ink) {
     Icon(canvas, x, y, 7, 7, kRadioMarks[static_cast<unsigned>(mark) - static_cast<unsigned>(Mark::Off)], ink);
 }
 
@@ -89,10 +89,10 @@ bool StatusBarState::operator==(const StatusBarState& other) const {
         RadioMark(wifi) == RadioMark(other.wifi);
 }
 
-void DrawStatusBar(ZectrixCanvas& canvas, const StatusBarState& state, bool inverted) {
+void DrawStatusBar(Canvas& canvas, const StatusBarState& state, bool inverted) {
     const bool ink = !inverted;
     // Right-hand slots are anchored to the right edge; portrait (300 px) shifts them left by 100.
-    const int dx = canvas.width() - ZectrixCanvas::kWidth;
+    const int dx = canvas.width() - Canvas::kWidth;
     canvas.FillRect(0, 0, canvas.width(), kStatusBarHeight, inverted);
     char text[12];
     if (state.time_valid) std::snprintf(text, sizeof(text), "%02u:%02u", state.hour, state.minute);
@@ -127,4 +127,4 @@ void DrawStatusBar(ZectrixCanvas& canvas, const StatusBarState& state, bool inve
     canvas.Line(0, kStatusBarHeight - 1, canvas.width() - 1, kStatusBarHeight - 1, ink);
 }
 
-}  // namespace zectrix::ui
+}  // namespace note4::ui

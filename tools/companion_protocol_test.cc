@@ -4,33 +4,33 @@
 #include <cstring>
 #include <vector>
 
-#include "zectrix_companion_protocol.h"
-#include "zectrix_clock_sync.h"
+#include "note4_companion_protocol.h"
+#include "note4_clock_sync.h"
 
-using zectrix::companion::DecodeCompanionIdentityValue;
-using zectrix::companion::DecodeEnrollmentProofValue;
-using zectrix::companion::DecodeFrame;
-using zectrix::companion::DecodeHelloAckStatusValue;
-using zectrix::companion::EncodeCompanionIdentityValue;
-using zectrix::companion::EncodeEnrollmentProofValue;
-using zectrix::companion::EncodeHelloAckStatusValue;
-using zectrix::companion::ControlMessage;
-using zectrix::companion::EncodeFragment;
-using zectrix::companion::EncodeFrame;
-using zectrix::companion::FragmentCount;
-using zectrix::companion::FragmentReassembler;
-using zectrix::companion::FrameHeader;
-using zectrix::companion::FrameView;
-using zectrix::companion::MessageClass;
-using zectrix::companion::ProtocolStatus;
-using zectrix::companion::TlvField;
-using zectrix::companion::TlvReader;
-using zectrix::companion::TlvWriter;
+using note4::companion::DecodeCompanionIdentityValue;
+using note4::companion::DecodeEnrollmentProofValue;
+using note4::companion::DecodeFrame;
+using note4::companion::DecodeHelloAckStatusValue;
+using note4::companion::EncodeCompanionIdentityValue;
+using note4::companion::EncodeEnrollmentProofValue;
+using note4::companion::EncodeHelloAckStatusValue;
+using note4::companion::ControlMessage;
+using note4::companion::EncodeFragment;
+using note4::companion::EncodeFrame;
+using note4::companion::FragmentCount;
+using note4::companion::FragmentReassembler;
+using note4::companion::FrameHeader;
+using note4::companion::FrameView;
+using note4::companion::MessageClass;
+using note4::companion::ProtocolStatus;
+using note4::companion::TlvField;
+using note4::companion::TlvReader;
+using note4::companion::TlvWriter;
 
 namespace {
 
 void TestClockHint() {
-    using namespace zectrix::companion;
+    using namespace note4::companion;
     const ClockSample source{1709179200123, -19800};
     const std::array<uint8_t, 12> expected{0x7b, 0xe2, 0x04, 0xf3, 0x8d, 0x01, 0, 0, 0xa8, 0xb2, 0xff, 0xff};
     std::array<uint8_t, kClockSampleValueSize> encoded{};
@@ -95,12 +95,12 @@ std::vector<uint8_t> MakeFrame() {
 
     FrameHeader header{};
     header.message_class = MessageClass::kCommand;
-    header.flags = zectrix::companion::kAckRequested |
-                   zectrix::companion::kRetriable;
+    header.flags = note4::companion::kAckRequested |
+                   note4::companion::kRetriable;
     header.message_type = 0x0102;
     header.request_id = 0x11223344;
     header.sequence = 0x55667788;
-    std::vector<uint8_t> frame(zectrix::companion::kMaximumFrameSize);
+    std::vector<uint8_t> frame(note4::companion::kMaximumFrameSize);
     std::size_t frame_size = 0;
     assert(EncodeFrame(header, payload.data(), writer.Size(), frame.data(),
                        frame.size(), &frame_size) == ProtocolStatus::kOk);
@@ -110,7 +110,7 @@ std::vector<uint8_t> MakeFrame() {
 
 void TestCrcAndFrame() {
     const uint8_t crc_input[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
-    assert(zectrix::companion::Crc32(crc_input, sizeof(crc_input)) ==
+    assert(note4::companion::Crc32(crc_input, sizeof(crc_input)) ==
            0xcbf43926U);
 
     const auto frame = MakeFrame();
@@ -172,8 +172,8 @@ void TestBoundsAndTlvErrors() {
     bool present = false;
     assert(reader.Next(&field, &present) == ProtocolStatus::kMalformedTlv);
 
-    std::array<uint8_t, zectrix::companion::kMaximumPayloadSize + 1> payload{};
-    std::array<uint8_t, zectrix::companion::kMaximumFrameSize + 1> frame{};
+    std::array<uint8_t, note4::companion::kMaximumPayloadSize + 1> payload{};
+    std::array<uint8_t, note4::companion::kMaximumFrameSize + 1> frame{};
     std::size_t size = 0;
     assert(EncodeFrame({}, payload.data(), payload.size(), frame.data(),
                        frame.size(), &size) == ProtocolStatus::kOversized);
@@ -240,8 +240,8 @@ void TestCompanionIdentityAndHelloAckStatus() {
     std::array<uint8_t, 4> status{};
     std::size_t status_size = 0;
     assert(EncodeHelloAckStatusValue(
-               zectrix::companion::kHelloAckStatusOk,
-               zectrix::companion::kHelloAckPeerAuthorizedFlag, 0,
+               note4::companion::kHelloAckStatusOk,
+               note4::companion::kHelloAckPeerAuthorizedFlag, 0,
                status.data(), status.size(), &status_size) ==
            ProtocolStatus::kOk);
     assert(status_size == 4);

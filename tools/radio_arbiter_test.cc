@@ -1,7 +1,7 @@
-#include "zectrix_radio_arbiter.h"
-#include "zectrix_book_storage.h"
-#include "zectrix_book_web.h"
-#include "zectrix_resource_client.h"
+#include "note4_radio_arbiter.h"
+#include "note4_book_storage.h"
+#include "note4_book_web.h"
+#include "note4_resource_client.h"
 
 #include <algorithm>
 #include <cassert>
@@ -15,7 +15,7 @@
 #include <vector>
 
 namespace {
-using namespace zectrix;
+using namespace note4;
 using namespace connectivity;
 using namespace companion;
 constexpr char kCode[] = "ABCDEFGH2345";

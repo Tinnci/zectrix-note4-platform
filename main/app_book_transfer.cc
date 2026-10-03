@@ -2,10 +2,10 @@
 
 #include "esp_log.h"
 
-#include "zectrix_book_transfer_controller.h"
-#include "zectrix_connectivity_service.h"
+#include "note4_book_transfer_controller.h"
+#include "note4_connectivity_service.h"
 
-namespace zectrix::terminal {
+namespace note4::terminal {
 
 class TerminalApp::BookTransferApplication final : public sdk::Application {
 public:
@@ -14,7 +14,7 @@ public:
         owner_.BindScenes(controller_);
         const auto result = controller_.Start();
         if (!sdk::IsOk(result)) return result;
-        return Apply(zectrix::app::BookTransferDecision::RenderQuality, context);
+        return Apply(note4::app::BookTransferDecision::RenderQuality, context);
     }
     sdk::Status HandleEvent(const sdk::InputEvent& event, sdk::ApplicationContext& context) override {
         return Apply(controller_.Handle(event), context);
@@ -24,7 +24,7 @@ public:
     }
     sdk::Status Render(const sdk::RenderRequest& request) override {
         const auto result = owner_.ui_.ShowBookTransfer(controller_.snapshot(),
-            controller_.scene() == zectrix::app::BookTransferScene::Mode, controller_.station_selected(),
+            controller_.scene() == note4::app::BookTransferScene::Mode, controller_.station_selected(),
             request.intent == sdk::RenderIntent::Quality);
         controller_.Presented(result == ESP_OK);
         return ToSdkStatus(result);
@@ -32,14 +32,14 @@ public:
     sdk::Status Exit() override {
         controller_.Stop();
         const auto stopped = owner_.connectivity_->StopBookTransfer();
-        if (stopped != zectrix::connectivity::ConnectivityResult::kOk)
+        if (stopped != note4::connectivity::ConnectivityResult::kOk)
             ESP_LOGW(kTag, "book transfer stop is retrying on the connectivity owner");
         return sdk::Status::Ok;
     }
 private:
-    sdk::Status Apply(zectrix::app::BookTransferDecision decision, sdk::ApplicationContext& context) {
-        using Decision = zectrix::app::BookTransferDecision;
-        using Mode = zectrix::connectivity::BookTransferMode;
+    sdk::Status Apply(note4::app::BookTransferDecision decision, sdk::ApplicationContext& context) {
+        using Decision = note4::app::BookTransferDecision;
+        using Mode = note4::connectivity::BookTransferMode;
         switch (decision) {
             case Decision::Hotspot:
             case Decision::Station:
@@ -57,7 +57,7 @@ private:
                 context.RequestRender({0, 24, 400, 276}, decision == Decision::RenderQuality ? sdk::RenderIntent::Quality : sdk::RenderIntent::Fast);
                 break;
             case Decision::Reader: {
-#if CONFIG_ZECTRIX_ENABLE_READER
+#if CONFIG_NOTE4_ENABLE_READER
                 sdk::AppCommand open;
                 if (!sdk::AppCommand::Open("reader", &open)) return sdk::Status::InternalError;
                 context.RequestCommand(open);
@@ -73,11 +73,11 @@ private:
         return sdk::Status::Ok;
     }
     TerminalApp& owner_;
-    zectrix::app::BookTransferController controller_;
+    note4::app::BookTransferController controller_;
 };
 
 sdk::Status TerminalApp::CreateBookTransfer(TerminalApp& owner, sdk::Application** output) {
     return CreateApplication<BookTransferApplication>(owner, output);
 }
 
-}  // namespace zectrix::terminal
+}  // namespace note4::terminal

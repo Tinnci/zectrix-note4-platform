@@ -1,4 +1,4 @@
-# Zectrix Note4 Platform - Astra Autonomous Iteration Backlog
+# Note4 Platform - Astra Autonomous Iteration Backlog
 
 This backlog guides the continuous autonomous iteration loop for `gpt-6-astra`.
 Each iteration picks the top unfinished task, implements production code, verifies host builds, makes a clean git commit, and checks off the task.
@@ -8,11 +8,11 @@ Each iteration picks the top unfinished task, implements production code, verifi
 ## Milestone C1: Connectivity Platform (互联平台)
 
 - [x] **C1.1: Direct Wi-Fi Backend Interface & Drivers**
-  - Define `zectrix_wifi_backend.h` and implement `zectrix_wifi_esp_driver.cc`.
+  - Define `note4_wifi_backend.h` and implement `note4_wifi_esp_driver.cc`.
   - Wire ESP-IDF Wi-Fi/netif events with thread-safe callbacks.
   - Harmonize RF self-test and connectivity Wi-Fi sharing.
 - [x] **C1.2: Direct HTTPS Resource Client & Escalation Path**
-  - Implement `zectrix_wifi_http.cc` using `esp_http_client`.
+  - Implement `note4_wifi_http.cc` using `esp_http_client`.
   - Wire `ConnectivityPolicy` to trigger direct Wi-Fi fetch when phone proxy is unavailable.
   - Implement automatic radio shutdown (power save) after transfer completion.
 - [x] **C1.3: Companion Sync Protocol Hardening & Durable Reconnect**
@@ -25,7 +25,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
 ## Milestone D1: Maintenance CLI (维护命令行系统)
 
 - [x] **D1.1: USB CDC-ACM Session & Transport Layer**
-  - Define `zectrix_cli_usb.h` and `zectrix_cli_session.h`.
+  - Define `note4_cli_usb.h` and `note4_cli_session.h`.
   - Non-blocking line parser and ANSI-capable text session.
 - [x] **D1.2: Platform Diagnostic Command Set Implementation**
   - Implement `sysinfo`, `heap`, `tasks`, and `uptime` inspection commands.
@@ -92,7 +92,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - Persisted eight recent bookmarks after successful display, including display recovery, and connected the latest reading position to C1 durable sync and Android's explicit resume action.
   - Verified all 28 Host targets with reader ASan/UBSan checks, 28 Android JVM tests and the debug build, the ESP32-S3 firmware build and connected-device flash/boot smoke. A 2 MiB TXT tail resume reads 63 source bytes. Physical reading controls and BLE progress exchange remain hardware qualification work.
 - [x] **L1.3: 局域网 Web 传书与内容管理后台 (Direct Wi-Fi Content Ingestion)**
-  - Implement lightweight embedded HTTP file transfer server using existing `zectrix_connectivity` Wi-Fi AP/STA mode.
+  - Implement lightweight embedded HTTP file transfer server using existing `note4_connectivity` Wi-Fi AP/STA mode.
   - Allow browser-based drag-and-drop file upload to SPI Flash / LittleFS storage.
   - Ensure Wi-Fi radio automatically powers down on completion to preserve battery.
   - Added SEND BOOKS with Mode -> Session scenes, WPA2 hotspot or saved-network access, and a self-contained browser library for drag-and-drop TXT/EPUB upload, download and deletion.
@@ -115,20 +115,20 @@ Each iteration picks the top unfinished task, implements production code, verifi
 
 ### 架构设计准则 (Architectural Principles)
 1. **原生 Kconfig 驱动**：使用 ESP-IDF 原生的 `Kconfig.projbuild` 机制，暴露标准配置项，支持终端 `idf.py menuconfig` 和纯文本 `sdkconfig.defaults`（对 AI / CI 零成本配置友好）。
-2. **CMake 动态组件过滤**：在 `main/CMakeLists.txt` 中依据 `CONFIG_ZECTRIX_ENABLE_*` 动态引入依赖，未选中的组件不参与编译与链接。
+2. **CMake 动态组件过滤**：在 `main/CMakeLists.txt` 中依据 `CONFIG_NOTE4_ENABLE_*` 动态引入依赖，未选中的组件不参与编译与链接。
 3. **轻量服务注册表 (Service Registry)**：引入无堆分配或极轻量的服务定位抽象（Interface-based），避免 `app_main.cc` 静态 `#include` 所有非必要头文件；上层 Launcher / UI 查询服务为 `nullptr` 时实现优雅降级。
 4. **硬件 RTC 绝对时钟长效维持 (Persistent Wall Clock via RTC Circuit)**：深入分析硬件板载 PCF8563 独立 RTC 电路与备用供电机制。确保设备关机/Deep Sleep 期间 RTC 持续低功耗计时，开机时精准同步回系统墙上时钟（Wall Clock）而非单调运行时间（Monotonic/Uptime fallback），并结合 Companion BLE / 网络时间实现自动回写校准。
 
 ### 迭代任务清单 (Backlog Items)
 - [x] **S1.1: 基础服务抽象与轻量 Service Registry 设计**
-  - 在 `components/zectrix_platform` 或核心库中定义标准化的纯虚服务接口基类与轻量服务注册表 (`zectrix_service_registry.h`)。
+  - 在 `components/note4_platform` 或核心库中定义标准化的纯虚服务接口基类与轻量服务注册表 (`note4_service_registry.h`)。
   - 规范各子系统的生命周期契约（`Init()`, `Start()`, `Stop()`），支持无堆或静态 slot 注册与解耦查询。
   - Added pure virtual Service/ServiceProvider interfaces and a 16-slot typed registry with no RTTI, task or registry heap allocation. Missing, unstarted and stopped providers return null; failed startup unwinds attempted providers in reverse order.
   - Integrated ten embedded lifecycle bindings into production Platform startup, accessors and cleanup. Preserved CLI/NFC cleanup, final Input/Power ownership and trial-boot watchdog behavior; Kconfig selection and application conditionals remain S1.2/S1.3.
   - Verified all 31 Host targets, focused registry/platform ASan/UBSan checks, ShellCheck, the ESP32-S3 build and connected-device flash/boot smoke. Registry size is 528 bytes on the 64-bit Host and 264 bytes in the ESP32-S3 ELF; registry dispatch allocates no heap. See docs/SERVICE_REGISTRY.md.
 - [x] **S1.2: 组件级 Kconfig 定义与 CMake 条件依赖绑定**
-  - 为 `zectrix_connectivity`、`zectrix_reader`、`zectrix_cli`、`zectrix_update` 编写 `Kconfig.projbuild`。
-  - 声明 `CONFIG_ZECTRIX_ENABLE_CONNECTIVITY`、`CONFIG_ZECTRIX_ENABLE_READER`、`CONFIG_ZECTRIX_ENABLE_USB_CLI` 等选项及其依赖拓扑（如 HTTP 依赖 Wi-Fi）。
+  - 为 `note4_connectivity`、`note4_reader`、`note4_cli`、`note4_update` 编写 `Kconfig.projbuild`。
+  - 声明 `CONFIG_NOTE4_ENABLE_CONNECTIVITY`、`CONFIG_NOTE4_ENABLE_READER`、`CONFIG_NOTE4_ENABLE_USB_CLI` 等选项及其依赖拓扑（如 HTTP 依赖 Wi-Fi）。
   - 重构 `main/CMakeLists.txt` 为动态 `REQUIRES`，未开启的组件彻底从构建树中剪除。
   - Added four component Kconfig definitions with selectable connectivity, Wi-Fi, HTTPS, Web transfer, reader, USB CLI and firmware writing. Native Kconfig resolution runs before IDF dependency expansion, preserving defaults and saved settings while removing excluded components, sources, fonts and book storage.
   - Integrated selected services and Launcher destinations, independent Web transfer, offline bookmark persistence and RF SKIP reporting. Moved existing boot validation, rollback confirmation and watchdog protection into the mandatory System component so disabling firmware writing preserves recovery safety.
@@ -155,7 +155,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
 - [x] **E1.1: CrossPoint & Flipper Zero 衍生项目调研与风格演进 (Firmware Forks & UI Architecture Study)**
   - Analyze open-source derivative forks: CrossPoint community forks (Biscuit, CrossMux, CrossInk) and Flipper Zero custom firmwares (Momentum, Unleashed).
   - Study their desktop layouts, sleep screen overlays, font caching/antialiasing/dithering for e-ink, and practical app launcher UX.
-  - Propose and document architectural evolution for Zectrix Note4 open firmware.
+  - Propose and document architectural evolution for Note4 open firmware.
   - Reviewed Biscuit, CrossMux, CrossInk, Momentum and Unleashed source with CrossPoint/Flipper references. Documented daily Home, scene ownership, static versus active standby, streamed transfer, font preparation and image dithering decisions in [docs/FIRMWARE_UI_STUDY.md](docs/FIRMWARE_UI_STUDY.md).
   - Added a proportional Launcher overflow indicator on the existing canvas, hidden when all eight rows fit. No new task, buffer, persistent state or refresh operation is required. Added the Minimal menu to the visual preview fixture.
   - Verified all 32 Host targets, the focused display suite, Full/Minimal ESP32-S3 builds and rendered first/last/Minimal menus. Full is 2,995,824 bytes and Minimal is 548,960 bytes (81.7% smaller); static internal RAM is 213,495/118,651 bytes. Hardware was not required for this UI change; proposed home, font and cover features remain subsequent iterations.
@@ -227,14 +227,14 @@ Each iteration picks the top unfinished task, implements production code, verifi
     - 对标 GitHub Milestone #6（`Research — Dynamic application runtime`），探索让第三方应用在不重新编译或全量烧录整机固件的前提下，被独立分发、加载与运行的技术路径。
   - **交由 Astra 深度推演的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
     1. *执行载体与沙箱隔离*：如何权衡原生精简 ELF 动态重定位（对标 Flipper Zero `.fap`）、轻量 WebAssembly 字节码虚拟机（如 Wasm3/WAMR）以及微型脚本引擎在 ESP32-S3（无 MMU、8MB 八线 PSRAM）上的内存开销、执行性能与故障隔离能力？
-    2. *稳定二进制 ABI 与系统调用边界*：如何从当前的 C++17 源码级 SDK（SDK v1）逐步沉淀出一套版本化、二进制稳定的系统调用跳转表（Syscall Jump Table），确保第三方应用在底层固件升级迭代时保持良好的跨版本运行兼容性？
+    2. *稳定二进制 ABI 与系统调用边界*：如何从当前的 C++17 源码级 SDK（SDK v2）逐步沉淀出一套版本化、二进制稳定的系统调用跳转表（Syscall Jump Table），确保第三方应用在底层固件升级迭代时保持良好的跨版本运行兼容性？
     3. *动态发现、生命周期与存储流转*：独立编译的微应用如何借助 USB/文件系统通道（衔接 E1.8 成果）进行热插拔安装与管理？启动器（Launcher）与场景栈如何动态解析应用元数据并实现零碎片加载与退出清理？
   - **期待产出**：
     - 输出系统性技术预研报告，深入评估各技术路线在 Note4 软硬件平台上的可行性、内存/Flash 预算开销与演进阶段建议。
   - Compared Espressif ELF, Wasm3, WAMR and Lua with CrossPoint workflows and Flipper FAP/SceneManager/ViewPort ownership. Documented the proposed binary host boundary, paged Apps destination, USB/storage installation and bounded lifecycle in [docs/DYNAMIC_APPLICATION_RESEARCH.md](docs/DYNAMIC_APPLICATION_RESEARCH.md).
   - Completed executable probes for memory limits, malformed input, copied imports, 100 load/unload cycles and callback/initialization loops. Corrected Wasm3 budget reset, protected and metered Lua initialization, and retained WAMR's writable module input through unload. Experimental engines remain outside normal firmware and Host builds.
   - Full-image links add 63,952 / 64,032 / 79,792 bytes for Wasm3 / WAMR / Lua; all fit the existing 3 MiB slots. Metered WAMR is the preferred compiled-app prototype, with Lua as a personal-scripting alternative. The report records Wasm initialization timeouts and reproducible Host UBSan findings rather than claiming safe arbitrary-code execution.
-  - Verified all 35 production Host targets, the Full firmware build, three isolated ESP32-S3 probe links and restricted Lua ASan/UBSan. SDK v1 stays source-compatible and static; third-party loading and physical guest execution remain subsequent implementation work. No hardware flash, partition change or new release gate was needed.
+  - Verified all 35 production Host targets, the Full firmware build, three isolated ESP32-S3 probe links and restricted Lua ASan/UBSan. SDK v2 stays source-compatible and static; third-party loading and physical guest execution remain subsequent implementation work. No hardware flash, partition change or new release gate was needed.
 
 ---
 
@@ -253,7 +253,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
     - 承接 E2.1 架构预研与基准测量结论（[docs/DYNAMIC_APPLICATION_RESEARCH.md](docs/DYNAMIC_APPLICATION_RESEARCH.md)），将动态应用从“纯理论调研与隔离探针”推向“最小可用工程原型（Minimum Viable Prototype）”。
     - 让 Note4 启动器初步具备发现并载入独立沙箱微应用的能力，使极客用户能在不重新编译/烧录整机固件的前提下探索第三方扩展。
   - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
-    1. *宿主运行时边界与首选适配器落地*：根据 E2.1 中针对 WAMR（经典解释器、指令配额计量）与受限 Lua 5.4 的优劣权衡，选择最可控且符合当前固件预算的路径构建可选的沙箱适配组件（如 `zectrix_runtime`），解决内存对齐或初始化边界问题。
+    1. *宿主运行时边界与首选适配器落地*：根据 E2.1 中针对 WAMR（经典解释器、指令配额计量）与受限 Lua 5.4 的优劣权衡，选择最可控且符合当前固件预算的路径构建可选的沙箱适配组件（如 `note4_runtime`），解决内存对齐或初始化边界问题。
     2. *极简系统调用接口设计*：为沙箱暴露哪些必要的轻量 Native 宿主功能？如何通过零分配/只读快照将物理按键事件输入、单色 15KB 画布绘制以及退出返回控制以最小摩擦暴露给动态应用？
     3. *端侧动态发现与运行生命周期*：如何在 Launcher 引入分页式“Apps”磁贴或动态入口？如何确保应用异常崩溃、配额耗尽或用户长按退出时，沙箱能够干净回收内存并恢复系统前台状态？
     4. *示范微应用原型验证*：自主设计并实现 1~2 个小巧实用的独立微应用示例（如计算器、简易备忘、卡片复习等），验证端到端闭环。
@@ -267,7 +267,7 @@ Each iteration picks the top unfinished task, implements production code, verifi
   - **交由 Astra 自由探索与权衡的开放性核心命题 (Open Architectural Questions for Astra to Explore)**：
     1. *工具选型与使用场景*：在墨水屏与三键限制下，哪些原生离线工具最能体现随身设备的价值？例如专注番茄钟（Pomodoro Timer）、离线万年历与节气卡片（Perpetual Calendar）、极简便签/闪卡（Memo/Flashcards）或其他实用小工具？
     2. *低频常显与功耗哲学*：微工具在前台运行或待机锁屏时，如何合理运用局部刷新与休眠调度，既保持即时信息可读性，又守住低功耗底线？
-    3. *模块化裁剪一致性*：新增的原生小工具如何与 `components/zectrix_app`、Kconfig 与 ServiceRegistry 优雅结合，保持极小固件（Minimal Profile）下随时可一键裁剪的纯洁度？
+    3. *模块化裁剪一致性*：新增的原生小工具如何与 `components/note4_app`、Kconfig 与 ServiceRegistry 优雅结合，保持极小固件（Minimal Profile）下随时可一键裁剪的纯洁度？
   - Added optional Home > Pocket Tools with a 5–120 minute focus timer and manual five-minute breaks, a browsable 1900–2199 Gregorian calendar with Today/year-month jump, and a bounded tally counter with reset undo. English/Chinese controls and six private scenes preserve global Back/shutdown; [docs/UTILITIES.md](docs/UTILITIES.md) records usage and lifecycle.
   - Reused TimeService, SceneManager and the shared 15,000-byte canvas. Monotonic timing retains exact pause/resume and same-boot state across foreground recreation; visible countdowns update by minute, failed frames retry with Quality, and hidden timers do not redraw unrelated tools. No background task, storage writes, radio work or wake alarm is added; shutdown clears temporary state.
   - Verified all 37 Host targets, utility ASan/UBSan, both language renderers/previews and ShellCheck. Full/Minimal firmware and profile comparison passed at 3,120,016 / 564,896 bytes; Full adds 7,376 bytes and retains 25,712 bytes in the existing slot. Minimal excludes utility sources and session RAM. The simulated minute update transfers 880 bytes; no hardware flash or partition change was needed.
@@ -432,8 +432,8 @@ Each iteration picks the top unfinished task, implements production code, verifi
     2. *双向持久化数据同步*：在真实 BLE 连接下，验证阅读进度流式回传、离线排队重发、手机端天气/时间校准同步；
     3. *手机端传书与画报推送*：通过手机端伴侣应用一键推送电子书或待机画报至 Note4 存储分区。
   - Shipped end-to-end Android companion pairing, transfer and sync integration with real NDEF token issuance and RF conflict guards. Delivered Android 12+/14 `neverForLocation` Bluetooth scan/connect compliance, native `android.nfc.action.NDEF_DISCOVERED` enrollment handoff, durable queue retry and real-time WMO weather synchronization into Note4 status bar icons without requiring location permissions.
-  - Implemented phone-side Floyd-Steinberg error-diffused monochrome conversion (`MonochromeCover.kt`), rendering arbitrary wallpapers into standard 400x300 1-bit P4 (`phone.pbm`) bitmaps and streaming them directly over BLE/HTTP to Note4 storage. Added `zectrix_cover_image.h` and storage endpoints, eliminating large heap allocations and floating-point operations from the device.
-  - Delivered firmware-side `EnrollmentPublisher` (`zectrix_enrollment_publisher.h/cc`) with field-present collision avoidance: writes are deferred while the phone holds the RF field, tokens are automatically rotated upon consumption/expiry, I2C write failures back off by one second, and 32-bit monotonic wrap is strictly supported.
+  - Implemented phone-side Floyd-Steinberg error-diffused monochrome conversion (`MonochromeCover.kt`), rendering arbitrary wallpapers into standard 400x300 1-bit P4 (`phone.pbm`) bitmaps and streaming them directly over BLE/HTTP to Note4 storage. Added `note4_cover_image.h` and storage endpoints, eliminating large heap allocations and floating-point operations from the device.
+  - Delivered firmware-side `EnrollmentPublisher` (`note4_enrollment_publisher.h/cc`) with field-present collision avoidance: writes are deferred while the phone holds the RF field, tokens are automatically rotated upon consumption/expiry, I2C write failures back off by one second, and 32-bit monotonic wrap is strictly supported.
   - Verified across 41 Host targets, `test-enrollment-ndef.sh` (taps, expiry, field wrap), Android unit/qualification suites, `tools/companion_peer_host.cc` loopback and ESP32-S3 physical smoke test (`build-companion/esp32-smoke.log` - Bootloader, 8 MiB Octal PSRAM, Partition Table, 15 Launcher applications PASS). See [docs/qualification/C2.1-COMPANION-INTEGRATION.md](docs/qualification/C2.1-COMPANION-INTEGRATION.md).
 
 - [ ] **R2.1: Note4 生产级固件全量发布与用户使用手册 (Production Firmware Release Pipeline & User Handbook)**

@@ -8,14 +8,14 @@ trap 'rm -rf "$tmp_dir"' EXIT
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -I"$repo_root/tools/update_host_include" \
     -I"$repo_root/tools/host_include" \
-    -I"$repo_root/components/zectrix_update/include" \
-    -I"$repo_root/components/zectrix_system/include" \
-    "$repo_root/components/zectrix_system/zectrix_boot_guard.cc" \
-    "$repo_root/components/zectrix_system/zectrix_boot_esp.cc" \
-    "$repo_root/components/zectrix_system/zectrix_health_supervisor.cc" \
-    "$repo_root/components/zectrix_system/zectrix_health_esp.cc" \
-    "$repo_root/components/zectrix_update/zectrix_update_stream.cc" \
-    "$repo_root/components/zectrix_update/zectrix_update_esp.cc" \
+    -I"$repo_root/components/note4_update/include" \
+    -I"$repo_root/components/note4_system/include" \
+    "$repo_root/components/note4_system/note4_boot_guard.cc" \
+    "$repo_root/components/note4_system/note4_boot_esp.cc" \
+    "$repo_root/components/note4_system/note4_health_supervisor.cc" \
+    "$repo_root/components/note4_system/note4_health_esp.cc" \
+    "$repo_root/components/note4_update/note4_update_stream.cc" \
+    "$repo_root/components/note4_update/note4_update_esp.cc" \
     "$repo_root/tools/update_service_test.cc" \
     -o "$tmp_dir/update_service_test"
 

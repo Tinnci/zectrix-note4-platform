@@ -31,7 +31,7 @@ if ! command -v idf.py >/dev/null 2>&1 || [ -z "${IDF_PATH:-}" ]; then
     exit 1
 fi
 
-export IDF_TARGET="${ZECTRIX_IDF_TARGET:-esp32s3}"
+export IDF_TARGET="${NOTE4_IDF_TARGET:-esp32s3}"
 export IDF_SKIP_CHECK_SUBMODULES="${IDF_SKIP_CHECK_SUBMODULES:-1}"
 
 cd "$repo_dir"

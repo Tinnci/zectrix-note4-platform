@@ -1,4 +1,4 @@
-#include "zectrix_cli_diagnostics.h"
+#include "note4_cli_diagnostics.h"
 
 #include <algorithm>
 #include <atomic>
@@ -11,7 +11,7 @@
 #include <string>
 #include <thread>
 
-using namespace zectrix::cli;
+using namespace note4::cli;
 
 namespace {
 
@@ -42,8 +42,8 @@ public:
     unsigned calls = 0;
     ControlOperation last_operation = ControlOperation::kSystemInfo;
     ControlRequest last_request{};
-    zectrix::input::InputTrace* trace = nullptr;
-    zectrix::display::TelemetryRecorder* display_trace = nullptr;
+    note4::input::InputTrace* trace = nullptr;
+    note4::display::TelemetryRecorder* display_trace = nullptr;
     ControlResult sample;
     ControlStatus status = ControlStatus::kOk;
     std::function<void()> on_inspect;
@@ -75,13 +75,13 @@ std::string Run(DiagnosticExecutor& executor, PlatformControlDispatcher& dispatc
 
 void TestDisplayTelemetryCommands() {
     Owner owner;
-    zectrix::display::TelemetryRecorder recorder;
+    note4::display::TelemetryRecorder recorder;
     owner.display_trace = &recorder;
     PlatformControlDispatcher dispatcher(owner, Clock);
     LogBuffer logs;
     DiagnosticExecutor executor(dispatcher, logs);
     assert(Run(executor, dispatcher, "display telemetry").find("frames=0") != std::string::npos);
-    zectrix::display::FrameTelemetry frame;
+    note4::display::FrameTelemetry frame;
     frame.started_us = UINT64_MAX;
     frame.duration_us = frame.busy_us = frame.refresh_busy_us = frame.spi_bytes = frame.ram_bytes = UINT32_MAX;
     frame.black_to_white = frame.white_to_black = UINT32_MAX;
@@ -125,20 +125,20 @@ void TestCommands() {
     std::strcpy(owner.sample.system.firmware.project_name.data(), "note4");
     std::strcpy(owner.sample.system.firmware.version.data(), "1.2.3");
     std::strcpy(owner.sample.system.capabilities.chip_model.data(), "ESP32-S3");
-    owner.sample.system.reset_reason = zectrix::system::ResetReason::Watchdog;
+    owner.sample.system.reset_reason = note4::system::ResetReason::Watchdog;
     owner.sample.system.wifi_mac = {2, 0x11, 0x22, 0x33, 0x44, 0x55};
     owner.sample.heap.internal = {10000, 8000, 6000, 4000};
     owner.sample.heap.psram = {8000000, 7000000, 5000000, 3000000};
     owner.sample.uptime_us = (86400ULL + 3600 + 120 + 3) * 1000000 + 456000;
     owner.sample.tasks.total = owner.sample.tasks.count = 2;
-    owner.sample.tasks.tasks[0] = {1, 3, 1024, zectrix::system::TaskState::kRunning, true};
-    owner.sample.tasks.tasks[1] = {2, 5, 2048, zectrix::system::TaskState::kBlocked, false};
+    owner.sample.tasks.tasks[0] = {1, 3, 1024, note4::system::TaskState::kRunning, true};
+    owner.sample.tasks.tasks[1] = {2, 5, 2048, note4::system::TaskState::kBlocked, false};
     auto& display = owner.sample.display;
     display.bits_per_pixel = 1;
     display.framebuffer_bytes = 15000;
     display.framebuffer_valid = true;
-    display.last_refresh = zectrix::display::RefreshKind::kPartial1Bpp;
-    display.state.baseline = zectrix::display::BaselineState::Valid1Bpp;
+    display.last_refresh = note4::display::RefreshKind::kPartial1Bpp;
+    display.state.baseline = note4::display::BaselineState::Valid1Bpp;
     display.state.partial_refresh_count = 4;
     display.state.partial_changed_pixels = 48000;
     display.state.has_dirty_region = true;
@@ -389,7 +389,7 @@ void TestReflectionAndConfirmation() {
     DiagnosticExecutor executor(dispatcher, logs, nullptr, Clock);
     owner.sample.power = {250, 3890, 71, true, false, false, false, false, false};
     owner.sample.time.local = {2024, 2, 29, 12, 0, 0};
-    owner.sample.time.sync.source = zectrix::time::SyncSource::Companion;
+    owner.sample.time.sync.source = note4::time::SyncSource::Companion;
     owner.sample.apps.count = 16;
     std::strcpy(owner.sample.apps.foreground.data(), "micro-apps");
     std::strcpy(owner.sample.apps.entries[15].id.data(), "last-native-app");
@@ -483,7 +483,7 @@ void TestReflectionAndConfirmation() {
 void TestInputStream() {
     now_ms = 0;
     Owner owner;
-    zectrix::input::InputTrace trace;
+    note4::input::InputTrace trace;
     owner.trace = &trace;
     PlatformControlDispatcher dispatcher(owner, Clock);
     LogBuffer logs;
@@ -599,14 +599,14 @@ void TestAsyncSession() {
     transport.Send("\x1b[\x03");
     session.Poll();
     assert(!session.command_active() && !dispatcher.Dispatch());
-    assert(transport.output.find("^C\r\nzectrix> ") != std::string::npos);
+    assert(transport.output.find("^C\r\nnote4> ") != std::string::npos);
 
     transport.Send("uptime\r");
     session.Poll();
     now_ms += kOwnerRequestTimeoutMs;
     session.Poll();
     assert(!session.command_active());
-    assert(transport.output.find("owner request timed out\r\nzectrix> ") != std::string::npos);
+    assert(transport.output.find("owner request timed out\r\nnote4> ") != std::string::npos);
 
     transport.Send("log-stream\r");
     session.Poll();
@@ -618,7 +618,7 @@ void TestAsyncSession() {
     assert(!session.command_active());
     transport.connected = true;
     session.Poll();
-    assert(transport.output.rfind("zectrix> ") == transport.output.size() - 9);
+    assert(transport.output.rfind("note4> ") == transport.output.size() - std::strlen("note4> "));
 
     transport.Send("heap\r");
     session.Poll();
@@ -637,7 +637,7 @@ void TestAsyncSession() {
     session.Poll();
     transport.Send("version\r");
     session.Poll();
-    assert(transport.output.find("D1.4\r\nzectrix> ") != std::string::npos);
+    assert(transport.output.find("D1.4\r\nnote4> ") != std::string::npos);
     transport.Send("reboot\r");
     session.Poll();
     assert(transport.output.find("Type confirm 1") != std::string::npos && !dispatcher.Dispatch());

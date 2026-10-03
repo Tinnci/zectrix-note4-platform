@@ -2,7 +2,7 @@
 
 English | [简体中文](HANDBOOK_zh.md)
 
-For Note4 Open Platform **v1.2.0**, an independent community firmware for the
+For Note4 Open Platform **v2.0.0**, an independent community firmware for the
 black-and-white Note4: ESP32-S3, 16 MiB Flash, 8 MiB octal PSRAM and a 400×300
 SSD2683 display. NOTE4C uses different hardware. This project is not the
 manufacturer's firmware or cloud service.
@@ -12,6 +12,9 @@ manufacturer's firmware or cloud service.
 The illustrations are rendered firmware screens; sample dates, books and
 battery readings are illustrative. Downloaded HTML editions embed the images
 and can be read offline or printed from a browser.
+
+
+> v2.0.0 is not published yet; archive names below are release examples. See the [v2 migration guide](NOTE4_MIGRATION.md) for existing development setups.
 
 [TOC]
 
@@ -29,9 +32,9 @@ partition layout. Choose **Full** for everyday use.
 Get the downloads from [GitHub Releases](https://github.com/Tinnci/zectrix-note4-platform/releases).
 For a first Full installation, download:
 
-- `zectrix-note4-v1.2.0-full.zip`: the complete segmented firmware.
-- `zectrix-note4-v1.2.0-host-tools.zip`: USB transfer and app-packaging tools.
-- `zectrix-note4-v1.2.0-library-init.zip`: optional first-time content storage.
+- `note4-v2.0.0-full.zip`: the complete segmented firmware.
+- `note4-v2.0.0-host-tools.zip`: USB transfer and app-packaging tools.
+- `note4-v2.0.0-library-init.zip`: optional first-time content storage.
 - `SHA256SUMS`: checksums for the release downloads.
 
 For another configuration, choose its `reader.zip` or `minimal.zip` instead.
@@ -308,7 +311,7 @@ for matrix builds and draft/publication commands.
 With Full/Reader, a serial terminal can use `help`, `sysinfo`, `system health`,
 `display status` and `display telemetry`. Close USB Manager's host client before
 opening a serial monitor. Platform services own hardware; applications use the
-[SDK](SDK_V1.md). The [architecture](ARCHITECTURE.md) retains one foreground
+[SDK](SDK_V2.md). The [architecture](ARCHITECTURE.md) retains one foreground
 owner, deferred SceneManager transitions and clipped ViewPort drawing.
 
 CrossPoint's [streaming reader](https://github.com/crosspoint-reader/crosspoint-reader),
@@ -316,7 +319,7 @@ local file sharing and sleep screens inform the product workflow. Flipper Zero's
 [SceneManager/ViewPort](https://github.com/flipperdevices/flipperzero-firmware/tree/dev/applications/services/gui)
 inform navigation and drawing ownership. Note4 uses independent implementations;
 see the [reference study](FIRMWARE_UI_STUDY.md) and
-[release notes](releases/v1.2.0.md).
+[release notes](releases/v2.0.0.md).
 
 Host/build checks cover software behavior. Physical NFC/BLE compatibility,
 interrupted OTA rollback, display quality, RTC backup retention and standby

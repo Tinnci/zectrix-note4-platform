@@ -39,7 +39,7 @@ export function deviceState(request: Request, page: Uint8Array, now = new Date()
 
 export function discovery(id: string, expirySeconds = 43260) {
   if (!/^[a-z0-9_-]{1,32}$/.test(id) || !Number.isInteger(expirySeconds) || expirySeconds < 600 || expirySeconds > 604800) throw new Error("Invalid discovery settings");
-  const state = `zectrix/note4/${id}/state`, device = { identifiers: [`zectrix_note4_${id}`], name: `Note4 ${id}`, manufacturer: "Zectrix", model: "Note4" };
+  const state = `note4/note4/${id}/state`, device = { identifiers: [`note4_note4_${id}`], name: `Note4 ${id}`, manufacturer: "Note4", model: "Note4" };
   const fields = [
     ["sensor", "battery", "Battery", "battery", "%"],
     ["sensor", "voltage", "Battery voltage", "voltage", "V"],
@@ -47,8 +47,8 @@ export function discovery(id: string, expirySeconds = 43260) {
     ["sensor", "offered_revision", "Offered page revision", "", ""],
   ];
   return fields.map(([component, key, name, device_class, unit]) => ({
-    topic: `homeassistant/${component}/zectrix_note4_${id}/${key}/config`,
-    payload: JSON.stringify({ name, unique_id: `zectrix_note4_${id}_${key}`, device,
+    topic: `homeassistant/${component}/note4_note4_${id}/${key}/config`,
+    payload: JSON.stringify({ name, unique_id: `note4_note4_${id}_${key}`, device,
       state_topic: state, expire_after: expirySeconds,
       value_template: key === "charging" ? "{{ 'ON' if value_json.charging == true else 'OFF' }}" : `{{ value_json.${key} | default(none) }}`,
       availability: [{ topic: state, value_template: `{{ 'online' if value_json.${key} != none and as_timestamp(now()) - as_timestamp(value_json.sampled_at, 0) < ${expirySeconds} else 'offline' }}` }],

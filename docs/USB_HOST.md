@@ -219,7 +219,7 @@ have an unknown outcome; a timeout alone never proves rollback.
 
 ## Resource bounds and verification
 
-`CONFIG_ZECTRIX_ENABLE_USB_HOST` depends on USB CLI and defaults on in Full.
+`CONFIG_NOTE4_ENABLE_USB_HOST` depends on USB CLI and defaults on in Full.
 It enables book storage independently of Reader/Wi-Fi. Minimal removes its
 provider, protocol, application and renderer. The protocol/mailbox use fixed
 arrays; neither framing nor drawing allocates per packet. File open and the
@@ -236,10 +236,10 @@ poll processes at most 2,048 input bytes and one complete request.
 
 ```bash
 bash tools/test-usb-manager.sh
-ZECTRIX_USB_SANITIZE=1 bash tools/test-usb-manager.sh
+NOTE4_USB_SANITIZE=1 bash tools/test-usb-manager.sh
 bash tools/test-host.sh
 mkdir -p build-usb-previews
-ZECTRIX_UI_PREVIEW_DIR="$PWD/build-usb-previews" bash tools/test-display-service.sh
+NOTE4_UI_PREVIEW_DIR="$PWD/build-usb-previews" bash tools/test-display-service.sh
 source tools/activate-dev-env.sh
 bash tools/build-firmware.sh --profile full
 bash tools/build-firmware.sh --profile minimal

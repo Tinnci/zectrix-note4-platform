@@ -37,7 +37,7 @@ Raw DEFLATE was also measured. Independent 32-glyph blocks would use about
 formats require decode work and a workspace before random glyph access.
 The tile representation provides direct row access for pagination, UI labels
 and rendering with about 825 KB of Flash. See the [font notice and packing
-layout](../components/zectrix_reader/font/README.md).
+layout](../components/note4_reader/font/README.md).
 
 ## Partition and asset alternatives
 

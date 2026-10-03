@@ -33,13 +33,13 @@ def unpack_glyph(source, index, count):
 
 
 def main():
-    strings = (ROOT / "components/zectrix_app/include/zectrix_strings.inc").read_text()
+    strings = (ROOT / "components/note4_app/include/note4_strings.inc").read_text()
     literals = re.findall(r'"(?:[^"\\]|\\.)*"', strings)
     codepoints = sorted({ord(char) for literal in literals
                          for char in ast.literal_eval(literal) if ord(char) >= 128})
     ranges = runpy.run_path(str(ROOT / "tools/generate-reader-font.py"))["RANGES"]
     count = sum(last - first + 1 for first, last in ranges)
-    source = (ROOT / "components/zectrix_reader/font/reader_font.bin").read_bytes()
+    source = (ROOT / "components/note4_reader/font/reader_font.bin").read_bytes()
     glyphs = []
     for codepoint in codepoints:
         offset = 0

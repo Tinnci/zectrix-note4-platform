@@ -1,4 +1,4 @@
-#include "zectrix_service_registry.h"
+#include "note4_service_registry.h"
 
 #include <cassert>
 #include <cstdio>
@@ -8,7 +8,7 @@
 #include <utility>
 
 namespace {
-using zectrix::ServiceRegistry;
+using note4::ServiceRegistry;
 
 unsigned allocations = 0;
 struct Trace {
@@ -30,7 +30,7 @@ struct State {
 };
 
 template <unsigned Id>
-class Provider final : public zectrix::ServiceProvider<Value<Id>>, public Value<Id> {
+class Provider final : public note4::ServiceProvider<Value<Id>>, public Value<Id> {
 public:
     Provider(ServiceRegistry& registry, Trace& trace) : registry_(registry), trace_(trace) {}
     State state;

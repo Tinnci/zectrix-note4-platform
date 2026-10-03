@@ -17,7 +17,7 @@ but initialization still ran outside that budget and its Host build reported
 alignment UB. Lua supports protected parsing, a quota allocator and a count
 hook on both initialization and callbacks. Only one engine is shipped.
 
-The existing SDK v1 application registry stays static. A native `apps` adapter
+The existing SDK v2 application registry stays static. A native `apps` adapter
 owns private List -> Loading -> Running/Error scenes and one Lua state. Script
 filenames are copied into five-entry pages with Previous/Next navigation; they
 are not SDK application IDs or retained pointers into a filesystem scan.
@@ -178,7 +178,7 @@ app operations; earlier firmware without these operations rejects them.
 
 ## Build and verification
 
-`CONFIG_ZECTRIX_ENABLE_RUNTIME` defaults to enabled in Full and is disabled in
+`CONFIG_NOTE4_ENABLE_RUNTIME` defaults to enabled in Full and is disabled in
 Minimal. It implies content storage, but does not require Reader, Chinese UI,
 Connectivity or USB. Without USB, preinstalled sources can still run: place
 `.app-<name>.lua` files in a separately prepared content-image directory. App
@@ -186,14 +186,14 @@ transfer is disabled in the UI for that build. Preparing/flashing a whole
 content image replaces its contents; normal `app-put` is the incremental path.
 
 The build fetches the Lua `v5.4.9` release. To reuse a local checkout, pass
-`-DZECTRIX_LUA_SOURCE_DIR=/absolute/path/to/lua` to CMake/`idf.py`, or export that
+`-DNOTE4_LUA_SOURCE_DIR=/absolute/path/to/lua` to CMake/`idf.py`, or export that
 variable for the Host script. Lua's license is included in
 [third-party notices](../THIRD_PARTY_NOTICES.md).
 
 ```bash
 bash tools/test-runtime.sh
-ZECTRIX_RUNTIME_SANITIZE=1 bash tools/test-runtime.sh
-ZECTRIX_USB_SANITIZE=1 UBSAN_OPTIONS=halt_on_error=1 bash tools/test-usb-manager.sh
+NOTE4_RUNTIME_SANITIZE=1 bash tools/test-runtime.sh
+NOTE4_USB_SANITIZE=1 UBSAN_OPTIONS=halt_on_error=1 bash tools/test-usb-manager.sh
 bash tools/test-host.sh
 source tools/activate-dev-env.sh
 bash tools/build-firmware.sh --profile full

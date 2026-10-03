@@ -1,4 +1,4 @@
-#include "zectrix_storage_service.h"
+#include "note4_storage_service.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
@@ -91,8 +91,8 @@ esp_err_t nvs_erase_key(nvs_handle_t, const char* key) {
 
 void TestFileWipe() {
     namespace fs = std::filesystem;
-    using namespace zectrix::storage;
-    char directory[] = "/tmp/zectrix-wipe-XXXXXX";
+    using namespace note4::storage;
+    char directory[] = "/tmp/note4-wipe-XXXXXX";
     assert(mkdtemp(directory));
     const fs::path root(directory);
     fs::create_directory(root / "books");
@@ -128,8 +128,8 @@ void TestFileWipe() {
 
 void TestInterruptedUploads() {
     namespace fs = std::filesystem;
-    using namespace zectrix::storage;
-    char directory[] = "/tmp/zectrix-upload-faults-XXXXXX";
+    using namespace note4::storage;
+    char directory[] = "/tmp/note4-upload-faults-XXXXXX";
     assert(mkdtemp(directory));
     const fs::path root(directory);
     std::ofstream(root / "keep.txt") << "original";
@@ -195,7 +195,7 @@ void TestInterruptedUploads() {
 }
 
 void TestNvsFailures() {
-    using zectrix::storage::StorageService;
+    using note4::storage::StorageService;
     values.clear();
     values["bookmark"] = std::uint32_t{42};
     const auto erases = erase_count;
@@ -206,7 +206,7 @@ void TestNvsFailures() {
         next_init_result = error;
         assert(service->Initialize() == error && !service->IsInitialized());
         assert(service->SetUInt32("bookmark", 0) == ESP_ERR_INVALID_STATE);
-        zectrix::storage::BookFile file;
+        note4::storage::BookFile file;
         // File calls still reach normal validation when settings are disabled.
         assert(service->OpenBook("../escape.txt", &file) == ESP_ERR_INVALID_ARG);
         assert(erase_count == erases && std::get<std::uint32_t>(values["bookmark"]) == 42);
@@ -245,7 +245,7 @@ void TestNvsFailures() {
 }
 
 int main() {
-    using zectrix::storage::StorageService;
+    using note4::storage::StorageService;
     StorageService* service = nullptr;
     assert(StorageService::Create(&service) == ESP_OK);
     bool flag = false;

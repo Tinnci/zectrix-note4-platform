@@ -1,13 +1,13 @@
-#include "zectrix_canvas.h"
-#include "zectrix_status_bar.h"
-#include "zectrix_first_party_app_controllers.h"
-#include "zectrix_language_setting.h"
-#include "zectrix_storage_service.h"
-#include "zectrix_utf8.h"
+#include "canvas.h"
+#include "status_bar.h"
+#include "note4_first_party_app_controllers.h"
+#include "note4_language_setting.h"
+#include "note4_storage_service.h"
+#include "utf8.h"
 #include "sdkconfig.h"
-#if CONFIG_ZECTRIX_ENABLE_READER && CONFIG_ZECTRIX_ENABLE_UI_CHINESE
-#include "zectrix_reader.h"
-#include "zectrix_ui_chinese_font.h"
+#if CONFIG_NOTE4_ENABLE_READER && CONFIG_NOTE4_ENABLE_UI_CHINESE
+#include "note4_reader.h"
+#include "ui_chinese_font.h"
 #endif
 
 #include <algorithm>
@@ -38,7 +38,7 @@ void operator delete[](void* pointer) noexcept { std::free(pointer); }
 void operator delete(void* pointer, std::size_t) noexcept { std::free(pointer); }
 void operator delete[](void* pointer, std::size_t) noexcept { std::free(pointer); }
 
-namespace zectrix::storage {
+namespace note4::storage {
 esp_err_t StorageService::Create(StorageService** output) { *output = new StorageService(nullptr); return ESP_OK; }
 StorageService::~StorageService() = default;
 esp_err_t StorageService::GetUInt32(const char* key, uint32_t* value) const {
@@ -58,9 +58,9 @@ esp_err_t StorageService::SetUInt32(const char* key, uint32_t value) {
     committed = staged;
     return ESP_OK;
 }
-}  // namespace zectrix::storage
+}  // namespace note4::storage
 
-using namespace zectrix::i18n;
+using namespace note4::i18n;
 
 std::vector<std::string> FormatArguments(const char* text) {
     std::vector<std::string> result;
@@ -77,11 +77,11 @@ std::vector<std::string> FormatArguments(const char* text) {
 
 void TestCatalogAndGlyphs() {
     const char* names[] = {"None",
-#define ZECTRIX_TEXT(id, english, chinese) #id,
-#include "zectrix_strings.inc"
-#undef ZECTRIX_TEXT
+#define NOTE4_TEXT(id, english, chinese) #id,
+#include "note4_strings.inc"
+#undef NOTE4_TEXT
     };
-    ZectrixCanvas canvas;
+    Canvas canvas;
     for (std::size_t i = 1; i < static_cast<std::size_t>(Text::Count); ++i) {
         const auto id = static_cast<Text>(i);
         const char* english = Translate(id, Language::English);
@@ -97,13 +97,13 @@ void TestCatalogAndGlyphs() {
             }
             while (*text) {
                 const char* first = text;
-                const auto cp = zectrix::ui::NextUtf8(text);
+                const auto cp = note4::ui::NextUtf8(text);
                 assert(cp != 0xfffd);
                 if (cp < 128) continue;
                 char glyph[5]{};
                 std::memcpy(glyph, first, static_cast<std::size_t>(text - first));
                 assert(canvas.TextWidth(glyph) == 16);
-#if CONFIG_ZECTRIX_ENABLE_READER && CONFIG_ZECTRIX_ENABLE_UI_CHINESE
+#if CONFIG_NOTE4_ENABLE_READER && CONFIG_NOTE4_ENABLE_UI_CHINESE
                 // Compare the generated subset against the production packed-font
                 // reader so a stale generator cannot silently corrupt UI pixels.
                 const auto* first_cp = std::begin(kUiChineseCodepoints);
@@ -111,7 +111,7 @@ void TestCatalogAndGlyphs() {
                 const auto* found = std::lower_bound(first_cp, last_cp, cp);
                 assert(found != last_cp && *found == cp);
                 const auto* subset = kUiChineseBitmaps[found - first_cp];
-                const auto packed = zectrix::reader::GlyphBitmap(cp);
+                const auto packed = note4::reader::GlyphBitmap(cp);
                 assert(subset[0] == packed.width);
                 for (unsigned row = 0; row < 16; ++row)
                     assert((static_cast<uint16_t>(subset[1 + row * 2]) << 8 | subset[2 + row * 2]) == packed.Row(row));
@@ -127,12 +127,12 @@ void TestCatalogAndGlyphs() {
 
     for (const char* bad : {"\xe4", "\xed\xa0\x80", "\xf4\x90\x80\x80", "\xc0"}) {
         const char* cursor = bad;
-        assert(zectrix::ui::NextUtf8(cursor) == 0xfffd && !*cursor);
-        assert(zectrix::ui::NextUtf8(cursor) == 0);
+        assert(note4::ui::NextUtf8(cursor) == 0xfffd && !*cursor);
+        assert(note4::ui::NextUtf8(cursor) == 0);
     }
     const char* mixed = "\xe4" "A";
-    assert(zectrix::ui::NextUtf8(mixed) == 0xfffd);
-    assert(zectrix::ui::NextUtf8(mixed) == 'A');
+    assert(note4::ui::NextUtf8(mixed) == 0xfffd);
+    assert(note4::ui::NextUtf8(mixed) == 'A');
 
     const auto before = allocations;
     for (int i = 0; i < 20; ++i) {
@@ -151,7 +151,7 @@ void TestCatalogAndGlyphs() {
         if (y >= 20 && y < 36 && x >= 10 && x < 10 + fitted_width) continue;
         assert(canvas.data()[y * 50 + x / 8] & (0x80 >> (x % 8)));
     }
-    ZectrixCanvas expected;
+    Canvas expected;
     expected.Clear();
     expected.Text(10, 20, "中文...", 1, true);
     assert(std::memcmp(canvas.data(), expected.data(), canvas.size()) == 0);
@@ -161,8 +161,8 @@ void TestCatalogAndGlyphs() {
 }
 
 void TestLanguagePersistence() {
-    zectrix::storage::StorageService* storage = nullptr;
-    assert(zectrix::storage::StorageService::Create(&storage) == ESP_OK);
+    note4::storage::StorageService* storage = nullptr;
+    assert(note4::storage::StorageService::Create(&storage) == ESP_OK);
     assert(RestoreLanguage(*storage) == ESP_ERR_NOT_FOUND);
     assert(CurrentLanguage() == DefaultLanguage() && writes == 0);
     present = true;
@@ -196,16 +196,16 @@ void TestLanguagePersistence() {
     delete storage;
 }
 
-bool Ink(const ZectrixCanvas& canvas, int x, int y) {
-    return !(canvas.data()[y * ZectrixCanvas::kStride + x / 8] & (0x80 >> (x & 7)));
+bool Ink(const Canvas& canvas, int x, int y) {
+    return !(canvas.data()[y * Canvas::kStride + x / 8] & (0x80 >> (x & 7)));
 }
 
 void TestLargeNumbers() {
-    ZectrixCanvas normal, inverse;
+    Canvas normal, inverse;
     const auto before = allocations;
-    for (unsigned style = 0; style < zectrix::ui::kDigitStyleCount; ++style) {
-      normal.SetDigitStyle(static_cast<zectrix::ui::DigitStyle>(style));
-      inverse.SetDigitStyle(static_cast<zectrix::ui::DigitStyle>(style));
+    for (unsigned style = 0; style < note4::ui::kDigitStyleCount; ++style) {
+      normal.SetDigitStyle(static_cast<note4::ui::DigitStyle>(style));
+      inverse.SetDigitStyle(static_cast<note4::ui::DigitStyle>(style));
       for (unsigned day = 0; day <= 99; ++day) {
         normal.Clear(); inverse.Clear(false);
         normal.LargeNumber(10, 20, day);
@@ -222,8 +222,8 @@ void TestLargeNumbers() {
       }
       assert(normal.LargeNumberWidth(11) < normal.LargeNumberWidth(88));
     }
-    normal.SetDigitStyle(static_cast<zectrix::ui::DigitStyle>(255));
-    assert(normal.digit_style() == zectrix::ui::DigitStyle::Serif);
+    normal.SetDigitStyle(static_cast<note4::ui::DigitStyle>(255));
+    assert(normal.digit_style() == note4::ui::DigitStyle::Serif);
     normal.Clear();
     normal.LargeNumber(0, 0, 100);
     normal.LargeNumber(INT_MIN, INT_MIN, 31);
@@ -242,12 +242,12 @@ void TestLargeNumbers() {
 }
 
 void TestStatusIcons() {
-    using namespace zectrix::ui;
+    using namespace note4::ui;
     StatusBarState state;
     state.time_valid = state.battery_valid = true;
     state.hour = 12;
     state.minute = 34;
-    ZectrixCanvas normal, inverse, clipped;
+    Canvas normal, inverse, clipped;
     const auto before = allocations;
     // Radio-off badges are centered five-pixel diagonals with no hooked ends.
     DrawStatusBar(normal, state);
@@ -278,9 +278,9 @@ void TestStatusIcons() {
         DrawStatusBar(normal, state);
         inverse.Clear(false);
         DrawStatusBar(inverse, state, true);
-        for (int i = 0; i < ZectrixCanvas::kStride * kStatusBarHeight; ++i)
+        for (int i = 0; i < Canvas::kStride * kStatusBarHeight; ++i)
             assert(normal.data()[i] == static_cast<uint8_t>(~inverse.data()[i]));
-        for (std::size_t i = ZectrixCanvas::kStride * kStatusBarHeight; i < normal.size(); ++i)
+        for (std::size_t i = Canvas::kStride * kStatusBarHeight; i < normal.size(); ++i)
             assert(normal.data()[i] == 0 && inverse.data()[i] == 0);
         unsigned fill = 0;
         for (int y = 9; y < 15; ++y) for (int x = 334; x < 348; ++x) fill += Ink(normal, x, y);
@@ -371,8 +371,8 @@ void TestStatusIcons() {
 }
 
 void TestTypography() {
-    using zectrix::sdk::TextStyle;
-    ZectrixCanvas canvas, clipped, expected;
+    using note4::sdk::TextStyle;
+    Canvas canvas, clipped, expected;
     const auto before = allocations;
     for (int scale : {1, 2, 3}) for (unsigned flags = 0; flags < 32; ++flags) {
         const auto style = static_cast<TextStyle>(flags);
@@ -383,7 +383,7 @@ void TestTypography() {
             const auto height = canvas.TextHeight("AV中jg文", scale, style);
             clipped.ResetClip();
             clipped.Clear();
-            const ZectrixCanvas::Clip clip{13, 23, 43, 17};
+            const Canvas::Clip clip{13, 23, 43, 17};
             clipped.SetClip(clip);
             clipped.Text(8, 20, "AV中jg文", scale, inverted, style);
             for (int y = 0; y < 300; ++y) for (int x = 0; x < 400; ++x) {
@@ -460,8 +460,8 @@ void TestTypography() {
 }
 
 void TestLanguageScenes() {
-    using namespace zectrix::app;
-    using namespace zectrix::sdk;
+    using namespace note4::app;
+    using namespace note4::sdk;
     const InputEvent ok{Button::Ok, InputAction::Click}, down{Button::Down, InputAction::Click},
         back{Button::Ok, InputAction::LongPress}, off{Button::Down, InputAction::LongPress};
     SetLanguage(Language::English);
@@ -516,5 +516,5 @@ int main() {
     TestLanguagePersistence();
     TestLanguageScenes();
     std::printf("PASS: localization, UTF-8 bounds, zero-allocation drawing, persistence and scenes (reader=%d, Chinese=%d).\n",
-        CONFIG_ZECTRIX_ENABLE_READER, CONFIG_ZECTRIX_ENABLE_UI_CHINESE);
+        CONFIG_NOTE4_ENABLE_READER, CONFIG_NOTE4_ENABLE_UI_CHINESE);
 }

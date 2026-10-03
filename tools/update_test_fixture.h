@@ -1,10 +1,10 @@
 #pragma once
 
-#include "zectrix_boot_guard.h"
+#include "note4_boot_guard.h"
 
-inline zectrix::update::BootInfo UpdateBootFixture(
-    zectrix::update::PartitionKind running = zectrix::update::PartitionKind::kFactory) {
-    using namespace zectrix::update;
+inline note4::update::BootInfo UpdateBootFixture(
+    note4::update::PartitionKind running = note4::update::PartitionKind::kFactory) {
+    using namespace note4::update;
     BootInfo info;
     info.flash_bytes = 16 * 1024 * 1024;
     info.partition_table_address = 0x8000;

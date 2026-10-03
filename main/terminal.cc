@@ -8,17 +8,17 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "zectrix_storage_service.h"
-#include "zectrix_language_setting.h"
-#include "zectrix_input_service.h"
-#include "zectrix_foreground_dispatch.h"
+#include "note4_storage_service.h"
+#include "note4_language_setting.h"
+#include "note4_input_service.h"
+#include "note4_foreground_dispatch.h"
 
-#include "zectrix_boot_guard.h"
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
-#include "zectrix_connectivity_service.h"
+#include "note4_boot_guard.h"
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
+#include "note4_connectivity_service.h"
 #endif
 
-namespace zectrix::terminal {
+namespace note4::terminal {
 
 sdk::Status ToSdkStatus(esp_err_t result) {
     switch (result) {
@@ -34,7 +34,7 @@ sdk::Status ToSdkStatus(esp_err_t result) {
 }
 
 
-TerminalApp::TerminalApp() : ui_(nullptr) { test_states_.fill(ZectrixTestState::kWait); }
+TerminalApp::TerminalApp() : ui_(nullptr) { test_states_.fill(Note4TestState::kWait); }
 
 void TerminalApp::Run() {
     esp_err_t err = platform_.Initialize();
@@ -54,21 +54,21 @@ void TerminalApp::Run() {
         if (restored != ESP_OK) ESP_LOGW(kTag, "screen direction restore failed: %s", esp_err_to_name(restored));
     }
     system_ = &platform_.System();
-#if CONFIG_ZECTRIX_ENABLE_USB_HOST
+#if CONFIG_NOTE4_ENABLE_USB_HOST
     usb_host_ = platform_.Services().Get<host::Channel>();
 #endif
     const auto language_result = i18n::RestoreLanguage(*storage_);
     language_saved_ = language_result == ESP_OK || language_result == ESP_ERR_NOT_FOUND ||
         language_result == ESP_ERR_NOT_SUPPORTED;
     if (!language_saved_) ESP_LOGW(kTag, "language preference unavailable; using compiled default");
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
-    connectivity_ = platform_.Services().Get<zectrix::connectivity::ConnectivityService>();
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
+    connectivity_ = platform_.Services().Get<note4::connectivity::ConnectivityService>();
     if (connectivity_) connectivity_->UpdatePower(power_->ReadSnapshot());
 #endif
-    uint32_t sleep_style = static_cast<uint32_t>(zectrix::app::kSleepCoverDefault);
-    const esp_err_t sleep_setting = storage_->GetUInt32(zectrix::app::kSleepCoverSettingKey, &sleep_style);
-    if (sleep_setting != ESP_OK) sleep_style = static_cast<uint32_t>(zectrix::app::kSleepCoverDefault);
-    sleep_cover_style_ = zectrix::app::SleepCoverSetting(sleep_style);
+    uint32_t sleep_style = static_cast<uint32_t>(note4::app::kSleepCoverDefault);
+    const esp_err_t sleep_setting = storage_->GetUInt32(note4::app::kSleepCoverSettingKey, &sleep_style);
+    if (sleep_setting != ESP_OK) sleep_style = static_cast<uint32_t>(note4::app::kSleepCoverDefault);
+    sleep_cover_style_ = note4::app::SleepCoverSetting(sleep_style);
     sleep_cover_saved_ = sleep_setting == ESP_ERR_NOT_FOUND ||
         (sleep_setting == ESP_OK && sleep_style == static_cast<uint32_t>(sleep_cover_style_));
     if (!sleep_cover_saved_) ESP_LOGW(kTag, "sleep cover preference unavailable; using dashboard");
@@ -89,7 +89,7 @@ void TerminalApp::Run() {
     // an unattended lock-screen wake must never confirm or bypass that trial.
     if (power_->IsScheduledWake() && !platform_.Boot().ReadBootStatus().confirmation_pending) {
         ESP_LOGI(kTag, "event=calendar_refresh_wake");
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
         LoadEdgeConfiguration();
         if (!RefreshEdgeOnWake()) {
             if (connectivity_ && edge_configuration_valid_ && edge_settings_.bthome_enabled &&
@@ -126,7 +126,7 @@ void TerminalApp::UpdateSystemStatus() {
         power_snapshot_ = power_->ReadSnapshot();
         display_->ObserveBattery(power_snapshot_.battery_valid && !power_snapshot_.battery_absent ?
             power_snapshot_.battery_mv : 0, time_->MonotonicMicroseconds());
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
         if (connectivity_) connectivity_->UpdatePower(power_snapshot_);
 #endif
         CopyPowerStatus(status_, power_snapshot_);
@@ -135,13 +135,13 @@ void TerminalApp::UpdateSystemStatus() {
     if (now >= next_clock_sample_us_) {
         const auto clock = time_->Now();
         const auto& value = clock.value;
-        status_.time_valid = clock.source != zectrix::time::ClockSource::Uptime;
+        status_.time_valid = clock.source != note4::time::ClockSource::Uptime;
         status_.hour = status_.time_valid ? static_cast<uint8_t>(value.hour) : 0;
         status_.minute = status_.time_valid ? static_cast<uint8_t>(value.minute) : 0;
         next_clock_sample_us_ = now + 1000000;
     }
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
-    const auto link = connectivity_ ? connectivity_->Snapshot() : zectrix::connectivity::ConnectivitySnapshot{};
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
+    const auto link = connectivity_ ? connectivity_->Snapshot() : note4::connectivity::ConnectivitySnapshot{};
     CopyRadioStatus(status_, link);
 #endif
     ui_.UpdateStatus(status_);
@@ -153,7 +153,7 @@ void TerminalApp::RunApplicationShell() {
         return;
     }
     sdk::ApplicationRuntime runtime(applications_.data(), applications_.size(), "launcher", *this);
-#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+#if CONFIG_NOTE4_ENABLE_USB_CLI
     runtime_ = &runtime;
     platform_.SetMaintenanceDelegate(this);
     struct Unbind {
@@ -201,13 +201,13 @@ void TerminalApp::RunApplicationShell() {
         sdk::InputEvent event;
         // Pagination, app loading and USB requests yield between bounded slices.
         bool busy = false;
-#if CONFIG_ZECTRIX_ENABLE_READER
+#if CONFIG_NOTE4_ENABLE_READER
         busy = reader_busy_;
 #endif
-#if CONFIG_ZECTRIX_ENABLE_USB_HOST
+#if CONFIG_NOTE4_ENABLE_USB_HOST
         busy = busy || (usb_host_ && usb_host_->Session() != 0);
 #endif
-#if CONFIG_ZECTRIX_ENABLE_RUNTIME
+#if CONFIG_NOTE4_ENABLE_RUNTIME
         busy = busy || micro_app_busy_;
 #endif
         const TickType_t timeout = busy ? TickType_t{1} : pdMS_TO_TICKS(250);
@@ -217,7 +217,7 @@ void TerminalApp::RunApplicationShell() {
             runtime.Stop();
             break;
         }
-#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+#if CONFIG_NOTE4_ENABLE_USB_CLI
         if (maintenance_operation_ >= cli::ControlOperation::kReboot &&
             time_->MonotonicMicroseconds() >= maintenance_ready_us_) {
             // This point is outside every SDK callback, including diagnostic waits.
@@ -248,7 +248,7 @@ void TerminalApp::RunApplicationShell() {
 }
 
 sdk::Status TerminalApp::Shutdown() {
-#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+#if CONFIG_NOTE4_ENABLE_USB_CLI
     if (executing_maintenance_ && maintenance_operation_ != cli::ControlOperation::kSleep) {
         if (maintenance_operation_ == cli::ControlOperation::kStorageWipe ||
             maintenance_operation_ == cli::ControlOperation::kFactoryReset) {
@@ -262,7 +262,7 @@ sdk::Status TerminalApp::Shutdown() {
     PowerOff();
 }
 
-#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+#if CONFIG_NOTE4_ENABLE_USB_CLI
 cli::ControlStatus TerminalApp::ScheduleMaintenance(cli::ControlOperation operation) {
     if (!runtime_ || (runtime_->state() != sdk::LifecycleState::Active && runtime_->state() != sdk::LifecycleState::Failsafe) ||
         maintenance_operation_ >= cli::ControlOperation::kReboot) return cli::ControlStatus::kBusy;
@@ -316,7 +316,7 @@ void TerminalApp::EnterFailsafe(sdk::Status reason) {
              sdk::StatusName(reason));
     platform_.Health().SuppressAutomaticApps();
     launcher_back_requested_ = false;
-#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+#if CONFIG_NOTE4_ENABLE_USB_CLI
     scene_snapshot_ = {};
     guest_inspection_ = {};
 #endif
@@ -325,7 +325,7 @@ void TerminalApp::EnterFailsafe(sdk::Status reason) {
 }
 
 void TerminalApp::LogHeap(const char* phase) {
-    zectrix::system::SystemSnapshot snapshot;
+    note4::system::SystemSnapshot snapshot;
     const esp_err_t read = system_->ReadSnapshot(&snapshot);
     if (read != ESP_OK) {
         ESP_LOGW(kTag, "heap snapshot failed: %s", esp_err_to_name(read));
@@ -372,15 +372,15 @@ ControlResult TerminalApp::Wait(uint32_t duration_ms, bool confirm_returns) {
     platform_.StopMaintenance();
     // Capture committed sync values before stopping their connectivity owner.
     const auto sleep_snapshot = ReadSleepCover();
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
-    const auto stopped = connectivity_ ? connectivity_->Stop() : zectrix::connectivity::ConnectivityResult::kOk;
-    if (stopped != zectrix::connectivity::ConnectivityResult::kOk) {
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
+    const auto stopped = connectivity_ ? connectivity_->Stop() : note4::connectivity::ConnectivityResult::kOk;
+    if (stopped != note4::connectivity::ConnectivityResult::kOk) {
         ESP_LOGW(kTag, "connectivity stop incomplete before shutdown");
     }
 #endif
     ESP_LOGI(kTag, "presenting sleep cover before shutdown");
     esp_err_t cover = ESP_ERR_NOT_FOUND;
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
     LoadEdgeConfiguration();
     cover = PresentEdgeCover();
 #endif
@@ -396,7 +396,7 @@ ControlResult TerminalApp::Wait(uint32_t duration_ms, bool confirm_returns) {
     const bool battery_low = sleep_snapshot.power.battery_valid &&
         !sleep_snapshot.power.external_power_present && sleep_snapshot.power.battery_percent <= 5;
     auto wake_after_us = battery_low ? 0 : app::SleepRefreshDelayUs(sleep_cover_style_, time_->Now());
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
     if (!battery_low) wake_after_us = NextWakeDelay();
 #endif
     ESP_LOGI(kTag, "event=sleep_cover_presented style=%u portrait=%u result=%s wake_after_us=%llu",
@@ -410,4 +410,4 @@ void RunTerminal() {
     app.Run();
 }
 
-}  // namespace zectrix::terminal
+}  // namespace note4::terminal

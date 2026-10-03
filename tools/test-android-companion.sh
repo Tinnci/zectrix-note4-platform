@@ -6,7 +6,7 @@ case "$(uname -s)" in
   Linux) android_default="$HOME/Android/Sdk" ;;
   *) echo 'FAIL: Android build supports macOS and Linux hosts.' >&2; exit 1 ;;
 esac
-export ANDROID_HOME=${ZECTRIX_ANDROID_SDK_ROOT:-${ANDROID_HOME:-$android_default}}
+export ANDROID_HOME=${NOTE4_ANDROID_SDK_ROOT:-${ANDROID_HOME:-$android_default}}
 export ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME}
 gradle_wrapper="$root_dir/android-companion/gradlew"
 
@@ -27,7 +27,7 @@ test -d "$ANDROID_HOME/build-tools/37.0.0" || {
 }
 
 gradle_tasks=(:app:testDebugUnitTest :app:assembleDebug)
-if [ "${ZECTRIX_ANDROID_CLEAN:-0}" = 1 ]; then
+if [ "${NOTE4_ANDROID_CLEAN:-0}" = 1 ]; then
   gradle_tasks=(clean "${gradle_tasks[@]}")
 fi
 "$gradle_wrapper" --no-daemon -p "$root_dir/android-companion" "${gradle_tasks[@]}"

@@ -5,12 +5,12 @@
 #include <climits>
 #include <type_traits>
 
-static_assert(std::is_move_constructible_v<zectrix::ui::PageShell>);
-static_assert(!std::is_move_assignable_v<zectrix::ui::PageShell>);
+static_assert(std::is_move_constructible_v<note4::ui::PageShell>);
+static_assert(!std::is_move_assignable_v<note4::ui::PageShell>);
 
-using zectrix::ui::Insets;
-using zectrix::ui::Rect;
-using zectrix::ui::UniformGrid;
+using note4::ui::Insets;
+using note4::ui::Rect;
+using note4::ui::UniformGrid;
 
 void TestRectBasics() {
     Rect r(10, 20, 100, 200);
@@ -121,7 +121,7 @@ void TestLayoutBoundaries() {
 }
 
 void TestPageSpec() {
-    using zectrix::ui::PageSpec;
+    using note4::ui::PageSpec;
     PageSpec spec = PageSpec()
         .Title("Test Title")
         .CenterTitle()

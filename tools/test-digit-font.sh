@@ -5,7 +5,7 @@ work_dir=$(mktemp -d)
 trap 'rm -rf "$work_dir"' EXIT
 uv run --no-project "$repo_dir/tools/digit_font_test.py" --fixtures "$work_dir/codec.bin"
 flags=(-std=c++17 -O2 -Wall -Wextra -Werror)
-if [ "${ZECTRIX_DIGIT_SANITIZE:-0}" = 1 ]; then
+if [ "${NOTE4_DIGIT_SANITIZE:-0}" = 1 ]; then
     flags+=("-fsanitize=address,undefined" -fno-omit-frame-pointer -g)
 fi
 "${CXX:-c++}" "${flags[@]}" -I"$repo_dir/components/ui/font" \

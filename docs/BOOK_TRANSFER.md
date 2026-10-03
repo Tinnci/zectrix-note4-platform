@@ -146,7 +146,7 @@ Run the full Host suite or focused sanitizer checks:
 
 ```bash
 bash tools/test-host.sh
-ZECTRIX_TRANSFER_SANITIZE=1 bash tools/test-book-transfer.sh
+NOTE4_TRANSFER_SANITIZE=1 bash tools/test-book-transfer.sh
 ```
 
 For interactive browser testing, use a disposable copy of your books:

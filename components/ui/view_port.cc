@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace zectrix::ui {
+namespace note4::ui {
 
 bool ViewPortScheduler::Configure(std::size_t id, const ViewPort& viewport) {
     const auto& r = viewport.bounds;
@@ -11,8 +11,8 @@ bool ViewPortScheduler::Configure(std::size_t id, const ViewPort& viewport) {
         return r.x <= width && r.y <= height && r.width <= width - r.x && r.height <= height - r.y;
     };
     if (composing_ || id >= kCapacity || r.x < 0 || r.y < 0 || r.width <= 0 || r.height <= 0 ||
-        !(fits(ZectrixCanvas::kWidth, ZectrixCanvas::kHeight) ||
-          fits(ZectrixCanvas::kHeight, ZectrixCanvas::kWidth))) return false;
+        !(fits(Canvas::kWidth, Canvas::kHeight) ||
+          fits(Canvas::kHeight, Canvas::kWidth))) return false;
     slots_[id] = {viewport, true, true, true, false, false};
     return true;
 }
@@ -33,7 +33,7 @@ bool ViewPortScheduler::Enable(std::size_t id, bool enabled) {
     return true;
 }
 
-ViewPortScheduler::Update ViewPortScheduler::Compose(ZectrixCanvas& canvas) {
+ViewPortScheduler::Update ViewPortScheduler::Compose(Canvas& canvas) {
     Update result;
     if (composing_) return result;
     composing_ = true;
@@ -69,4 +69,4 @@ void ViewPortScheduler::Complete(bool success) {
     }
 }
 
-}  // namespace zectrix::ui
+}  // namespace note4::ui

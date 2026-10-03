@@ -1,26 +1,26 @@
-#include "zectrix_locale.h"
+#include "note4_locale.h"
 #include "terminal_internal.h"
 
-#include "zectrix_storage_service.h"
-#include "zectrix_cover_image.h"
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
-#include "zectrix_connectivity_service.h"
-#include "zectrix_weather_sync.h"
+#include "note4_storage_service.h"
+#include "note4_cover_image.h"
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
+#include "note4_connectivity_service.h"
+#include "note4_weather_sync.h"
 #endif
 #include <cstdio>
-#if CONFIG_ZECTRIX_ENABLE_READER
-#include "zectrix_reader_platform.h"
+#if CONFIG_NOTE4_ENABLE_READER
+#include "note4_reader_platform.h"
 #endif
 
 
-using zectrix::i18n::Tr;
-using zectrix::i18n::Text;
+using note4::i18n::Tr;
+using note4::i18n::Text;
 
-namespace zectrix::terminal {
+namespace note4::terminal {
 
 app::ReadingOverview TerminalApp::ReadReadingOverview() {
     app::ReadingOverview overview;
-#if CONFIG_ZECTRIX_ENABLE_READER
+#if CONFIG_NOTE4_ENABLE_READER
     if (!storage_) return overview;
     reader::PlatformBookmarkStore store(*storage_);
     reader::Bookmarks bookmarks(store);
@@ -44,7 +44,7 @@ app::SleepCoverSnapshot TerminalApp::ReadSleepCover() {
     snapshot.reading.book_id = reading.book_id;
     snapshot.reading.progress_per_mille = reading.progress_per_mille;
     snapshot.has_reading = reading.state == app::ReadingOverview::State::Saved;
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
     std::array<uint8_t, 61> weather_data{};
     std::size_t weather_size = weather_data.size();
     uint32_t revision = 0;
@@ -66,7 +66,7 @@ app::SleepCoverSnapshot TerminalApp::ReadSleepCover() {
 
 esp_err_t TerminalApp::PresentSleepCover(const app::SleepCoverSnapshot& snapshot, app::SleepCoverStyle style,
                                         bool preview, bool preference_saved) {
-#if CONFIG_ZECTRIX_ENABLE_BOOK_STORAGE
+#if CONFIG_NOTE4_ENABLE_BOOK_STORAGE
     storage::BookFile file;
     if (style == app::SleepCoverStyle::Picture && storage_ && storage_->OpenCover(&file) == ESP_OK) {
         const app::SleepCoverImage picture{&file, [](void* context, uint32_t offset, void* output, std::size_t size) {
@@ -84,14 +84,14 @@ public:
     sdk::Status Enter(sdk::ApplicationContext& context) override {
         owner_.BindScenes(controller_);
         const auto result = controller_.Start(owner_.sleep_cover_style_);
-        return sdk::IsOk(result) ? Apply(zectrix::app::SleepCoverDecision::RenderQuality, context) : result;
+        return sdk::IsOk(result) ? Apply(note4::app::SleepCoverDecision::RenderQuality, context) : result;
     }
     sdk::Status HandleEvent(const sdk::InputEvent& event, sdk::ApplicationContext& context) override {
         return Apply(controller_.Handle(event), context);
     }
     sdk::Status HandleIdle(sdk::ApplicationContext& context) override { return Apply(controller_.Tick(), context); }
     sdk::Status Render(const sdk::RenderRequest& request) override {
-        const auto result = controller_.scene() == zectrix::app::SleepCoverScene::Choose
+        const auto result = controller_.scene() == note4::app::SleepCoverScene::Choose
             ? owner_.ui_.ShowSleepCoverMenu(controller_.selected(), owner_.sleep_cover_style_,
                 owner_.sleep_cover_saved_ ? nullptr : Tr(Text::CoverSaveRetry),
                 request.intent == sdk::RenderIntent::Quality)
@@ -102,12 +102,12 @@ public:
     sdk::Status Exit() override { controller_.Stop(); return sdk::Status::Ok; }
 
 private:
-    sdk::Status Apply(zectrix::app::SleepCoverDecision decision, sdk::ApplicationContext& context) {
-        using Decision = zectrix::app::SleepCoverDecision;
+    sdk::Status Apply(note4::app::SleepCoverDecision decision, sdk::ApplicationContext& context) {
+        using Decision = note4::app::SleepCoverDecision;
         if (decision == Decision::Choose) {
             if (controller_.selected() != owner_.sleep_cover_style_ || !owner_.sleep_cover_saved_) {
                 owner_.sleep_cover_style_ = controller_.selected();
-                owner_.sleep_cover_saved_ = owner_.storage_->SetUInt32(zectrix::app::kSleepCoverSettingKey,
+                owner_.sleep_cover_saved_ = owner_.storage_->SetUInt32(note4::app::kSleepCoverSettingKey,
                     static_cast<uint32_t>(owner_.sleep_cover_style_)) == ESP_OK;
             }
             snapshot_ = owner_.ReadSleepCover();
@@ -121,12 +121,12 @@ private:
         return sdk::Status::Ok;
     }
     TerminalApp& owner_;
-    zectrix::app::SleepCoverController controller_;
-    zectrix::app::SleepCoverSnapshot snapshot_{};
+    note4::app::SleepCoverController controller_;
+    note4::app::SleepCoverSnapshot snapshot_{};
 };
 
 sdk::Status TerminalApp::CreateSleepCover(TerminalApp& owner, sdk::Application** output) {
     return CreateApplication<SleepCoverApplication>(owner, output);
 }
 
-}  // namespace zectrix::terminal
+}  // namespace note4::terminal

@@ -2,9 +2,9 @@
 
 #include <algorithm>
 
-namespace zectrix::ui {
+namespace note4::ui {
 
-void DrawMicroAppIcon(ZectrixCanvas& canvas, const package::Metadata& meta,
+void DrawMicroAppIcon(Canvas& canvas, const package::Metadata& meta,
                       int x, int y, int side, bool inverse) {
     if ((meta.icon_side != 16 && meta.icon_side != 32) || (side != 16 && side != 32)) return;
     const int step = std::max(1, meta.icon_side / side);
@@ -19,7 +19,7 @@ void DrawMicroAppIcon(ZectrixCanvas& canvas, const package::Metadata& meta,
     }
 }
 
-void DrawMicroAppFrame(ZectrixCanvas& canvas, const runtime::Frame& frame) {
+void DrawMicroAppFrame(Canvas& canvas, const runtime::Frame& frame) {
     const auto clip = canvas.clip();
     constexpr int x = 12, y = 66;
     const int left = std::max(x, clip.x), top = std::max(y, clip.y);
@@ -44,4 +44,4 @@ void DrawMicroAppFrame(ZectrixCanvas& canvas, const runtime::Frame& frame) {
     canvas.SetClip(clip);
 }
 
-}  // namespace zectrix::ui
+}  // namespace note4::ui

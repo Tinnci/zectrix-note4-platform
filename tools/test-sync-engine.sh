@@ -4,10 +4,10 @@ root_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 test_binary=$(mktemp)
 trap 'rm -f "$test_binary"' EXIT
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pedantic \
-  -I"$root_dir/components/zectrix_companion/include" \
-  "$root_dir/components/zectrix_companion/zectrix_companion_protocol.cc" \
-  "$root_dir/components/zectrix_companion/zectrix_sync_engine.cc" \
-  "$root_dir/components/zectrix_companion/zectrix_sync_session.cc" \
+  -I"$root_dir/components/note4_companion/include" \
+  "$root_dir/components/note4_companion/note4_companion_protocol.cc" \
+  "$root_dir/components/note4_companion/note4_sync_engine.cc" \
+  "$root_dir/components/note4_companion/note4_sync_session.cc" \
   "$root_dir/tools/sync_engine_test.cc" -o "$test_binary"
 "$test_binary"
 echo 'PASS: durable sync engine tests.'

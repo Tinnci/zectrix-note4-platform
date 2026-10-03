@@ -63,7 +63,7 @@ Continue Reading submits the normal owned `Open(reader)` command. The shell
 holds a one-shot launch mode only after command acceptance; the inactive Reader
 candidate copies it and the factory consumes it even if allocation fails.
 No application pointer or borrowed bookmark crosses the lifecycle transition.
-SDK v1 commands and persistent bookmark formats are unchanged.
+SDK v2 commands and persistent bookmark formats are unchanged.
 
 Reader loads local history, refreshes the library and selects the saved
 filename independently of its old list index. It checks the listed size,
@@ -104,8 +104,8 @@ retain their existing service and shutdown ownership.
 
 ```bash
 mkdir -p build-ui-e1-2
-ZECTRIX_UI_PREVIEW_DIR="$PWD/build-ui-e1-2" bash tools/test-display-service.sh
-ZECTRIX_READER_SANITIZE=1 bash tools/test-reader.sh
+NOTE4_UI_PREVIEW_DIR="$PWD/build-ui-e1-2" bash tools/test-display-service.sh
+NOTE4_READER_SANITIZE=1 bash tools/test-reader.sh
 bash tools/test-minimal-profile.sh
 ```
 

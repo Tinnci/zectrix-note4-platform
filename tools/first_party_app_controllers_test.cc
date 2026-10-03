@@ -1,6 +1,6 @@
-#include "zectrix_first_party_app_controllers.h"
-#include "zectrix_clock_editor.h"
-#include "zectrix_launcher_controller.h"
+#include "note4_first_party_app_controllers.h"
+#include "note4_clock_editor.h"
+#include "note4_launcher_controller.h"
 
 #include <algorithm>
 #include <array>
@@ -10,8 +10,8 @@
 #include <vector>
 
 void TestLauncher() {
-    using namespace zectrix::app;
-    using namespace zectrix::sdk;
+    using namespace note4::app;
+    using namespace note4::sdk;
     class Factory final : public ApplicationFactory {
         Status Create(const ApplicationRegistry&, Application**) override {
             assert(false);
@@ -191,8 +191,8 @@ void TestLauncher() {
 }
 
 void TestLauncherDate() {
-    using namespace zectrix::time;
-    using zectrix::app::LauncherDateChanged;
+    using namespace note4::time;
+    using note4::app::LauncherDateChanged;
     ClockSnapshot unset;
     auto tick = unset;
     tick.value.hour = 25;
@@ -212,9 +212,9 @@ void TestLauncherDate() {
 }
 
 void TestClockDraft() {
-    using zectrix::app::ClockEditor;
+    using note4::app::ClockEditor;
     ClockEditor editor;
-    const zectrix::time::DateTime leap_day{2024, 2, 29, 4, 23, 59, 52};
+    const note4::time::DateTime leap_day{2024, 2, 29, 4, 23, 59, 52};
     editor.Begin(leap_day, 5 * 3600 + 45 * 60);
     assert(editor.value().second == 0 && editor.offset_seconds() == 20700);
     editor.Adjust(1);
@@ -235,7 +235,7 @@ void TestClockDraft() {
     editor.Adjust(-1);
     assert(editor.offset_seconds() == 19800);
     editor.Next();
-    assert(editor.field() == ClockEditor::Save && zectrix::time::IsValid(editor.value()));
+    assert(editor.field() == ClockEditor::Save && note4::time::IsValid(editor.value()));
     editor.Adjust(1);
     assert(editor.field() == ClockEditor::UtcOffset);
     editor.Next();
@@ -258,8 +258,8 @@ void TestClockDraft() {
 }
 
 void TestConnectivityNavigation() {
-    using namespace zectrix::app;
-    using namespace zectrix::sdk;
+    using namespace note4::app;
+    using namespace note4::sdk;
     const InputEvent up{Button::Up, InputAction::Click};
     const InputEvent down{Button::Down, InputAction::Click};
     const InputEvent ok{Button::Ok, InputAction::Click};
@@ -334,8 +334,8 @@ void TestConnectivityNavigation() {
 }
 
 void TestDiagnosticsNavigation() {
-    using namespace zectrix::app;
-    using namespace zectrix::sdk;
+    using namespace note4::app;
+    using namespace note4::sdk;
     const InputEvent up{Button::Up, InputAction::Click};
     const InputEvent down{Button::Down, InputAction::Click};
     const InputEvent ok{Button::Ok, InputAction::Click};
@@ -399,10 +399,10 @@ int main() {
     TestLauncherDate();
     TestConnectivityNavigation();
     TestDiagnosticsNavigation();
-    using namespace zectrix::app;
-    using Action = zectrix::sdk::InputAction;
-    using zectrix::sdk::Button;
-    using zectrix::sdk::InputEvent;
+    using namespace note4::app;
+    using Action = note4::sdk::InputAction;
+    using note4::sdk::Button;
+    using note4::sdk::InputEvent;
 
     assert(kAutoShowcaseDefault == 0);
     assert(MapNavigation({Button::Ok, Action::LongPress}) == Navigation::Back);
@@ -430,8 +430,8 @@ int main() {
 
     SettingsController settings(true);
     assert(settings.Handle({Button::Ok, Action::Click}).decision == SettingsDecision::None);
-    assert(settings.Start() == zectrix::sdk::Status::Ok);
-    assert(settings.Start() == zectrix::sdk::Status::InvalidState);
+    assert(settings.Start() == note4::sdk::Status::Ok);
+    assert(settings.Start() == note4::sdk::Status::InvalidState);
     assert(settings.Tick().decision == SettingsDecision::RenderQuality);
     SettingsResult setting = settings.Handle({Button::Down, Action::Click});
     assert(setting.decision == SettingsDecision::RenderFast);

@@ -1,13 +1,13 @@
 #pragma once
 
 #include "sdkconfig.h"
-#include "zectrix_power_service.h"
-#include "zectrix_status_bar.h"
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
-#include "zectrix_connectivity_service.h"
+#include "note4_power_service.h"
+#include "status_bar.h"
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
+#include "note4_connectivity_service.h"
 #endif
 
-namespace zectrix::terminal {
+namespace note4::terminal {
 
 inline void CopyPowerStatus(ui::StatusBarState& status, const power::PowerSnapshot& power) {
     status.battery_valid = power.battery_valid;
@@ -19,7 +19,7 @@ inline void CopyPowerStatus(ui::StatusBarState& status, const power::PowerSnapsh
     status.charge_fault = power.charge_fault;
 }
 
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
 inline void CopyRadioStatus(ui::StatusBarState& status, const connectivity::ConnectivitySnapshot& link) {
     using Indicator = ui::RadioIndicator;
     using Ble = connectivity::ConnectivityState;
@@ -53,4 +53,4 @@ inline void CopyRadioStatus(ui::StatusBarState& status, const connectivity::Conn
 }
 #endif
 
-}  // namespace zectrix::terminal
+}  // namespace note4::terminal

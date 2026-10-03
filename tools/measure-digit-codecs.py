@@ -30,7 +30,7 @@ def main():
     for name, codecs in (("legacy", (0, 1)), ("xor", (0, 1, 2)), ("column", (0, 1, 3)), ("all", (0, 1, 2, 3))):
         directory = (args.output / name).resolve()
         directory.mkdir(parents=True, exist_ok=True)
-        header = directory / "zectrix_large_digits.h"
+        header = directory / "large_digits.h"
         subprocess.run([sys.executable, str(ROOT / "tools/generate-large-digits.py"), "--recipe", str(args.recipe),
                         "--output", str(header), "--preview", str(directory / "preview.png"),
                         "--codecs", *[CODECS[c] for c in codecs]], check=True)
@@ -49,7 +49,7 @@ def main():
         for line in symbols.splitlines():
             fields = line.split(maxsplit=3)
             if len(fields) == 4 and fields[2] in ("T", "t", "W", "w") and (
-                    "LargeNumber" in fields[3] or "ZectrixDecodeDigit" in fields[3]):
+                    "LargeNumber" in fields[3] or "Note4DecodeDigit" in fields[3]):
                 sizes.append({"symbol": fields[3], "bytes": int(fields[1], 16)})
         data = header.read_text()
         payload_bytes = len(re.findall(r"0x[0-9a-f]{2}", data))

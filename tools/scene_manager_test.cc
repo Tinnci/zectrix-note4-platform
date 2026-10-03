@@ -1,13 +1,13 @@
-#include "zectrix_gallery_controller.h"
+#include "note4_gallery_controller.h"
 
 #include <array>
 #include <cassert>
 #include <vector>
 
-using namespace zectrix::app;
-using zectrix::sdk::Status;
-using zectrix::sdk::Button;
-using Action = zectrix::sdk::InputAction;
+using namespace note4::app;
+using note4::sdk::Status;
+using note4::sdk::Button;
+using Action = note4::sdk::InputAction;
 
 namespace {
 struct Harness {

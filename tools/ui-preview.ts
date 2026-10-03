@@ -45,11 +45,11 @@ if (import.meta.main) {
   const source = args.includes("--reuse") ? output : await mkdtemp(`${root}/build-ui-stage-`);
   if (!args.includes("--reuse")) {
     const process = Bun.spawn(["bash", "tools/test-display-service.sh"], {
-      cwd: root, env: { ...Bun.env, ZECTRIX_UI_PREVIEW_DIR: source }, stdout: "inherit", stderr: "inherit",
+      cwd: root, env: { ...Bun.env, NOTE4_UI_PREVIEW_DIR: source }, stdout: "inherit", stderr: "inherit",
     });
     if (await process.exited !== 0) throw new Error("Device UI tests failed; preview generation stopped");
   }
-  const font = new Uint8Array(await Bun.file(`${root}/components/zectrix_reader/font/reader_font.bin`).arrayBuffer());
+  const font = new Uint8Array(await Bun.file(`${root}/components/note4_reader/font/reader_font.bin`).arrayBuffer());
   for (const language of ["en", "zh"] as const) for (const orientation of ["portrait", "landscape"] as const) {
     const states = Array.from({ length: 8 }, (_, i) => ({ entity_id: `sensor.example_${i}`, state: String(20+i),
       attributes: { friendly_name: language === "zh" ? `房间 ${i+1} 温度` : `Room ${i+1} temperature`, unit_of_measurement: "°C" } }));

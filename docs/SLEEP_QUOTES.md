@@ -16,7 +16,7 @@
 英文与中文都执行全周期的实际画布逐像素对照，检查两段完整出现。
 中文精简固件的字形子集也已重新生成，避免新增汉字只在阅读器启用时才能显示。
 
-修改位置：`components/zectrix_app/zectrix_sleep_cover.cc` 及 `include/zectrix_strings.inc`。
+修改位置：`components/note4_app/note4_sleep_cover.cc` 及 `include/note4_strings.inc`。
 修改后运行：
 
 ```sh

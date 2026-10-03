@@ -100,10 +100,10 @@ All documentation screenshots can be refreshed with `bun tools/ui-preview.ts --d
 
 ```bash
 mkdir -p build-status-icons/previews
-ZECTRIX_UI_PREVIEW_DIR="$PWD/build-status-icons/previews" bash tools/test-display-service.sh
+NOTE4_UI_PREVIEW_DIR="$PWD/build-status-icons/previews" bash tools/test-display-service.sh
 bash tools/test-host.sh
-ZECTRIX_DISPLAY_SANITIZE=1 bash tools/test-display-service.sh
-ZECTRIX_LOCALIZATION_SANITIZE=1 bash tools/test-localization.sh
+NOTE4_DISPLAY_SANITIZE=1 bash tools/test-display-service.sh
+NOTE4_LOCALIZATION_SANITIZE=1 bash tools/test-localization.sh
 source tools/activate-dev-env.sh
 bash tools/build-firmware.sh --profile full
 bash tools/build-firmware.sh --profile minimal

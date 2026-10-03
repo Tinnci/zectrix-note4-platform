@@ -5,9 +5,9 @@
 #include <cstdint>
 #include <termios.h>
 
-#include "zectrix_cli_session.h"
+#include "note4_cli_session.h"
 
-namespace zectrix::cli::host {
+namespace note4::cli::host {
 
 template <std::size_t Capacity>
 class ByteQueue final {
@@ -83,4 +83,4 @@ private:
     bool reconnect_ = false;
 };
 
-}  // namespace zectrix::cli::host
+}  // namespace note4::cli::host

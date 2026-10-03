@@ -7,12 +7,12 @@ trap 'rm -f "$test_binary"' EXIT
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -I"$repo_root/tools/host_include" \
-    -I"$repo_root/components/zectrix_app/include" -I"$repo_root/components/zectrix_text/include" \
-    -I"$repo_root/components/zectrix_time/include" \
-    "$repo_root/components/zectrix_app/zectrix_first_party_app_controllers.cc" \
-    "$repo_root/components/zectrix_app/zectrix_locale.cc" \
-    "$repo_root/components/zectrix_app/zectrix_launcher_controller.cc" \
-    "$repo_root/components/zectrix_app/zectrix_scene_manager.cc" \
+    -I"$repo_root/components/note4_app/include" -I"$repo_root/components/note4_text/include" \
+    -I"$repo_root/components/note4_time/include" \
+    "$repo_root/components/note4_app/note4_first_party_app_controllers.cc" \
+    "$repo_root/components/note4_app/note4_locale.cc" \
+    "$repo_root/components/note4_app/note4_launcher_controller.cc" \
+    "$repo_root/components/note4_app/note4_scene_manager.cc" \
     "$repo_root/tools/first_party_app_controllers_test.cc" \
     -o "$test_binary"
 "$test_binary"

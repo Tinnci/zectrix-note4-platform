@@ -3,7 +3,7 @@ import { connectAsync } from "mqtt";
 const url=Bun.env.MQTT_TEST_URL;
 if(!url) throw new Error("Set MQTT_TEST_URL for the live broker check");
 const client=await connectAsync(url,{connectTimeout:3000,reconnectPeriod:0,clean:true,queueQoSZero:false});
-const topic=`zectrix/note4/test/${crypto.randomUUID()}`;
+const topic=`note4/note4/test/${crypto.randomUUID()}`;
 try {
   await client.subscribeAsync(topic,{qos:1});
   const received=new Promise<void>((resolve,reject)=>{

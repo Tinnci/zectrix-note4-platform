@@ -5,10 +5,10 @@
 #include <cstring>
 #include <vector>
 
-#include "zectrix_sync_engine.h"
-#include "zectrix_sync_session.h"
+#include "note4_sync_engine.h"
+#include "note4_sync_session.h"
 
-using namespace zectrix::companion;
+using namespace note4::companion;
 
 namespace {
 

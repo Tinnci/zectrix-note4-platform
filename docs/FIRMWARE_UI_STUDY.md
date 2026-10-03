@@ -130,7 +130,7 @@ These are three different operations with different costs:
 | Glyph antialiasing | [GfxRenderer][ink-renderer] reads 2-bit glyph coverage and emits BW, grayscale-MSB and grayscale-LSB passes. It also supports 1-bit glyphs. | Evaluate native 24px bitmaps first. Gray text needs separate panel-quality and refresh-cost evaluation. It is not a free improvement to the current 1bpp page path. |
 | Image dithering | CrossInk's [DitherUtils][ink-dither] uses a stateless 4 x 4 Bayer matrix and four output levels. | For future 1bpp covers, evaluate ordered dithering at the final display size. Keep the pattern anchored to display coordinates so repeated dirty updates are stable. |
 
-The local [GlyphBitmap implementation](../components/zectrix_reader/zectrix_reader_font.cc)
+The local [GlyphBitmap implementation](../components/note4_reader/note4_reader_font.cc)
 indexes eight Unicode ranges into uncompressed Flash records. Each record is
 33 bytes: width plus sixteen 16-bit rows. There is no glyph decompression or
 SD read to hide with a cache. The [drawing code](../components/ui/unicode_text.cc)
@@ -139,7 +139,7 @@ the same sampled shapes. Native size-specific glyphs address the quality issue
 more directly, subject to Flash capacity and font licensing.
 
 The current font already occupies 1,325,973 bytes for 40,181 glyph slots, as
-recorded in the [font notice](../components/zectrix_reader/font/README.md).
+recorded in the [font notice](../components/note4_reader/font/README.md).
 The E1.1 Full build leaves 149,904 bytes in each existing 3 MiB OTA slot.
 Another complete uncompressed glyph set would not fit. Prototype a small
 native-size subset or an optional reader font profile before choosing a
@@ -176,7 +176,7 @@ Note4's deferred transitions and clipped canvas scheduler.
 CrossPoint's [ActivityManager][cp-manager] stores pending push/pop/replace
 operations, a dynamically sized activity stack and a separate render task.
 Note4 retains its current ownership model from
-[M3](M3_APPLICATION_CONTRACT.md), [SDK v1](SDK_V1.md) and
+[M3](M3_APPLICATION_CONTRACT.md), [SDK v2](SDK_V2.md) and
 [M2 display/power rules](M2_PLATFORM_CONTRACT.md):
 
 | Existing Note4 boundary | Consequence for the proposed UI |
@@ -255,7 +255,7 @@ fixture:
 
 ```bash
 mkdir -p build-ui-e1-1
-ZECTRIX_UI_PREVIEW_DIR="$PWD/build-ui-e1-1" bash tools/test-minimal-profile.sh
+NOTE4_UI_PREVIEW_DIR="$PWD/build-ui-e1-1" bash tools/test-minimal-profile.sh
 ```
 
 The preview fixture includes `launcher.pbm`, `launcher-last.pbm` and

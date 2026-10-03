@@ -1,6 +1,6 @@
-#include "zectrix_time_service.h"
-#include "zectrix_board.h"
-#include "zectrix_storage_service.h"
+#include "note4_time_service.h"
+#include "note4_board.h"
+#include "note4_storage_service.h"
 
 #include <cassert>
 #include <cstring>
@@ -17,7 +17,7 @@ bool offset_saved = false;
 int32_t saved_offset = 0;
 esp_err_t storage_read_result = ESP_OK, storage_write_result = ESP_OK;
 unsigned storage_writes = 0;
-ZectrixBoard* writing_board = nullptr;
+Note4Board* writing_board = nullptr;
 }
 
 int64_t esp_timer_get_time() { return monotonic_time; }
@@ -42,7 +42,7 @@ extern "C" int settimeofday(const timeval* value, const struct timezone*)
     return clock_result;
 }
 
-namespace zectrix::storage {
+namespace note4::storage {
 struct StorageService::Impl {};
 esp_err_t StorageService::Create(StorageService** output) {
     *output = new StorageService(nullptr);
@@ -66,10 +66,10 @@ esp_err_t StorageService::SetInt32(const char* key, int32_t value) {
     offset_saved = true;
     return ESP_OK;
 }
-}  // namespace zectrix::storage
+}  // namespace note4::storage
 
 namespace {
-using namespace zectrix::time;
+using namespace note4::time;
 
 void Reset() {
     monotonic_time = 1234567;
@@ -81,14 +81,14 @@ void Reset() {
     storage_writes = 0;
 }
 
-std::unique_ptr<TimeService> Attach(ZectrixBoard& board) {
+std::unique_ptr<TimeService> Attach(Note4Board& board) {
     TimeService* service = nullptr;
     assert(TimeService::Attach(board, &service) == ESP_OK && service);
     writing_board = &board;
     return std::unique_ptr<TimeService>(service);
 }
 
-void SetRetainedDate(ZectrixBoard& board, const DateTime& value) {
+void SetRetainedDate(Note4Board& board, const DateTime& value) {
     board.rtc_value = {};
     board.rtc_value.tm_year = value.year - 1900;
     board.rtc_value.tm_mon = value.month - 1;
@@ -99,9 +99,9 @@ void SetRetainedDate(ZectrixBoard& board, const DateTime& value) {
     board.rtc_value.tm_sec = value.second;
 }
 
-void TestRestore(zectrix::storage::StorageService& storage) {
+void TestRestore(note4::storage::StorageService& storage) {
     Reset();
-    ZectrixBoard board;
+    Note4Board board;
     SetRetainedDate(board, {2024, 2, 29, 4, 12, 0, 0});
     auto service = Attach(board);
     assert(service->MonotonicMicroseconds() == monotonic_time);
@@ -142,9 +142,9 @@ void TestRestore(zectrix::storage::StorageService& storage) {
     assert(board.rtc_reads == reads && storage_writes == 1);
 }
 
-void TestCalendar(zectrix::storage::StorageService& storage) {
+void TestCalendar(note4::storage::StorageService& storage) {
     Reset();
-    ZectrixBoard board;
+    Note4Board board;
     auto service = Attach(board);
     assert(service->Initialize(storage) == ESP_ERR_INVALID_RESPONSE);
     const DateTime invalid[] = {
@@ -190,10 +190,10 @@ void TestCalendar(zectrix::storage::StorageService& storage) {
     clock_result = 0;
 }
 
-void TestInterruptedCalibration(zectrix::storage::StorageService& storage) {
+void TestInterruptedCalibration(note4::storage::StorageService& storage) {
     for (unsigned stage = 0; stage < 4; ++stage) {
         Reset();
-        ZectrixBoard board;
+        Note4Board board;
         auto service = Attach(board);
         service->Initialize(storage);
         assert(service->SetLocalTime({2024, 2, 29, 4, 12, 0, 0}, 0) == ESP_OK);
@@ -232,9 +232,9 @@ void TestInterruptedCalibration(zectrix::storage::StorageService& storage) {
     }
 }
 
-void TestRecoveryAndTimers(zectrix::storage::StorageService& storage) {
+void TestRecoveryAndTimers(note4::storage::StorageService& storage) {
     Reset();
-    ZectrixBoard board;
+    Note4Board board;
     SetRetainedDate(board, {2026, 8, 11, 2, 17, 30, 45});
     offset_saved = true;
     saved_offset = 8 * 3600;
@@ -280,10 +280,10 @@ void TestRecoveryAndTimers(zectrix::storage::StorageService& storage) {
     assert(uptime.value.hour == 25 && uptime.value.minute == 42 && uptime.value.second == 9);
 }
 
-void TestUnknownOffset(zectrix::storage::StorageService& storage) {
+void TestUnknownOffset(note4::storage::StorageService& storage) {
     for (unsigned failure = 0; failure < 2; ++failure) {
         Reset();
-        ZectrixBoard board;
+        Note4Board board;
         SetRetainedDate(board, {2024, 1, 1, 1, 12, 0, 0});
         if (failure == 0) { offset_saved = true; saved_offset = 50401; }
         else storage_read_result = ESP_FAIL;
@@ -294,9 +294,9 @@ void TestUnknownOffset(zectrix::storage::StorageService& storage) {
     }
 }
 
-void TestSourceArbitration(zectrix::storage::StorageService& storage) {
+void TestSourceArbitration(note4::storage::StorageService& storage) {
     Reset();
-    ZectrixBoard board;
+    Note4Board board;
     auto service = Attach(board);
     service->Initialize(storage);
     TimeSample https{1709179200000, monotonic_time, 0, SyncSource::HttpsDate, false};
@@ -381,8 +381,8 @@ void TestHttpDate() {
 }  // namespace
 
 int main() {
-    zectrix::storage::StorageService* storage = nullptr;
-    assert(zectrix::storage::StorageService::Create(&storage) == ESP_OK);
+    note4::storage::StorageService* storage = nullptr;
+    assert(note4::storage::StorageService::Create(&storage) == ESP_OK);
     TestRestore(*storage);
     TestCalendar(*storage);
     TestInterruptedCalibration(*storage);

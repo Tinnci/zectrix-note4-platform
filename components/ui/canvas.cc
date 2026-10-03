@@ -10,29 +10,29 @@
 #include "styled_glyph.h"
 #include "utf8.h"
 #include "sdkconfig.h"
-#if CONFIG_ZECTRIX_ENABLE_READER
-#include "zectrix_reader.h"
-#elif CONFIG_ZECTRIX_ENABLE_UI_CHINESE
+#if CONFIG_NOTE4_ENABLE_READER
+#include "note4_reader.h"
+#elif CONFIG_NOTE4_ENABLE_UI_CHINESE
 #include "ui_chinese_font.h"
 #endif
 
 namespace {
-using zectrix::sdk::TextStyle;
-using zectrix::sdk::HasStyle;
-using zectrix::text::MeasureGlyph;
-using zectrix::ui::detail::FillClipped;
-using zectrix::ui::detail::PaintGlyph;
+using note4::sdk::TextStyle;
+using note4::sdk::HasStyle;
+using note4::text::MeasureGlyph;
+using note4::ui::detail::FillClipped;
+using note4::ui::detail::PaintGlyph;
 
 struct Glyph {
     int width;
     const uint16_t* ascii = nullptr;
-#if CONFIG_ZECTRIX_ENABLE_READER
-    zectrix::reader::BitmapGlyph unicode{};
+#if CONFIG_NOTE4_ENABLE_READER
+    note4::reader::BitmapGlyph unicode{};
 #else
     const uint8_t* unicode = nullptr;
 #endif
     uint16_t Row(int row) const {
-#if CONFIG_ZECTRIX_ENABLE_READER
+#if CONFIG_NOTE4_ENABLE_READER
         return ascii ? ascii[row] : unicode.Row(row);
 #else
         return ascii ? ascii[row] : static_cast<uint16_t>(unicode[1 + row * 2]) << 8 |
@@ -43,11 +43,11 @@ struct Glyph {
 
 Glyph UiGlyph(uint32_t cp) {
     if (cp >= 32 && cp < 127)
-        return {kZectrixAsciiFontWidths[cp - 32], kZectrixAsciiFont8x16[cp - 32], {}};
-#if CONFIG_ZECTRIX_ENABLE_READER
-    const auto bitmap = zectrix::reader::GlyphBitmap(cp);
+        return {kNote4AsciiFontWidths[cp - 32], kNote4AsciiFont8x16[cp - 32], {}};
+#if CONFIG_NOTE4_ENABLE_READER
+    const auto bitmap = note4::reader::GlyphBitmap(cp);
     return {bitmap.width, nullptr, bitmap};
-#elif CONFIG_ZECTRIX_ENABLE_UI_CHINESE
+#elif CONFIG_NOTE4_ENABLE_UI_CHINESE
     const auto* first = std::begin(kUiChineseCodepoints);
     const auto* last = std::end(kUiChineseCodepoints);
     const auto* found = std::lower_bound(first, last, cp);
@@ -56,7 +56,7 @@ Glyph UiGlyph(uint32_t cp) {
         return {bitmap[0], nullptr, bitmap};
     }
 #endif
-    return {kZectrixAsciiFontWidths['?' - 32], kZectrixAsciiFont8x16['?' - 32], {}};
+    return {kNote4AsciiFontWidths['?' - 32], kNote4AsciiFont8x16['?' - 32], {}};
 }
 
 struct RunMetrics { int width = 0, height = 0; };
@@ -67,7 +67,7 @@ RunMetrics MeasureRun(const char* text, const char* end, const char* suffix,
     if (!text || scale < 1 || scale > 16) return result;
     for (const char* span : {text, suffix}) {
         for (const char* p = span; p && *p && (span != text || p != end);) {
-            const auto cp = zectrix::ui::NextUtf8(p);
+            const auto cp = note4::ui::NextUtf8(p);
             const auto glyph = MeasureGlyph(cp, UiGlyph(cp).width, 16 * scale, style);
             result.width += std::min(INT_MAX - result.width, glyph.advance);
             result.height = std::max(result.height, glyph.height);
@@ -80,7 +80,7 @@ RunMetrics MeasureRun(const char* text, const char* end, const char* suffix,
     return result;
 }
 
-void PaintRun(ZectrixCanvas& canvas, int x, int y, const char* text, const char* end,
+void PaintRun(Canvas& canvas, int x, int y, const char* text, const char* end,
               const char* suffix, int scale, bool inverted, TextStyle style) {
     const auto metrics = MeasureRun(text, end, suffix, scale, style);
     if (!metrics.height) return;
@@ -96,7 +96,7 @@ void PaintRun(ZectrixCanvas& canvas, int x, int y, const char* text, const char*
     }
     for (const char* span : {text, suffix}) {
         for (const char* p = span; p && *p && (span != text || p != end);) {
-            const auto cp = zectrix::ui::NextUtf8(p);
+            const auto cp = note4::ui::NextUtf8(p);
             const auto glyph = UiGlyph(cp);
             PaintGlyph(canvas, cursor, top, cp, glyph, 16 * scale, style, inverted);
             cursor += MeasureGlyph(cp, glyph.width, 16 * scale, style).advance;
@@ -106,7 +106,7 @@ void PaintRun(ZectrixCanvas& canvas, int x, int y, const char* text, const char*
 }
 }  // namespace
 
-void ZectrixCanvas::Clear(bool white) {
+void Canvas::Clear(bool white) {
     if (clip_.x == 0 && clip_.y == 0 && clip_.width == width() &&
         clip_.height == height()) {
         pixels_.fill(white ? 0xff : 0x00);
@@ -115,7 +115,7 @@ void ZectrixCanvas::Clear(bool white) {
     }
 }
 
-void ZectrixCanvas::SetClip(Clip clip) {
+void Canvas::SetClip(Clip clip) {
     const int left = std::clamp(clip.x, 0, width());
     const int top = std::clamp(clip.y, 0, height());
     const int right = static_cast<int>(std::clamp<int64_t>(
@@ -125,7 +125,7 @@ void ZectrixCanvas::SetClip(Clip clip) {
     clip_ = {left, top, right - left, bottom - top};
 }
 
-void ZectrixCanvas::Pixel(int x, int y, bool black) {
+void Canvas::Pixel(int x, int y, bool black) {
     if (x < clip_.x || x >= clip_.x + clip_.width ||
         y < clip_.y || y >= clip_.y + clip_.height) {
         return;
@@ -140,7 +140,7 @@ void ZectrixCanvas::Pixel(int x, int y, bool black) {
     }
 }
 
-void ZectrixCanvas::FillRect(int x, int y, int width, int height,
+void Canvas::FillRect(int x, int y, int width, int height,
                              bool black) {
     const int left = std::max(0, x);
     const int top = std::max(0, y);
@@ -153,14 +153,14 @@ void ZectrixCanvas::FillRect(int x, int y, int width, int height,
     }
 }
 
-void ZectrixCanvas::Rect(int x, int y, int width, int height, bool black) {
+void Canvas::Rect(int x, int y, int width, int height, bool black) {
     Line(x, y, x + width - 1, y, black);
     Line(x, y + height - 1, x + width - 1, y + height - 1, black);
     Line(x, y, x, y + height - 1, black);
     Line(x + width - 1, y, x + width - 1, y + height - 1, black);
 }
 
-void ZectrixCanvas::Line(int x0, int y0, int x1, int y1, bool black) {
+void Canvas::Line(int x0, int y0, int x1, int y1, bool black) {
     const int dx = std::abs(x1 - x0);
     const int sx = x0 < x1 ? 1 : -1;
     const int dy = -std::abs(y1 - y0);
@@ -183,23 +183,23 @@ void ZectrixCanvas::Line(int x0, int y0, int x1, int y1, bool black) {
     }
 }
 
-void ZectrixCanvas::Text(int x, int y, const char* text, int scale,
+void Canvas::Text(int x, int y, const char* text, int scale,
                          bool inverted, TextStyle style) {
     PaintRun(*this, x, y, text, nullptr, nullptr, scale, inverted, style);
 }
 
-void ZectrixCanvas::TextCentered(int y, const char* text, int scale,
+void Canvas::TextCentered(int y, const char* text, int scale,
                                  bool inverted, TextStyle style) {
     Text((width() - TextWidth(text, scale, style)) / 2, y, text, scale, inverted, style);
 }
 
-int ZectrixCanvas::LargeNumberWidth(unsigned value) const {
+int Canvas::LargeNumberWidth(unsigned value) const {
     if (value > 99) return 0;
     const auto base = static_cast<unsigned>(digit_style_) * 10;
-    return kZectrixDigitGlyphs[base + value / 10].width + 3 + kZectrixDigitGlyphs[base + value % 10].width;
+    return kNote4DigitGlyphs[base + value / 10].width + 3 + kNote4DigitGlyphs[base + value % 10].width;
 }
 
-void ZectrixCanvas::LargeNumber(int x, int y, unsigned value, bool inverted) {
+void Canvas::LargeNumber(int x, int y, unsigned value, bool inverted) {
     const int width = LargeNumberWidth(value);
     if (value > 99 || x >= clip_.x + clip_.width || y >= clip_.y + clip_.height ||
         static_cast<int64_t>(x) + width <= clip_.x ||
@@ -208,9 +208,9 @@ void ZectrixCanvas::LargeNumber(int x, int y, unsigned value, bool inverted) {
     const unsigned digits[] = {value / 10, value % 10};
     int origin = x;
     for (const auto digit : digits) {
-        const auto& glyph = kZectrixDigitGlyphs[static_cast<unsigned>(digit_style_) * 10 + digit];
-        const auto* data = kZectrixDigitData + glyph.offset;
-        ZectrixDecodeDigit<kZectrixDigitUsesXor, kZectrixDigitUsesColumn>(data, glyph.size, glyph.width, kLargeNumberHeight, glyph.codec,
+        const auto& glyph = kNote4DigitGlyphs[static_cast<unsigned>(digit_style_) * 10 + digit];
+        const auto* data = kNote4DigitData + glyph.offset;
+        Note4DecodeDigit<kNote4DigitUsesXor, kNote4DigitUsesColumn>(data, glyph.size, glyph.width, kLargeNumberHeight, glyph.codec,
             [&](unsigned col, unsigned row, bool black) {
                 if (black) Pixel(origin + static_cast<int>(col), y + static_cast<int>(row), !inverted);
             });
@@ -218,14 +218,14 @@ void ZectrixCanvas::LargeNumber(int x, int y, unsigned value, bool inverted) {
     }
 }
 
-int ZectrixCanvas::TextWidth(const char* text, int scale, TextStyle style) const {
+int Canvas::TextWidth(const char* text, int scale, TextStyle style) const {
     return MeasureRun(text, nullptr, nullptr, scale, style).width;
 }
-int ZectrixCanvas::TextHeight(const char* text, int scale, TextStyle style) const {
+int Canvas::TextHeight(const char* text, int scale, TextStyle style) const {
     return MeasureRun(text, nullptr, nullptr, scale, style).height;
 }
 
-void ZectrixCanvas::TextFitted(int x, int y, const char* text, int max_width, bool inverted, TextStyle style) {
+void Canvas::TextFitted(int x, int y, const char* text, int max_width, bool inverted, TextStyle style) {
     if (!text || max_width <= 0) return;
     if (TextWidth(text, 1, style) <= max_width) { Text(x, y, text, 1, inverted, style); return; }
     const int ellipsis = TextWidth("...", 1, style);
@@ -234,7 +234,7 @@ void ZectrixCanvas::TextFitted(int x, int y, const char* text, int max_width, bo
     int used = 0;
     while (*end) {
         const char* next = end;
-        const auto cp = zectrix::ui::NextUtf8(next);
+        const auto cp = note4::ui::NextUtf8(next);
         const auto advance = MeasureGlyph(cp, UiGlyph(cp).width, 16, style).advance;
         if (advance > max_width - used - ellipsis) break;
         used += advance;

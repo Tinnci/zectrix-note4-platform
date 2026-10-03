@@ -1,9 +1,9 @@
 #include "terminal_internal.h"
 
-#include "zectrix_navigation.h"
+#include "note4_navigation.h"
 
 
-namespace zectrix::terminal {
+namespace note4::terminal {
 
 class TerminalApp::DeviceInfoApplication : public sdk::Application {
 public:
@@ -45,8 +45,8 @@ public:
 private:
     TerminalApp* owner_;
     bool about_;
-    zectrix::power::PowerSnapshot power_{};
-    zectrix::system::SystemSnapshot system_{};
+    note4::power::PowerSnapshot power_{};
+    note4::system::SystemSnapshot system_{};
 };
 
 sdk::Status TerminalApp::CreateDeviceInfo(TerminalApp& owner, sdk::Application** output) {
@@ -62,4 +62,4 @@ sdk::Status TerminalApp::CreateAbout(TerminalApp& owner, sdk::Application** outp
     return CreateApplication<AboutApplication>(owner, output);
 }
 
-}  // namespace zectrix::terminal
+}  // namespace note4::terminal

@@ -1,4 +1,4 @@
-#include "zectrix_system_service.h"
+#include "note4_system_service.h"
 
 #include <array>
 #include <cassert>
@@ -9,7 +9,7 @@
 #include "esp_heap_caps.h"
 #include "esp_system.h"
 #include "freertos/task.h"
-#include "zectrix_board.h"
+#include "note4_board.h"
 
 namespace {
 esp_app_desc_t app = {};
@@ -56,22 +56,22 @@ UBaseType_t uxTaskGetSystemState(TaskStatus_t* tasks, UBaseType_t capacity, uint
 }
 
 int main() {
-    std::strcpy(app.project_name, "zectrix-note4");
+    std::strcpy(app.project_name, "note4");
     std::strcpy(app.version, "test-version");
     std::strcpy(app.idf_ver, "v5.5.2");
     std::strcpy(app.date, "Aug 11 2026");
     std::strcpy(app.time, "12:34:56");
     for (size_t index = 0; index < 32; ++index) app.app_elf_sha256[index] = index;
 
-    ZectrixBoard board;
-    zectrix::system::SystemService* service = nullptr;
-    assert(zectrix::system::SystemService::Attach(board, nullptr) == ESP_ERR_INVALID_ARG);
-    assert(zectrix::system::SystemService::Attach(board, &service) == ESP_OK);
+    Note4Board board;
+    note4::system::SystemService* service = nullptr;
+    assert(note4::system::SystemService::Attach(board, nullptr) == ESP_ERR_INVALID_ARG);
+    assert(note4::system::SystemService::Attach(board, &service) == ESP_OK);
 
-    zectrix::system::SystemSnapshot snapshot;
+    note4::system::SystemSnapshot snapshot;
     assert(service->ReadSnapshot(nullptr) == ESP_ERR_INVALID_ARG);
     assert(service->ReadSnapshot(&snapshot) == ESP_OK);
-    assert(std::strcmp(snapshot.firmware.project_name.data(), "zectrix-note4") == 0);
+    assert(std::strcmp(snapshot.firmware.project_name.data(), "note4") == 0);
     assert(std::strcmp(snapshot.firmware.version.data(), "test-version") == 0);
     assert(snapshot.firmware.app_elf_sha256[0] == '0');
     assert(snapshot.firmware.app_elf_sha256[63] == 'f');
@@ -83,32 +83,32 @@ int main() {
     assert(snapshot.diagnostics.flash_bytes == 16U * 1024U * 1024U);
     assert(snapshot.diagnostics.psram_bytes == 8U * 1024U * 1024U);
     assert(snapshot.diagnostics.free_internal_heap_bytes == 1000);
-    assert(snapshot.reset_reason == zectrix::system::ResetReason::PowerOn);
+    assert(snapshot.reset_reason == note4::system::ResetReason::PowerOn);
     assert(snapshot.wifi_mac[5] == 0x55);
 
     reset_reason = ESP_RST_TASK_WDT;
     assert(service->ReadSnapshot(&snapshot) == ESP_OK);
-    assert(snapshot.reset_reason == zectrix::system::ResetReason::Watchdog);
+    assert(snapshot.reset_reason == note4::system::ResetReason::Watchdog);
     flash_result = ESP_FAIL;
     assert(service->ReadSnapshot(&snapshot) == ESP_FAIL);
     flash_result = ESP_OK;
     mac_result = ESP_FAIL;
     assert(service->ReadSnapshot(&snapshot) == ESP_FAIL);
     assert(service->ReadWifiMac(nullptr) == ESP_ERR_INVALID_ARG);
-    zectrix::system::HeapSnapshot heap;
+    note4::system::HeapSnapshot heap;
     assert(service->ReadHeap(&heap) == ESP_OK);
     assert(heap.internal.free == 1000 && heap.internal.minimum_free == 800);
     assert(heap.internal.largest_block == 600);
     assert(heap.psram.total == 8U * 1024U * 1024U);
     assert(service->ReadHeap(nullptr) == ESP_ERR_INVALID_ARG);
 
-    zectrix::system::TaskSnapshot tasks;
+    note4::system::TaskSnapshot tasks;
     assert(service->ReadTasks(&tasks) == ESP_OK);
     assert(tasks.count == 2 && tasks.total == 2 && !tasks.capacity_exceeded);
     assert(tasks.tasks[0].id == 1 && tasks.tasks[0].application_owner);
-    assert(tasks.tasks[1].state == zectrix::system::TaskState::kBlocked);
+    assert(tasks.tasks[1].state == note4::system::TaskState::kBlocked);
     assert(tasks.tasks[1].minimum_stack_bytes == 1025);
-    task_count = zectrix::system::kMaximumTasks + 1;
+    task_count = note4::system::kMaximumTasks + 1;
     assert(service->ReadTasks(&tasks) == ESP_OK);
     assert(tasks.count == 0 && tasks.capacity_exceeded && tasks.total == task_count);
     task_count = 2;

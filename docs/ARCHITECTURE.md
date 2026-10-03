@@ -3,7 +3,7 @@
 ## Purpose
 
 The project develops a low-power application platform for the black-and-white
-Zectrix Note 4. ESP-IDF and FreeRTOS remain the operating kernel. This project
+Note4 Note 4. ESP-IDF and FreeRTOS remain the operating kernel. This project
 provides board support, system services, a display policy layer and an
 application framework.
 
@@ -56,7 +56,7 @@ WebAssembly runtime yet. The runtime owns one active foreground application and
 uses owned deferred commands. It processes navigation only after the current
 callback returns. Private pages stay inside their application.
 
-SDK v1 is the source-stable application-control boundary. It contains no
+SDK v2 is the source-stable application-control boundary. It contains no
 ESP-IDF, FreeRTOS, board, driver, or Platform implementation type. It promises
 source compatibility for statically linked C++17 applications. It does not
 promise a binary ABI.
@@ -67,7 +67,7 @@ object creates the candidate and receives the read-only registry. Application
 code does not use an application-runtime singleton.
 
 IDF FreeRTOS is the kernel and scheduler. It is a mechanism layer below the
-Zectrix runtime. Product architecture does not use task topology as its
+Note4 runtime. Product architecture does not use task topology as its
 dependency graph. See `docs/adr/0003-freertos-runtime-sdk-boundary.md`.
 
 [E2.1 research](DYNAMIC_APPLICATION_RESEARCH.md) compares ELF, Wasm3, WAMR and
@@ -76,7 +76,7 @@ proposes a versioned guest boundary and an Apps adapter within this ownership
 model. [E2.2](MICRO_APPS.md) now adds an optional restricted Lua component and a
 native Apps adapter with paged discovery and USB script installation. The
 adapter owns one guest, copied drawing commands and bounded loading/execution;
-errors and exits unwind through private scenes. SDK v1 keeps its source-only
+errors and exits unwind through private scenes. SDK v2 keeps its source-only
 static interface and has no engine dependency or binary ABI promise.
 
 ## Service composition

@@ -5,10 +5,10 @@
 #include <mutex>
 #include <thread>
 
-#include "zectrix_cli_control.h"
-#include "zectrix_cli_log.h"
+#include "note4_cli_control.h"
+#include "note4_cli_log.h"
 
-namespace zectrix::cli::host {
+namespace note4::cli::host {
 
 struct SimulationOptions {
     uint32_t owner_delay_ms = 0;
@@ -50,4 +50,4 @@ private:
     bool stopping_ = false;
 };
 
-}  // namespace zectrix::cli::host
+}  // namespace note4::cli::host

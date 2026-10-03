@@ -1,6 +1,6 @@
-#include "zectrix_app_storage.h"
-#include "zectrix_micro_app_controller.h"
-#include "zectrix_micro_app_view.h"
+#include "note4_app_storage.h"
+#include "note4_micro_app_controller.h"
+#include "micro_app_view.h"
 
 #include <cassert>
 #include <cstdlib>
@@ -12,7 +12,7 @@
 #include <string>
 #include <unistd.h>
 
-using namespace zectrix;
+using namespace note4;
 using app::MicroAppScene;
 using app::MicroAppDecision;
 using storage::BookWriteResult;
@@ -68,7 +68,7 @@ static bool HasText(const runtime::Frame& frame, const char* wanted) {
 }
 
 static void Preview(const app::MicroAppController& controller, const fs::path& destination) {
-    ZectrixCanvas canvas;
+    Canvas canvas;
     canvas.Clear();
     canvas.FillRect(0, 24, 400, 20, true);
     canvas.Text(10, 26, controller.name(), 1, true);
@@ -288,14 +288,14 @@ static void StyledViewport() {
     frame.commands[0] = {runtime::DrawKind::Text, 2, 0, 0, 0, 0, 0,
         sdk::TextStyle::Bold | sdk::TextStyle::Italic | sdk::TextStyle::Keycap};
     frame.commands[1] = {runtime::DrawKind::Text, 2, 375, 191, 0, 0, 0, sdk::TextStyle::Keycap};
-    ZectrixCanvas canvas, clipped;
+    Canvas canvas, clipped;
     canvas.Clear(); clipped.Clear();
     ui::DrawMicroAppFrame(canvas, frame);
     clipped.SetClip({18, 70, 24, 12});
     ui::DrawMicroAppFrame(clipped, frame);
     assert(clipped.clip().x == 18 && clipped.clip().y == 70 && clipped.clip().width == 24);
     for (int y = 0; y < 300; ++y) for (int x = 0; x < 400; ++x) {
-        const auto ink = [&](const ZectrixCanvas& image) {
+        const auto ink = [&](const Canvas& image) {
             return !(image.data()[y * 50 + x / 8] & (0x80 >> (x & 7)));
         };
         const bool inside = x >= 18 && x < 42 && y >= 70 && y < 82;
@@ -397,7 +397,7 @@ static void Packages(const fs::path& root, const fs::path& packages, const fs::p
     assert(controller.engine().heap().live == 0);
     controller.Stop();
 
-    ZectrixCanvas icons;
+    Canvas icons;
     icons.Clear();
     package::Metadata meta;
     meta.icon_side = 32;

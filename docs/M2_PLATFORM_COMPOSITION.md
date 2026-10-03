@@ -79,7 +79,7 @@ have been released and button wake prepared, before cutting battery power or
 sleeping. Reboot disarms it after services stop, immediately before reset.
 Ordinary destruction and failed initialization never disarm either watchdog.
 
-`PowerService::Shutdown()` first calls `ZectrixBoard::ShutdownPeripherals()`.
+`PowerService::Shutdown()` first calls `Note4Board::ShutdownPeripherals()`.
 The board joins button sampling, closes audio, stops NFC field processing,
 removes the RTC/NFC/codec I2C devices, deletes their bus and releases ADC and
 button queue storage. Cleanup also disconnects I2C and audio signal pins.

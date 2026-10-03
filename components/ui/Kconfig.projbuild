@@ -1,4 +1,4 @@
-config ZECTRIX_ENABLE_UI_CHINESE
+config NOTE4_ENABLE_UI_CHINESE
     bool "Simplified Chinese system language"
     default y
     help
@@ -6,7 +6,7 @@ config ZECTRIX_ENABLE_UI_CHINESE
         reader font when present, or a compact subset without the reader.
         Disable this and the reader to remove all Chinese font data.
 
-config ZECTRIX_UI_DEFAULT_CHINESE
+config NOTE4_UI_DEFAULT_CHINESE
     bool "Use Chinese until a language preference is saved"
-    depends on ZECTRIX_ENABLE_UI_CHINESE
+    depends on NOTE4_ENABLE_UI_CHINESE
     default y

@@ -4,7 +4,7 @@ English | [中文](README_zh.md)
 
 **Start here:** [Illustrated user handbook](docs/HANDBOOK.md) ·
 [中文手册](docs/HANDBOOK_zh.md) · [Firmware release workflow](docs/RELEASING.md) ·
-[v1.2.0 release notes](docs/releases/v1.2.0.md).
+[2.0 migration](docs/NOTE4_MIGRATION.md) · [2.0 development notes](docs/releases/v2.0.0.md).
 
 An independent, modular firmware framework and application platform for
 ESP32-S3 e-paper devices (targeting the Note4 hardware layout), developed and
@@ -45,7 +45,7 @@ at commit `ca285c98`. See [UPSTREAM.md](UPSTREAM.md) for provenance.
 | SSD2683 1 bpp, partial and 4 bpp display paths | Reproducible ESP-IDF toolchain, build provenance, hardware qualification and factory-recovery procedure |
 | NOTE4 board adapters and peripheral access | Display, input, power, time, storage and system service ownership |
 | Gallery UI and hardware capability demo | Static application runtime with Launcher, Reader, Settings, Diagnostics and Clock |
-| Wi-Fi RF, audio, RTC, charging, LED, buttons, NFC and battery self-tests | Source-stable C++17 SDK v1 with compatibility and architecture checks |
+| Wi-Fi RF, audio, RTC, charging, LED, buttons, NFC and battery self-tests | Source-stable C++17 SDK v2 with compatibility and architecture checks |
 | Basic on-device navigation and shutdown | Versioned companion protocol, durable synchronization, secure BLE transport, Android companion and NFC-assisted enrollment |
 | Hardware-oriented serial diagnostics | Bounded maintenance CLI, platform diagnostics and interactive host simulator |
 
@@ -63,7 +63,7 @@ qualification and pull-request integration work.
 | M1 | Complete | Reproducible upstream baseline, hardware qualification and factory recovery |
 | M2 | Complete | Platform-owned display, input, power, time, storage and system services |
 | M3 | Complete | Static application lifecycle and first-party applications |
-| M4 | Complete | Source-stable SDK v1 and unified software/hardware exit gate |
+| M4 | Complete | Source-stable SDK v2 and unified software/hardware exit gate |
 | C1 | Qualification open | Protocol, durable sync, secure BLE/Android enrollment, phone HTTPS and direct Wi-Fi implemented; physical end-to-end and RF/power evidence remains open |
 | D1 | Implemented; USB qualification open | USB sessions, copied system/display status, log/input observation, confirmed maintenance, foreground health/recovery and Host simulation |
 | M5 | Architecture complete | Measured A/B layout, streamed firmware verification and boot confirmation implemented; trusted delivery and physical rollback follow-ups remain open |
@@ -99,14 +99,14 @@ waits while preserving synchronous display completion and reader bookmarks.
 The [dynamic application study](docs/DYNAMIC_APPLICATION_RESEARCH.md) compares
 native ELF, Wasm3, WAMR and Lua, including measured memory/Flash costs and
 execution limits. It proposes independent app distribution through the existing
-USB/storage owners while retaining the static SDK v1 shell.
+USB/storage owners while retaining the static SDK v2 shell.
 The [Lua micro-app pilot](docs/MICRO_APPS.md) now implements that path: install
 the independent Calculator and Flashcards scripts with `app-put` in USB Manager,
 then open them from the paged Apps destination. Firmware is built once; each
 script can be installed or removed separately.
 
 > [!CAUTION]
-> This project targets the black-and-white ZECTRIX NOTE4 hardware. It is not
+> This project targets the black-and-white NOTE4 hardware. It is not
 > compatible with NOTE4C. Flashing replaces the firmware on the connected
 > device. Confirm the model and serial port before you flash. If you flash the
 > wrong device, you can lose its current firmware.
@@ -173,7 +173,7 @@ The 24px status bar employs 1-bit monochrome micro-icon masks with fixed slots:
 
 ## Quick start
 
-Requirements: the project-qualified ESP-IDF v5.5.2 baseline and a ZECTRIX
+Requirements: the project-qualified ESP-IDF v5.5.2 baseline and a NOTE4
 NOTE4 4.2-inch ESP32-S3 black-and-white e-paper board.
 
 ```bash
@@ -218,7 +218,7 @@ resume on Note4.
 The build creates `build/books.bin` from `books/`. Install it separately with
 `idf.py -p PORT books-flash`; this replaces the book partition. Ordinary firmware
 flash preserves books. You can select your own source directory through
-`-D "ZECTRIX_BOOKS_DIR=/absolute/path/to/books"`. See
+`-D "NOTE4_BOOKS_DIR=/absolute/path/to/books"`. See
 [docs/READER.md](docs/READER.md) for installation and format limits.
 
 After the initial library installation, open **SEND BOOKS** to add books over
@@ -255,8 +255,8 @@ Hardware values are synthetic. It does not require ESP-IDF or a connected board.
 bash tools/run-cli-host.sh
 # Build once for repeated runs or piped commands.
 bash tools/build-cli-host.sh
-build-host/zectrix-cli-host --owner-delay-ms 500 --log-burst 80
-printf 'sysinfo\nheap\nepd-inspect\n' | build-host/zectrix-cli-host
+build-host/note4-cli-host --owner-delay-ms 500 --log-burst 80
+printf 'sysinfo\nheap\nepd-inspect\n' | build-host/note4-cli-host
 ```
 
 Use `help` to list commands. `Ctrl+C` cancels, `Ctrl+R` reconnects the session,
@@ -339,24 +339,24 @@ a full refresh; unchanged frames skip refresh entirely. See
 
 ## Configuration
 
-Open `idf.py menuconfig`, then select **Zectrix hardware showcase**:
+Open `idf.py menuconfig`, then select **Note4 hardware showcase**:
 
 - `Optional Wi-Fi SSID for RF qualification`: leave this value empty for
   generic scan mode. A configured SSID requires three consecutive qualifying
   observations.
 - `RF qualification threshold (dBm)`: default `-70`.
-- `Temporary NFC demonstration URL`: default `https://www.zectrix.com`.
+- `Temporary NFC demonstration URL`: default `https://github.com/Tinnci/zectrix-note4-platform`.
 
 ## Repository layout
 
 ```text
-components/zectrix_epd/       Public SSD2683 display driver
-components/zectrix_board/     Board pins and peripheral adapters
+components/note4_epd/       Public SSD2683 display driver
+components/note4_board/     Board pins and peripheral adapters
 components/ui/               Canvas, bitmap fonts and bilingual native UI
-components/zectrix_self_test/ Hardware test implementations
-components/zectrix_platform/  Platform composition root
-components/zectrix_reader/    Streaming TXT/EPUB engine, fonts and bookmarks
-components/zectrix_*          Owned system services and application runtime
+components/note4_self_test/ Hardware test implementations
+components/note4_platform/  Platform composition root
+components/note4_reader/    Streaming TXT/EPUB engine, fonts and bookmarks
+components/note4_*          Owned system services and application runtime
 android-companion/            Android BLE/NFC companion under development
 protocol/                     Shared protocol golden vectors
 main/assets/                  Embedded display assets

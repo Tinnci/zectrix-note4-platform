@@ -1,14 +1,14 @@
 #include "ui_engine.h"
-#include "zectrix_locale.h"
-#include "zectrix_micro_app_controller.h"
+#include "note4_locale.h"
+#include "note4_micro_app_controller.h"
 #include "micro_app_view.h"
 #include "unicode_text.h"
 #include "sdkconfig.h"
 
 #include <cstdio>
 
-esp_err_t UiEngine::ShowMicroApps(const zectrix::app::MicroAppController& apps, bool full_refresh) {
-    using namespace zectrix;
+esp_err_t UiEngine::ShowMicroApps(const note4::app::MicroAppController& apps, bool full_refresh) {
+    using namespace note4;
     using i18n::Text;
     using i18n::Tr;
     using app::MicroAppScene;
@@ -19,7 +19,7 @@ esp_err_t UiEngine::ShowMicroApps(const zectrix::app::MicroAppController& apps, 
     if (scene == MicroAppScene::List) {
         if (!apps.count()) {
             canvas_.TextCentered(100, Tr(apps.storage_result() == ESP_OK ? Text::NoApps : Text::AppStorageUnavailable));
-#if CONFIG_ZECTRIX_ENABLE_USB_HOST || CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER
+#if CONFIG_NOTE4_ENABLE_USB_HOST || CONFIG_NOTE4_ENABLE_BOOK_TRANSFER
             canvas_.TextCentered(146, Tr(Text::AppsInstallHint));
 #else
             canvas_.TextCentered(146, Tr(Text::AppsNoTransfer));

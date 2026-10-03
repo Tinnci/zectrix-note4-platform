@@ -1,13 +1,13 @@
 #pragma once
 
-#include "zectrix_canvas.h"
-#include "zectrix_typography.h"
+#include "canvas.h"
+#include "note4_typography.h"
 
 #include <algorithm>
 
-namespace zectrix::ui::detail {
+namespace note4::ui::detail {
 
-inline void FillClipped(ZectrixCanvas& canvas, int64_t x, int64_t y,
+inline void FillClipped(Canvas& canvas, int64_t x, int64_t y,
                         int width, int height, bool black) {
     const auto clip = canvas.clip();
     const auto left = std::max<int64_t>(x, clip.x), top = std::max<int64_t>(y, clip.y);
@@ -21,7 +21,7 @@ inline void FillClipped(ZectrixCanvas& canvas, int64_t x, int64_t y,
 // Both UI and reader glyphs provide immutable 16-row bitmaps. Sampling and
 // expansion share the exact extents used by fitting and page layout.
 template<class Glyph>
-void PaintGlyph(ZectrixCanvas& canvas, int64_t x, int64_t y, uint32_t cp,
+void PaintGlyph(Canvas& canvas, int64_t x, int64_t y, uint32_t cp,
                 const Glyph& glyph, int height, sdk::TextStyle style, bool inverted,
                 bool opaque = false) {
     const auto metrics = text::MeasureGlyph(cp, glyph.width, height, style);
@@ -46,4 +46,4 @@ void PaintGlyph(ZectrixCanvas& canvas, int64_t x, int64_t y, uint32_t cp,
         }
     }
 }
-}  // namespace zectrix::ui::detail
+}  // namespace note4::ui::detail

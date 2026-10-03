@@ -31,7 +31,7 @@ class ModuleConfigTest(unittest.TestCase):
         subprocess.run(command, cwd=ROOT, check=True, capture_output=True, text=True)
         if settings is not None:
             self.assertEqual(self.config.read_text(), settings)
-        return {name.removeprefix("ZECTRIX_ENABLE_"): value == "1"
+        return {name.removeprefix("NOTE4_ENABLE_"): value == "1"
                 for name, value in re.findall(r"set\(CONFIG_(\w+) ([01])\)", self.output.read_text())}
 
     def test_fresh_full_build(self):
@@ -57,7 +57,7 @@ class ModuleConfigTest(unittest.TestCase):
         developer = self.root / "developer build"
         developer.mkdir()
         saved = developer / "sdkconfig"
-        saved.write_text("CONFIG_ZECTRIX_ENABLE_READER=y\n")
+        saved.write_text("CONFIG_NOTE4_ENABLE_READER=y\n")
         # A cached build must also be rejected before idf.py fullclean runs.
         (developer / "CMakeCache.txt").write_text("existing developer cache\n")
         (self.root / "build-minimal").symlink_to(developer, target_is_directory=True)
@@ -65,7 +65,7 @@ class ModuleConfigTest(unittest.TestCase):
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 1)
         self.assertIn("symlinked profile directory", result.stderr)
-        self.assertEqual(saved.read_text(), "CONFIG_ZECTRIX_ENABLE_READER=y\n")
+        self.assertEqual(saved.read_text(), "CONFIG_NOTE4_ENABLE_READER=y\n")
         self.assertTrue((developer / "CMakeCache.txt").exists())
 
     def test_offline_reader_keeps_usb_and_content_without_radios(self):
@@ -75,85 +75,85 @@ class ModuleConfigTest(unittest.TestCase):
         self.assertEqual(enabled, {"UI_CHINESE", "READER", "BOOK_STORAGE", "USB_CLI", "USB_HOST", "UPDATE"})
 
     def test_parent_disables_requested_network_children(self):
-        options = self.resolve("CONFIG_ZECTRIX_ENABLE_CONNECTIVITY=n\n"
-                               "CONFIG_ZECTRIX_ENABLE_WIFI=y\n"
-                               "CONFIG_ZECTRIX_ENABLE_WIFI_HTTP=y\n"
-                               "CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER=y\n")
+        options = self.resolve("CONFIG_NOTE4_ENABLE_CONNECTIVITY=n\n"
+                               "CONFIG_NOTE4_ENABLE_WIFI=y\n"
+                               "CONFIG_NOTE4_ENABLE_WIFI_HTTP=y\n"
+                               "CONFIG_NOTE4_ENABLE_BOOK_TRANSFER=y\n")
         for name in ("CONNECTIVITY", "WIFI", "WIFI_HTTP", "BOOK_TRANSFER"):
             self.assertFalse(options[name])
         self.assertTrue(options["READER"] and options["BOOK_STORAGE"])
 
     def test_wifi_can_be_disabled_without_removing_companion(self):
-        options = self.resolve("CONFIG_ZECTRIX_ENABLE_WIFI=n\n"
-                               "CONFIG_ZECTRIX_ENABLE_WIFI_HTTP=y\n"
-                               "CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER=y\n")
+        options = self.resolve("CONFIG_NOTE4_ENABLE_WIFI=n\n"
+                               "CONFIG_NOTE4_ENABLE_WIFI_HTTP=y\n"
+                               "CONFIG_NOTE4_ENABLE_BOOK_TRANSFER=y\n")
         self.assertTrue(options["CONNECTIVITY"] and options["READER"])
         self.assertFalse(options["WIFI"] or options["WIFI_HTTP"] or options["BOOK_TRANSFER"])
 
     def test_web_library_is_independent_of_reader_and_https(self):
-        options = self.resolve("CONFIG_ZECTRIX_ENABLE_READER=n\n"
-                               "CONFIG_ZECTRIX_ENABLE_WIFI_HTTP=n\n")
+        options = self.resolve("CONFIG_NOTE4_ENABLE_READER=n\n"
+                               "CONFIG_NOTE4_ENABLE_WIFI_HTTP=n\n")
         self.assertFalse(options["READER"] or options["WIFI_HTTP"])
         self.assertTrue(options["WIFI"] and options["BOOK_TRANSFER"] and options["BOOK_STORAGE"])
-        options = self.resolve("CONFIG_ZECTRIX_ENABLE_READER=n\n"
-                               "CONFIG_ZECTRIX_ENABLE_USB_HOST=n\n"
-                               "CONFIG_ZECTRIX_ENABLE_RUNTIME=n\n"
-                               "CONFIG_ZECTRIX_ENABLE_BOOK_TRANSFER=n\n")
+        options = self.resolve("CONFIG_NOTE4_ENABLE_READER=n\n"
+                               "CONFIG_NOTE4_ENABLE_USB_HOST=n\n"
+                               "CONFIG_NOTE4_ENABLE_RUNTIME=n\n"
+                               "CONFIG_NOTE4_ENABLE_BOOK_TRANSFER=n\n")
         self.assertFalse(options["BOOK_STORAGE"])
         self.assertTrue(options["WIFI_HTTP"])
 
     def test_defaults_and_saved_config_precedence(self):
-        defaults = ("CONFIG_ZECTRIX_ENABLE_READER=y\nCONFIG_ZECTRIX_ENABLE_UPDATE=n\n",
-                    "CONFIG_ZECTRIX_ENABLE_READER=n\n")
+        defaults = ("CONFIG_NOTE4_ENABLE_READER=y\nCONFIG_NOTE4_ENABLE_UPDATE=n\n",
+                    "CONFIG_NOTE4_ENABLE_READER=n\n")
         options = self.resolve(defaults=defaults)
         self.assertFalse(options["READER"] or options["UPDATE"])
-        options = self.resolve("CONFIG_ZECTRIX_ENABLE_READER=y\n"
-                               "# CONFIG_ZECTRIX_ENABLE_USB_CLI is not set\n", defaults)
+        options = self.resolve("CONFIG_NOTE4_ENABLE_READER=y\n"
+                               "# CONFIG_NOTE4_ENABLE_USB_CLI is not set\n", defaults)
         self.assertTrue(options["READER"])
         self.assertFalse(options["USB_CLI"] or options["UPDATE"])
 
     def test_empty_defaults_disable_modules_like_idf(self):
-        defaults = ("CONFIG_ZECTRIX_ENABLE_CONNECTIVITY=\n"
-                    "CONFIG_ZECTRIX_ENABLE_READER=\n"
-                    "CONFIG_ZECTRIX_ENABLE_RUNTIME=\n"
-                    "CONFIG_ZECTRIX_ENABLE_UTILITIES=\n"
-                    "CONFIG_ZECTRIX_ENABLE_UI_CHINESE=\n"
-                    "CONFIG_ZECTRIX_ENABLE_USB_CLI=\n"
-                    "CONFIG_ZECTRIX_ENABLE_UPDATE=\n",)
+        defaults = ("CONFIG_NOTE4_ENABLE_CONNECTIVITY=\n"
+                    "CONFIG_NOTE4_ENABLE_READER=\n"
+                    "CONFIG_NOTE4_ENABLE_RUNTIME=\n"
+                    "CONFIG_NOTE4_ENABLE_UTILITIES=\n"
+                    "CONFIG_NOTE4_ENABLE_UI_CHINESE=\n"
+                    "CONFIG_NOTE4_ENABLE_USB_CLI=\n"
+                    "CONFIG_NOTE4_ENABLE_UPDATE=\n",)
         self.assertFalse(any(self.resolve(defaults=defaults).values()))
-        options = self.resolve("CONFIG_ZECTRIX_ENABLE_READER=y\n", defaults)
+        options = self.resolve("CONFIG_NOTE4_ENABLE_READER=y\n", defaults)
         self.assertTrue(options["READER"] and options["BOOK_STORAGE"])
         self.assertFalse(options["CONNECTIVITY"] or options["USB_CLI"] or options["UPDATE"])
 
     def test_reconfigure_replaces_previous_dependency_selection(self):
         for enabled in (False, True, False):
             value = "y" if enabled else "n"
-            settings = "".join(f"CONFIG_ZECTRIX_ENABLE_{name}={value}\n"
+            settings = "".join(f"CONFIG_NOTE4_ENABLE_{name}={value}\n"
                                for name in ("CONNECTIVITY", "READER", "USB_CLI", "UPDATE", "UI_CHINESE", "RUNTIME", "UTILITIES"))
             options = self.resolve(settings)
             self.assertTrue(all(value == enabled for value in options.values()))
 
     def test_chinese_ui_does_not_require_the_reader(self):
-        options = self.resolve("CONFIG_ZECTRIX_ENABLE_READER=n\nCONFIG_ZECTRIX_ENABLE_UI_CHINESE=y\n")
+        options = self.resolve("CONFIG_NOTE4_ENABLE_READER=n\nCONFIG_NOTE4_ENABLE_UI_CHINESE=y\n")
         self.assertFalse(options["READER"])
         self.assertTrue(options["UI_CHINESE"])
 
     def test_usb_books_without_reader_or_wifi(self):
-        options = self.resolve("CONFIG_ZECTRIX_ENABLE_READER=n\nCONFIG_ZECTRIX_ENABLE_CONNECTIVITY=n\n")
+        options = self.resolve("CONFIG_NOTE4_ENABLE_READER=n\nCONFIG_NOTE4_ENABLE_CONNECTIVITY=n\n")
         self.assertTrue(options["USB_HOST"] and options["BOOK_STORAGE"])
         self.assertFalse(options["READER"] or options["BOOK_TRANSFER"])
-        options = self.resolve("CONFIG_ZECTRIX_ENABLE_USB_CLI=n\nCONFIG_ZECTRIX_ENABLE_USB_HOST=y\n")
+        options = self.resolve("CONFIG_NOTE4_ENABLE_USB_CLI=n\nCONFIG_NOTE4_ENABLE_USB_HOST=y\n")
         self.assertFalse(options["USB_HOST"])
 
     def test_runtime_owns_storage_without_reader_or_transports(self):
-        options = self.resolve("CONFIG_ZECTRIX_ENABLE_READER=n\nCONFIG_ZECTRIX_ENABLE_CONNECTIVITY=n\n"
-                               "CONFIG_ZECTRIX_ENABLE_USB_CLI=n\n")
+        options = self.resolve("CONFIG_NOTE4_ENABLE_READER=n\nCONFIG_NOTE4_ENABLE_CONNECTIVITY=n\n"
+                               "CONFIG_NOTE4_ENABLE_USB_CLI=n\n")
         self.assertTrue(options["RUNTIME"] and options["BOOK_STORAGE"])
         self.assertFalse(options["READER"] or options["USB_HOST"] or options["BOOK_TRANSFER"])
 
     def test_utilities_need_only_core_services(self):
         minimal = (ROOT / "tools/profiles/minimal.defaults").read_text()
-        options = self.resolve("CONFIG_ZECTRIX_ENABLE_UTILITIES=y\n", defaults=(minimal,))
+        options = self.resolve("CONFIG_NOTE4_ENABLE_UTILITIES=y\n", defaults=(minimal,))
         self.assertTrue(options["UTILITIES"])
         self.assertFalse(any(value for name, value in options.items() if name != "UTILITIES"))
 

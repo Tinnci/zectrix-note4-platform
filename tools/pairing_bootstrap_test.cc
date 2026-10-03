@@ -1,4 +1,4 @@
-#include "zectrix_pairing_bootstrap.h"
+#include "note4_pairing_bootstrap.h"
 
 #include <cassert>
 #include <cstdint>
@@ -6,12 +6,12 @@
 
 namespace {
 
-using zectrix::companion::BootstrapState;
-using zectrix::companion::BootstrapStatus;
-using zectrix::companion::BootstrapToken;
-using zectrix::companion::PairingBootstrap;
-using zectrix::companion::PairingBootstrapClock;
-using zectrix::companion::PairingBootstrapRandom;
+using note4::companion::BootstrapState;
+using note4::companion::BootstrapStatus;
+using note4::companion::BootstrapToken;
+using note4::companion::PairingBootstrap;
+using note4::companion::PairingBootstrapClock;
+using note4::companion::PairingBootstrapRandom;
 
 class FakeClock final : public PairingBootstrapClock {
 public:
@@ -53,7 +53,7 @@ void TestPrepareAndMaterial() {
     assert(bootstrap.state() == BootstrapState::kPrepared);
     assert(bootstrap.generation() == 1);
 
-    zectrix::companion::BootstrapMaterial material{};
+    note4::companion::BootstrapMaterial material{};
     assert(bootstrap.Material(&material) == BootstrapStatus::kOk);
     assert(material.active);
     assert(material.generation == 1);
@@ -70,7 +70,7 @@ void TestValidationFlowAndSingleUse() {
     PairingBootstrap bootstrap(clock, random);
     assert(bootstrap.Prepare() == BootstrapStatus::kOk);
 
-    zectrix::companion::BootstrapMaterial material{};
+    note4::companion::BootstrapMaterial material{};
     assert(bootstrap.Material(&material) == BootstrapStatus::kOk);
     const uint32_t generation = material.generation;
     const BootstrapToken token = material.token;
@@ -124,13 +124,13 @@ void TestValidationFlowAndSingleUse() {
 void TestExpirationAndPairingWindow() {
     FakeClock clock;
     FakeRandom random;
-    zectrix::companion::BootstrapConfig config{};
+    note4::companion::BootstrapConfig config{};
     config.token_ttl_ms = 5000;
     config.pairing_window_ms = 1000;
     PairingBootstrap bootstrap(clock, random, config);
 
     assert(bootstrap.Prepare() == BootstrapStatus::kOk);
-    zectrix::companion::BootstrapMaterial material{};
+    note4::companion::BootstrapMaterial material{};
     assert(bootstrap.Material(&material) == BootstrapStatus::kOk);
 
     clock.Advance(5001);
@@ -142,7 +142,7 @@ void TestExpirationAndPairingWindow() {
     FakeRandom random2;
     PairingBootstrap bootstrap2(clock2, random2, config);
     assert(bootstrap2.Prepare() == BootstrapStatus::kOk);
-    zectrix::companion::BootstrapMaterial material2{};
+    note4::companion::BootstrapMaterial material2{};
     assert(bootstrap2.Material(&material2) == BootstrapStatus::kOk);
     assert(bootstrap2.OpenPairingWindow() == BootstrapStatus::kOk);
     assert(bootstrap2.BindSession(7) == BootstrapStatus::kOk);
@@ -157,7 +157,7 @@ void TestRebootInvalidation() {
     FakeRandom random;
     PairingBootstrap first(clock, random);
     assert(first.Prepare() == BootstrapStatus::kOk);
-    zectrix::companion::BootstrapMaterial material{};
+    note4::companion::BootstrapMaterial material{};
     assert(first.Material(&material) == BootstrapStatus::kOk);
 
     // A new instance models a reboot. RAM-only state disappears.
@@ -173,7 +173,7 @@ void TestCancelAndRandomFailure() {
     FakeRandom random;
     PairingBootstrap bootstrap(clock, random);
     assert(bootstrap.Prepare() == BootstrapStatus::kOk);
-    zectrix::companion::BootstrapMaterial material{};
+    note4::companion::BootstrapMaterial material{};
     assert(bootstrap.Material(&material) == BootstrapStatus::kOk);
     assert(material.active);
 
@@ -204,7 +204,7 @@ void TestEnrollmentPersistenceFailure() {
     FakeRandom random;
     PairingBootstrap bootstrap(clock, random);
     assert(bootstrap.Prepare() == BootstrapStatus::kOk);
-    zectrix::companion::BootstrapMaterial material{};
+    note4::companion::BootstrapMaterial material{};
     assert(bootstrap.Material(&material) == BootstrapStatus::kOk);
     assert(bootstrap.OpenPairingWindow() == BootstrapStatus::kOk);
     unsigned writes = 0;

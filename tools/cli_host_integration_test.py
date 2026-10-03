@@ -16,8 +16,8 @@ import unittest
 
 
 BINARY = os.path.abspath(sys.argv.pop(1))
-PROMPT = b"\r\nzectrix> "
-VERSION = b"zectrix maintenance CLI D1.4"
+PROMPT = b"\r\nnote4> "
+VERSION = b"note4 maintenance CLI D1.4"
 
 
 class Terminal:
@@ -117,7 +117,7 @@ class HostIntegrationTest(unittest.TestCase):
         with Terminal("--log-interval-ms", "0") as terminal:
             self.assertIn(b"hardware snapshots are synthetic", terminal.until(PROMPT))
             info = terminal.command(b"sysinfx\x7fo\r")
-            self.assertIn(b"project=zectrix-host-sim", info)
+            self.assertIn(b"project=note4-host-sim", info)
             self.assertIn(b"chip=SIMULATED-ESP32-S3", info)
             self.assertIn(b"wifi_mac=02:00:00:00:00:01", info)
             for command in (b"hep\x1b[Da\r", b"\x1b[A\r"):
@@ -238,7 +238,7 @@ class HostIntegrationTest(unittest.TestCase):
             terminal.until(b"heap\r\n")
             terminal.send(b"\x12")
             reconnected = terminal.until(PROMPT, timeout=2)
-            self.assertIn(b"Zectrix maintenance CLI", reconnected)
+            self.assertIn(b"Note4 maintenance CLI", reconnected)
             self.assertNotIn(b"heap bytes:", reconnected)
             self.assertIn(VERSION, terminal.command(b"version\r"))
             terminal.send(b"sysinfo\r")

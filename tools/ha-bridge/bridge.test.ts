@@ -25,7 +25,7 @@ test("HA REST authentication, bounded state parsing and no credential exposure",
 });
 
 test("Unicode server rendering uses the existing font and produces a valid portrait page",async()=>{
-  const font=new Uint8Array(await Bun.file(`${import.meta.dir}/../../components/zectrix_reader/font/reader_font.bin`).arrayBuffer());
+  const font=new Uint8Array(await Bun.file(`${import.meta.dir}/../../components/note4_reader/font/reader_font.bin`).arrayBuffer());
   const pbm=renderStates(font,[{entity_id:"sensor.room",state:"22",attributes:{friendly_name:"客厅",unit_of_measurement:"°C"}}],"2026-10-03 12:00 UTC");
   expect(pbm.length).toBe(15211); expect(pbm.some((v,i)=>i>11&&v!==0)).toBe(true);
   const page=encodePage(pbm,1,1704067200,1704153600,0);
@@ -41,7 +41,7 @@ test("persistent revision allocation survives restart and wall-clock rollback",(
 });
 
 test("HA layout reflows all eight entities in both native orientations", async () => {
-  const font = new Uint8Array(await Bun.file(`${import.meta.dir}/../../components/zectrix_reader/font/reader_font.bin`).arrayBuffer());
+  const font = new Uint8Array(await Bun.file(`${import.meta.dir}/../../components/note4_reader/font/reader_font.bin`).arrayBuffer());
   const states = Array.from({length: 8}, (_, i) => ({entity_id: `sensor.room_${i}`, state: String(i), attributes: {friendly_name: `房间 ${i}`}}));
   for (const orientation of ["portrait", "landscape"] as const) {
     const pbm = renderStates(font, states, "2026-10-03 12:00 UTC", orientation);
@@ -57,7 +57,7 @@ test("HA layout reflows all eight entities in both native orientations", async (
 test("discovery separates offered page from displayed page, and rejects stale retained state",()=>{
   const entries=discovery("test"); expect(entries).toHaveLength(4);
   const battery=JSON.parse(entries[0]!.payload);
-  expect(battery.device.identifiers).toEqual(["zectrix_note4_test"]);
+  expect(battery.device.identifiers).toEqual(["note4_note4_test"]);
   expect(battery.device_class).toBe("battery"); expect(battery.expire_after).toBe(43260);
   expect(battery.availability[0].value_template).toContain("sampled_at");
   expect(entries[3]!.topic).toContain("offered_revision");
@@ -67,7 +67,7 @@ test("discovery separates offered page from displayed page, and rejects stale re
 test("authenticated page GET carries validated telemetry into retained MQTT publications",async()=>{
   const published:{topic:string,payload:string}[]=[];
   const client={connected:true,publish:(topic:string,payload:string,_options:unknown,done:()=>void)=>{published.push({topic,payload});done();}} as unknown as MqttClient;
-  const font=new Uint8Array(await Bun.file(`${import.meta.dir}/../../components/zectrix_reader/font/reader_font.bin`).arrayBuffer());
+  const font=new Uint8Array(await Bun.file(`${import.meta.dir}/../../components/note4_reader/font/reader_font.bin`).arrayBuffer());
   const token="0123456789abcdef0123456789abcdef";
   const handler=createPageHandler(async()=>renderStates(font,[],""),token,()=>1704067200,(r,p)=>mqttReport(client,"test",r,p));
   expect((await handler(new Request("https://display.example/note4/page"))).status).toBe(401); expect(published).toHaveLength(0);

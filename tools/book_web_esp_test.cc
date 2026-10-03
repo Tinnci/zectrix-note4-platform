@@ -1,5 +1,5 @@
-#include "zectrix_book_web.h"
-#include "zectrix_book_storage.h"
+#include "note4_book_web.h"
+#include "note4_book_storage.h"
 #include "esp_http_server.h"
 
 #include <sys/socket.h>
@@ -112,11 +112,11 @@ int main(int argc, char** argv) {
     namespace fs = std::filesystem;
     const auto root = fs::path(argv[1]) / "esp-http";
     fs::create_directory(root);
-    zectrix::storage::BookStorage books(root.c_str());
+    note4::storage::BookStorage books(root.c_str());
     for (unsigned cycle = 0; cycle < 120; ++cycle) {
         const unsigned scenario = cycle % 3;
         assert(books.BeginManagement() == ESP_OK);
-        zectrix::connectivity::EspBookWebServer server;
+        note4::connectivity::EspBookWebServer server;
         assert(server.Start(books, "ABCDEFGH2345", 0));
         assert(current->handlers.size() == 4);
         int sockets[2]; TcpPair(sockets);

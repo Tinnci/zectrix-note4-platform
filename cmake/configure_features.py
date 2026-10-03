@@ -33,7 +33,7 @@ def main():
 
     content = "# Generated from the component Kconfig definitions.\n"
     for symbol in config.unique_defined_syms:
-        if symbol.name.startswith("ZECTRIX_ENABLE_"):
+        if symbol.name.startswith("NOTE4_ENABLE_"):
             content += f"set(CONFIG_{symbol.name} {1 if symbol.str_value == 'y' else 0})\n"
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)

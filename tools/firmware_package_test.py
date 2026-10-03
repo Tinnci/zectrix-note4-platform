@@ -66,7 +66,7 @@ class FirmwarePackageTest(unittest.TestCase):
         records = self.run_package()
         self.assertEqual([record["profile"] for record in records], ["full", "minimal"])
         for directory, record in zip((self.full, self.minimal), records):
-            prefix = f"zectrix-note4-v1.2.0-preview.1-{record['profile']}"
+            prefix = f"note4-v1.2.0-preview.1-{record['profile']}"
             with zipfile.ZipFile(self.output / f"{prefix}.zip") as archive:
                 arguments = shlex.split(archive.read("flash_args").decode())
                 self.assertEqual(arguments[:4], ["--flash_mode", "dio", "--flash_size", "16MB"])
@@ -126,11 +126,11 @@ class FirmwarePackageTest(unittest.TestCase):
         (self.full / "books.bin").write_bytes(b"\xff" * 0x400000)
         self.write(self.full, "config/sdkconfig.json", {
             "COMPILER_OPTIMIZATION_SIZE": True, "SPIFFS_OBJ_NAME_LEN": 96,
-            "ZECTRIX_ENABLE_READER": True, "ZECTRIX_ENABLE_WIFI": True,
+            "NOTE4_ENABLE_READER": True, "NOTE4_ENABLE_WIFI": True,
         })
         self.write(reader, "config/sdkconfig.json", {
-            "COMPILER_OPTIMIZATION_SIZE": True, "ZECTRIX_ENABLE_READER": True,
-            "ZECTRIX_ENABLE_USB_HOST": True, "ZECTRIX_ENABLE_WIFI": False,
+            "COMPILER_OPTIMIZATION_SIZE": True, "NOTE4_ENABLE_READER": True,
+            "NOTE4_ENABLE_USB_HOST": True, "NOTE4_ENABLE_WIFI": False,
         })
         extras = self.root / "extras"
         extras.mkdir()
@@ -147,9 +147,9 @@ class FirmwarePackageTest(unittest.TestCase):
         self.assertEqual(records[2]["enabled_modules"], ["READER", "USB_HOST"])
         self.assertTrue((self.output / "handbook.html").exists())
         for record in records:
-            with zipfile.ZipFile(self.output / f"zectrix-note4-{version}-{record['profile']}.zip") as archive:
+            with zipfile.ZipFile(self.output / f"note4-{version}-{record['profile']}.zip") as archive:
                 self.assertNotIn("books.bin", archive.namelist())
-        with zipfile.ZipFile(self.output / f"zectrix-note4-{version}-library-init.zip") as archive:
+        with zipfile.ZipFile(self.output / f"note4-{version}-library-init.zip") as archive:
             self.assertEqual(shlex.split(archive.read("flash_args").decode()), ["0x912000", "books.bin"])
             self.assertEqual(archive.read("books.bin"), (self.full / "books.bin").read_bytes())
             self.assertEqual(json.loads(archive.read("manifest.json"))["spiffs_object_name_length"], 96)
@@ -167,7 +167,7 @@ class FirmwarePackageTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "version does not match"):
             package.collect_packages([matrix], "v1.2.1", self.output)
         self.assertFalse(self.output.exists())
-        (matrix / "zectrix-note4-v1.2.0-full-app.bin").unlink()
+        (matrix / "note4-v1.2.0-full-app.bin").unlink()
         with self.assertRaisesRegex(ValueError, "Missing artifact"):
             package.collect_packages([matrix], "v1.2.0", self.output)
         self.assertFalse(self.output.exists())
@@ -179,7 +179,7 @@ class FirmwarePackageTest(unittest.TestCase):
     def test_matrix_preserves_integrity_across_artifact_downloads(self):
         matrix = self.root / "matrix"
         package.package_profiles({"full": self.full}, "v1.2.0", matrix)
-        image = matrix / "zectrix-note4-v1.2.0-full-app.bin"
+        image = matrix / "note4-v1.2.0-full-app.bin"
         original = image.read_bytes()
         image.write_bytes(original[:-1])
         with self.assertRaisesRegex(ValueError, "checksum mismatch"):

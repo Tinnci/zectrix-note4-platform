@@ -1,21 +1,21 @@
-#include "zectrix_reader.h"
+#include "note4_reader.h"
 
 #include <cassert>
 #include <chrono>
 #include <cstdio>
 
-extern "C" const uint8_t zectrix_reader_font_data[], zectrix_reader_font_end[];
+extern "C" const uint8_t note4_reader_font_data[], note4_reader_font_end[];
 
 int main(int argc, char** argv) {
-    using namespace zectrix::reader;
+    using namespace note4::reader;
     FILE* reference = argc > 1 ? std::fopen(argv[1], "rb") : nullptr;
     assert(argc == 1 || reference);
     constexpr uint32_t ranges[][2] = {
         {0x20, 0x2FF}, {0x2000, 0x206F}, {0x3000, 0x30FF}, {0x31F0, 0x31FF},
         {0x3400, 0x9FFF}, {0xAC00, 0xD7A3}, {0xFF00, 0xFFEF}, {0xFFFD, 0xFFFD},
     };
-    const auto begin = reinterpret_cast<uintptr_t>(zectrix_reader_font_data);
-    const auto end = reinterpret_cast<uintptr_t>(zectrix_reader_font_end);
+    const auto begin = reinterpret_cast<uintptr_t>(note4_reader_font_data);
+    const auto end = reinterpret_cast<uintptr_t>(note4_reader_font_end);
     std::size_t count = 0;
     for (const auto& range : ranges) {
         for (uint32_t cp = range[0]; cp <= range[1]; ++cp) {

@@ -1,7 +1,7 @@
 # Service interfaces and registry
 
 S1.1 adds an internal service lifecycle and typed registry in
-`components/zectrix_platform/include/zectrix_service_registry.h`. The production
+`components/note4_platform/include/note4_service_registry.h`. The production
 Platform uses it for startup, service lookup and cleanup. Existing first-party
 applications use their Platform accessors, which read from the same registry.
 
@@ -45,12 +45,12 @@ translation units; these keys are never persisted or sent over a protocol.
 The optional lookup is safe before Platform initialization and after shutdown:
 
 ```cpp
-#include "zectrix_platform.h"
-#include "zectrix_time_service.h"
+#include "note4_platform.h"
+#include "note4_time_service.h"
 
-zectrix::time::ClockSnapshot ReadClock(const zectrix::Platform& platform) {
-    const auto* clock = platform.Services().Get<zectrix::time::TimeService>();
-    return clock ? clock->Now() : zectrix::time::ClockSnapshot{};
+note4::time::ClockSnapshot ReadClock(const note4::Platform& platform) {
+    const auto* clock = platform.Services().Get<note4::time::TimeService>();
+    return clock ? clock->Now() : note4::time::ClockSnapshot{};
 }
 ```
 
@@ -120,13 +120,13 @@ not attach the NFC enrollment adapter. Without USB CLI, maintenance polling
 and stop calls are safe no-ops. Without Update, `Platform::Boot()` exposes a
 standalone guard from the core System component. Full builds expose the same
 guard through `Platform::Update().Boot()` and the registry. S1.3 continues the
-application composition and RTC work. SDK v1's lifecycle and headers are unchanged.
+application composition and RTC work. SDK v2's lifecycle and headers are unchanged.
 
 ## Verification and references
 
 ```bash
-ZECTRIX_SERVICE_SANITIZE=1 bash tools/test-service-registry.sh
-ZECTRIX_PLATFORM_SANITIZE=1 bash tools/test-platform.sh
+NOTE4_SERVICE_SANITIZE=1 bash tools/test-service-registry.sh
+NOTE4_PLATFORM_SANITIZE=1 bash tools/test-platform.sh
 bash tools/test-host.sh
 bash tools/build-firmware.sh
 ```

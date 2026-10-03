@@ -29,7 +29,7 @@ uv run --no-project tools/compare-firmware-profiles.py build-full build-minimal 
     --output "$report_dir/report.json" 2>&1 | tee "$report_dir/comparison.log"
 
 if [ "$device" -eq 1 ]; then
-    port="${ZECTRIX_PORT:-/dev/cu.usbmodem14301}"
+    port="${NOTE4_PORT:-/dev/cu.usbmodem14301}"
     if [ -e "$port" ]; then
         # Finish on Full so a successful run leaves the complete product installed.
         for profile in minimal full; do

@@ -1,4 +1,4 @@
-#include "zectrix_app_storage.h"
+#include "note4_app_storage.h"
 
 #include <cassert>
 #include <filesystem>
@@ -7,7 +7,7 @@
 #include <iterator>
 #include <string>
 
-using namespace zectrix;
+using namespace note4;
 namespace fs = std::filesystem;
 
 int main(int argc, char** argv) {

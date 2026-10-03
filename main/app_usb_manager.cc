@@ -1,9 +1,9 @@
 #include "terminal_internal.h"
 
-#include "zectrix_usb_manager.h"
-#include "zectrix_storage_service.h"
+#include "note4_usb_manager.h"
+#include "note4_storage_service.h"
 
-namespace zectrix::terminal {
+namespace note4::terminal {
 
 class TerminalApp::UsbManagerApplication final : public sdk::Application {
 public:
@@ -67,4 +67,4 @@ sdk::Status TerminalApp::CreateUsbManager(TerminalApp& owner, sdk::Application**
     return CreateApplication<UsbManagerApplication>(owner, output);
 }
 
-}  // namespace zectrix::terminal
+}  // namespace note4::terminal

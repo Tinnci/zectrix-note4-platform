@@ -25,7 +25,7 @@
     <application
         android:allowBackup="false"
         android:networkSecurityConfig="@xml/network_security_config"
-        android:label="Zectrix Companion"
+        android:label="Note4 Companion"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
         <activity
@@ -39,7 +39,7 @@
             <intent-filter>
                 <action android:name="android.nfc.action.NDEF_DISCOVERED" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="application/vnd.zectrix.enroll.v1" />
+                <data android:mimeType="application/vnd.note4.enroll.v1" />
             </intent-filter>
         </activity>
 

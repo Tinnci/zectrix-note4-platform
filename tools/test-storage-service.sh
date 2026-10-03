@@ -4,14 +4,14 @@ root_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 test_binary=$(mktemp)
 trap 'rm -f "$test_binary"' EXIT
 flags=(-Wall -Wextra -Werror)
-if [ "${ZECTRIX_STORAGE_SANITIZE:-0}" = 1 ]; then
+if [ "${NOTE4_STORAGE_SANITIZE:-0}" = 1 ]; then
     flags+=(-g "-fsanitize=address,undefined" -fno-omit-frame-pointer)
 fi
 "${CXX:-c++}" -std=c++17 "${flags[@]}" \
   -I"$root_dir/tools/host_include" \
-  -I"$root_dir/components/zectrix_storage/include" \
-  "$root_dir/components/zectrix_storage/zectrix_storage_service.cc" \
-  "$root_dir/components/zectrix_storage/zectrix_book_storage.cc" \
+  -I"$root_dir/components/note4_storage/include" \
+  "$root_dir/components/note4_storage/note4_storage_service.cc" \
+  "$root_dir/components/note4_storage/note4_book_storage.cc" \
   "$root_dir/tools/storage_service_test.cc" -o "$test_binary"
 "$test_binary"
 echo 'PASS: storage service tests.'

@@ -1,6 +1,6 @@
 # M2 platform contract
 
-Status: Draft. This document is an internal M2 contract. It is not an SDK v1 specification.
+Status: Draft. This document is an internal M2 contract. It is not an SDK v2 specification.
 
 Apply the rules in
 [`PLATFORM_MIGRATION_PRINCIPLES.md`](PLATFORM_MIGRATION_PRINCIPLES.md) to each
@@ -50,7 +50,7 @@ triggers an assertion. `Platform::Services().Get<Interface>()` is the optional
 path: it returns `nullptr` for absent, not-yet-ready or stopped providers.
 The registry view permits lookup only; Platform keeps lifecycle ownership.
 
-Application code must not include `driver/gpio.h`, `driver/spi_master.h` or `zectrix_epd.h`.
+Application code must not include `driver/gpio.h`, `driver/spi_master.h` or `note4_epd.h`.
 Application code must not call `esp_deep_sleep_start()`, access NVS directly, or depend on PCF8563.
 Application code must not read the application descriptor, reset reason, chip
 information, flash size, heap diagnostics, or hardware MAC address directly.
@@ -58,7 +58,7 @@ information, flash size, heap diagnostics, or hardware MAC address directly.
 The checker scans `main`, application directories, and every first-party
 component that is not in the explicit infrastructure allowlist. Discovery does
 not depend on CMake dependency text. It rejects application use of the board
-header or `ZectrixBoard` type. Board support, the Platform composition root,
+header or `Note4Board` type. Board support, the Platform composition root,
 platform services, raw drivers, and self-test implementations are in the
 infrastructure allowlist.
 

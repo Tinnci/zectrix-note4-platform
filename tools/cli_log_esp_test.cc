@@ -1,4 +1,4 @@
-#include "zectrix_cli_log.h"
+#include "note4_cli_log.h"
 #include "esp_log.h"
 
 #include <cassert>
@@ -29,7 +29,7 @@ vprintf_like_t esp_log_set_vprintf(vprintf_like_t function) {
 }
 
 int main() {
-    using namespace zectrix::cli;
+    using namespace note4::cli;
     Emit("boot");
     assert(fallback_calls == 1);
     StartMaintenanceLogCapture();

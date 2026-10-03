@@ -1,12 +1,12 @@
-#include "zectrix_sleep_cover.h"
+#include "note4_sleep_cover.h"
 
 #include <cassert>
 #include <climits>
 #include <cstdio>
 #include <cstring>
 
-using namespace zectrix;
-using namespace zectrix::app;
+using namespace note4;
+using namespace note4::app;
 
 int main() {
     assert(SleepCoverSetting(0) == SleepCoverStyle::Dashboard);

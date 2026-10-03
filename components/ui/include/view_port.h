@@ -3,13 +3,13 @@
 #include <array>
 #include <cstddef>
 
-#include "zectrix_canvas.h"
+#include "canvas.h"
 
-namespace zectrix::ui {
+namespace note4::ui {
 
 struct ViewPort {
-    ZectrixCanvas::Clip bounds{0, 0, 0, 0};
-    void (*draw)(void* context, ZectrixCanvas& canvas) = nullptr;
+    Canvas::Clip bounds{0, 0, 0, 0};
+    void (*draw)(void* context, Canvas& canvas) = nullptr;
     void* context = nullptr;
 };
 
@@ -21,16 +21,16 @@ public:
     struct Update {
         bool pending = false;
         bool quality = false;
-        ZectrixCanvas::Clip dirty{0, 0, 0, 0};
+        Canvas::Clip dirty{0, 0, 0, 0};
     };
 
     bool Configure(std::size_t id, const ViewPort& viewport);
     bool Invalidate(std::size_t id, bool quality = false);
     bool Enable(std::size_t id, bool enabled);
-    Update Compose(ZectrixCanvas& canvas);
+    Update Compose(Canvas& canvas);
     void Complete(bool success);
     struct Inspection {
-        ZectrixCanvas::Clip bounds{};
+        Canvas::Clip bounds{};
         bool configured = false, enabled = false, dirty = false, quality = false;
     };
     std::array<Inspection, kCapacity> Inspect() const {
@@ -55,4 +55,4 @@ private:
     bool composing_ = false;
 };
 
-}  // namespace zectrix::ui
+}  // namespace note4::ui

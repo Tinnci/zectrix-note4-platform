@@ -1,10 +1,10 @@
 #include "terminal_internal.h"
-#include "zectrix_micro_app_controller.h"
-#include "zectrix_storage_service.h"
+#include "note4_micro_app_controller.h"
+#include "note4_storage_service.h"
 #include "esp_log.h"
 #include <cstdio>
 
-namespace zectrix::terminal {
+namespace note4::terminal {
 
 class TerminalApp::MicroAppsApplication final : public sdk::Application {
 public:
@@ -30,7 +30,7 @@ public:
     sdk::Status Exit() override {
         controller_.Stop();
         owner_.micro_app_busy_ = false;
-#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+#if CONFIG_NOTE4_ENABLE_USB_CLI
         owner_.guest_inspection_ = {};
 #endif
         return sdk::Status::Ok;
@@ -38,7 +38,7 @@ public:
 
 private:
     void ObserveGuest() {
-#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+#if CONFIG_NOTE4_ENABLE_USB_CLI
         auto& state = owner_.guest_inspection_;
         state.guest = true;
         std::snprintf(state.guest_name.data(), state.guest_name.size(), "%s", controller_.name());
@@ -90,4 +90,4 @@ sdk::Status TerminalApp::CreateMicroApps(TerminalApp& owner, sdk::Application** 
     return CreateApplication<MicroAppsApplication>(owner, output);
 }
 
-}  // namespace zectrix::terminal
+}  // namespace note4::terminal

@@ -53,7 +53,7 @@ partition different from the running partition disables update selection.
 This can indicate an already scheduled update or bootloader fallback. It must
 not cause the selected image to be overwritten or confirmed by the old app.
 Image size is checked against the destination on each `SelectUpdateTarget()`
-call. No raw partition pointer is exposed to applications or SDK v1.
+call. No raw partition pointer is exposed to applications or SDK v2.
 
 ## Boot confirmation and rollback
 
@@ -104,10 +104,10 @@ M5.2 adds streamed image verification, inactive-slot writes and boot selection
 through `Platform::Update()`. Update delivery still needs a transport and user
 workflow. No firmware download command or automatic restart is added.
 
-S1.2 moves boot policy and its ESP backend into the core `zectrix_system`
+S1.2 moves boot policy and its ESP backend into the core `note4_system`
 component. `Platform::Boot()` always exposes `BootGuard`; the optional
 `UpdateService` delegates its boot methods to that same guard. Disabling
-`CONFIG_ZECTRIX_ENABLE_UPDATE` removes firmware writing without removing
+`CONFIG_NOTE4_ENABLE_UPDATE` removes firmware writing without removing
 partition validation, trial deadlines or first-frame confirmation. The
 standalone guard's destruction also leaves an unconfirmed watchdog armed.
 
@@ -188,7 +188,7 @@ without replacing local settings:
 ```bash
 source tools/activate-dev-env.sh
 idf.py --ccache -B build-ota -D "SDKCONFIG=$PWD/build-ota/sdkconfig" build
-bash tools/test-update-service.sh build-ota/zectrix_epd_demo.bin
+bash tools/test-update-service.sh build-ota/note4_platform.bin
 ```
 
 The optional binary argument streams the actual build through the Host driver

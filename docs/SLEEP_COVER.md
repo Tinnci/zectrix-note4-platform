@@ -129,11 +129,11 @@ software tests and remaining physical phone checks.
 
 ```bash
 bash tools/test-host.sh
-ZECTRIX_SLEEP_SANITIZE=1 bash tools/test-sleep-cover.sh
-ZECTRIX_READER_SANITIZE=1 bash tools/test-reader.sh
+NOTE4_SLEEP_SANITIZE=1 bash tools/test-sleep-cover.sh
+NOTE4_READER_SANITIZE=1 bash tools/test-reader.sh
 bash tools/test-power-service.sh
-mkdir -p /tmp/zectrix-sleep-preview
-ZECTRIX_UI_PREVIEW_DIR=/tmp/zectrix-sleep-preview bash tools/test-display-service.sh
+mkdir -p /tmp/note4-sleep-preview
+NOTE4_UI_PREVIEW_DIR=/tmp/note4-sleep-preview bash tools/test-display-service.sh
 ```
 
 Host tests cover calendar validation, quote stability, scene navigation and

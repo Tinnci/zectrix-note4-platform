@@ -1,6 +1,6 @@
-# ADR-0003: Keep FreeRTOS below the Zectrix application runtime
+# ADR-0003: Keep FreeRTOS below the Note4 application runtime
 
-Status: Accepted on 2026-08-12 for SDK v1.
+Status: Accepted on 2026-08-12 for SDK v2.
 
 ## Context
 
@@ -17,10 +17,10 @@ mechanisms start.
 
 ## Decision
 
-IDF FreeRTOS remains the kernel and scheduler. Zectrix does not implement a
+IDF FreeRTOS remains the kernel and scheduler. Note4 does not implement a
 kernel or scheduler.
 
-The Zectrix application runtime is a product runtime above FreeRTOS. It defines:
+The Note4 application runtime is a product runtime above FreeRTOS. It defines:
 
 - one foreground application lifecycle;
 - owned deferred navigation commands;
@@ -33,8 +33,8 @@ request is not an RTOS task. A service can use a task, queue, notification,
 mutex, timer, or no separate RTOS object. The choice stays below the SDK and
 must follow measured concurrency needs.
 
-SDK v1 is a C++17 source-stable contract for statically linked applications.
-The firmware and its applications build together with one toolchain. SDK v1
+SDK v2 is a C++17 source-stable contract for statically linked applications.
+The firmware and its applications build together with one toolchain. SDK v2
 does not promise a C++ binary ABI. It does not support independently built or
 dynamically loaded applications.
 
@@ -43,9 +43,9 @@ dynamically loaded applications.
 ```text
 Applications
     |
-Zectrix SDK v1: lifecycle, input, commands, render intent, status
+Note4 SDK v2: lifecycle, input, commands, render intent, status
     |
-Zectrix application runtime and firmware composition root
+Note4 application runtime and firmware composition root
     |
 Platform services and board support
     |

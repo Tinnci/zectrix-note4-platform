@@ -9,7 +9,7 @@
 class Canvas;
 class UiEngine;
 
-namespace zectrix::ui {
+namespace note4::ui {
 
 // Declarative page configuration with fluent builder.
 struct PageSpec {
@@ -73,4 +73,4 @@ private:
     bool committed_ = false;
 };
 
-}  // namespace zectrix::ui
+}  // namespace note4::ui

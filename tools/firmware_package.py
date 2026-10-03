@@ -18,9 +18,9 @@ from firmware_budget import inspect_budget
 ROOT = Path(__file__).resolve().parent.parent
 ROLES = ("bootloader", "partition-table", "app", "otadata")
 NOTICES = ("LICENSE", "THIRD_PARTY_NOTICES.md", "licenses/TRMNL_FONT_LICENSE.txt",
-           "licenses/LUA_LICENSE.txt", "components/zectrix_epd/LICENSE",
-           "components/zectrix_reader/font/README.md", "components/zectrix_reader/font/OFL-1.1.txt",
-           "components/zectrix_reader/third_party/miniz/LICENSE")
+           "licenses/LUA_LICENSE.txt", "components/note4_epd/LICENSE",
+           "components/note4_reader/font/README.md", "components/note4_reader/font/OFL-1.1.txt",
+           "components/note4_reader/third_party/miniz/LICENSE")
 PROFILE_NAMES = ("full", "minimal", "reader")
 IDENTITY_FIELDS = ("package_version", "target", "source_commit", "source_dirty",
                    "firmware_version", "idf_commit", "partitions")
@@ -101,11 +101,11 @@ def package_profile(directory, profile, version, output):
         "application_bytes": budget["application_bytes"],
         "application_free_bytes": budget["application_free_bytes"],
         "partitions": budget["partitions"],
-        "enabled_modules": sorted(key.removeprefix("ZECTRIX_ENABLE_")
+        "enabled_modules": sorted(key.removeprefix("NOTE4_ENABLE_")
                                   for key, enabled in config.items()
-                                  if key.startswith("ZECTRIX_ENABLE_") and enabled),
+                                  if key.startswith("NOTE4_ENABLE_") and enabled),
     }
-    prefix = f"zectrix-note4-{version}-{profile}"
+    prefix = f"note4-{version}-{profile}"
     shutil.copyfile(directory / description["app_bin"], output / f"{prefix}-app.bin")
     # Keep separate flash segments: filling their gaps would overwrite NVS/books.
     arguments = shlex.join(flash["write_flash_args"]) + "\n"
@@ -117,7 +117,7 @@ def package_profile(directory, profile, version, output):
         archive.writestr("flasher_args.json", json.dumps(flash, indent=2) + "\n")
         archive.writestr("manifest.json", json.dumps(metadata, indent=2) + "\n")
         archive.writestr("README.txt", (
-            f"Zectrix Note4 {version} ({profile}), ESP32-S3\n"
+            f"Note4 {version} ({profile}), ESP32-S3\n"
             f"Source: {metadata['source_commit']}\n"
             f"Firmware descriptor: {metadata['firmware_version']}\n\n"
             "Initial/recovery install: extract the complete archive, enter its directory,\n"
@@ -153,7 +153,7 @@ def package_library(directory, version, output, record):
     config = json.loads((directory / "config/sdkconfig.json").read_text())
     metadata = {key: record[key] for key in ("package_version", "source_commit", "source_dirty")}
     metadata.update(partition=partition, spiffs_object_name_length=config["SPIFFS_OBJ_NAME_LEN"])
-    with zipfile.ZipFile(output / f"zectrix-note4-{version}-library-init.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+    with zipfile.ZipFile(output / f"note4-{version}-library-init.zip", "w", zipfile.ZIP_DEFLATED) as archive:
         archive.write(image, "books.bin")
         archive.writestr("flash_args", f"{hex(partition['offset'])} books.bin\n")
         archive.writestr("manifest.json", json.dumps(metadata, indent=2) + "\n")
@@ -238,7 +238,7 @@ def collect_packages(directories, version, output):
             for record in incoming:
                 if record["package_version"] != version:
                     raise ValueError("Matrix package version does not match the release")
-                prefix = f"zectrix-note4-{version}-{record['profile']}"
+                prefix = f"note4-{version}-{record['profile']}"
                 for name in (f"{prefix}.zip", f"{prefix}-app.bin"):
                     build_file(directory.resolve(), name)
             records.extend(incoming)

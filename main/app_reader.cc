@@ -2,10 +2,10 @@
 
 #include "esp_log.h"
 
-#include "zectrix_reader_controller.h"
-#include "zectrix_reader_platform.h"
+#include "note4_reader_controller.h"
+#include "note4_reader_platform.h"
 
-namespace zectrix::terminal {
+namespace note4::terminal {
 
 class TerminalApp::ReaderApplication final : public sdk::Application {
 public:
@@ -41,14 +41,14 @@ public:
         owner_->reader_selection_ = controller_.selected();
         owner_->reader_busy_ = false;
         controller_.Stop();
-        if (controller_.save_result() != zectrix::reader::Result::Ok)
-            ESP_LOGW(kTag, "reader progress save failed: %s", zectrix::reader::ResultName(controller_.save_result()));
+        if (controller_.save_result() != note4::reader::Result::Ok)
+            ESP_LOGW(kTag, "reader progress save failed: %s", note4::reader::ResultName(controller_.save_result()));
         return sdk::Status::Ok;
     }
 
 private:
-    sdk::Status Apply(zectrix::app::ReaderDecision decision, sdk::ApplicationContext& context) {
-        using Decision = zectrix::app::ReaderDecision;
+    sdk::Status Apply(note4::app::ReaderDecision decision, sdk::ApplicationContext& context) {
+        using Decision = note4::app::ReaderDecision;
         owner_->reader_busy_ = controller_.busy();
         switch (decision) {
             case Decision::RenderFast:
@@ -63,10 +63,10 @@ private:
         return sdk::Status::Ok;
     }
     TerminalApp* owner_;
-    zectrix::reader::StorageLibrary library_;
-    zectrix::reader::PlatformBookmarkStore store_;
-    zectrix::reader::Bookmarks bookmarks_;
-    zectrix::app::ReaderController controller_;
+    note4::reader::StorageLibrary library_;
+    note4::reader::PlatformBookmarkStore store_;
+    note4::reader::Bookmarks bookmarks_;
+    note4::app::ReaderController controller_;
     bool continue_reading_ = false;
 };
 
@@ -77,4 +77,4 @@ sdk::Status TerminalApp::CreateReader(TerminalApp& owner, sdk::Application** out
     return result;
 }
 
-}  // namespace zectrix::terminal
+}  // namespace note4::terminal

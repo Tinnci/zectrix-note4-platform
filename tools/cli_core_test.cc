@@ -4,10 +4,10 @@
 #include <deque>
 #include <string>
 
-#include "zectrix_cli_core.h"
-#include "zectrix_cli_session.h"
+#include "note4_cli_core.h"
+#include "note4_cli_session.h"
 
-using namespace zectrix::cli;
+using namespace note4::cli;
 
 namespace {
 
@@ -85,27 +85,27 @@ void TestSession() {
     transport.connected = true;
     session.Poll();
     assert(session.connected());
-    assert(transport.output.find("Zectrix maintenance CLI\r\nzectrix> ") !=
+    assert(transport.output.find("Note4 maintenance CLI\r\nnote4> ") !=
            std::string::npos);
 
     transport.Send("known one\r\n");
     Drain(session, transport);
     assert(executor.calls == 1);
     assert(executor.last == "known|one");
-    assert(transport.output.find("done\r\nzectrix> ") != std::string::npos);
+    assert(transport.output.find("done\r\nnote4> ") != std::string::npos);
     assert(session.history_size() == 1);
 
     transport.Send("\"bad\r");
     Drain(session, transport);
     assert(executor.calls == 1);
-    assert(transport.output.find("error: unterminated quote\r\nzectrix> ") !=
+    assert(transport.output.find("error: unterminated quote\r\nnote4> ") !=
            std::string::npos);
 
     transport.Send("discard me\x03known\r");
     Drain(session, transport);
     assert(executor.calls == 2);
     assert(executor.last == "known");
-    assert(transport.output.find("^C\r\nzectrix> ") != std::string::npos);
+    assert(transport.output.find("^C\r\nnote4> ") != std::string::npos);
 
     // Recall the newest command and submit it. History remains RAM-only and
     // duplicate adjacent commands do not consume another slot.

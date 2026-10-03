@@ -1,5 +1,5 @@
-menu "Zectrix modules"
-    config ZECTRIX_ENABLE_UTILITIES
+menu "Note4 modules"
+    config NOTE4_ENABLE_UTILITIES
         bool "Native pocket tools"
         default y
         help
@@ -8,9 +8,9 @@ menu "Zectrix modules"
             no network, storage writes or background task is required.
 
     rsource "../components/ui/Kconfig.projbuild"
-    rsource "../components/zectrix_connectivity/Kconfig.projbuild"
-    rsource "../components/zectrix_reader/Kconfig.projbuild"
-    rsource "../components/zectrix_runtime/Kconfig.projbuild"
-    rsource "../components/zectrix_cli/Kconfig.projbuild"
-    rsource "../components/zectrix_update/Kconfig.projbuild"
+    rsource "../components/note4_connectivity/Kconfig.projbuild"
+    rsource "../components/note4_reader/Kconfig.projbuild"
+    rsource "../components/note4_runtime/Kconfig.projbuild"
+    rsource "../components/note4_cli/Kconfig.projbuild"
+    rsource "../components/note4_update/Kconfig.projbuild"
 endmenu

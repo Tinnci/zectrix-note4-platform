@@ -1,0 +1,132 @@
+#pragma once
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+
+#include "note4_resource_client.h"
+#include "note4_sync_engine.h"
+#include "note4_book_transfer.h"
+#include "note4_radio_arbiter.h"
+#include "note4_time_sync.h"
+#include "note4_edge_settings.h"
+
+namespace note4::nfc { class NfcService; }
+namespace note4::storage { class StorageService; }
+namespace note4::power { struct PowerSnapshot; }
+
+namespace note4::connectivity {
+
+enum class ConnectivityState : uint8_t {
+    kStopped = 0,
+    kIdle,
+    kAdvertising,
+    kPairing,
+    kSecuring,
+    kSecure,
+    kLinkReady,
+    kProtocolNegotiatedLocal,
+    kFault,
+};
+
+enum class ConnectivityResult : uint8_t {
+    kOk = 0,
+    kUnavailable,
+    kBusy,
+    kInvalidState,
+    kTransportError,
+};
+
+// Product-level diagnostic state. It contains no GAP/GATT handles or stack
+// types, and transport readiness does not imply protocol-session readiness.
+struct ConnectivitySnapshot {
+    ConnectivityState state = ConnectivityState::kStopped;
+    uint32_t session_id = 0;
+    bool local_pairing_active = false;
+    bool encrypted = false;
+    bool authenticated = false;
+    bool bonded = false;
+    bool notifications_enabled = false;
+    bool ble_data_active = false;
+    // The firmware accepted Hello and started HelloAck transport. This does not prove
+    // that Android received the response, and it does not authorize the peer.
+    bool protocol_negotiated_local = false;
+    // Protocol peer authorization is a separate gate. Hello does not set it.
+    // A successful NFC-assisted enrollment proof consumes the bootstrap token
+    // and sets this flag for the current product session.
+    bool peer_authorized = false;
+    bool sync_converged = false;
+    std::size_t pending_durable_states = 0;
+    bool wifi_credentials_available = false;
+    companion::UserConnectivityPolicy user_policy = companion::UserConnectivityPolicy::kOffline;
+    bool resource_busy = false;
+    bool book_transfer_active = false;
+    // Transfer work at sampling time, not merely an open book-sharing session.
+    bool wifi_data_active = false;
+    WifiBackendState wifi_state = WifiBackendState::kStopped;
+    RadioMode radio_mode = RadioMode::kCompanion;
+    WifiLinkSnapshot wifi{};
+    companion::ConnectivityDecision resource_decision{};
+};
+
+class ConnectivityService {
+public:
+    static ConnectivityResult Create(ConnectivityService** output);
+    ~ConnectivityService();
+
+    ConnectivityService(const ConnectivityService&) = delete;
+    ConnectivityService& operator=(const ConnectivityService&) = delete;
+
+    // Optional dependencies. Call before Initialize().
+    void SetNfcService(nfc::NfcService* nfc_service);
+    void SetStorageService(storage::StorageService* storage_service);
+
+    ConnectivityResult Initialize();
+    ConnectivityResult Stop();
+    ConnectivityResult StartLocalPairing();
+    ConnectivityResult ClearPeerBonds();
+    ConnectivityState State() const;
+    ConnectivitySnapshot Snapshot() const;
+    bool TrySnapshot(ConnectivitySnapshot* snapshot) const;
+    bool TakePairingPasskey(uint32_t* passkey);
+    // The foreground owner takes an authorized, current-session clock hint.
+    // The copy includes queue delay; this service never writes RTC/system time.
+    bool TakeClockSample(companion::ClockSample* sample);
+    bool TakeNetworkClockSample(time::TimeSample* sample);
+    // Publish a copied power sample from the application owner before a
+    // request. Radio policy treats an invalid battery sample conservatively.
+    void UpdatePower(const power::PowerSnapshot& power,
+        companion::ProductPowerState state = companion::ProductPowerState::kActive);
+    ConnectivityResult SetUserPolicy(companion::UserConnectivityPolicy policy);
+    // Internal provisioning API. The caller owns local user authorization.
+    ConnectivityResult ConfigureWifi(const WifiCredentials& credentials);
+    // Requires local authorization; active Wi-Fi work returns Busy.
+    ConnectivityResult ClearWifiConfiguration();
+    esp_err_t LoadEdgeSettings(EdgeSettings* settings) const;
+    esp_err_t ConfigureEdgeSettings(const EdgeSettings& settings);
+    esp_err_t ConfigureEdgeToken(const char* token);
+    // Local owner only, after Wi-Fi cleanup. Always proceed to shutdown afterward.
+    // Waits at most 6s; a timed-out private worker lives until final deep sleep.
+    ConnectivityResult BroadcastPower(const power::PowerSnapshot& power);
+    ConnectivityResult RequestResource(
+        const companion::ResourceRequestMessage& request);
+    bool TakeResourceResponse(ResourceResponse* response);
+    // A foreground local action starts a temporary authenticated book session.
+    ConnectivityResult StartBookTransfer(BookTransferMode mode);
+    ConnectivityResult StopBookTransfer();
+    BookTransferSnapshot BookTransferStatus() const;
+    companion::SyncStatus PutDurableState(uint16_t key, uint32_t revision,
+                                          const uint8_t* value, std::size_t size);
+    // Copies the last durably accepted value; callers apply revisioned state
+    // idempotently, without relying on a transient delivery callback.
+    companion::SyncStatus ReadDurableState(uint16_t key, uint32_t* revision,
+                                           uint8_t* value, std::size_t* size) const;
+
+private:
+    bool ReadSnapshot(ConnectivitySnapshot* snapshot, bool wait) const;
+    struct Impl;
+    explicit ConnectivityService(Impl* impl) : impl_(impl) {}
+    Impl* impl_ = nullptr;
+};
+
+}  // namespace note4::connectivity

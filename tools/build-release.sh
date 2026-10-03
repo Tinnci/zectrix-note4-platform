@@ -53,7 +53,7 @@ import sys
 import zipfile
 
 root, version, output = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3])
-with zipfile.ZipFile(output / f"zectrix-note4-{version}-host-tools.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+with zipfile.ZipFile(output / f"note4-{version}-host-tools.zip", "w", zipfile.ZIP_DEFLATED) as archive:
     for name in ("tools/usb-manager.py", "tools/zapp.py", "tools/zapp", "LICENSE"):
         archive.write(root / name, name)
     archive.writestr("README.txt", """Note4 USB and application tools / USB 与应用工具

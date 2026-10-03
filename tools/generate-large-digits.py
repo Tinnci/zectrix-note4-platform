@@ -74,12 +74,12 @@ def main():
              "// Editable raster parameters: docs/design/date-digits/raster-settings.json.",
              "// 48px native 1bpp; codecs: 0=raw, 1=row runs, 2=row-XOR runs, 3=column runs.",
              "#pragma once", "#include <cstdint>",
-             f"inline constexpr bool kZectrixDigitUsesXor = {'true' if counts[2] else 'false'};",
-             f"inline constexpr bool kZectrixDigitUsesColumn = {'true' if counts[3] else 'false'};",
-             "struct ZectrixDigitGlyph { uint16_t offset, size; uint8_t width, codec; };",
-             "inline constexpr ZectrixDigitGlyph kZectrixDigitGlyphs[50] = {"]
+             f"inline constexpr bool kNote4DigitUsesXor = {'true' if counts[2] else 'false'};",
+             f"inline constexpr bool kNote4DigitUsesColumn = {'true' if counts[3] else 'false'};",
+             "struct Note4DigitGlyph { uint16_t offset, size; uint8_t width, codec; };",
+             "inline constexpr Note4DigitGlyph kNote4DigitGlyphs[50] = {"]
     lines.extend("    {%d, %d, %d, %d}," % record for record in metadata)
-    lines.extend(["};", "inline constexpr uint8_t kZectrixDigitData[] = {"])
+    lines.extend(["};", "inline constexpr uint8_t kNote4DigitData[] = {"])
     lines.extend("    " + ", ".join(f"0x{v:02x}" for v in blob[i:i + 24]) + "," for i in range(0, len(blob), 24))
     lines.extend(["};", ""])
     args.output.write_text("\n".join(lines), encoding="utf-8")

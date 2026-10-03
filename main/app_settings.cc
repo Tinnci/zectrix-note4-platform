@@ -1,10 +1,10 @@
 #include "terminal_internal.h"
 
-#include "zectrix_first_party_app_controllers.h"
-#include "zectrix_language_setting.h"
-#include "zectrix_storage_service.h"
+#include "note4_first_party_app_controllers.h"
+#include "note4_language_setting.h"
+#include "note4_storage_service.h"
 
-namespace zectrix::terminal {
+namespace note4::terminal {
 
 class TerminalApp::SettingsApplication final : public sdk::Application {
 public:
@@ -109,4 +109,4 @@ sdk::Status TerminalApp::CreateSettings(TerminalApp& owner, sdk::Application** o
     return CreateApplication<SettingsApplication>(owner, output);
 }
 
-}  // namespace zectrix::terminal
+}  // namespace note4::terminal

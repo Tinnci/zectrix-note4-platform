@@ -1,9 +1,9 @@
 # Contributing / 参与贡献
 
-Thank you for helping improve the ZECTRIX NOTE4 reference demo. Bug reports,
+Thank you for helping improve the NOTE4 reference demo. Bug reports,
 documentation fixes and focused pull requests are welcome.
 
-感谢你参与改进 ZECTRIX NOTE4 参考 Demo。欢迎提交问题报告、文档修正和范围清晰的
+感谢你参与改进 NOTE4 参考 Demo。欢迎提交问题报告、文档修正和范围清晰的
 Pull Request。
 
 ## Before opening an issue / 提交 Issue 前
@@ -46,7 +46,7 @@ tools/check-dev-env.sh
 tools/build-firmware.sh --clean
 idf.py size
 tools/capture-build-provenance.sh
-ZECTRIX_ANDROID_CLEAN=1 tools/test-android-companion.sh
+NOTE4_ANDROID_CLEAN=1 tools/test-android-companion.sh
 ```
 
 Pull requests and pushes to `main` run the same host, Android and firmware
@@ -54,7 +54,7 @@ checks in GitHub Actions. See `docs/CI.md` for job and artifact details.
 
 Do not flash hardware solely to validate a documentation-only change. If a
 hardware write is necessary, confirm that the target is the black-and-white
-ZECTRIX NOTE4 and use its exact serial port.
+NOTE4 and use its exact serial port.
 
 仅修改文档时无需为了验证而烧录设备。如确需写入硬件，请先确认目标是黑白墨水屏版
-ZECTRIX NOTE4，并使用该设备的准确串口。
+NOTE4，并使用该设备的准确串口。

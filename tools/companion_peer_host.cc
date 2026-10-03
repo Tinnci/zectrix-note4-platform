@@ -1,11 +1,11 @@
-#include "zectrix_companion_identity.h"
-#include "zectrix_companion_protocol.h"
-#include "zectrix_clock_sync.h"
-#include "zectrix_enrollment_ndef.h"
-#include "zectrix_enrollment_publisher.h"
-#include "zectrix_pairing_bootstrap.h"
-#include "zectrix_sync_session.h"
-#include "zectrix_weather_sync.h"
+#include "note4_companion_identity.h"
+#include "note4_companion_protocol.h"
+#include "note4_clock_sync.h"
+#include "note4_enrollment_ndef.h"
+#include "note4_enrollment_publisher.h"
+#include "note4_pairing_bootstrap.h"
+#include "note4_sync_session.h"
+#include "note4_weather_sync.h"
 
 #include <cassert>
 #include <cstdio>
@@ -20,7 +20,7 @@
 // A process boundary for the production codecs, bootstrap and durable engine.
 // The test transport deliberately has no Bluetooth or RF implementation.
 namespace {
-using namespace zectrix::companion;
+using namespace note4::companion;
 std::string Hex(const uint8_t* bytes, std::size_t size) {
     constexpr char digits[] = "0123456789abcdef";
     std::string result;

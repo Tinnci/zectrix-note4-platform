@@ -1,9 +1,9 @@
-#include "zectrix_host_protocol.h"
-#include "zectrix_host_books.h"
-#include "zectrix_cli_diagnostics.h"
-#include "zectrix_usb_manager.h"
-#include "zectrix_storage_service.h"
-#include "zectrix_language_setting.h"
+#include "note4_host_protocol.h"
+#include "note4_host_books.h"
+#include "note4_cli_diagnostics.h"
+#include "note4_usb_manager.h"
+#include "note4_storage_service.h"
+#include "note4_language_setting.h"
 #include "sdkconfig.h"
 
 #include <algorithm>
@@ -18,8 +18,8 @@
 #include <vector>
 
 namespace {
-using namespace zectrix;
-using namespace zectrix::host;
+using namespace note4;
+using namespace note4::host;
 uint64_t now_ms = 0;
 uint64_t Clock() { return now_ms; }
 std::map<std::string, uint32_t> preferences;
@@ -127,7 +127,7 @@ public:
         assert(Receive().status == Status::Ok);
         for (unsigned i = 0; i < 5; ++i) Step();
         assert(!terminal.binary_active() && !channel.Session());
-        assert(transport.output.find("zectrix> ") != std::string::npos);
+        assert(transport.output.find("note4> ") != std::string::npos);
     }
     bool Exists(const char* name) const { return std::filesystem::exists(root_ + "/" + name); }
     std::string Contents(const char* name) const {
@@ -321,7 +321,7 @@ void TestInterruptedBooks(const std::string& root) {
 void TestApps(const std::string& root) {
     Fixture f(root);
     f.Start();
-#if CONFIG_ZECTRIX_ENABLE_RUNTIME
+#if CONFIG_NOTE4_ENABLE_RUNTIME
     const std::string source = "while true do end";
     assert(f.Call(Operation::AppUploadBegin, Number(source.size()) + "Test.lua").status == Status::Ok);
     assert(f.Call(Operation::UploadChunk, Number(0) + source).status == Status::Ok);
@@ -463,7 +463,7 @@ void TestSettingsAndControls() {
 }
 }
 
-namespace zectrix::storage {
+namespace note4::storage {
 struct StorageService::Impl {};
 esp_err_t StorageService::Create(StorageService** output) { *output = new StorageService(new Impl); return ESP_OK; }
 StorageService::~StorageService() { delete impl_; }

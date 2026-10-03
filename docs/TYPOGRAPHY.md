@@ -8,14 +8,14 @@ demonstrate styled copied Lua frames.
 
 ## Style API
 
-SDK 1.2 adds the one-byte `zectrix::sdk::TextStyle` enum and constexpr `|`, `&`
+SDK 1.2 adds the one-byte `note4::sdk::TextStyle` enum and constexpr `|`, `&`
 and `HasStyle` helpers. Application lifecycle interfaces remain source
-compatible. The vocabulary lives in the dependency-free `zectrix_text`
+compatible. The vocabulary lives in the dependency-free `note4_text`
 component, shared by Reader, UI, the SDK umbrella and the optional runtime.
 The SDK still does not expose a canvas, hardware handle or binary ABI.
 
 ```cpp
-using zectrix::sdk::TextStyle;
+using note4::sdk::TextStyle;
 const auto style = TextStyle::Bold | TextStyle::Italic;
 const int width = canvas.TextWidth("Reading", 1, style);
 const int height = canvas.TextHeight("Reading", 1, style);
@@ -128,11 +128,11 @@ heap quota; native measurement and rasterization allocate nothing.
 
 ```bash
 bash tools/test-host.sh
-ZECTRIX_LOCALIZATION_SANITIZE=1 bash tools/test-localization.sh
-ZECTRIX_READER_SANITIZE=1 bash tools/test-reader.sh
-ZECTRIX_RUNTIME_SANITIZE=1 bash tools/test-runtime.sh
+NOTE4_LOCALIZATION_SANITIZE=1 bash tools/test-localization.sh
+NOTE4_READER_SANITIZE=1 bash tools/test-reader.sh
+NOTE4_RUNTIME_SANITIZE=1 bash tools/test-runtime.sh
 mkdir -p build-typography/previews
-ZECTRIX_UI_PREVIEW_DIR="$PWD/build-typography/previews" bash tools/test-display-service.sh
+NOTE4_UI_PREVIEW_DIR="$PWD/build-typography/previews" bash tools/test-display-service.sh
 source tools/activate-dev-env.sh
 bash tools/build-firmware.sh --profile full
 bash tools/build-firmware.sh --profile minimal

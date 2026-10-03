@@ -2,24 +2,24 @@
 
 S1.2 adds native `Kconfig.projbuild` options and conditional component/source
 dependencies. All public module options default to enabled, preserving the
-existing full product. Use `idf.py menuconfig` -> **Zectrix modules**, or supply
+existing full product. Use `idf.py menuconfig` -> **Note4 modules**, or supply
 an `sdkconfig.defaults` overlay for a separate build.
 
 | Option (`CONFIG_` prefix) | Dependency | Effect when disabled |
 | --- | --- | --- |
-| `ZECTRIX_ENABLE_CONNECTIVITY` | None | Removes Connectivity, Companion and NFC enrollment service components, BLE tasks and the Connectivity scene |
-| `ZECTRIX_ENABLE_WIFI` | Connectivity | Removes the shared AP/STA/scan driver; RF diagnostics report SKIP |
-| `ZECTRIX_ENABLE_WIFI_HTTP` | Wi-Fi | Removes the direct HTTPS client and its TLS transport; phone resource requests remain available |
-| `ZECTRIX_ENABLE_BOOK_TRANSFER` | Wi-Fi | Removes the HTTP server, embedded Web page and SEND BOOKS scenes |
-| `ZECTRIX_ENABLE_READER` | None | Removes TXT/EPUB parsing, pagination, reader scenes and the broad CJK reader font |
-| `ZECTRIX_ENABLE_RUNTIME` | None | Removes Lua, the Apps destination and micro-app USB operations; see [Micro-apps](MICRO_APPS.md) |
-| `ZECTRIX_ENABLE_UTILITIES` | Core TimeService only | Removes Pocket Tools, its timer/calendar/counter controllers, renderer and RAM session; see [Pocket tools](UTILITIES.md) |
-| `ZECTRIX_ENABLE_UI_CHINESE` | None | Removes the Chinese UI strings and its small font subset when Reader is also off |
-| `ZECTRIX_ENABLE_USB_CLI` | None | Removes the maintenance component, executor and USB session task; normal ESP-IDF console logs remain |
-| `ZECTRIX_ENABLE_USB_HOST` | USB CLI | Removes the binary book/settings session, USB Manager application and host channel provider |
-| `ZECTRIX_ENABLE_UPDATE` | None | Removes streamed firmware writing and commit; core boot protection remains |
+| `NOTE4_ENABLE_CONNECTIVITY` | None | Removes Connectivity, Companion and NFC enrollment service components, BLE tasks and the Connectivity scene |
+| `NOTE4_ENABLE_WIFI` | Connectivity | Removes the shared AP/STA/scan driver; RF diagnostics report SKIP |
+| `NOTE4_ENABLE_WIFI_HTTP` | Wi-Fi | Removes the direct HTTPS client and its TLS transport; phone resource requests remain available |
+| `NOTE4_ENABLE_BOOK_TRANSFER` | Wi-Fi | Removes the HTTP server, embedded Web page and SEND BOOKS scenes |
+| `NOTE4_ENABLE_READER` | None | Removes TXT/EPUB parsing, pagination, reader scenes and the broad CJK reader font |
+| `NOTE4_ENABLE_RUNTIME` | None | Removes Lua, the Apps destination and micro-app USB operations; see [Micro-apps](MICRO_APPS.md) |
+| `NOTE4_ENABLE_UTILITIES` | Core TimeService only | Removes Pocket Tools, its timer/calendar/counter controllers, renderer and RAM session; see [Pocket tools](UTILITIES.md) |
+| `NOTE4_ENABLE_UI_CHINESE` | None | Removes the Chinese UI strings and its small font subset when Reader is also off |
+| `NOTE4_ENABLE_USB_CLI` | None | Removes the maintenance component, executor and USB session task; normal ESP-IDF console logs remain |
+| `NOTE4_ENABLE_USB_HOST` | USB CLI | Removes the binary book/settings session, USB Manager application and host channel provider |
+| `NOTE4_ENABLE_UPDATE` | None | Removes streamed firmware writing and commit; core boot protection remains |
 
-`ZECTRIX_ENABLE_BOOK_STORAGE` is derived automatically from Reader, Web book
+`NOTE4_ENABLE_BOOK_STORAGE` is derived automatically from Reader, Web book
 transfer, USB management or the micro-app runtime. When all four are disabled, SPIFFS and the book storage implementation
 leave the build and no library mount is attempted. The partition table and
 stored books remain intact. The explicit `books-flash` target is available
@@ -54,10 +54,10 @@ and use a separate build/config path:
 ```bash
 source tools/activate-dev-env.sh
 cat > /tmp/note4-offline.defaults <<'EOF'
-CONFIG_ZECTRIX_ENABLE_CONNECTIVITY=n
-CONFIG_ZECTRIX_ENABLE_READER=y
-CONFIG_ZECTRIX_ENABLE_USB_CLI=n
-CONFIG_ZECTRIX_ENABLE_UPDATE=n
+CONFIG_NOTE4_ENABLE_CONNECTIVITY=n
+CONFIG_NOTE4_ENABLE_READER=y
+CONFIG_NOTE4_ENABLE_USB_CLI=n
+CONFIG_NOTE4_ENABLE_UPDATE=n
 EOF
 idf.py --ccache -B build-offline \
   -D "SDKCONFIG=$PWD/build-offline/sdkconfig" \
@@ -66,7 +66,7 @@ idf.py --ccache -B build-offline \
 
 Set Reader, Runtime and Utilities to `n` as well for the core Launcher, clock, settings, diagnostics,
 gallery and sleep covers. Chinese UI remains independently available through
-`ZECTRIX_ENABLE_UI_CHINESE`; set it to `n` to remove its glyph subset too.
+`NOTE4_ENABLE_UI_CHINESE`; set it to `n` to remove its glyph subset too.
 The committed Minimal profile disables all of these options. Set Connectivity to `y` and Wi-Fi to `n` for a BLE
 companion build. To configure an existing separate build interactively, retain
 its build path: `idf.py -B build-offline menuconfig`.
@@ -86,7 +86,7 @@ would miss dependencies on the first build and retain old ones after changes.
 `cmake/configure_features.cmake` therefore runs the IDF environment's native
 Kconfig library before `project()`. It reads the same component definitions,
 defaults, target defaults and saved config, and writes boolean selections into
-the build directory. `cmake/zectrix_features.cmake` imports those selections
+the build directory. `cmake/note4_features.cmake` imports those selections
 only during early dependency expansion. Normal registration and compilation
 use IDF's generated configuration. The resolver does not rewrite `sdkconfig`.
 CMake tracks the configuration inputs so changes rebuild the dependency tree.
@@ -100,7 +100,7 @@ declare only their selected dependencies and sources.
 
 IDF's Bluetooth component unconditionally requires `esp_wifi` for shared SDK
 interfaces. That SDK component can still appear in a BLE-only build graph;
-the Zectrix Wi-Fi driver is absent, and `libesp_wifi.a`, `libnet80211.a` and
+the Note4 Wi-Fi driver is absent, and `libesp_wifi.a`, `libnet80211.a` and
 `libpp.a` contribute no bytes to its linked image. BLE retains shared RF
 coexistence support. Disabling Connectivity removes the entire BT/Wi-Fi branch.
 
@@ -128,7 +128,7 @@ independently. Flipper-inspired SceneManager and ViewPort ownership remain in
 the core shell, with deferred navigation and one display owner. Reference
 comparisons are recorded in [UI_FLOW.md](UI_FLOW.md#reference-designs-and-continuation).
 
-`zectrix_system` owns the mandatory `BootGuard` policy and ESP boot backend.
+`note4_system` owns the mandatory `BootGuard` policy and ESP boot backend.
 When the writer is enabled, `UpdateService` delegates boot operations to the
 same guard; when it is disabled, Platform owns a standalone guard. In both
 cases boot validation and the inherited RTC watchdog run before board setup.
@@ -160,7 +160,7 @@ ViewPort and the platform's single-owner lifecycle are unchanged.
 bash tools/test-minimal-profile.sh
 
 # Also flashes and checks Minimal, then Full, on the connected Note4.
-ZECTRIX_PORT=/dev/cu.usbmodem14301 bash tools/test-minimal-profile.sh --device
+NOTE4_PORT=/dev/cu.usbmodem14301 bash tools/test-minimal-profile.sh --device
 
 # Individual builds or hardware checks use the same profiles.
 source tools/activate-dev-env.sh
