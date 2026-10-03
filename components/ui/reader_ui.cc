@@ -32,12 +32,12 @@ const char* ReaderMessage(Result result) {
 esp_err_t UiEngine::ShowReader(const zectrix::app::ReaderController& reader, bool full_refresh) {
     using zectrix::app::ReaderScene;
     const auto& engine = reader.engine();
-    // Portrait follows the display orientation and uses a taller, narrower page.
-    const bool portrait = display_ != nullptr && display_->portrait();
-    const int width = portrait ? 300 : 400, height = portrait ? 400 : 300;
-    const int dy = (height - 300) / 2;  // centers short messages
+
     if (reader.scene() == ReaderScene::Library) {
-        DrawFrame(Tr(Text::BookLibrary), Tr(Text::NavOpenBack), true);
+        BeginPage(Tr(Text::BookLibrary), Tr(Text::NavOpenBack), true);
+        const bool portrait = canvas_.portrait();
+        const int width = canvas_.width(), height = canvas_.height();
+        const int dy = (height - 300) / 2;  // centers short messages
         const auto& library = reader.library();
         if (!library.count()) {
             WrapText(16, 104 + dy, reader.result() == Result::Ok ? Tr(Text::LibraryEmpty) : Tr(Text::BookStorageUnavailable),
@@ -71,7 +71,9 @@ esp_err_t UiEngine::ShowReader(const zectrix::app::ReaderController& reader, boo
         }
         if (notice) WrapText(16, height - (portrait ? 78 : 52), notice, width - 32, 18, portrait ? 2 : 1);
     } else if (reader.scene() == ReaderScene::Options) {
-        DrawFrame(Tr(Text::ReadingOptions), Tr(Text::NavReadingOptions), true);
+        BeginPage(Tr(Text::ReadingOptions), Tr(Text::NavReadingOptions), true);
+        const bool portrait = canvas_.portrait();
+        const int width = canvas_.width(), height = canvas_.height();
         DrawUtf8Line(canvas_, 16, 54, reader.book().id.data(), width - 32);
         const char* options[] = {
             engine.page().font == FontSize::Small ? Tr(Text::FontSmallToLarge) : Tr(Text::FontLargeToSmall),
@@ -93,7 +95,9 @@ esp_err_t UiEngine::ShowReader(const zectrix::app::ReaderController& reader, boo
         else if (reader.save_result() != Result::Ok) footer = Tr(Text::NavUnsaved);
         else if (reader.remote_available()) footer = Tr(Text::NavPhonePosition);
         else if (engine.has_page() && engine.page().end) footer = Tr(Text::NavEndOfBook);
-        DrawFrame("", footer, true);
+        BeginPage("", footer, true);
+        const int width = canvas_.width();
+        const int dy = (canvas_.height() - 300) / 2;
         DrawUtf8Line(canvas_, 8, 26, reader.book().id.data(), width - 96, true);
         if (engine.has_page() && (reader.result() == Result::Ok || reader.result() == Result::Pending)) {
             const auto& page = engine.page();
