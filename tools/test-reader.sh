@@ -27,9 +27,12 @@ common=(
     "$root_dir/tools/reader_test.cc" "$root_dir/tools/reader_platform_test.cc"
     "$work_dir/inflate.o" "$work_dir/font.o"
 )
+fixture_base="$work_dir/fixtures"
+uv run --no-project "$root_dir/tools/generate-reader-fixtures.py" "$fixture_base"
 for connectivity in 1 0; do
+    # Each mode mutates its library; reuse generation, not mutable fixture state.
     fixture_dir="$work_dir/fixtures-$connectivity"
-    uv run --no-project "$root_dir/tools/generate-reader-fixtures.py" "$fixture_dir"
+    cp -R "$fixture_base" "$fixture_dir"
     optional=()
     if [ "$connectivity" = 1 ]; then
         optional+=(-I"$root_dir/components/zectrix_time/include" -I"$root_dir/components/zectrix_connectivity/include"

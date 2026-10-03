@@ -272,6 +272,11 @@ configuration tests provision IDF's Kconfig library through uv. See the
 [maintenance CLI contract](docs/MAINTENANCE_CLI_CONTRACT.md) for the execution
 model and limits.
 
+Host tests use two workers by default. Use `tools/test-host.sh --list` to list
+the five groups, `--suite ui` to run UI/reader tests, or `--jobs 1 --verbose`
+for sequential debugging. Timing reports and logs are saved under
+`build-host/host-tests/`; see [CI](docs/CI.md) for the full inventory.
+
 ## Controls
 
 | Input | Action |
