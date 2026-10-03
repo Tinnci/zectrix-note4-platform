@@ -15,6 +15,7 @@
 #include "zectrix_unicode_text.h"
 #include "zectrix_utf8.h"
 #include "ssd2683_waveform.h"
+#include "frame_transform.h"
 #include "../main/terminal_status.h"
 
 #include <algorithm>
@@ -52,6 +53,7 @@ std::map<void*, std::size_t> allocations;
 bool bus_active = false;
 unsigned devices = 0, mutexes = 0, gpio_writes = 0;
 unsigned nothrow_allocations = 0, fail_allocation_at = 0;
+std::size_t last_array_bytes = 0;
 unsigned heap_allocations = 0, fail_heap_at = 0;
 int fail_command = -1, fail_data = -1;
 bool fail_power_off = false, timeout_refresh = false, fail_lock = false;
@@ -71,6 +73,7 @@ void Reset() {
     pullups = {};
     gpio_writes = nothrow_allocations = heap_allocations = 0;
     fail_allocation_at = fail_heap_at = 0;
+    last_array_bytes = 0;
     fail_command = fail_data = -1;
     fail_power_off = timeout_refresh = fail_lock = false;
     now_us = 0;
@@ -272,6 +275,62 @@ void TestCreationAndInputErrors() {
     assert(packets.empty() && gpio_writes == 0 && Inspect(*service).refresh_count == 0);
 }
 
+void TestPackedFrameTransforms() {
+    namespace transform = zectrix::display::detail;
+    Frame source, rotated, restored;
+    for (std::size_t i = 0; i < source.size(); ++i) source[i] = static_cast<uint8_t>(i * 131 + 7);
+    for (bool gray : {false, true}) {
+        transform::RotateHalfTurn(source.data(), rotated.data(), source.size(), gray);
+        transform::RotateHalfTurn(rotated.data(), restored.data(), source.size(), gray);
+        assert(restored == source);
+    }
+    for (bool flipped : {false, true}) {
+        transform::RotatePortraitMono(source.data(), rotated.data(), 400, 300, flipped);
+        for (int y = 0; y < 400; ++y) for (int x = 0; x < 300; ++x) {
+            const auto bit = static_cast<std::size_t>(y) * 300 + x;
+            const auto target = flipped ? static_cast<std::size_t>(299 - x) * 400 + y
+                                       : static_cast<std::size_t>(x) * 400 + (399 - y);
+            assert(bool(source[bit / 8] & (0x80 >> (bit & 7))) ==
+                   bool(rotated[target / 8] & (0x80 >> (target & 7))));
+        }
+    }
+    const uint8_t patch[] = {0x7f, 0x00, 0xff, 0x80, 0xbf, 0x00};
+    uint8_t output[sizeof(patch)], roundtrip[sizeof(patch)];
+    transform::RotateMonoPatch(patch, output, 9, 3);
+    transform::RotateMonoPatch(output, roundtrip, 9, 3);
+    for (int y = 0; y < 3; ++y) {
+        assert(roundtrip[y * 2] == patch[y * 2]);
+        assert((roundtrip[y * 2 + 1] & 0x80) == (patch[y * 2 + 1] & 0x80));
+        assert((output[y * 2 + 1] & 0x7f) == 0x7f);
+    }
+}
+
+void TestRotationAllocationFailures() {
+    Reset();
+    auto service = CreateService();
+    using Orientation = DisplayOrientation;
+    fail_allocation_at = nothrow_allocations + 1;
+    assert(service->SetOrientation(Orientation::Inverted) == ESP_ERR_NO_MEM);
+    assert(service->orientation() == Orientation::Standard && packets.empty());
+    fail_allocation_at = 0;
+    assert(service->SetOrientation(Orientation::Inverted) == ESP_OK);
+    Frame frame;
+    frame.fill(0xff);
+    Present(*service, frame);
+    ClearTraffic();
+    const auto refreshes = Inspect(*service).refresh_count;
+    std::array<uint8_t, DisplayService::kFrameBytes4Bpp> gray{};
+    fail_allocation_at = nothrow_allocations + 1;
+    assert(service->Present4Bpp(DisplayIntent::Quality, gray.data(), gray.size()) == ESP_ERR_NO_MEM);
+    assert(service->orientation() == Orientation::Inverted && packets.empty() && gpio_writes == 0);
+    assert(Inspect(*service).refresh_count == refreshes && service->CanUsePartial());
+    fail_allocation_at = 0;
+    const auto allocations_before = nothrow_allocations;
+    Present(*service, frame);
+    assert(packets.empty() && nothrow_allocations == allocations_before);
+    assert(service->Present4Bpp(DisplayIntent::Quality, gray.data(), gray.size()) == ESP_OK);
+}
+
 void TestScreenDirection() {
     Reset();
     auto service = CreateService();
@@ -283,6 +342,7 @@ void TestScreenDirection() {
     PutBit(logical.data(), 50, 19, 31, false);
     PutBit(physical.data(), 50, 380, 268, false);
     assert(service->SetOrientation(Orientation::Inverted) == ESP_OK);
+    assert(last_array_bytes == DisplayService::kFrameBytes1Bpp);
     Present(*service, logical);
     CheckFull(physical);
     ClearTraffic();
@@ -293,6 +353,7 @@ void TestScreenDirection() {
     const uint8_t patch = 0x7f;
     assert(service->Present1Bpp(DisplayIntent::Fast, logical.data(), logical.size(),
         {0, 0, 8, 1}, &patch, 1) == ESP_OK);
+    assert(last_array_bytes == 2 * DisplayService::kFrameBytes1Bpp);
     const uint8_t unaligned_patch[] = {0x7f, 0xff};
     assert(service->Present1Bpp(DisplayIntent::Fast, logical.data(), logical.size(),
         {1, 1, 9, 1}, unaligned_patch, sizeof(unaligned_patch)) == ESP_OK);
@@ -305,6 +366,7 @@ void TestScreenDirection() {
     gray.back() = 0x34;
     assert(service->SetOrientation(Orientation::Inverted) == ESP_OK);
     assert(service->Present4Bpp(DisplayIntent::Quality, gray.data(), gray.size()) == ESP_OK);
+    assert(last_array_bytes == DisplayService::kFrameBytes4Bpp);
     assert(gray[0] == 0x12 && gray.back() == 0x34);
     assert(Inspect(*service).preview[0] == 0x43);
     Frame portrait;
@@ -2219,6 +2281,12 @@ void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
     try { return ::operator new(size); } catch (...) { return nullptr; }
 }
 void operator delete(void* pointer, const std::nothrow_t&) noexcept { ::operator delete(pointer); }
+void* operator new[](std::size_t size, const std::nothrow_t&) noexcept {
+    last_array_bytes = size;
+    if (++nothrow_allocations == fail_allocation_at) return nullptr;
+    try { return ::operator new[](size); } catch (...) { return nullptr; }
+}
+void operator delete[](void* pointer, const std::nothrow_t&) noexcept { ::operator delete[](pointer); }
 void* heap_caps_malloc(std::size_t size, uint32_t) {
     if (++heap_allocations == fail_heap_at) return nullptr;
     void* pointer = std::malloc(size);
@@ -2616,6 +2684,8 @@ int main() {
     zectrix::i18n::SetLanguage(language && std::strcmp(language, "zh") == 0 ?
         zectrix::i18n::Language::Chinese : zectrix::i18n::Language::English);
     TestCreationAndInputErrors();
+    TestPackedFrameTransforms();
+    TestRotationAllocationFailures();
     TestScreenDirection();
     TestAutomaticRefreshAndBudget();
     TestHighContrastAndSparseChanges();

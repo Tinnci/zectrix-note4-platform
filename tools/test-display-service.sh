@@ -18,6 +18,7 @@ uv run --no-project "$root_dir/tools/generate-reader-fixtures.py" "$work_dir/fix
   -I"$root_dir/tools/epd_host_include" \
   -I"$root_dir/tools/host_include" \
   -I"$root_dir/components/zectrix_display/include" \
+  -I"$root_dir/components/zectrix_display/private_include" \
   -I"$root_dir/components/zectrix_epd/include" \
   -I"$root_dir/components/zectrix_epd/private_include" \
   -I"$root_dir/components/ui/include" \
