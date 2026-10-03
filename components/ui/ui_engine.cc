@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <new>
 
 using zectrix::i18n::Tr;
@@ -22,6 +23,25 @@ constexpr int kTestStripHeight = 42;
 constexpr int kTestContentLeft = 16;
 constexpr int kTestContentRight = 384;
 constexpr int64_t kUpdateThrottleUs = 500000;
+
+// Floor(extent * numerator / denominator), with extent > 0 and 0 <= numerator <= denominator > 0.
+// The fallback keeps even host size_t maxima safe without floating-point rounding.
+int ScaleFraction(int extent, size_t numerator, size_t denominator) {
+    if (numerator <= std::numeric_limits<size_t>::max() / static_cast<size_t>(extent)) {
+        return static_cast<int>(static_cast<size_t>(extent) * numerator / denominator);
+    }
+    size_t remainder = 0;
+    int scaled = 0;
+    for (int i = 0; i < extent; ++i) {
+        if (remainder >= denominator - numerator) {
+            remainder -= denominator - numerator;
+            ++scaled;
+        } else {
+            remainder += numerator;
+        }
+    }
+    return scaled;
+}
 
 const char* ScreenDirectionName(zectrix::display::DisplayOrientation orientation) {
     using Orientation = zectrix::display::DisplayOrientation;
@@ -180,15 +200,20 @@ void PageShell::DrawBadge(const char* text) {
 
 void PageShell::DrawScrollbar(size_t visible_count, size_t total_count, size_t first_index,
                               int start_y, int track_height) {
-    if (total_count <= visible_count || visible_count == 0) return;
-    const int sy = (start_y >= 0) ? start_y : body_.y;
-    const int track_h = (track_height > 0) ? track_height : body_.height;
-    const size_t thumb_h = std::max<size_t>(8, track_h * visible_count / total_count);
-    const int thumb_offset = static_cast<int>(
-        (track_h - thumb_h) * first_index / (total_count - visible_count));
+    if (total_count <= visible_count || visible_count == 0 || body_.IsEmpty()) return;
+    const int requested_y = (start_y >= 0) ? start_y : body_.y;
+    const int requested_h = (track_height > 0) ? track_height : body_.height;
+    const int sy = std::max(requested_y, body_.y);
+    const int64_t bottom = std::min<int64_t>(body_.bottom(), int64_t(requested_y) + requested_h);
+    if (bottom <= sy) return;
+    const int track_h = static_cast<int>(bottom - sy);
+    const int thumb_h = std::min(track_h, std::max(8, ScaleFraction(track_h, visible_count, total_count)));
+    const size_t max_first = total_count - visible_count;
+    const int travel = track_h - thumb_h;
+    const int thumb_offset = travel > 0 ? ScaleFraction(travel, std::min(first_index, max_first), max_first) : 0;
     const int line_x = canvas_.width() - 9;
     canvas_.Line(line_x, sy, line_x, sy + track_h - 1);
-    canvas_.FillRect(line_x - 2, sy + thumb_offset, 5, static_cast<int>(thumb_h), true);
+    canvas_.FillRect(line_x - 2, sy + thumb_offset, 5, thumb_h, true);
 }
 
 esp_err_t PageShell::Commit(bool full_refresh) {

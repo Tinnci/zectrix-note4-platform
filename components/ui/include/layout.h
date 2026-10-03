@@ -50,35 +50,42 @@ struct Rect {
         return Inset(Insets(horizontal, vertical));
     }
 
+    // Cuts clamp sizes and gaps to the available extent; negative gaps never overlap.
     // Cut from top: returns {top_box, remaining_box}
     constexpr std::pair<Rect, Rect> CutTop(int h, int gap = 0) const {
-        const int actual_h = std::clamp(h, 0, height);
-        const int rem_y = y + actual_h + gap;
-        const int rem_h = std::max(0, height - actual_h - gap);
+        const int extent = std::max(0, height);
+        const int actual_h = std::clamp(h, 0, extent);
+        const int spacing = std::clamp(gap, 0, extent - actual_h);
+        const int rem_y = y + actual_h + spacing;
+        const int rem_h = extent - actual_h - spacing;
         return {{x, y, width, actual_h}, {x, rem_y, width, rem_h}};
     }
 
     // Cut from bottom: returns {bottom_box, remaining_box}
     constexpr std::pair<Rect, Rect> CutBottom(int h, int gap = 0) const {
-        const int actual_h = std::clamp(h, 0, height);
-        const int bottom_y = y + height - actual_h;
-        const int rem_h = std::max(0, height - actual_h - gap);
+        const int extent = std::max(0, height);
+        const int actual_h = std::clamp(h, 0, extent);
+        const int bottom_y = y + extent - actual_h;
+        const int rem_h = extent - actual_h - std::clamp(gap, 0, extent - actual_h);
         return {{x, bottom_y, width, actual_h}, {x, y, width, rem_h}};
     }
 
     // Cut from left: returns {left_box, remaining_box}
     constexpr std::pair<Rect, Rect> CutLeft(int w, int gap = 0) const {
-        const int actual_w = std::clamp(w, 0, width);
-        const int rem_x = x + actual_w + gap;
-        const int rem_w = std::max(0, width - actual_w - gap);
+        const int extent = std::max(0, width);
+        const int actual_w = std::clamp(w, 0, extent);
+        const int spacing = std::clamp(gap, 0, extent - actual_w);
+        const int rem_x = x + actual_w + spacing;
+        const int rem_w = extent - actual_w - spacing;
         return {{x, y, actual_w, height}, {rem_x, y, rem_w, height}};
     }
 
     // Cut from right: returns {right_box, remaining_box}
     constexpr std::pair<Rect, Rect> CutRight(int w, int gap = 0) const {
-        const int actual_w = std::clamp(w, 0, width);
-        const int right_x = x + width - actual_w;
-        const int rem_w = std::max(0, width - actual_w - gap);
+        const int extent = std::max(0, width);
+        const int actual_w = std::clamp(w, 0, extent);
+        const int right_x = x + extent - actual_w;
+        const int rem_w = extent - actual_w - std::clamp(gap, 0, extent - actual_w);
         return {{right_x, y, actual_w, height}, {x, y, rem_w, height}};
     }
 };
@@ -88,15 +95,19 @@ class UniformGrid {
 public:
     constexpr UniformGrid() = default;
     constexpr UniformGrid(Rect bounds, int cols, int rows, int gap_x = 0, int gap_y = 0)
-        : bounds_(bounds), cols_(std::max(1, cols)), rows_(std::max(1, rows)),
-          gap_x_(gap_x), gap_y_(gap_y) {}
+        : bounds_(bounds.x, bounds.y, std::max(0, bounds.width), std::max(0, bounds.height)),
+          cols_(std::max(1, cols)), rows_(std::max(1, rows)),
+          gap_x_(AxisGap(bounds_.width, cols_, gap_x)),
+          gap_y_(AxisGap(bounds_.height, rows_, gap_y)) {}
 
     // Responsive container query: picks columns based on available container width
     static UniformGrid Fit(Rect bounds, int item_count, int min_cell_width, int gap_x = 0, int gap_y = 0) {
         if (item_count <= 0) return UniformGrid(bounds, 1, 1, gap_x, gap_y);
-        int cols = (bounds.width + gap_x) / std::max(1, min_cell_width + gap_x);
-        cols = std::clamp(cols, 1, item_count);
-        const int rows = (item_count + cols - 1) / cols;
+        const int64_t gap = std::max(0, gap_x);
+        const int64_t preferred_width = std::max(1, min_cell_width);
+        const int cols = static_cast<int>(std::clamp<int64_t>(
+            (std::max(0, bounds.width) + gap) / (preferred_width + gap), 1, item_count));
+        const int rows = 1 + (item_count - 1) / cols;
         return UniformGrid(bounds, cols, rows, gap_x, gap_y);
     }
 
@@ -109,7 +120,9 @@ public:
         return (bounds_.height - (rows_ - 1) * gap_y_) / rows_;
     }
 
+    // Out-of-range cells are empty rather than extending outside the container.
     constexpr Rect CellAt(int col, int row) const {
+        if (col < 0 || col >= cols_ || row < 0 || row >= rows_) return Rect();
         const int cw = cell_width();
         const int ch = cell_height();
         const int cx = bounds_.x + col * (cw + gap_x_);
@@ -126,6 +139,10 @@ public:
     constexpr Rect Cell(int col, int row) const { return CellAt(col, row); }
 
 private:
+    // Keep spacing inside the container even when it cannot fit the requested grid.
+    static constexpr int AxisGap(int extent, int count, int gap) {
+        return count > 1 ? std::min(std::max(0, gap), extent / (count - 1)) : 0;
+    }
     Rect bounds_{};
     int cols_ = 1;
     int rows_ = 1;
