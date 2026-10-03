@@ -186,7 +186,7 @@ printf 'sysinfo\nheap\nepd-inspect\n' | build-host/zectrix-cli-host
 ```text
 components/zectrix_epd/       SSD2683 墨水屏公开驱动
 components/zectrix_board/     NOTE4 引脚与外设适配层
-components/zectrix_demo_ui/   画布、点阵字库与英文演示 UI
+components/ui/               画布、点阵字库与双语原生 UI
 components/zectrix_self_test/ 硬件自检实现
 components/zectrix_platform/  平台组合根
 components/zectrix_reader/    TXT/EPUB 流式排版、字库与书签

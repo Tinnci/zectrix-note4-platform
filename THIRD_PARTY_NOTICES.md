@@ -6,7 +6,7 @@ software or assets retain their own licenses.
 ## TRMNL16 Regular
 
 The embedded ASCII bitmap table in
-`components/zectrix_demo_ui/font/zectrix_ascii_font_8x16.h` was rasterized from
+`components/ui/font/ascii_font_8x16.h` was rasterized from
 TRMNL16 Regular by Heavyweight Digital Type Foundry. The font is licensed under
 the SIL Open Font License, Version 1.1, included at
 `licenses/TRMNL_FONT_LICENSE.txt`.

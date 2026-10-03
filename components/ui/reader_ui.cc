@@ -97,15 +97,17 @@ esp_err_t UiEngine::ShowReader(const zectrix::app::ReaderController& reader, boo
         else if (reader.save_result() != Result::Ok) footer = Tr(Text::NavUnsaved);
         else if (reader.remote_available()) footer = Tr(Text::NavPhonePosition);
         else if (engine.has_page() && engine.page().end) footer = Tr(Text::NavEndOfBook);
-        auto page = EnterPage(zectrix::ui::PageSpec().Footer(footer));
+        char progress[16]{};
+        if (engine.has_page() && (reader.result() == Result::Ok || reader.result() == Result::Pending)) {
+            const auto value = engine.page().progress_per_mille;
+            std::snprintf(progress, sizeof(progress), "%u.%u%%", value / 10, value % 10);
+        }
+        auto page = EnterPage(zectrix::ui::PageSpec()
+            .Title(reader.book().id.data()).Footer(footer).Badge(progress));
         const int width = page.width();
         const int dy = page.dy();
-        DrawUtf8Line(canvas_, 8, 26, reader.book().id.data(), width - 96, true);
         if (engine.has_page() && (reader.result() == Result::Ok || reader.result() == Result::Pending)) {
             const auto& read_page = engine.page();
-            char progress[16];
-            std::snprintf(progress, sizeof(progress), "%u.%u%%", read_page.progress_per_mille / 10, read_page.progress_per_mille % 10);
-            canvas_.Text(width - 8 - canvas_.TextWidth(progress), 26, progress, 1, true);
             for (std::size_t i = 0; i < read_page.count; ++i)
                 DrawGlyph(canvas_, 8 + read_page.glyphs[i].x, 48 + read_page.glyphs[i].y,
                           read_page.glyphs[i].codepoint, read_page.font, false, read_page.glyphs[i].style);

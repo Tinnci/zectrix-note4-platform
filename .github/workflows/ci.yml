@@ -50,7 +50,7 @@ jobs:
       - name: Install Bun for HTTP integration tests
         run: |
           curl --fail --silent --show-error --location https://bun.sh/install |
-            env BUN_INSTALL="$RUNNER_TEMP/bun" bash -s -- bun-v1.3.14
+            env BUN_INSTALL="$RUNNER_TEMP/bun" bash -s -- bun-v1.4.2
           printf '%s\n' "$RUNNER_TEMP/bun/bin" >> "$GITHUB_PATH"
 
       - name: Install HA bridge dependencies

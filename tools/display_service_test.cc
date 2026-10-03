@@ -2327,6 +2327,44 @@ esp_err_t spi_device_polling_transmit(spi_device_handle_t, spi_transaction_t* tr
 }
 
 // Portrait (300 x 400) layouts for Home, Reader, Settings, Transfer and Tools.
+void TestPageShellHeaders() {
+    using zectrix::ui::PageSpec;
+    using Orientation = zectrix::display::DisplayOrientation;
+    for (const auto orientation : {Orientation::Standard, Orientation::Portrait}) {
+        for (bool centered : {false, true}) {
+            Reset();
+            auto service = CreateService();
+            assert(service->SetOrientation(orientation) == ESP_OK);
+            UiEngine ui(service.get());
+            const char* title = zectrix::i18n::Tr(zectrix::i18n::Text::Home);
+            auto page = ui.EnterPage(PageSpec().Title(title).CenterTitle(centered).Badge("42.5%"));
+            auto& canvas = ui.canvas();
+            const auto body_clip = canvas.clip();
+            assert(body_clip.y == 44 && body_clip.height > 0);
+            Canvas expected = canvas;
+            expected.ResetClip();
+            expected.FillRect(0, 24, canvas.width(), 20, true);
+            const int badge_width = expected.TextWidth("42.5%");
+            const int title_width = canvas.width() - 20 - badge_width - 12;
+            const auto style = Canvas::TextStyle::Bold;
+            const int x = 10 + (centered ? (title_width - expected.TextWidth(title, 1, style)) / 2 : 0);
+            expected.TextFitted(x, 26, title, title_width, true, style);
+            expected.Text(canvas.width() - 12 - badge_width, 26, "42.5%", 1, true);
+            assert(std::memcmp(canvas.data(), expected.data(), canvas.size()) == 0);
+            page.DrawBadge("42.5%");
+            assert(canvas.clip().x == body_clip.x && canvas.clip().y == body_clip.y &&
+                   canvas.clip().width == body_clip.width && canvas.clip().height == body_clip.height);
+            const auto heap_before = heap_allocations, objects_before = nothrow_allocations;
+            auto moved = std::move(page);
+            assert(page.Commit(true) == ESP_ERR_INVALID_STATE);
+            assert(moved.Commit(true) == ESP_OK);
+            const auto writes = packets.size();
+            assert(moved.Commit(true) == ESP_ERR_INVALID_STATE && packets.size() == writes);
+            assert(heap_allocations == heap_before && nothrow_allocations == objects_before);
+        }
+    }
+}
+
 void TestPortraitScreens() {
     using namespace zectrix::app;
     using namespace zectrix::sdk;
@@ -2561,6 +2599,7 @@ int main() {
     TestUtilitiesComposition();
     TestRecoveryComposition();
     TestSleepCoverComposition();
+    TestPageShellHeaders();
     TestPortraitScreens();
     Reset();
 }
