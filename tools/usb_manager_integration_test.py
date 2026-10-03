@@ -17,7 +17,7 @@ TOOL = Path(__file__).with_name("usb-manager.py")
 spec = importlib.util.spec_from_file_location("usb_manager", TOOL)
 usb = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(usb)
-BINARY, ROOT = sys.argv[1], Path(sys.argv[2])
+BINARY, ROOT = str(Path(sys.argv[1]).resolve()), Path(sys.argv[2])
 sys.argv = sys.argv[:1]
 
 
@@ -28,7 +28,10 @@ class Device:
         master, self.slave = os.openpty()
         tty.setraw(self.slave)
         self.port = os.ttyname(self.slave)
-        self.process = subprocess.Popen([BINARY, str(root)], stdin=master, stdout=master, stderr=subprocess.PIPE)
+        # Production uses short mount points (e.g. /books), not a CI workspace
+        # path. Keep the real filesystem tree but mount relative to its parent.
+        self.process = subprocess.Popen([BINARY, root.name], cwd=root.parent,
+                                        stdin=master, stdout=master, stderr=subprocess.PIPE)
         os.close(master)
         self.transport = None
         self.client = None
@@ -48,7 +51,7 @@ class Device:
         self.client._until = trace
         try:
             self.client.connect()
-        except usb.HostError as error:
+        except (usb.HostError, serial.SerialException) as error:
             raise AssertionError(f"{error}; handshake={lines[-8:]!r}; remaining={self.client.buffer!r}; process={self.process.poll()}") from error
         finally:
             self.client._until = read_until
@@ -79,6 +82,17 @@ class IntegrationTest(unittest.TestCase):
         self.root.mkdir(parents=True)
         self.device = Device(self.root / "books")
         self.addCleanup(self.device.finish)
+
+    def test_long_workspace_path(self):
+        device = Device(self.root / ("workspace-" + "x" * 190) / "books")
+        self.addCleanup(device.finish)
+        self.assertGreater(len(os.fsencode(device.root)), 192)
+        client = device.connect()
+        self.assertEqual(list(client.books()), [])
+        source = self.root / "short.txt"
+        source.write_bytes(b"long workspace, short mount point\n")
+        self.assertEqual(client.put(source), source.stat().st_size)
+        self.assertEqual((device.root / source.name).read_bytes(), source.read_bytes())
 
     def test_binary_book_round_trip_and_cli(self):
         client = self.device.connect()
