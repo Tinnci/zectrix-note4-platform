@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <csignal>
 #include <cstdio>
 #include <thread>
@@ -46,7 +47,10 @@ int main(int argc, char** argv) {
     std::signal(SIGHUP, Stop);
     std::signal(SIGPIPE, SIG_IGN);
     cli::host::StdioTransport transport;
-    if (!transport.Open()) return 1;
+    if (!transport.Open()) {
+        std::fprintf(stderr, "PTY transport initialization failed: %s\n", std::strerror(transport.error()));
+        return 1;
+    }
     host::Channel channel;
     host::Protocol protocol(channel);
     Diagnostics diagnostics;
@@ -59,7 +63,13 @@ int main(int argc, char** argv) {
         storage::BookStorage storage(argv[1]);
         Settings settings;
         host::BookSession session(channel, settings);
-        if (storage.BeginManagement() != ESP_OK) { storage_failed = true; ready = true; return; }
+        const auto mounted = storage.BeginManagement();
+        if (mounted != ESP_OK) {
+            std::fprintf(stderr, "Book mount failed: root=%s error=%d\n", argv[1], mounted);
+            storage_failed = true;
+            ready = true;
+            return;
+        }
         session.Start(storage);
         ready = true;
         while (!stopped.load()) {
