@@ -8,6 +8,9 @@
 #include "zectrix_display_state.h"
 #include "zectrix_display_inspection.h"
 
+// Keep GPIO/SPI declarations out of the service boundary without erasing handle types.
+struct zectrix_epd_t;
+
 namespace zectrix::display {
 
 enum class DisplayIntent : uint8_t {
@@ -85,11 +88,15 @@ private:
     esp_err_t PresentPhysical1Bpp(DisplayIntent intent, const uint8_t* frame,
         std::size_t size, const Rect& region, const uint8_t* patch, std::size_t patch_size);
     esp_err_t PresentPhysical4Bpp(DisplayIntent intent, const uint8_t* frame, std::size_t size);
+    esp_err_t PresentPortraitFrame(DisplayIntent intent, const uint8_t* frame,
+                                  std::size_t size, bool flipped);
     DisplayOrientation orientation_ = DisplayOrientation::Standard;
     std::unique_ptr<uint8_t[]> rotated_;
+    std::size_t rotation_capacity_ = 0;
+    esp_err_t EnsureRotationBuffer(std::size_t required);
     bool orientation_changed_ = false;
     bool portrait_presented_ = false;
-    explicit DisplayService(void* driver_handle) : driver_handle_(driver_handle) {}
+    explicit DisplayService(zectrix_epd_t* driver_handle) : driver_handle_(driver_handle) {}
     struct Observation;
     Observation StartObservation() const;
     void StartMetrics(Observation* observation) const;
@@ -99,7 +106,7 @@ private:
     esp_err_t RecordRefresh(Observation& observation, esp_err_t result,
                             const uint8_t* frame = nullptr);
 
-    void* driver_handle_;
+    zectrix_epd_t* driver_handle_;
     bool batch_active_ = false;
     StateModel state_model_;
     DisplayInspection inspection_;

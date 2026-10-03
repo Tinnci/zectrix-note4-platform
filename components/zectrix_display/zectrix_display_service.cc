@@ -6,6 +6,7 @@
 
 #include "esp_timer.h"
 #include "zectrix_epd.h"
+#include "frame_transform.h"
 
 namespace zectrix::display {
 namespace {
@@ -50,7 +51,7 @@ esp_err_t DisplayService::Create(DisplayService** out_service) {
     zectrix_epd_handle_t handle = nullptr;
     const esp_err_t err = zectrix_epd_new(&config, &handle);
     if (err != ESP_OK) return err;
-    *out_service = new (std::nothrow) DisplayService(static_cast<void*>(handle));
+    *out_service = new (std::nothrow) DisplayService(handle);
     if (*out_service == nullptr) {
         zectrix_epd_del(handle);
         return ESP_ERR_NO_MEM;
@@ -61,15 +62,15 @@ esp_err_t DisplayService::Create(DisplayService** out_service) {
 DisplayService::~DisplayService() {
     if (driver_handle_ != nullptr) {
         if (IsPowered()) {
-            zectrix_epd_power_off(static_cast<zectrix_epd_handle_t>(driver_handle_));
+            zectrix_epd_power_off(driver_handle_);
         }
-        zectrix_epd_del(static_cast<zectrix_epd_handle_t>(driver_handle_));
+        zectrix_epd_del(driver_handle_);
     }
 }
 
 esp_err_t DisplayService::BeginBatch() {
     if (batch_active_) return ESP_ERR_INVALID_STATE;
-    const esp_err_t err = zectrix_epd_power_on(static_cast<zectrix_epd_handle_t>(driver_handle_));
+    const esp_err_t err = zectrix_epd_power_on(driver_handle_);
     if (err != ESP_OK) OnError();
     if (err == ESP_OK) batch_active_ = true;
     return err;
@@ -77,14 +78,14 @@ esp_err_t DisplayService::BeginBatch() {
 
 esp_err_t DisplayService::EndBatch() {
     if (!batch_active_) return ESP_ERR_INVALID_STATE;
-    const esp_err_t err = zectrix_epd_power_off(static_cast<zectrix_epd_handle_t>(driver_handle_));
+    const esp_err_t err = zectrix_epd_power_off(driver_handle_);
     batch_active_ = false;
     if (err != ESP_OK) OnError();
     return err;
 }
 
 bool DisplayService::IsPowered() const {
-    return zectrix_epd_is_powered(static_cast<zectrix_epd_handle_t>(driver_handle_));
+    return zectrix_epd_is_powered(driver_handle_);
 }
 
 DisplayService::Observation DisplayService::StartObservation() const {
@@ -102,7 +103,7 @@ DisplayService::Observation DisplayService::StartObservation() const {
 void DisplayService::StartMetrics(Observation* observation) const {
     // Counters are optional observations: a failed diagnostic copy cannot veto a draw.
     observation->metrics_known = zectrix_epd_read_metrics(
-        static_cast<zectrix_epd_handle_t>(driver_handle_), &observation->before) == ESP_OK;
+        driver_handle_, &observation->before) == ESP_OK;
 }
 
 esp_err_t DisplayService::SetOrientation(DisplayOrientation orientation) {
@@ -110,28 +111,22 @@ esp_err_t DisplayService::SetOrientation(DisplayOrientation orientation) {
         orientation != DisplayOrientation::Portrait && orientation != DisplayOrientation::PortraitInverted)
         return ESP_ERR_INVALID_ARG;
     if (orientation == orientation_) return ESP_OK;
-    if (orientation != DisplayOrientation::Standard && !rotated_) {
-        rotated_.reset(new (std::nothrow) uint8_t[kFrameBytes4Bpp]);
-        if (!rotated_) return ESP_ERR_NO_MEM;
+    if (orientation != DisplayOrientation::Standard) {
+        const auto err = EnsureRotationBuffer(kFrameBytes1Bpp);
+        if (err != ESP_OK) return err;
     }
     orientation_ = orientation;
     orientation_changed_ = true;
     return ESP_OK;
 }
 
-namespace {
-void RotatePacked(const uint8_t* source, uint8_t* destination, std::size_t size, bool gray) {
-    for (std::size_t i = 0; i < size; ++i) {
-        uint8_t value = source[size - i - 1];
-        if (gray) value = static_cast<uint8_t>((value << 4) | (value >> 4));
-        else {
-            value = static_cast<uint8_t>(((value & 0x55) << 1) | ((value >> 1) & 0x55));
-            value = static_cast<uint8_t>(((value & 0x33) << 2) | ((value >> 2) & 0x33));
-            value = static_cast<uint8_t>((value << 4) | (value >> 4));
-        }
-        destination[i] = value;
-    }
-}
+esp_err_t DisplayService::EnsureRotationBuffer(std::size_t required) {
+    if (rotation_capacity_ >= required) return ESP_OK;
+    auto buffer = std::unique_ptr<uint8_t[]>(new (std::nothrow) uint8_t[required]);
+    if (!buffer) return ESP_ERR_NO_MEM;
+    rotated_ = std::move(buffer);
+    rotation_capacity_ = required;
+    return ESP_OK;
 }
 
 esp_err_t DisplayService::Present1Bpp(DisplayIntent intent, const uint8_t* frame,
@@ -139,25 +134,21 @@ esp_err_t DisplayService::Present1Bpp(DisplayIntent intent, const uint8_t* frame
     if (!frame || size != kFrameBytes1Bpp) return ESP_ERR_INVALID_ARG;
     Rect physical_region = region;
     if (orientation_ == DisplayOrientation::Inverted || orientation_ == DisplayOrientation::PortraitInverted) {
-        RotatePacked(frame, rotated_.get(), size, false);
-        frame = rotated_.get();
+        std::size_t required = size;
         if (patch || patch_size) {
             if (!patch || region.x < 0 || region.y < 0 || region.width <= 0 || region.height <= 0 ||
                 region.x > kPanelWidth - region.width || region.y > kPanelHeight - region.height ||
                 patch_size != static_cast<std::size_t>((region.width + 7) / 8) * region.height)
                 return ESP_ERR_INVALID_ARG;
-            auto* destination = rotated_.get() + size;
-            const auto stride = static_cast<std::size_t>((region.width + 7) / 8);
-            std::memset(destination, 0xff, patch_size);
-            for (int y = 0; y < region.height; ++y) {
-                for (int x = 0; x < region.width; ++x) {
-                    if ((patch[static_cast<std::size_t>(y) * stride + x / 8] & (0x80 >> (x & 7))) == 0) {
-                        const int dx = region.width - x - 1, dy = region.height - y - 1;
-                        destination[static_cast<std::size_t>(dy) * stride + dx / 8] &=
-                            static_cast<uint8_t>(~(0x80 >> (dx & 7)));
-                    }
-                }
-            }
+            // One bounded patch tier avoids reallocating for each larger dirty window.
+            required += kFrameBytes1Bpp;
+        }
+        const auto err = EnsureRotationBuffer(required);
+        if (err != ESP_OK) return err;
+        detail::RotateHalfTurn(frame, rotated_.get(), size, false);
+        frame = rotated_.get();
+        if (patch || patch_size) {
+            detail::RotateMonoPatch(patch, rotated_.get() + size, region.width, region.height);
             patch = rotated_.get() + size;
             physical_region.x = kPanelWidth - region.x - region.width;
             physical_region.y = kPanelHeight - region.y - region.height;
@@ -177,7 +168,9 @@ esp_err_t DisplayService::Present1Bpp(DisplayIntent intent, const uint8_t* frame
 esp_err_t DisplayService::Present4Bpp(DisplayIntent intent, const uint8_t* frame, std::size_t size) {
     if (!frame || size != kFrameBytes4Bpp) return ESP_ERR_INVALID_ARG;
     if (orientation_ == DisplayOrientation::Inverted || orientation_ == DisplayOrientation::PortraitInverted) {
-        RotatePacked(frame, rotated_.get(), size, true);
+        const auto err = EnsureRotationBuffer(size);
+        if (err != ESP_OK) return err;
+        detail::RotateHalfTurn(frame, rotated_.get(), size, true);
         frame = rotated_.get();
     }
     const auto result = PresentPhysical4Bpp(intent, frame, size);
@@ -187,30 +180,21 @@ esp_err_t DisplayService::Present4Bpp(DisplayIntent intent, const uint8_t* frame
 
 esp_err_t DisplayService::PresentPortrait1Bpp(const uint8_t* frame, std::size_t size) {
     // Lock-screen path: fixed clockwise mapping, always a clean full frame.
-    const auto saved = orientation_;
-    if (orientation_ == DisplayOrientation::PortraitInverted) orientation_ = DisplayOrientation::Portrait;
-    const auto result = PresentPortrait1Bpp(DisplayIntent::FullClean, frame, size);
-    orientation_ = saved;
-    orientation_changed_ = true;
+    const auto result = PresentPortraitFrame(DisplayIntent::FullClean, frame, size, false);
+    if (result == ESP_OK) orientation_changed_ = true;
     return result;
 }
 
 esp_err_t DisplayService::PresentPortrait1Bpp(DisplayIntent intent, const uint8_t* frame, std::size_t size) {
+    return PresentPortraitFrame(intent, frame, size, orientation_ == DisplayOrientation::PortraitInverted);
+}
+
+esp_err_t DisplayService::PresentPortraitFrame(DisplayIntent intent, const uint8_t* frame,
+                                             std::size_t size, bool flipped) {
     if (!frame || size != kFrameBytes1Bpp) return ESP_ERR_INVALID_ARG;
-    if (!rotated_) rotated_.reset(new (std::nothrow) uint8_t[kFrameBytes4Bpp]);
-    if (!rotated_) return ESP_ERR_NO_MEM;
-    const bool flipped = orientation_ == DisplayOrientation::PortraitInverted;
-    std::memset(rotated_.get(), 0xff, size);
-    for (int y = 0; y < 400; ++y) {
-        for (int x = 0; x < 300; ++x) {
-            const auto bit = static_cast<std::size_t>(y) * 300 + x;
-            if ((frame[bit / 8] & (0x80 >> (bit & 7))) == 0) {
-                const auto target = flipped ? static_cast<std::size_t>(299 - x) * 400 + y
-                                            : static_cast<std::size_t>(x) * 400 + (399 - y);
-                rotated_[target / 8] &= static_cast<uint8_t>(~(0x80 >> (target & 7)));
-            }
-        }
-    }
+    const auto err = EnsureRotationBuffer(size);
+    if (err != ESP_OK) return err;
+    detail::RotatePortraitMono(frame, rotated_.get(), kPanelWidth, kPanelHeight, flipped);
     // The first portrait frame after any landscape or direction change is a clean full refresh.
     if ((orientation_changed_ || !portrait_presented_) &&
         (intent == DisplayIntent::Auto || intent == DisplayIntent::Fast)) intent = DisplayIntent::Quality;
@@ -237,7 +221,7 @@ esp_err_t DisplayService::PresentPhysical1Bpp(
     zectrix_epd_diff_t difference{};
     auto observation = StartObservation();
     auto& frame = observation.frame;
-    auto handle = static_cast<zectrix_epd_handle_t>(driver_handle_);
+    auto handle = driver_handle_;
     esp_err_t err = zectrix_epd_analyze_1bpp(handle, &raw_source, pixels, size, &difference);
     if (err == ESP_ERR_INVALID_ARG || err == ESP_ERR_INVALID_SIZE) return err;
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
@@ -304,7 +288,7 @@ esp_err_t DisplayService::PresentPhysical4Bpp(DisplayIntent intent, const uint8_
     bool owns_power = false;
     esp_err_t err = BeginRefresh(&owns_power);
     if (err == ESP_OK) {
-        err = zectrix_epd_refresh_full_4bpp(static_cast<zectrix_epd_handle_t>(driver_handle_), framebuffer, size);
+        err = zectrix_epd_refresh_full_4bpp(driver_handle_, framebuffer, size);
         err = EndRefresh(owns_power, err);
     }
     if (err == ESP_OK) {
@@ -318,14 +302,14 @@ esp_err_t DisplayService::BeginRefresh(bool* owns_power) {
     if (owns_power == nullptr) return ESP_ERR_INVALID_ARG;
     *owns_power = false;
     if (batch_active_) return ESP_OK;
-    const esp_err_t err = zectrix_epd_power_on(static_cast<zectrix_epd_handle_t>(driver_handle_));
+    const esp_err_t err = zectrix_epd_power_on(driver_handle_);
     if (err == ESP_OK) *owns_power = true;
     return err;
 }
 
 esp_err_t DisplayService::EndRefresh(bool owns_power, esp_err_t refresh_result) {
     if (!owns_power) return refresh_result;
-    const esp_err_t power_result = zectrix_epd_power_off(static_cast<zectrix_epd_handle_t>(driver_handle_));
+    const esp_err_t power_result = zectrix_epd_power_off(driver_handle_);
     return refresh_result == ESP_OK ? power_result : refresh_result;
 }
 
@@ -342,7 +326,7 @@ esp_err_t DisplayService::RecordRefresh(Observation& observation, esp_err_t resu
     frame.committed_mean_q16 = physics_.state().Mean();
     frame.committed_peak_q16 = physics_.state().Peak();
     zectrix_epd_metrics_t after{};
-    if (zectrix_epd_read_metrics(static_cast<zectrix_epd_handle_t>(driver_handle_), &after) == ESP_OK) {
+    if (zectrix_epd_read_metrics(driver_handle_, &after) == ESP_OK) {
         temperature_centi_c_ = after.temperature_centi_c;
         temperature_sampled_us_ = after.temperature_sampled_us;
         if (observation.metrics_known) {
@@ -380,7 +364,7 @@ esp_err_t DisplayService::RecordRefresh(Observation& observation, esp_err_t resu
         inspection_.framebuffer_valid = true;
     } else {
         inspection_.framebuffer_valid = zectrix_epd_copy_shadow(
-            static_cast<zectrix_epd_handle_t>(driver_handle_), 0,
+            driver_handle_, 0,
             inspection_.preview.data(), inspection_.preview.size()) == ESP_OK;
     }
     return result;
