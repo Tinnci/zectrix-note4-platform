@@ -1074,7 +1074,7 @@ void TestUiTraffic() {
                 clock_bytes, menu_bytes);
 }
 
-// Demo fixtures follow the active UI language so each preview set stays
+// Preview fixtures follow the active UI language so each preview set stays
 // single-script. Mixed-script content appears only in the explicit
 // "reader-rich-*" typography scenes.
 const char* ForLanguage(const char* chinese, const char* english) {
