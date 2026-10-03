@@ -838,7 +838,7 @@ static_assert(ValidateVendorGray16PassCodes(),
               "monotone nesting whose codes sum to the level");
 
 // Image levels use the usual convention: 0 is black, 15 is white, which is
-// what the packed 4bpp demo images already store. The incremental LUT drives
+// what the packed 4bpp bundled images already store. The incremental LUT drives
 // black-going from a white page, so the number of units a level needs is its
 // complement. Level 15 stays untouched white; level 0 takes all 15 units.
 constexpr uint8_t VendorGray16CodeForLevel(size_t level, size_t pass) {

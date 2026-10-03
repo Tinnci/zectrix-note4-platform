@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the 16-pixel-high 1bpp ASCII font embedded by the demo UI."""
+"""Generate the 16-pixel-high 1bpp ASCII font embedded by the platform UI."""
 
 import argparse
 from pathlib import Path

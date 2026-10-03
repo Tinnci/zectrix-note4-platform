@@ -24,6 +24,8 @@ Rebuild native applications against SDK 2.0.0; old source names and ABI symbols
 are not exported. SDK status/input numeric values and the existing serialized
 book, app, page and Companion/USB packet layouts are unchanged. Branding is not
 a reason to change their binary format versions, BLE UUIDs or persistent keys.
+The saved `ui.auto_demo` key likewise remains the existing auto-showcase
+preference; its source-facing names and UI use showcase terminology.
 
 Update shell environment variables to `NOTE4_*` and source
 `tools/activate-dev-env.sh` again. The activator prefers a

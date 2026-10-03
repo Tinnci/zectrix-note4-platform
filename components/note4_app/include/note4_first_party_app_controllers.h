@@ -112,6 +112,7 @@ private:
 };
 
 constexpr uint32_t kAutoShowcaseDefault = 0;
+// Keep the on-media key so existing showcase preferences survive naming changes.
 constexpr char kAutoShowcaseSettingKey[] = "ui.auto_demo";
 
 bool NormalizeAutoShowcaseSetting(uint32_t stored, bool* value);
