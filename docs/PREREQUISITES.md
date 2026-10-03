@@ -1,7 +1,8 @@
 # Development prerequisites
 
-This document covers the host, repository, recovery and measurement gates. It
-does not authorize flashing, erasing or eFuse operations.
+Set up Linux/macOS tools, network access and device safety here.
+[Quick start](QUICK_START.md) contains the build steps. Environment setup does
+not authorize flashing, erasing or eFuse writes.
 
 ## Host
 
@@ -13,9 +14,9 @@ github-cli jq rg curl uv bun
 ```
 
 The host CLI simulator needs a C++17 compiler. Its integration tests use Python
-3 through `uv` and require no third-party Python packages.
+3 through `uv`; USB PTY tests install their declared pyserial dependency.
 The book-transfer integration tests use Bun 1.4.2 and local TCP sockets.
-They require no JavaScript package installation or connected device.
+They need no connected device. HA bridge tests use the committed Bun lockfile.
 
 Install ESP-IDF v5.5.2 with the official installer and the `esp32s3` target.
 The qualified CMake version is 3.30.5. Install JDK 21 and Android SDK platform

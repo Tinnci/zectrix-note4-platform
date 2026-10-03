@@ -1,13 +1,12 @@
 # Development roadmap
 
-The project uses stage gates. A later milestone can start only when its stated
-dependencies are satisfied. Advanced E-Ink quality research runs in parallel
-and does not block unrelated input or power work.
+Milestones below record dependencies and acceptance goals, not live GitHub
+status. Independent work can proceed in parallel; physical qualification
+remains separate from software completion. See [issue mapping](GITHUB_TRIAGE.md)
+and [historical task log](history/ASTRA_TASKS.md).
 
-[G1.1 triage](GITHUB_TRIAGE.md) maps the autonomous backlog to GitHub Issues
-and Milestones. C1 and D1 use different subtask numbering in the two systems.
-Completed software slices do not close an older Issue whose remaining command
-or physical acceptance work is still outstanding.
+Current application naming and source compatibility are defined by
+[SDK v2](SDK_V2.md) and its [migration guide](NOTE4_MIGRATION.md).
 
 ## M1 — Reproducible reference baseline
 
@@ -47,9 +46,9 @@ Status: Complete on qualified commit `4dc371a`.
 
 Exit: at least three applications use only the draft public API.
 
-## M4 — SDK v2
+## M4 — Original SDK v1 qualification
 
-Goal: freeze a source-stable SDK v2 for statically linked applications.
+Goal: qualify the original source-stable SDK v1 for statically linked applications.
 
 Status: Complete on qualified firmware commit `91043ea`.
 
@@ -58,7 +57,7 @@ Status: Complete on qualified firmware commit `91043ea`.
 - Define ownership, lifecycle, execution, error and deprecation policy.
 - Migrate all M3 applications to the versioned contract.
 
-Exit: SDK v2 has an explicit source-compatibility guarantee and passes the
+Exit: SDK v1 has an explicit source-compatibility guarantee and passes the
 unified software and hardware gate. No binary ABI is promised.
 
 ## M5 — Update architecture

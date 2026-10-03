@@ -153,7 +153,7 @@ marking the missing D1 commands complete.
 
 ## Sources and verification
 
-The review used [ASTRA_TASKS.md](../ASTRA_TASKS.md),
+The review used [the task log](history/ASTRA_TASKS.md),
 [ADR-0005](adr/0005-ab-ota-boot-confirmation.md), the
 [connectivity](CONNECTIVITY_CONTRACT.md), [CLI](MAINTENANCE_CLI_CONTRACT.md)
 and [application](M3_APPLICATION_CONTRACT.md) contracts, the

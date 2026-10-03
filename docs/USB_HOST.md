@@ -276,7 +276,7 @@ and USB CLI. The runtime-start observation had 92,655 free internal heap bytes;
 it is not a USB-transfer peak-memory measurement. Physical transfer speed,
 button latency during flash/display BUSY, OS-specific port reopen behavior and
 sleep/wake reconnect still require device qualification. The delivery is tracked
-in [ASTRA_TASKS.md](../ASTRA_TASKS.md).
+in [the historical task log](history/ASTRA_TASKS.md).
 
 [cp-usb]: https://github.com/crosspoint-reader/crosspoint-reader/blob/develop/src/activities/network/UsbDriveActivity.cpp
 [cp-handoff]: https://github.com/crosspoint-reader/crosspoint-reader/blob/develop/src/platform/UsbSerialJtagHandoff.cpp

@@ -1,8 +1,8 @@
 # Continuous integration
 
-The `CI` GitHub Actions workflow runs for pull requests to `main`, pushes to
-`main` and manual dispatches. It grants read-only repository access and splits
-validation into independent jobs so a failure identifies its platform:
+CI runs independent host, Android and ESP32-S3 jobs for PRs, main pushes and
+manual runs, with read-only repository access. Local commands and test groups
+are listed below; physical qualification is separate.
 
 - `Host tests and static checks` runs ShellCheck, architecture checks and the
   complete host test suite with two bounded workers. It also builds the interactive CLI simulator

@@ -1,409 +1,99 @@
 # Note4 Open Platform
 
-English | [中文](README_zh.md)
+English | [简体中文](README_zh.md)
 
-**Start here:** [Illustrated user handbook](docs/HANDBOOK.md) ·
-[中文手册](docs/HANDBOOK_zh.md) · [Firmware release workflow](docs/RELEASING.md) ·
-[2.0 migration](docs/NOTE4_MIGRATION.md) · [2.0 development notes](docs/releases/v2.0.0.md).
+Independent firmware for the black-and-white Note4: ESP32-S3, SSD2683
+400×300 e-paper, 16 MiB Flash and 8 MiB PSRAM. Maintained by
+[Tinnci](https://github.com/Tinnci). No commercial firmware or LVGL dependency.
 
-An independent, modular firmware framework and application platform for
-ESP32-S3 e-paper devices (targeting the Note4 hardware layout), developed and
-maintained by [Tinnci](https://github.com/Tinnci).
+[User handbook](docs/HANDBOOK.md) · [Build from source](docs/QUICK_START.md) ·
+[Documentation](docs/README.md) · [SDK v2 migration](docs/NOTE4_MIGRATION.md)
 
-It keeps the original board and SSD2683 display support as a qualified hardware
-baseline, then adds owned system services, a static application runtime, an
-e-reader engine, a source-stable SDK, companion connectivity and bounded
-maintenance interfaces.
+## On the screen
 
-The goal is to let applications use display, input, power, time, storage and
-connectivity capabilities without directly controlling GPIO, SPI, raw
-partitions, ESP-NimBLE or FreeRTOS objects. The project remains self-contained
-and does not link to the commercial NOTE4 firmware or require LVGL. It is not
-the complete NOTE4 consumer firmware or a cloud service.
-
----
-
-## Notice and Trademark Disclaimer
-
-> [!NOTE]
-> **NOTE4** and **ZECTRIX** are product names and trademarks of Zectrix Lab /
-> their respective owners. This repository is an independent, community-driven
-> open-source software project. It is **not** an official firmware release, and
-> it is **not** affiliated with, sponsored by, or endorsed by Zectrix Lab.
->
-> Flashing custom firmware replaces the software on your connected device.
-> Confirm your hardware revision and serial port before flashing.
-
-## From reference demo to platform
-
-The repository started from
-[`itopinion/zectrix-note4-epd-demo`](https://github.com/itopinion/zectrix-note4-epd-demo)
-at commit `ca285c98`. See [UPSTREAM.md](UPSTREAM.md) for provenance.
-
-| Preserved upstream baseline | Added in this repository |
-| --- | --- |
-| SSD2683 1 bpp, partial and 4 bpp display paths | Reproducible ESP-IDF toolchain, build provenance, hardware qualification and factory-recovery procedure |
-| NOTE4 board adapters and peripheral access | Display, input, power, time, storage and system service ownership |
-| Gallery UI and hardware capability demo | Static application runtime with Launcher, Reader, Settings, Diagnostics and Clock |
-| Wi-Fi RF, audio, RTC, charging, LED, buttons, NFC and battery self-tests | Source-stable C++17 SDK v2 with compatibility and architecture checks |
-| Basic on-device navigation and shutdown | Versioned companion protocol, durable synchronization, secure BLE transport, Android companion and NFC-assisted enrollment |
-| Hardware-oriented serial diagnostics | Bounded maintenance CLI, platform diagnostics and interactive host simulator |
-
-## Development status
-
-Development follows dependency-aware stage gates defined in
-[docs/ROADMAP.md](docs/ROADMAP.md).
-
-The [GitHub triage record](docs/GITHUB_TRIAGE.md) maps delivered backlog items
-to Issues and Milestones, including remaining implementation, physical
-qualification and pull-request integration work.
-
-| Stage | Status | Result |
+| Feature | Landscape | Portrait |
 | --- | --- | --- |
-| M1 | Complete | Reproducible upstream baseline, hardware qualification and factory recovery |
-| M2 | Complete | Platform-owned display, input, power, time, storage and system services |
-| M3 | Complete | Static application lifecycle and first-party applications |
-| M4 | Complete | Source-stable SDK v2 and unified software/hardware exit gate |
-| C1 | Qualification open | Protocol, durable sync, secure BLE/Android enrollment, phone HTTPS and direct Wi-Fi implemented; physical end-to-end and RF/power evidence remains open |
-| D1 | Implemented; USB qualification open | USB sessions, copied system/display status, log/input observation, confirmed maintenance, foreground health/recovery and Host simulation |
-| M5 | Architecture complete | Measured A/B layout, streamed firmware verification and boot confirmation implemented; trusted delivery and physical rollback follow-ups remain open |
-| R1 | Implemented | Minimal dirty-region updates, unchanged-frame suppression and adaptive full-refresh policy delivered; panel measurements remain open |
-| Q1 | Implemented | Contract regression, concurrency/cleanup fixes and terminal/durable-replay audits delivered |
-| L1 | Implemented | Status bar, scene navigation, streamed TXT/EPUB reader, local Wi-Fi book management and ambient sleep covers; physical sleep/wake and standby-current measurements remain open |
-| S1 | Implemented | Typed service registry, selectable modules, conditional application composition, RTC restoration/editor and Full/Minimal regression; physical RTC retention and standby-current measurements remain open |
-| E1 | Implemented | E1.1–E1.10 deliver Home, navigation, radio arbitration, Chinese/English UI, USB management, Pocket Tools and status icons; physical USB qualification remains open |
-| E2 | Implemented | Bounded Lua apps, portable `.zapp` packaging, USB/Wi-Fi installation and independent Calculator/Flashcards examples |
-| R2 | Release tooling and guides | Full/Reader/Minimal build matrix, segmented firmware and optional library initialization, offline bilingual handbooks and draft/publication workflow |
+| Home — calendar, reading progress and apps | ![Landscape Home](docs/screenshots/home_en.png) | ![Portrait Home](docs/screenshots/home_portrait_en.png) |
+| Reader — streamed TXT/EPUB, native reflow | ![Landscape Reader](docs/screenshots/reader_en.png) | ![Portrait Reader](docs/screenshots/reader_portrait_en.png) |
+| Sleep cover — calendar and daily line | ![Landscape sleep calendar](docs/screenshots/sleep_dashboard_en.png) | ![Portrait sleep calendar](docs/screenshots/sleep_portrait_en.png) |
+| Home Assistant — server-rendered remote page | ![Landscape HA page](docs/screenshots/remote_landscape_en.png) | ![Portrait HA page](docs/screenshots/remote_portrait_en.png) |
 
-The [service registry](docs/SERVICE_REGISTRY.md) provides optional typed lookup,
-ordered startup and failure cleanup with 16 fixed slots and no registry heap
-allocation. Existing Platform accessors use the same service instances.
-The [module build options](docs/MODULAR_BUILD.md) select connectivity, Wi-Fi,
-HTTPS, Web transfer, reading, micro-apps, USB maintenance/management and firmware writing. Core boot
-protection and the clock/sleep UI remain available in trimmed builds.
-Run `bash tools/test-minimal-profile.sh` for the complete Host suite and
-isolated Full/Minimal firmware builds with size and static RAM comparison.
-Add `--device` to smoke-test both profiles on a connected Note4 and finish on
-Full. See the [profile workflow](docs/MODULAR_BUILD.md#repeatable-fullminimal-regression)
-for individual build/flash commands and measured results.
+Rendered firmware previews, not device photographs; sample data is illustrative.
+[More screens and preview generation](docs/UI_PREVIEW.md).
 
-The [firmware fork and UI study](docs/FIRMWARE_UI_STUDY.md) compares Biscuit,
-CrossMux, CrossInk, Momentum and Unleashed. It proposes daily Home, typography
-and personal cover improvements within the existing ownership and power model.
-The [Home dashboard](docs/HOME.md) now provides a calendar/reading overview,
-Continue Reading, module-aware app tiles and a separate Tools scene.
-The [display scheduling update](docs/DISPLAY_RESPONSIVENESS.md) coalesces queued
-navigation draws, protects control input under load and bounds driver lock
-waits while preserving synchronous display completion and reader bookmarks.
+## What it does
 
-The [dynamic application study](docs/DYNAMIC_APPLICATION_RESEARCH.md) compares
-native ELF, Wasm3, WAMR and Lua, including measured memory/Flash costs and
-execution limits. It proposes independent app distribution through the existing
-USB/storage owners while retaining the static SDK v2 shell.
-The [Lua micro-app pilot](docs/MICRO_APPS.md) now implements that path: install
-the independent Calculator and Flashcards scripts with `app-put` in USB Manager,
-then open them from the paged Apps destination. Firmware is built once; each
-script can be installed or removed separately.
+- Read TXT/EPUB books, save progress and install resource-bounded Lua apps.
+- Switch orientation, sleep covers and date-digit styles.
+- Transfer books/apps over USB or local Wi-Fi; pair with the Android companion.
+- Refresh cached pages within wake/radio budgets; optionally use the
+  HTTPS/MQTT HA bridge and BTHome battery telemetry.
+- Build applications on owned platform services and C++17 SDK v2;
+  inspect the device through a bounded maintenance CLI.
 
-> [!CAUTION]
-> This project targets the black-and-white NOTE4 hardware. It is not
-> compatible with NOTE4C. Flashing replaces the firmware on the connected
-> device. Confirm the model and serial port before you flash. If you flash the
-> wrong device, you can lose its current firmware.
+Host tests do not establish physical display quality, standby current,
+radio behavior or interrupted-OTA recovery.
+[Qualification and history](docs/README.md#qualification-and-history).
+Source version is **2.0.0**; it does not imply a published release.
 
-## UI and Feature Showcase
+## Build and test
 
-Native bilingual UI (English / 简体中文): supports both 400×300 landscape and 300×400 portrait. These screenshots are generated from the current firmware canvas, not photographs. See [direction support and preview generation](docs/UI_PREVIEW.md).
+Linux and macOS are supported. Install ESP-IDF **5.5.2** for `esp32s3`,
+CMake **3.30.5**, ccache, uv and Bun **1.4.2**. Android also uses JDK **21**,
+SDK **37.0** and the committed Gradle Wrapper.
+[Prerequisites and path overrides](docs/PREREQUISITES.md).
 
-| Screen / Feature | English UI | 简体中文 UI |
-| :--- | :---: | :---: |
-| **Home Dashboard**<br>• Persistent 24px status bar<br>• Reading overview & fast resume<br>• Fast application tiles | ![Home EN](docs/screenshots/home_en.png) | ![Home ZH](docs/screenshots/home_zh.png) |
-| **Streamed E-Reader**<br>• TXT & EPUB streaming<br>• Algorithmic styling (bold/italic)<br>• CJK line wrapping & pagination | ![Reader EN](docs/screenshots/reader_en.png) | ![Reader ZH](docs/screenshots/reader_zh.png) |
-| **Ambient Sleep Cover**<br>• Daily calendar & reading snapshot<br>• Static image retained during sleep<br>• Landscape, dashboard, or blank | ![Sleep EN](docs/screenshots/sleep_dashboard_en.png) | ![Sleep ZH](docs/screenshots/sleep_dashboard_zh.png) |
-| **Local Web Transfer**<br>• Drag-and-drop TXT/EPUB upload<br>• AP hotspot or saved Wi-Fi station<br>• Auto-shutdown on complete | ![Transfer EN](docs/screenshots/book_transfer_en.png) | ![Transfer ZH](docs/screenshots/book_transfer_zh.png) |
-| **Pocket Tools & Calendar**<br>• Focus Pomodoro timer<br>• 1900–2199 Gregorian calendar<br>• Bounded tally counter | ![Tools EN](docs/screenshots/calendar_en.png) | ![Tools ZH](docs/screenshots/calendar_zh.png) |
-
-### Landscape and Portrait (400×300 / 300×400)
-
-The same firmware renders both orientations. Each layout is designed natively for
-its aspect ratio rather than rotating a screenshot. Portrait (90° / 270°) natively covers
-Home dashboard, Streamed Reader, Settings, Web Transfer, Pocket Tools/Calendar, and Sleep Screens;
-Lua micro-apps and system diagnostics remain in landscape (0° / 180°). See [orientation support](docs/UI_PREVIEW.md)
-and [screen direction](docs/SCREEN_DIRECTION.md).
-
-| Screen / Scenario | Landscape 400×300 | Portrait 300×400 |
-| :--- | :---: | :---: |
-| **Home Dashboard**<br>• Landscape: 3-column overview & grid<br>• Portrait: Stacked card & vertical tiles | ![Home Landscape](docs/screenshots/home_en.png) | ![Home Portrait](docs/screenshots/home_portrait_en.png) |
-| **Streamed E-Reader**<br>• Landscape: Wide 384×216 reading surface<br>• Portrait: Tall 284×308 native pagination | ![Reader Landscape](docs/screenshots/reader_en.png) | ![Reader Portrait](docs/screenshots/reader_portrait_en.png) |
-| **System Settings**<br>• Direction cycles 0° → 90° → 180° → 270°<br>• Wrapped multi-line hints & dynamic viewport | ![Settings Landscape](docs/screenshots/settings_en.png) | ![Settings Portrait](docs/screenshots/settings_portrait_en.png) |
-| **Web Book Transfer**<br>• Landscape: Dual-column instruction & IP<br>• Portrait: Vertical flow with large access code | ![Transfer Landscape](docs/screenshots/book_transfer_en.png) | ![Transfer Portrait](docs/screenshots/book_transfer_portrait_en.png) |
-| **Pocket Tools & Calendar**<br>• 7-column calendar, Pomodoro & counter<br>• Dynamic footer hint wrapping | ![Tools Landscape](docs/screenshots/calendar_en.png) | ![Tools Portrait](docs/screenshots/pocket_tools_portrait_en.png) |
-| **Sleep Calendar**<br>• Date, month grid, reading progress (landscape)<br>• Battery, six-week grid (portrait) | ![Landscape calendar](docs/screenshots/sleep_dashboard_en.png) | ![Portrait calendar](docs/screenshots/sleep_portrait_en.png) |
-| **Home Assistant Remote**<br>• Two columns × 4 entities (landscape)<br>• One column, up to 8 entities (portrait) | ![Landscape remote page](docs/screenshots/remote_landscape_en.png) | ![Portrait remote page](docs/screenshots/remote_portrait_en.png) |
-
-### Status Bar Micro-Icon System (E1.10)
-
-The 24px status bar employs 1-bit monochrome micro-icon masks with fixed slots:
-
-![Current radio states, normal and inverse](docs/screenshots/status_radio_marks.png)
-
-- **Bluetooth**: 7×13 rune with centered 7×7 marks: Off `/`, Ready `○`, Connected `●`, separated arrows for activity, Warning `!`. Arrows do not measure directional traffic.
-- **Wi-Fi**: Dual-arc fan with 5-state marks.
-- **Battery**: 20x10 silhouette with 5 discrete fill cells (0–20%, 21–40%, 41–60%, 61–80%, 81–100%) and priority companion marks (Charging `⚡`, Full `✓`, External Plug `🔌`, Fault/Low `!`, Absent `X`).
-
-## Hardware baseline
-
-- 400 x 300 SSD2683 e-paper display
-- Full-screen 1bpp refresh, partial 1bpp refresh and full-screen 4bpp/16-gray
-  refresh
-- Display gallery with a lighthouse print, six-step footprint animation and
-  high-contrast grayscale landscape
-- Wi-Fi RF scan, acoustic speaker/microphone loopback, PCF8563 RTC, charging,
-  LED, three-button and NFC self-tests
-- Device information page for flash, PSRAM, MAC address, peripherals and power
-- Embedded TRMNL16 UI font and Unifont CJK reader bitmaps at 16px/24px.
-- Streamed TXT/EPUB reading from a Storage-owned SPIFFS book partition, with
-  NVS bookmarks and durable phone progress synchronization.
-- Browser upload, download and deletion over a temporary Wi-Fi hotspot or
-  saved home network, with automatic radio shutdown.
-- Saved daily dashboard, landscape or blank sleep cover, with calendar and
-  reading progress. See [docs/SLEEP_COVER.md](docs/SLEEP_COVER.md).
-- Long-press DOWN for 3 seconds to present the sleep cover and shut down
-- MIT licensed by ZECTRIX Lab
-
-## Quick start
-
-Requirements: the project-qualified ESP-IDF v5.5.2 baseline and a NOTE4
-NOTE4 4.2-inch ESP32-S3 black-and-white e-paper board.
+From the repository root:
 
 ```bash
-# Run these commands from the repository root.
-idf.py set-target esp32s3
-idf.py build
-idf.py -p /dev/ttyACM0 flash monitor
+source tools/activate-dev-env.sh
+tools/check-dev-env.sh
+tools/build-firmware.sh --profile full
+tools/test-host.sh --jobs 2
 ```
 
-Replace `/dev/ttyACM0` with the board's serial port. Exit the monitor with
-`Ctrl+]`. The first configure/build downloads the official
-`espressif/esp_codec_dev` component.
+`full` includes all features; `reader` is an offline reader;
+`minimal` keeps clock, settings, sleep covers and diagnostics.
+Named profiles use separate build/config directories and preserve local
+`sdkconfig`. [Custom configurations](docs/MODULAR_BUILD.md).
 
-See [docs/QUICK_START.md](docs/QUICK_START.md) for setup and troubleshooting.
+Use `tools/test-host.sh --list`, `--suite ui` or `--test reader` for targeted
+tests. Android: `tools/test-android-companion.sh`.
+See [CI](docs/CI.md) for coverage, reports and sanitizer options.
 
-See [docs/PREREQUISITES.md](docs/PREREQUISITES.md) for development
-prerequisites. See [docs/TOOLCHAIN_POLICY.md](docs/TOOLCHAIN_POLICY.md) for the
-ESP-IDF version policy. See
-[docs/CONTROLLED_TECHNICAL_ENGLISH.md](docs/CONTROLLED_TECHNICAL_ENGLISH.md)
-for the documentation style policy.
+## Repository
 
-The current partition layout preserves factory and NVS locations and adds two
-3 MiB OTA slots. Trial firmware must finish startup and its first launcher
-render within the boot confirmation window. See
-[ADR-0005](docs/adr/0005-ab-ota-boot-confirmation.md) for installation requirements,
-rollback behavior, the streamed CRC/header verification API and the
-fresh-configuration build command.
-
-Production profiles use `-Os` and a shared-tile reader font. Builds report
-remaining application capacity in `firmware-budget.json`. See
-[docs/FIRMWARE_BUDGET.md](docs/FIRMWARE_BUDGET.md) for measured savings and the
-partition/asset tradeoffs.
-
-## Book reader
-
-Open **BOOK READER**, choose a book with UP/DOWN, and press OK. While reading,
-UP/DOWN turn pages and OK opens font and resume options. Hold OK returns to
-the library. The current position is saved after each successful page display.
-Android shows the synchronized progress and can queue a position for explicit
-resume on Note4.
-
-The build creates `build/books.bin` from `books/`. Install it separately with
-`idf.py -p PORT books-flash`; this replaces the book partition. Ordinary firmware
-flash preserves books. You can select your own source directory through
-`-D "NOTE4_BOOKS_DIR=/absolute/path/to/books"`. See
-[docs/READER.md](docs/READER.md) for installation and format limits.
-
-After the initial library installation, open **SEND BOOKS** to add books over
-Wi-Fi. Create a Note4 hotspot or use a saved home network. Open the address
-on the device screen and enter its access code. Drag TXT/EPUB files into the
-browser and select **Upload & finish**. The same page supports download and
-deletion. Wi-Fi turns off when the session ends. See
-[docs/BOOK_TRANSFER.md](docs/BOOK_TRANSFER.md) for controls and session limits.
-
-For a wired connection, open **Tools > USB Manager** on Note4. The host tool
-lists books, imports/exports TXT and EPUB, and reads or changes language,
-auto-showcase and sleep-cover settings. Uploads preserve existing books.
-
-```bash
-uv run --script tools/usb-manager.py ports
-uv run --script tools/usb-manager.py --port /dev/cu.usbmodem14301 list
-uv run --script tools/usb-manager.py --port /dev/cu.usbmodem14301 put novel.epub
-uv run --script tools/usb-manager.py --port /dev/cu.usbmodem14301 get novel.epub exported.epub
-uv run --script tools/usb-manager.py --port /dev/cu.usbmodem14301 set-setting language zh-CN
-```
-
-The same connection returns to the maintenance prompt after each invocation.
-Short OK cancels the USB session; hold OK returns to Tools and releases the
-book library. See [USB architecture and usage](docs/USB_HOST.md) for platform
-support, protocol, storage rules and verification.
-
-## Host maintenance CLI
-
-Run the maintenance CLI on Linux or macOS with a C++17 compiler. The host
-simulator uses the firmware parser, terminal session and diagnostic executor.
-Hardware values are synthetic. It does not require ESP-IDF or a connected board.
-
-```bash
-bash tools/run-cli-host.sh
-# Build once for repeated runs or piped commands.
-bash tools/build-cli-host.sh
-build-host/note4-cli-host --owner-delay-ms 500 --log-burst 80
-printf 'sysinfo\nheap\nepd-inspect\n' | build-host/note4-cli-host
-```
-
-Use `help` to list commands. `Ctrl+C` cancels, `Ctrl+R` reconnects the session,
-and `Ctrl+D` exits. `--owner-delay-ms` delays diagnostic replies without stopping
-the terminal. `--log-interval-ms 0` disables periodic logs. Piped commands run in
-order, and EOF completes pending replies and cancels log streams.
-
-Run terminal and pipe integration tests with `bash tools/test-cli-host.sh`, or
-the complete suite with `bash tools/test-host.sh`. Tests require Python 3 and
-[uv](https://docs.astral.sh/uv/getting-started/installation/). Python fixtures use
-the standard library; USB management tests provision pyserial and module
-configuration tests provision IDF's Kconfig library through uv. See the
-[maintenance CLI contract](docs/MAINTENANCE_CLI_CONTRACT.md) for the execution
-model and limits.
-
-Host tests use two workers by default. Use `tools/test-host.sh --list` to list
-the five groups, `--suite ui` to run UI/reader tests, or `--jobs 1 --verbose`
-for sequential debugging. Timing reports and logs are saved under
-`build-host/host-tests/`; see [CI](docs/CI.md) for the full inventory.
-
-## Controls
-
-| Input | Action |
+| Path | Purpose |
 | --- | --- |
-| UP press | Previous item |
-| DOWN press | Next item |
-| OK click | Select or confirm |
-| OK hold (1.5 s) | Return one level or cancel the current action |
-| DOWN hold (3 s) | Present sleep cover, power down peripherals and shut down |
+| `main/` | Firmware composition, scenes and bundled assets |
+| `components/` | Services, drivers, UI, reader and application runtime |
+| `apps/`, `examples/` | Installable Lua apps and SDK example |
+| `android-companion/` | Android companion |
+| `tools/` | Builds, tests, previews, USB client and optional HA bridge |
+| `docs/` | Guides, architecture, APIs and historical evidence |
+| `books/` | Optional initial library; not flashed by a normal build |
 
-When enabled in Settings, the home screen starts Auto Showcase after 15 seconds
-of inactivity. New installations leave it off. On
-battery power, shutdown releases the hardware power latch. While powered over
-USB, the board enters deep sleep after presenting the selected cover. Release
-DOWN, then press it again to wake. In **SLEEP COVER**, OK saves a style and opens
-its preview; another OK sleeps. Blank clears the whole panel. The dashboard
-shows an **AS OF** snapshot. With a valid clock, the calendar wakes around local
-00:01 to refresh, then sleeps again. It includes [31 bilingual daily short quotes](docs/SLEEP_QUOTES.md).
+Generated `build*` directories and logs are ignored, not source deliverables.
 
-## UI map
+## Safety and licensing
 
-```text
-Splash
-  -> Home
-     |-- Reading overview -> Continue Reading / Library
-     |-- Book Reader
-     |    `-- Library -> Reading -> Font / Phone Position / Restart / Save
-     |-- Send Books
-     |    `-- Hotspot / Home Network -> Transfer Session
-     |-- Pocket Tools -> Focus Timer / Calendar / Counter
-     |-- Clock -> View / Edit
-     |-- Sleep Cover
-     |    `-- Dashboard / Landscape / Blank -> Preview -> Sleep
-     |-- Settings
-     `-- Tools
-          |-- Connectivity -> Actions / Forget Phone
-          |-- USB Manager -> Books / Settings
-          |-- Auto Showcase -> 1bpp Full / Partial / 4bpp Full
-          |-- Display Gallery -> Lighthouse / Footprints / Mountain / Run All
-          |-- Hardware Tests -> Run All / Select Individual
-          |-- Device Info
-          `-- About & License
-```
+**Not compatible with NOTE4C.** Confirm hardware revision and exact serial
+port and back up data before flashing. Layout changes need a separate migration;
+an application-only update cannot replace the partition table.
+Do not erase NVS or initialize the library for an ordinary SDK v2 upgrade.
+The new Android package requires fresh enrollment. [Migration details](docs/NOTE4_MIGRATION.md).
 
-Hold OK returns one level, including from a tool to its previous Tools row,
-then to Home. Hold DOWN sleeps from every first-party page. See
-[Unified navigation](docs/NAVIGATION.md) for scene and cleanup behavior.
-
-[Pocket Tools](docs/UTILITIES.md) adds a silent focus timer, a browsable
-1900–2199 calendar and a tally counter with reset undo. Timer/count state
-survives returning to Launcher during the same boot and clears on shutdown.
-Full enables the optional pack; Minimal excludes its code and session state.
-
-The 4bpp scene always performs a white 1bpp full refresh first to reduce
-ghosting. The display service selects cleanup from spatial transition debt,
-temperature and battery observations. Large black/white changes still trigger
-a full refresh; unchanged frames skip refresh entirely. See
-[Display physics](docs/DISPLAY_PHYSICS.md) for the model, calibration hook and
-`display telemetry` / CSV export.
-
-## Configuration
-
-Open `idf.py menuconfig`, then select **Note4 hardware showcase**:
-
-- `Optional Wi-Fi SSID for RF qualification`: leave this value empty for
-  generic scan mode. A configured SSID requires three consecutive qualifying
-  observations.
-- `RF qualification threshold (dBm)`: default `-70`.
-- `Temporary NFC demonstration URL`: default `https://github.com/Tinnci/zectrix-note4-platform`.
-
-## Repository layout
-
-```text
-components/note4_epd/       Public SSD2683 display driver
-components/note4_board/     Board pins and peripheral adapters
-components/ui/               Canvas, bitmap fonts and bilingual native UI
-components/note4_self_test/ Hardware test implementations
-components/note4_platform/  Platform composition root
-components/note4_reader/    Streaming TXT/EPUB engine, fonts and bookmarks
-components/note4_*          Owned system services and application runtime
-android-companion/            Android BLE/NFC companion under development
-protocol/                     Shared protocol golden vectors
-main/assets/                  Embedded display assets
-books/                        Default content image source
-tools/                        Host tests, checks and asset conversion tools
-docs/                         Architecture, contracts and qualification records
-```
-
-See [docs/EPD_API.md](docs/EPD_API.md) for the public EPD interface. See
-[docs/HARDWARE.md](docs/HARDWARE.md) for hardware pins and
-[docs/TEST_CRITERIA.md](docs/TEST_CRITERIA.md) for test criteria.
-
-## Image asset formats
-
-- 1bpp: 400 x 300, row-major, MSB first, `0` black and `1` white. Size:
-  15,000 bytes.
-- 4bpp: 400 x 300, two pixels per byte, left pixel in the high nibble,
-  `0` black and `15` white. Size: 60,000 bytes.
-
-Regenerate assets with:
-
-```bash
-python tools/prepare_1bpp.py input.png output.png output.bin
-python tools/prepare_4bpp.py input.png output.png output.bin
-python tools/generate_ascii_font.py --help
-```
-
-Run `tools/prepare_footprint_animation.py --help` for footprint animation
-generator instructions.
-
-## License
+NOTE4 and ZECTRIX are product names or trademarks of Zectrix Lab / their
+respective owners. This independent community project is not official firmware
+and is not affiliated with, sponsored by or endorsed by Zectrix Lab.
 
 Copyright (c) 2026 Zectrix Lab  
 Copyright (c) 2026 Tinnci  
-Released under the [MIT License](LICENSE). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for third-party notices.
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution instructions.
+[MIT License](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md) ·
+[Upstream provenance](UPSTREAM.md) · [Contributing](CONTRIBUTING.md) ·
+[Security reports](SECURITY.md)
 
-## Acknowledgments
-
-This project builds upon work from the open-source community:
-
-- **[ZECTRIX Lab](https://wiki.zectrix.com/)** — For developing the original Note4 hardware and open-sourcing the initial hardware demonstration baseline (`itopinion/zectrix-note4-epd-demo`).
-- **[CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader)** — For design patterns regarding streamed e-paper typography and local web transfer.
-- **[Flipper Zero](https://github.com/flipperdevices/flipperzero-firmware)** — For inspiration on bounded scene management, viewport scheduling and CDC-ACM terminal sessions.
-- **Heavyweight Type Foundry & GNU Unifont** — For TRMNL16 and Unifont fonts provided under the SIL Open Font License.
-
-## Official links
-
-- [ZECTRIX NOTE4 product page](https://www.zectrix.com/en/note4.html)
-- [ZECTRIX Developer Wiki](https://wiki.zectrix.com/)
+Thanks to [Zectrix Lab](https://wiki.zectrix.com/) for hardware and reference
+firmware, [CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader)
+and [Flipper Zero](https://github.com/flipperdevices/flipperzero-firmware) for
+design references, and Heavyweight Type Foundry / GNU Unifont for the OFL fonts.
