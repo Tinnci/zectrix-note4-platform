@@ -218,26 +218,35 @@ esp_err_t UiEngine::ShowLauncher(const zectrix::app::LauncherController& launche
             ? Tr(Text::NavReadOff) : Tr(Text::NavLibraryOff);
     }
 
-    // BeginPage frames the display, sets viewports/clipping, and handles orientation.
-    BeginPage("", footer, true);
-    canvas_.TextCentered(26, Tr(Text::Home), 1, true);
+    constexpr auto per_page = zectrix::app::LauncherController::kTilesPerPage;
+    const auto tiles = count - launcher.tile_offset();
+    const auto page = launcher.tile_page();
+
+    char pages_str[24] = {};
+    if (tiles > per_page) {
+        std::snprintf(pages_str, sizeof(pages_str), "%u/%u", static_cast<unsigned>(page + 1),
+                      static_cast<unsigned>((tiles + per_page - 1) / per_page));
+    }
+
+    auto shell = EnterPage(zectrix::ui::PageSpec()
+        .Title(Tr(Text::Home))
+        .CenterTitle()
+        .Footer(footer)
+        .Badge(pages_str[0] ? pages_str : nullptr));
 
     DrawOverview(canvas_, clock, reading, launcher.overview_selected());
 
-    const auto tiles = count - launcher.tile_offset();
     if (tiles == 0) {
-        canvas_.TextCentered(canvas_.portrait() ? 250 : 188, Tr(Text::NoApps));
+        canvas_.TextCentered(shell.portrait() ? 250 : 188, Tr(Text::NoApps));
     } else {
-        constexpr auto per_page = zectrix::app::LauncherController::kTilesPerPage;
-        const auto page = launcher.tile_page();
         const auto first = launcher.tile_offset() + page * per_page;
         const auto visible = std::min(per_page, count - first);
 
         // Responsive grid: 2 columns in landscape (width 376), 1 column in portrait (width 276).
-        const int top_y = canvas_.portrait() ? 170 : 138;
-        const int area_h = canvas_.portrait() ? (FooterTop() - 6 - top_y) : 126;
-        const int gap_y = canvas_.portrait() ? 4 : 6;
-        const zectrix::ui::Rect tiles_area(12, top_y, canvas_.width() - 24, area_h);
+        const int top_y = shell.portrait() ? 170 : 138;
+        const int area_h = shell.portrait() ? (FooterTop() - 6 - top_y) : 126;
+        const int gap_y = shell.portrait() ? 4 : 6;
+        const zectrix::ui::Rect tiles_area(12, top_y, shell.width() - 24, area_h);
         const auto grid = zectrix::ui::UniformGrid::Fit(
             tiles_area, static_cast<int>(visible), 160, 8, gap_y);
 
@@ -250,18 +259,11 @@ esp_err_t UiEngine::ShowLauncher(const zectrix::app::LauncherController& launche
             canvas_.FillRect(cell.x, cell.y, cell.width, cell.height, active);
             canvas_.Rect(cell.x, cell.y, cell.width, cell.height);
             DrawIcon(canvas_, entry.icon, cell.x + 12, cell.y + (cell.height - 16) / 2, !active);
-            const int text_w = canvas_.portrait() ? (cell.width - 52) : (cell.width - 48);
+            const int text_w = shell.portrait() ? (cell.width - 52) : (cell.width - 48);
             DrawFittedText(canvas_, cell.x + 40, cell.y + (cell.height - 16) / 2,
                            Tr(entry.label_text, entry.label), text_w, active);
         }
-
-        if (tiles > per_page) {
-            char pages[24];
-            std::snprintf(pages, sizeof(pages), "%u/%u", static_cast<unsigned>(page + 1),
-                          static_cast<unsigned>((tiles + per_page - 1) / per_page));
-            canvas_.Text(canvas_.width() - 12 - canvas_.TextWidth(pages), 26, pages, 1, true);
-        }
     }
-    return full_refresh ? RefreshFull() : RefreshAuto();
+    return shell.Commit(full_refresh);
 }
 
