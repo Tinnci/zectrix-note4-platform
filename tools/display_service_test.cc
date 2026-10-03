@@ -2031,7 +2031,8 @@ void TestSleepCoverComposition() {
         // A complete daily cycle covers every bilingual quote, including both halves.
         snapshot.clock.value = {2025, 3, day, 0, 8, 4, 0};
         assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard, true) == ESP_OK);
-        const auto& quote = QuoteForSleep(CalendarForSleep(snapshot.clock));
+        const auto calendar = CalendarForSleep(snapshot.clock);
+        const auto& quote = QuoteForSleep(calendar);
         ZectrixCanvas expected = ui.canvas();
         expected.SetPortrait(true);
         expected.FillRect(0, 316, 300, 34, false);
