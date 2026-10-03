@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <cstdint>
 #include "esp_err.h"
 namespace zectrix::storage { class StorageService; }
 namespace zectrix::connectivity {
