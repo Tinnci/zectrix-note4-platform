@@ -27,14 +27,14 @@ for profile in full chinese-only english-only; do
       -I"$root_dir/components/zectrix_app/include" -I"$root_dir/components/zectrix_text/include" \
       -I"$root_dir/components/zectrix_time/include" \
       -I"$root_dir/components/zectrix_storage/include" \
-      -I"$root_dir/components/zectrix_demo_ui/include" \
-      -I"$root_dir/components/zectrix_demo_ui/font" -I"$reader_dir/include" \
+      -I"$root_dir/components/ui/include" \
+      -I"$root_dir/components/ui/font" -I"$reader_dir/include" \
       "$root_dir/components/zectrix_app/zectrix_locale.cc" \
       "$root_dir/components/zectrix_app/zectrix_language_setting.cc" \
       "$root_dir/components/zectrix_app/zectrix_scene_manager.cc" \
       "$root_dir/components/zectrix_app/zectrix_first_party_app_controllers.cc" \
-      "$root_dir/components/zectrix_demo_ui/zectrix_canvas.cc" \
-      "$root_dir/components/zectrix_demo_ui/zectrix_status_bar.cc" \
+      "$root_dir/components/ui/canvas.cc" \
+      "$root_dir/components/ui/status_bar.cc" \
       "$root_dir/tools/localization_test.cc" "${sources[@]}" -o "$work_dir/$profile"
     "$work_dir/$profile"
 done

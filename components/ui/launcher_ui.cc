@@ -1,12 +1,12 @@
 #include "zectrix_locale.h"
-#include "zectrix_demo_ui.h"
+#include "ui_engine.h"
 
 #include <algorithm>
 #include <cstdio>
 
 #include "zectrix_launcher_controller.h"
 #include "zectrix_reading_overview.h"
-#include "zectrix_unicode_text.h"
+#include "unicode_text.h"
 
 using zectrix::i18n::Tr;
 using zectrix::i18n::Text;
@@ -189,7 +189,7 @@ void DrawOverviewPortrait(ZectrixCanvas& canvas, const zectrix::time::ClockSnaps
 
 }  // namespace
 
-esp_err_t ZectrixDemoUi::ShowLauncher(const zectrix::app::LauncherController& launcher,
+esp_err_t UiEngine::ShowLauncher(const zectrix::app::LauncherController& launcher,
                                      const zectrix::time::ClockSnapshot& clock,
                                      const zectrix::app::ReadingOverview& reading, bool full_refresh) {
     using Scene = zectrix::app::LauncherScene;
@@ -244,7 +244,7 @@ esp_err_t ZectrixDemoUi::ShowLauncher(const zectrix::app::LauncherController& la
     return full_refresh ? RefreshFull() : RefreshAuto();
 }
 
-esp_err_t ZectrixDemoUi::ShowLauncherPortrait(const zectrix::app::LauncherController& launcher,
+esp_err_t UiEngine::ShowLauncherPortrait(const zectrix::app::LauncherController& launcher,
                                              const zectrix::time::ClockSnapshot& clock,
                                              const zectrix::app::ReadingOverview& reading, bool full_refresh) {
     const auto count = launcher.count();

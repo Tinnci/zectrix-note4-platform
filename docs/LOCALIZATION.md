@@ -70,7 +70,7 @@ page when its measured height would exceed the body.
 When changing Chinese copy, run
 `uv run --no-project tools/generate-ui-font.py`. The generator extracts the
 required characters from the committed GNU Unifont reader data; see the
-[font notice](../components/zectrix_demo_ui/font/README.md). Normal firmware
+[font notice](../components/ui/font/README.md). Normal firmware
 builds use the committed subset and need no font download or runtime decoder.
 
 Localized surfaces include Home, system messages, Settings, Clock, Reader,

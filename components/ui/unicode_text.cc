@@ -1,6 +1,6 @@
-#include "zectrix_unicode_text.h"
-#include "zectrix_utf8.h"
-#include "zectrix_styled_glyph.h"
+#include "unicode_text.h"
+#include "utf8.h"
+#include "styled_glyph.h"
 #include <climits>
 #include "sdkconfig.h"
 #if CONFIG_ZECTRIX_ENABLE_READER

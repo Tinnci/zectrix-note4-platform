@@ -1,12 +1,12 @@
-#include "zectrix_demo_ui.h"
+#include "ui_engine.h"
 #include "zectrix_host_books.h"
 #include "zectrix_locale.h"
-#include "zectrix_unicode_text.h"
+#include "unicode_text.h"
 #include "sdkconfig.h"
 
 #include <cstdio>
 
-esp_err_t ZectrixDemoUi::ShowUsbManager(const zectrix::host::Snapshot& status, bool storage_ready, bool full_refresh) {
+esp_err_t UiEngine::ShowUsbManager(const zectrix::host::Snapshot& status, bool storage_ready, bool full_refresh) {
     using namespace zectrix;
     using i18n::Text;
     using i18n::Tr;

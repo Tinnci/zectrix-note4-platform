@@ -1,5 +1,5 @@
-#ifndef ZECTRIX_DEMO_UI_H_
-#define ZECTRIX_DEMO_UI_H_
+#ifndef UI_ENGINE_H_
+#define UI_ENGINE_H_
 
 #include <array>
 #include <cstddef>
@@ -7,14 +7,14 @@
 #include <memory>
 
 #include "esp_err.h"
-#include "zectrix_canvas.h"
+#include "canvas.h"
 #include "zectrix_display_service.h"
 #include "zectrix_power_service.h"
 #include "zectrix_self_test.h"
 #include "zectrix_system_service.h"
 #include "zectrix_time_service.h"
-#include "zectrix_status_bar.h"
-#include "zectrix_view_port.h"
+#include "status_bar.h"
+#include "view_port.h"
 
 namespace zectrix::app { class ReaderController; }
 namespace zectrix::app { class MicroAppController; }
@@ -25,11 +25,11 @@ namespace zectrix::app { struct SleepCoverSnapshot; struct SleepCoverImage; enum
 namespace zectrix::connectivity { struct BookTransferSnapshot; }
 namespace zectrix::host { struct Snapshot; }
 
-class ZectrixDemoUi {
+class UiEngine {
 public:
-    explicit ZectrixDemoUi(zectrix::display::DisplayService* display);
-    ZectrixDemoUi(const ZectrixDemoUi&) = delete;
-    ZectrixDemoUi& operator=(const ZectrixDemoUi&) = delete;
+    explicit UiEngine(zectrix::display::DisplayService* display);
+    UiEngine(const UiEngine&) = delete;
+    UiEngine& operator=(const UiEngine&) = delete;
     void SetDisplay(zectrix::display::DisplayService* display) {
         display_ = display;
     }
@@ -94,7 +94,7 @@ public:
                               zectrix::app::SleepCoverStyle style, bool preview = false,
                               bool preference_saved = true, const zectrix::app::SleepCoverImage* picture = nullptr);
 
-    ZectrixCanvas& canvas() { return canvas_; }
+    Canvas& canvas() { return canvas_; }
     auto InspectViews() const { return viewports_.Inspect(); }
     esp_err_t RefreshFull();
     esp_err_t RefreshAuto();
@@ -117,7 +117,7 @@ private:
     esp_err_t ShowLauncherPortrait(const zectrix::app::LauncherController& launcher,
                                    const zectrix::time::ClockSnapshot& clock,
                                    const zectrix::app::ReadingOverview& reading, bool full_refresh);
-    static void DrawFittedText(ZectrixCanvas& canvas, int x, int y, const char* text,
+    static void DrawFittedText(Canvas& canvas, int x, int y, const char* text,
                                int max_width, bool inverted = false);
     void DrawTestStrip(
         ZectrixTestId current,
@@ -127,7 +127,7 @@ private:
 
     zectrix::display::DisplayService* display_ = nullptr;
     zectrix::time::TimeService* time_ = nullptr;
-    ZectrixCanvas canvas_;
+    Canvas canvas_;
     zectrix::ui::ViewPortScheduler viewports_;
     zectrix::ui::StatusBarState status_;
     std::unique_ptr<uint8_t[]> gray_frame_;
@@ -135,4 +135,6 @@ private:
     bool sleep_surface_ = false;
 };
 
-#endif  // ZECTRIX_DEMO_UI_H_
+using ZectrixDemoUi = UiEngine;
+
+#endif  // UI_ENGINE_H_

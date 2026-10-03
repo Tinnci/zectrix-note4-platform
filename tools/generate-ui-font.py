@@ -60,7 +60,7 @@ def main():
     for cp, glyph in zip(codepoints, glyphs):
         output += "    {" + ", ".join(f"0x{byte:02x}" for byte in glyph) + f"}}, // U+{cp:04X}\n"
     output += "};\n"
-    path = ROOT / "components/zectrix_demo_ui/font/zectrix_ui_chinese_font.h"
+    path = ROOT / "components/ui/font/ui_chinese_font.h"
     path.write_text(output)
     print(f"UI Chinese: {len(codepoints)} glyphs, {len(codepoints) * 35} bytes including indices")
 

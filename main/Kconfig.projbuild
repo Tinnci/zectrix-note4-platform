@@ -7,7 +7,7 @@ menu "Zectrix modules"
             counter. They share the existing time service and foreground UI;
             no network, storage writes or background task is required.
 
-    rsource "../components/zectrix_demo_ui/Kconfig.projbuild"
+    rsource "../components/ui/Kconfig.projbuild"
     rsource "../components/zectrix_connectivity/Kconfig.projbuild"
     rsource "../components/zectrix_reader/Kconfig.projbuild"
     rsource "../components/zectrix_runtime/Kconfig.projbuild"

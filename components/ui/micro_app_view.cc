@@ -1,4 +1,4 @@
-#include "zectrix_micro_app_view.h"
+#include "micro_app_view.h"
 
 #include <algorithm>
 

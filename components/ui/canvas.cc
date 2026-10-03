@@ -1,19 +1,19 @@
-#include "zectrix_canvas.h"
+#include "canvas.h"
 
 #include <algorithm>
 #include <climits>
 #include <cstdlib>
 
-#include "zectrix_ascii_font_8x16.h"
-#include "zectrix_large_digits.h"
-#include "zectrix_digit_codec.h"
-#include "zectrix_styled_glyph.h"
-#include "zectrix_utf8.h"
+#include "ascii_font_8x16.h"
+#include "large_digits.h"
+#include "digit_codec.h"
+#include "styled_glyph.h"
+#include "utf8.h"
 #include "sdkconfig.h"
 #if CONFIG_ZECTRIX_ENABLE_READER
 #include "zectrix_reader.h"
 #elif CONFIG_ZECTRIX_ENABLE_UI_CHINESE
-#include "zectrix_ui_chinese_font.h"
+#include "ui_chinese_font.h"
 #endif
 
 namespace {

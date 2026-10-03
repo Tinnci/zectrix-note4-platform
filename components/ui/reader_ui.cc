@@ -1,7 +1,7 @@
 #include "zectrix_locale.h"
-#include "zectrix_demo_ui.h"
+#include "ui_engine.h"
 #include "zectrix_reader_controller.h"
-#include "zectrix_unicode_text.h"
+#include "unicode_text.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -29,7 +29,7 @@ const char* ReaderMessage(Result result) {
 }
 }  // namespace
 
-esp_err_t ZectrixDemoUi::ShowReader(const zectrix::app::ReaderController& reader, bool full_refresh) {
+esp_err_t UiEngine::ShowReader(const zectrix::app::ReaderController& reader, bool full_refresh) {
     using zectrix::app::ReaderScene;
     const auto& engine = reader.engine();
     // Portrait follows the display orientation and uses a taller, narrower page.

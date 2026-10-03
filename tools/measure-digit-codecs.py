@@ -22,7 +22,7 @@ def main():
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     commands = json.loads((args.build / "compile_commands.json").read_text())
-    entry = next(c for c in commands if Path(c["file"]).resolve() == ROOT / "components/zectrix_demo_ui/zectrix_canvas.cc")
+    entry = next(c for c in commands if Path(c["file"]).resolve() == ROOT / "components/ui/canvas.cc")
     original = entry.get("arguments") or shlex.split(entry["command"])
     compiler = next(Path(arg) for arg in original if Path(arg).name.endswith("g++"))
     nm = compiler.with_name(compiler.name.removesuffix("g++") + "nm")

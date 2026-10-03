@@ -1,7 +1,7 @@
 #include "zectrix_locale.h"
-#include "zectrix_demo_ui.h"
+#include "ui_engine.h"
 #include "zectrix_first_party_app_controllers.h"
-#include "zectrix_utf8.h"
+#include "utf8.h"
 #include "sdkconfig.h"
 
 #include <algorithm>
@@ -44,18 +44,18 @@ constexpr std::array<Text, 7> kTestShortNames = {
 
 }  // namespace
 
-void ZectrixDemoUi::DrawFittedText(ZectrixCanvas& canvas, int x, int y, const char* text,
+void UiEngine::DrawFittedText(ZectrixCanvas& canvas, int x, int y, const char* text,
                                   int max_width, bool inverted) {
     canvas.TextFitted(x, y, text, max_width, inverted);
 }
 
-ZectrixDemoUi::ZectrixDemoUi(zectrix::display::DisplayService* display)
+UiEngine::UiEngine(zectrix::display::DisplayService* display)
     : display_(display) {
     canvas_.Clear();
     ConfigureViewports();
 }
 
-void ZectrixDemoUi::ConfigureViewports() {
+void UiEngine::ConfigureViewports() {
     viewports_.Configure(kContentViewPort, {{0, kStatusHeight, canvas_.width(), canvas_.height() - kStatusHeight},
                                           nullptr, nullptr});
     viewports_.Configure(kStatusViewPort, {{0, 0, canvas_.width(), kStatusHeight},
@@ -64,14 +64,14 @@ void ZectrixDemoUi::ConfigureViewports() {
         }, this});
 }
 
-void ZectrixDemoUi::UseCanvasMode(bool portrait) {
+void UiEngine::UseCanvasMode(bool portrait) {
     if (canvas_.portrait() == portrait) return;
     canvas_.SetPortrait(portrait);
     // Viewport bounds follow the canvas; both regions are redrawn in the new geometry.
     ConfigureViewports();
 }
 
-void ZectrixDemoUi::BeginContent(bool portrait_capable) {
+void UiEngine::BeginContent(bool portrait_capable) {
     UseCanvasMode(portrait_capable && display_ != nullptr && display_->portrait());
     sleep_surface_ = false;
     gray_frame_.reset();
@@ -80,13 +80,13 @@ void ZectrixDemoUi::BeginContent(bool portrait_capable) {
     canvas_.Clear();
 }
 
-void ZectrixDemoUi::UpdateStatus(const zectrix::ui::StatusBarState& state) {
+void UiEngine::UpdateStatus(const zectrix::ui::StatusBarState& state) {
     if (status_ == state) return;
     status_ = state;
     viewports_.Invalidate(kStatusViewPort);
 }
 
-void ZectrixDemoUi::DrawFrame(const char* title, const char* footer, bool portrait_capable) {
+void UiEngine::DrawFrame(const char* title, const char* footer, bool portrait_capable) {
     BeginContent(portrait_capable);
     const int width = canvas_.width();
     canvas_.FillRect(0, kStatusHeight, width, kHeaderHeight - kStatusHeight, true);
@@ -121,7 +121,7 @@ void ZectrixDemoUi::DrawFrame(const char* title, const char* footer, bool portra
     canvas_.TextFitted(8, top + 19, rest, width - 16);
 }
 
-int ZectrixDemoUi::WrapText(int x, int y, const char* text, int max_width, int line_height,
+int UiEngine::WrapText(int x, int y, const char* text, int max_width, int line_height,
                             int max_lines, bool center, bool inverted) {
     if (!text || max_width <= 0 || max_lines <= 0) return 0;
     const char* cursor = text;
@@ -169,7 +169,7 @@ int ZectrixDemoUi::WrapText(int x, int y, const char* text, int max_width, int l
     return lines;
 }
 
-esp_err_t ZectrixDemoUi::ShowSplash() {
+esp_err_t UiEngine::ShowSplash() {
     BeginContent();
     canvas_.FillRect(0, kStatusHeight, 400, 4, true);
     canvas_.FillRect(0, 292, 400, 8, true);
@@ -182,7 +182,7 @@ esp_err_t ZectrixDemoUi::ShowSplash() {
     return RefreshFull();
 }
 
-esp_err_t ZectrixDemoUi::ShowRecovery() {
+esp_err_t UiEngine::ShowRecovery() {
     // Reuse the system canvas and release any retained gray frame.
     DrawFrame(Tr(Text::RecoveryTitle), Tr(Text::NavRecovery));
     canvas_.TextCentered(100, Tr(Text::RecoveryMessage), 1);
@@ -193,7 +193,7 @@ esp_err_t ZectrixDemoUi::ShowRecovery() {
     return RefreshFull();
 }
 
-esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
+esp_err_t UiEngine::ShowMenu(const char* title,
                                   const char* const* items, size_t count,
                                   size_t selected, const char* footer,
                                   bool full_refresh) {
@@ -231,7 +231,7 @@ esp_err_t ZectrixDemoUi::ShowMenu(const char* title,
                         : RefreshAuto();
 }
 
-esp_err_t ZectrixDemoUi::ShowClock(const zectrix::time::DateTime& value,
+esp_err_t UiEngine::ShowClock(const zectrix::time::DateTime& value,
                                    bool full_refresh, const char* source,
                                    bool calendar_valid) {
     DrawFrame(Tr(Text::Clock), Tr(Text::NavSetBackOff), true);
@@ -251,7 +251,7 @@ esp_err_t ZectrixDemoUi::ShowClock(const zectrix::time::DateTime& value,
                         : RefreshAuto();
 }
 
-esp_err_t ZectrixDemoUi::ShowSettings(const zectrix::app::SettingsController& settings, const char* status,
+esp_err_t UiEngine::ShowSettings(const zectrix::app::SettingsController& settings, const char* status,
                                       bool full_refresh) {
     const bool languages = settings.page() == zectrix::app::SettingsPage::Language;
     DrawFrame(Tr(languages ? Text::Language : Text::Settings),
@@ -289,7 +289,7 @@ esp_err_t ZectrixDemoUi::ShowSettings(const zectrix::app::SettingsController& se
     return full_refresh ? RefreshFull() : RefreshAuto();
 }
 
-esp_err_t ZectrixDemoUi::ShowConnectivity(const char* state,
+esp_err_t UiEngine::ShowConnectivity(const char* state,
                                           const char* status,
                                           const char* passkey,
                                           size_t selected,
@@ -317,7 +317,7 @@ esp_err_t ZectrixDemoUi::ShowConnectivity(const char* state,
                         : RefreshAuto();
 }
 
-esp_err_t ZectrixDemoUi::ShowSceneInfo(const char* title, const char* mode,
+esp_err_t UiEngine::ShowSceneInfo(const char* title, const char* mode,
                                        const char* format, size_t bytes,
                                        int64_t elapsed_ms, esp_err_t result,
                                        bool full_refresh) {
@@ -343,7 +343,7 @@ esp_err_t ZectrixDemoUi::ShowSceneInfo(const char* title, const char* mode,
     return full_refresh ? RefreshFull() : RefreshAuto();
 }
 
-const char* ZectrixDemoUi::StateText(ZectrixTestState state) {
+const char* UiEngine::StateText(ZectrixTestState state) {
     switch (state) {
         case ZectrixTestState::kRunning: return Tr(Text::Run);
         case ZectrixTestState::kPass: return Tr(Text::Pass);
@@ -353,7 +353,7 @@ const char* ZectrixDemoUi::StateText(ZectrixTestState state) {
     }
 }
 
-void ZectrixDemoUi::DrawTestStrip(
+void UiEngine::DrawTestStrip(
     ZectrixTestId current,
     const std::array<ZectrixTestState,
                      static_cast<size_t>(ZectrixTestId::kCount)>& states) {
@@ -380,7 +380,7 @@ void ZectrixDemoUi::DrawTestStrip(
     }
 }
 
-esp_err_t ZectrixDemoUi::ShowTestMenu(
+esp_err_t UiEngine::ShowTestMenu(
     size_t selected,
     const std::array<ZectrixTestState,
                      static_cast<size_t>(ZectrixTestId::kCount)>& states,
@@ -399,7 +399,7 @@ esp_err_t ZectrixDemoUi::ShowTestMenu(
                         : RefreshAuto();
 }
 
-esp_err_t ZectrixDemoUi::ShowTestUpdate(
+esp_err_t UiEngine::ShowTestUpdate(
     const ZectrixTestUpdate& update,
     const std::array<ZectrixTestState,
                      static_cast<size_t>(ZectrixTestId::kCount)>& states,
@@ -433,7 +433,7 @@ esp_err_t ZectrixDemoUi::ShowTestUpdate(
     return RefreshAuto();
 }
 
-esp_err_t ZectrixDemoUi::ShowTestSummary(
+esp_err_t UiEngine::ShowTestSummary(
     const std::array<ZectrixTestState,
                      static_cast<size_t>(ZectrixTestId::kCount)>& states) {
     DrawFrame(Tr(Text::TestSummary), Tr(Text::NavReturnBackOff));
@@ -464,7 +464,7 @@ esp_err_t ZectrixDemoUi::ShowTestSummary(
     return RefreshFull();
 }
 
-esp_err_t ZectrixDemoUi::ShowDeviceInfo(
+esp_err_t UiEngine::ShowDeviceInfo(
     const zectrix::power::PowerSnapshot& power,
     const zectrix::system::SystemSnapshot& system, bool full_refresh) {
     DrawFrame(Tr(Text::DeviceInfo), Tr(Text::NavBackOff));
@@ -501,7 +501,7 @@ esp_err_t ZectrixDemoUi::ShowDeviceInfo(
     return full_refresh ? RefreshFull() : RefreshAuto();
 }
 
-esp_err_t ZectrixDemoUi::ShowAbout(bool full_refresh) {
+esp_err_t UiEngine::ShowAbout(bool full_refresh) {
     DrawFrame(Tr(Text::About), Tr(Text::NavBackOff));
     canvas_.TextCentered(54, Tr(Text::ZectrixTerminal), 1);
     canvas_.TextCentered(88, Tr(Text::OpenSourceEpaper), 1);
@@ -513,17 +513,17 @@ esp_err_t ZectrixDemoUi::ShowAbout(bool full_refresh) {
     return full_refresh ? RefreshFull() : RefreshAuto();
 }
 
-esp_err_t ZectrixDemoUi::RefreshFull() {
+esp_err_t UiEngine::RefreshFull() {
     viewports_.Invalidate(kContentViewPort, true);
     return RefreshPending();
 }
 
-esp_err_t ZectrixDemoUi::RefreshAuto() {
+esp_err_t UiEngine::RefreshAuto() {
     viewports_.Invalidate(kContentViewPort);
     return RefreshPending();
 }
 
-esp_err_t ZectrixDemoUi::RefreshPending() {
+esp_err_t UiEngine::RefreshPending() {
     if (display_ == nullptr) return ESP_ERR_INVALID_STATE;
     if (sleep_surface_) return ESP_OK;
     const auto update = viewports_.Compose(canvas_);
@@ -557,7 +557,7 @@ esp_err_t ZectrixDemoUi::RefreshPending() {
     return result;
 }
 
-esp_err_t ZectrixDemoUi::ShowImage1Bpp(const uint8_t* pixels, size_t size) {
+esp_err_t UiEngine::ShowImage1Bpp(const uint8_t* pixels, size_t size) {
     if (!pixels || size != canvas_.size()) return ESP_ERR_INVALID_SIZE;
     BeginContent();
     const size_t offset = kStatusHeight * ZectrixCanvas::kStride;
@@ -565,7 +565,7 @@ esp_err_t ZectrixDemoUi::ShowImage1Bpp(const uint8_t* pixels, size_t size) {
     return RefreshFull();
 }
 
-esp_err_t ZectrixDemoUi::ShowImagePatch(zectrix::display::Rect r,
+esp_err_t UiEngine::ShowImagePatch(zectrix::display::Rect r,
                                        const uint8_t* pixels, size_t size) {
     if (gray_frame_) return ESP_ERR_INVALID_STATE;
     UseCanvasMode(false);
@@ -584,7 +584,7 @@ esp_err_t ZectrixDemoUi::ShowImagePatch(zectrix::display::Rect r,
     return RefreshAuto();
 }
 
-esp_err_t ZectrixDemoUi::ShowImage4Bpp(const uint8_t* pixels, size_t size) {
+esp_err_t UiEngine::ShowImage4Bpp(const uint8_t* pixels, size_t size) {
     if (!pixels || size != zectrix::display::DisplayService::kFrameBytes4Bpp)
         return ESP_ERR_INVALID_SIZE;
     UseCanvasMode(false);
@@ -596,7 +596,7 @@ esp_err_t ZectrixDemoUi::ShowImage4Bpp(const uint8_t* pixels, size_t size) {
     return RefreshFull();
 }
 
-void ZectrixDemoUi::OverlayGrayStatus() {
+void UiEngine::OverlayGrayStatus() {
     for (int y = 0; y < kStatusHeight; ++y) {
         for (int x = 0; x < 400; x += 2) {
             const uint8_t bits = canvas_.data()[y * ZectrixCanvas::kStride + x / 8];
@@ -607,7 +607,7 @@ void ZectrixDemoUi::OverlayGrayStatus() {
     }
 }
 
-esp_err_t ZectrixDemoUi::ClearDisplay() {
+esp_err_t UiEngine::ClearDisplay() {
     if (display_ == nullptr) return ESP_ERR_INVALID_STATE;
     gray_frame_.reset();
     UseCanvasMode(false);

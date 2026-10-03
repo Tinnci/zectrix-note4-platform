@@ -34,7 +34,7 @@ def load_recipe(path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=ROOT / "components/zectrix_demo_ui/font/zectrix_large_digits.h")
+    parser.add_argument("--output", type=Path, default=ROOT / "components/ui/font/large_digits.h")
     parser.add_argument("--preview", type=Path, default=ROOT / "docs/design/date-digits/native-48px.png")
     parser.add_argument("--recipe", type=Path, default=ROOT / "docs/design/date-digits/raster-settings.json")
     parser.add_argument("--original-raster", action="store_true", help="Use original Lanczos/150 raster parameters")

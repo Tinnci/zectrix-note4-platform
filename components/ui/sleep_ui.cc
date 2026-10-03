@@ -1,7 +1,7 @@
 #include "zectrix_locale.h"
-#include "zectrix_demo_ui.h"
+#include "ui_engine.h"
 #include "zectrix_sleep_cover.h"
-#include "zectrix_unicode_text.h"
+#include "unicode_text.h"
 #include "sdkconfig.h"
 
 #include <algorithm>
@@ -102,7 +102,7 @@ void DrawReading(ZectrixCanvas& canvas, const SleepCoverSnapshot& snapshot) {
 #endif
 }  // namespace
 
-esp_err_t ZectrixDemoUi::ShowSleepCoverMenu(SleepCoverStyle selected, SleepCoverStyle active,
+esp_err_t UiEngine::ShowSleepCoverMenu(SleepCoverStyle selected, SleepCoverStyle active,
                                            const char* status, bool full_refresh) {
     DrawFrame(Tr(Text::SleepCover), Tr(Text::NavCoverPreview), true);
     const bool portrait = canvas_.portrait();
@@ -128,7 +128,7 @@ esp_err_t ZectrixDemoUi::ShowSleepCoverMenu(SleepCoverStyle selected, SleepCover
     return full_refresh ? RefreshFull() : RefreshAuto();
 }
 
-esp_err_t ZectrixDemoUi::ShowSleepCover(const SleepCoverSnapshot& snapshot, SleepCoverStyle style,
+esp_err_t UiEngine::ShowSleepCover(const SleepCoverSnapshot& snapshot, SleepCoverStyle style,
                                        bool preview, bool preference_saved, const SleepCoverImage* picture) {
     if (display_ == nullptr) return ESP_ERR_INVALID_STATE;
     style = SleepCoverSetting(static_cast<uint32_t>(style));
@@ -209,12 +209,12 @@ esp_err_t ZectrixDemoUi::ShowSleepCover(const SleepCoverSnapshot& snapshot, Slee
     return display_->Present1Bpp(zectrix::display::DisplayIntent::FullClean, canvas_.data(), canvas_.size());
 }
 
-esp_err_t ZectrixDemoUi::ShowPortraitCalendar(const SleepCoverSnapshot& snapshot,
+esp_err_t UiEngine::ShowPortraitCalendar(const SleepCoverSnapshot& snapshot,
                                             bool preview, bool preference_saved) {
     gray_frame_.reset();
     UseCanvasMode(true);
     struct RestoreCanvas {
-        ZectrixDemoUi& ui;
+        UiEngine& ui;
         ~RestoreCanvas() { ui.UseCanvasMode(false); }
     } restore{*this};
     canvas_.Clear();
