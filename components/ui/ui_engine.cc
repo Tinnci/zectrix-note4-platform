@@ -129,6 +129,80 @@ zectrix::ui::Rect UiEngine::BeginPage(const char* title, const char* footer, boo
     return body;
 }
 
+namespace zectrix::ui {
+
+PageShell::PageShell(UiEngine& engine, Canvas& canvas, Rect body, const PageSpec& spec)
+    : engine_(&engine), canvas_(canvas), body_(body), committed_(false) {
+    if (spec.center_title && spec.title != nullptr && spec.title[0] != '\0') {
+        canvas_.TextCentered(26, spec.title, 1, true);
+    }
+    if (spec.badge != nullptr && spec.badge[0] != '\0') {
+        DrawBadge(spec.badge);
+    }
+}
+
+PageShell::PageShell(PageShell&& other) noexcept
+    : engine_(other.engine_), canvas_(other.canvas_),
+      body_(other.body_), committed_(other.committed_) {
+    other.committed_ = true;
+}
+
+PageShell& PageShell::operator=(PageShell&& other) noexcept {
+    if (this != &other) {
+        if (!committed_) canvas_.ResetClip();
+        engine_ = other.engine_;
+        body_ = other.body_;
+        committed_ = other.committed_;
+        other.committed_ = true;
+    }
+    return *this;
+}
+
+PageShell::~PageShell() {
+    if (!committed_) {
+        canvas_.ResetClip();
+    }
+}
+
+int PageShell::width() const { return canvas_.width(); }
+int PageShell::height() const { return canvas_.height(); }
+bool PageShell::portrait() const { return canvas_.portrait(); }
+int PageShell::dy() const { return (canvas_.height() - 300) / 2; }
+int PageShell::center_y(int landscape_y) const { return landscape_y + dy(); }
+
+void PageShell::DrawBadge(const char* text) {
+    if (text == nullptr || text[0] == '\0') return;
+    const int text_w = canvas_.TextWidth(text);
+    canvas_.Text(canvas_.width() - 12 - text_w, 26, text, 1, true);
+}
+
+void PageShell::DrawScrollbar(size_t visible_count, size_t total_count, size_t first_index,
+                              int start_y, int track_height) {
+    if (total_count <= visible_count || visible_count == 0) return;
+    const int sy = (start_y >= 0) ? start_y : body_.y;
+    const int track_h = (track_height > 0) ? track_height : body_.height;
+    const size_t thumb_h = std::max<size_t>(8, track_h * visible_count / total_count);
+    const int thumb_offset = static_cast<int>(
+        (track_h - thumb_h) * first_index / (total_count - visible_count));
+    const int line_x = canvas_.width() - 9;
+    canvas_.Line(line_x, sy, line_x, sy + track_h - 1);
+    canvas_.FillRect(line_x - 2, sy + thumb_offset, 5, static_cast<int>(thumb_h), true);
+}
+
+esp_err_t PageShell::Commit(bool full_refresh) {
+    committed_ = true;
+    canvas_.ResetClip();
+    if (engine_ == nullptr) return ESP_ERR_INVALID_STATE;
+    return full_refresh ? engine_->RefreshFull() : engine_->RefreshAuto();
+}
+
+}  // namespace zectrix::ui
+
+zectrix::ui::PageShell UiEngine::EnterPage(const zectrix::ui::PageSpec& spec) {
+    const auto body = BeginPage(spec.title, spec.footer, spec.portrait_capable);
+    return zectrix::ui::PageShell(*this, canvas_, body, spec);
+}
+
 int UiEngine::WrapText(int x, int y, const char* text, int max_width, int line_height,
                             int max_lines, bool center, bool inverted) {
     if (!text || max_width <= 0 || max_lines <= 0) return 0;
@@ -208,10 +282,10 @@ esp_err_t UiEngine::ShowMenu(const char* title,
     if (items == nullptr || count == 0 || selected >= count) {
         return ESP_ERR_INVALID_ARG;
     }
-    BeginPage(title, footer, true);
-    const int width = canvas_.width();
-    const int kListHeight = canvas_.height() - (canvas_.portrait() ? 100 : 92);  // 208 px in landscape
-    const size_t visible = std::min<size_t>(count, canvas_.portrait() ? 11 : 8);
+    auto page = EnterPage(zectrix::ui::PageSpec().Title(title).Footer(footer));
+    const int width = page.width();
+    const int kListHeight = page.height() - (page.portrait() ? 100 : 92);  // 208 px in landscape
+    const size_t visible = std::min<size_t>(count, page.portrait() ? 11 : 8);
     const size_t first = selected >= visible ? selected - visible + 1 : 0;
     const int row_height = std::min(42, kListHeight / static_cast<int>(visible));
     const int box_height = std::min(34, row_height - 2);
@@ -227,23 +301,15 @@ esp_err_t UiEngine::ShowMenu(const char* title,
             canvas_.TextFitted(28, y + (box_height - 16) / 2, items[i], width - 56);
         }
     }
-    if (count > visible) {
-        const size_t thumb_height = std::max<size_t>(8, kListHeight * visible / count);
-        const int thumb_offset = static_cast<int>(
-            (kListHeight - thumb_height) * first / (count - visible));
-        canvas_.Line(width - 9, start_y, width - 9, start_y + kListHeight - 1);
-        canvas_.FillRect(width - 11, start_y + thumb_offset, 5,
-                         static_cast<int>(thumb_height), true);
-    }
-    return full_refresh ? RefreshFull()
-                        : RefreshAuto();
+    page.DrawScrollbar(visible, count, first, start_y, kListHeight);
+    return page.Commit(full_refresh);
 }
 
 esp_err_t UiEngine::ShowClock(const zectrix::time::DateTime& value,
                                    bool full_refresh, const char* source,
                                    bool calendar_valid) {
-    BeginPage(Tr(Text::Clock), Tr(Text::NavSetBackOff), true);
-    const int dy = (canvas_.height() - 300) / 2;  // centers the landscape layout in portrait
+    auto page = EnterPage(zectrix::ui::PageSpec().Title(Tr(Text::Clock)).Footer(Tr(Text::NavSetBackOff)));
+    const int dy = page.dy();  // centers the landscape layout in portrait
     char line[32] = {};
     if (calendar_valid) {
         std::snprintf(line, sizeof(line), "%04d-%02d-%02d", value.year,
@@ -255,17 +321,17 @@ esp_err_t UiEngine::ShowClock(const zectrix::time::DateTime& value,
     std::snprintf(line, sizeof(line), "%02d:%02d", value.hour, value.minute);
     canvas_.TextCentered(154 + dy, line, 3);
     canvas_.TextCentered(224 + dy, source, 1);
-    return full_refresh ? RefreshFull()
-                        : RefreshAuto();
+    return page.Commit(full_refresh);
 }
 
 esp_err_t UiEngine::ShowSettings(const zectrix::app::SettingsController& settings, const char* status,
                                       bool full_refresh) {
     const bool languages = settings.page() == zectrix::app::SettingsPage::Language;
-    BeginPage(Tr(languages ? Text::Language : Text::Settings),
-              Tr(languages ? Text::NavApplyBack : Text::NavChangeBack), true);
-    const int width = canvas_.width(), height = canvas_.height();
-    const bool portrait = canvas_.portrait();
+    auto page = EnterPage(zectrix::ui::PageSpec()
+        .Title(Tr(languages ? Text::Language : Text::Settings))
+        .Footer(Tr(languages ? Text::NavApplyBack : Text::NavChangeBack)));
+    const int width = page.width(), height = page.height();
+    const bool portrait = page.portrait();
     const auto count = languages ? zectrix::i18n::LanguageCount() : settings.option_count();
     for (std::size_t i = 0; i < count; ++i) {
         // Portrait has spare height, so rows are taller than the landscape 34/42 px pitch.
@@ -294,7 +360,7 @@ esp_err_t UiEngine::ShowSettings(const zectrix::app::SettingsController& setting
         (zectrix::i18n::LanguageCount() > 1 && settings.selected() == 0) ?
         Text::LanguageHint : Text::ShowcaseIdle), width - 32, 18, portrait ? 2 : 1);
     canvas_.TextFitted(16, height - (portrait ? 62 : 54), status, width - 32);
-    return full_refresh ? RefreshFull() : RefreshAuto();
+    return page.Commit(full_refresh);
 }
 
 esp_err_t UiEngine::ShowConnectivity(const char* state,

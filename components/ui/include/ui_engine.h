@@ -15,6 +15,7 @@
 #include "zectrix_time_service.h"
 #include "status_bar.h"
 #include "view_port.h"
+#include "page_shell.h"
 
 namespace zectrix::app { class ReaderController; }
 namespace zectrix::app { class MicroAppController; }
@@ -99,7 +100,13 @@ public:
     esp_err_t RefreshFull();
     esp_err_t RefreshAuto();
 
+    // Standard page shell: draws frame, status bar and adaptive footer, returning the clipped body rect.
+    zectrix::ui::Rect BeginPage(const char* title, const char* footer, bool portrait_capable = true);
+    // Enter a new page shell with fluent declarative configuration and RAII scope safety.
+    zectrix::ui::PageShell EnterPage(const zectrix::ui::PageSpec& spec);
+
 private:
+    friend class zectrix::ui::PageShell;
     bool sleep_portrait_ = false;
     esp_err_t ShowPortraitCalendar(const zectrix::app::SleepCoverSnapshot& snapshot,
                                    bool preview, bool preference_saved);
@@ -109,8 +116,6 @@ private:
     void BeginContent(bool portrait_capable = false);
     void OverlayGrayStatus();
     void DrawFrame(const char* title, const char* footer, bool portrait_capable = false);
-    // Standard page shell: draws frame, status bar and adaptive footer, returning the clipped body rect.
-    zectrix::ui::Rect BeginPage(const char* title, const char* footer, bool portrait_capable = true);
     // Portrait footers use two lines, so the footer rule sits higher (360 vs 369).
     int FooterTop() const { return canvas_.height() - (canvas_.portrait() ? 40 : 31); }
     // Word/CJK wrapped text; the final allowed line is ellipsized. Returns lines drawn.

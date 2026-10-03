@@ -34,10 +34,10 @@ esp_err_t UiEngine::ShowReader(const zectrix::app::ReaderController& reader, boo
     const auto& engine = reader.engine();
 
     if (reader.scene() == ReaderScene::Library) {
-        BeginPage(Tr(Text::BookLibrary), Tr(Text::NavOpenBack), true);
-        const bool portrait = canvas_.portrait();
-        const int width = canvas_.width(), height = canvas_.height();
-        const int dy = (height - 300) / 2;  // centers short messages
+        auto page = EnterPage(zectrix::ui::PageSpec().Title(Tr(Text::BookLibrary)).Footer(Tr(Text::NavOpenBack)));
+        const bool portrait = page.portrait();
+        const int width = page.width(), height = page.height();
+        const int dy = page.dy();  // centers short messages
         const auto& library = reader.library();
         if (!library.count()) {
             WrapText(16, 104 + dy, reader.result() == Result::Ok ? Tr(Text::LibraryEmpty) : Tr(Text::BookStorageUnavailable),
@@ -70,10 +70,11 @@ esp_err_t UiEngine::ShowReader(const zectrix::app::ReaderController& reader, boo
             case Notice::HistoryUnavailable: notice = Tr(Text::ReadingHistoryUnavailable); break;
         }
         if (notice) WrapText(16, height - (portrait ? 78 : 52), notice, width - 32, 18, portrait ? 2 : 1);
+        return page.Commit(full_refresh);
     } else if (reader.scene() == ReaderScene::Options) {
-        BeginPage(Tr(Text::ReadingOptions), Tr(Text::NavReadingOptions), true);
-        const bool portrait = canvas_.portrait();
-        const int width = canvas_.width(), height = canvas_.height();
+        auto page = EnterPage(zectrix::ui::PageSpec().Title(Tr(Text::ReadingOptions)).Footer(Tr(Text::NavReadingOptions)));
+        const bool portrait = page.portrait();
+        const int width = page.width(), height = page.height();
         DrawUtf8Line(canvas_, 16, 54, reader.book().id.data(), width - 32);
         const char* options[] = {
             engine.page().font == FontSize::Small ? Tr(Text::FontSmallToLarge) : Tr(Text::FontLargeToSmall),
@@ -88,6 +89,7 @@ esp_err_t UiEngine::ShowReader(const zectrix::app::ReaderController& reader, boo
             canvas_.TextFitted(28, y + 8, options[i], width - 56, active);
         }
         canvas_.TextFitted(16, height - (portrait ? 60 : 52), reader.save_result() == Result::Ok ? Tr(Text::ProgressAutoSaved) : Tr(Text::ProgressSaveFailed), width - 32);
+        return page.Commit(full_refresh);
     } else {
         const char* footer = Tr(Text::NavRead);
         if (reader.busy()) footer = Tr(Text::NavLoading);
@@ -95,23 +97,23 @@ esp_err_t UiEngine::ShowReader(const zectrix::app::ReaderController& reader, boo
         else if (reader.save_result() != Result::Ok) footer = Tr(Text::NavUnsaved);
         else if (reader.remote_available()) footer = Tr(Text::NavPhonePosition);
         else if (engine.has_page() && engine.page().end) footer = Tr(Text::NavEndOfBook);
-        BeginPage("", footer, true);
-        const int width = canvas_.width();
-        const int dy = (canvas_.height() - 300) / 2;
+        auto page = EnterPage(zectrix::ui::PageSpec().Footer(footer));
+        const int width = page.width();
+        const int dy = page.dy();
         DrawUtf8Line(canvas_, 8, 26, reader.book().id.data(), width - 96, true);
         if (engine.has_page() && (reader.result() == Result::Ok || reader.result() == Result::Pending)) {
-            const auto& page = engine.page();
+            const auto& read_page = engine.page();
             char progress[16];
-            std::snprintf(progress, sizeof(progress), "%u.%u%%", page.progress_per_mille / 10, page.progress_per_mille % 10);
+            std::snprintf(progress, sizeof(progress), "%u.%u%%", read_page.progress_per_mille / 10, read_page.progress_per_mille % 10);
             canvas_.Text(width - 8 - canvas_.TextWidth(progress), 26, progress, 1, true);
-            for (std::size_t i = 0; i < page.count; ++i)
-                DrawGlyph(canvas_, 8 + page.glyphs[i].x, 48 + page.glyphs[i].y,
-                          page.glyphs[i].codepoint, page.font, false, page.glyphs[i].style);
-            if (!page.count) canvas_.TextCentered(128 + dy, Tr(Text::BookNoText));
+            for (std::size_t i = 0; i < read_page.count; ++i)
+                DrawGlyph(canvas_, 8 + read_page.glyphs[i].x, 48 + read_page.glyphs[i].y,
+                          read_page.glyphs[i].codepoint, read_page.font, false, read_page.glyphs[i].style);
+            if (!read_page.count) canvas_.TextCentered(128 + dy, Tr(Text::BookNoText));
         } else {
             WrapText(16, 120 + dy, ReaderMessage(reader.result()), width - 32, 18, 2, true);
             WrapText(16, 168 + dy, Tr(Text::HoldLibrary), width - 32, 18, 2, true);
         }
+        return page.Commit(full_refresh);
     }
-    return full_refresh ? RefreshFull() : RefreshAuto();
 }

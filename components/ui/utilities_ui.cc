@@ -39,9 +39,9 @@ esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_
 
     switch (utilities.page()) {
         case UtilityPage::Menu: {
-            BeginPage(Tr(Text::PocketTools), Tr(Text::NavOpenBack), true);
-            const bool portrait = canvas_.portrait();
-            const int width = canvas_.width(), height = canvas_.height();
+            auto page = EnterPage(zectrix::ui::PageSpec().Title(Tr(Text::PocketTools)).Footer(Tr(Text::NavOpenBack)));
+            const bool portrait = page.portrait();
+            const int width = page.width(), height = page.height();
             constexpr Text names[] = {Text::FocusTimer, Text::OfflineCalendar, Text::Counter};
             for (std::size_t i = 0; i < std::size(names); ++i) {
                 const int y = 54 + static_cast<int>(i) * (portrait ? 84 : 62);
@@ -56,13 +56,12 @@ esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_
                 WrapText(16, y + 34, line, width - 32, 18, portrait ? 2 : 1);
             }
             WrapText(16, height - (portrait ? 96 : 54), Tr(Text::UtilityOffline), width - 32, 18, portrait ? 2 : 1);
-            break;
+            return page.Commit(full_refresh);
         }
         case UtilityPage::Focus: {
-            BeginPage(Tr(Text::FocusTimer), Tr(TimerControls(timer)), true);
-            const bool portrait = canvas_.portrait();
-            const int width = canvas_.width(), height = canvas_.height();
-            const int dy = (height - 300) / 2;
+            auto page = EnterPage(zectrix::ui::PageSpec().Title(Tr(Text::FocusTimer)).Footer(Tr(TimerControls(timer))));
+            const int width = page.width();
+            const int dy = page.dy();
             canvas_.TextCentered(56 + dy, Tr(phase));
             canvas_.TextCentered(80 + dy, Tr(TimerState(timer)));
             std::snprintf(line, sizeof(line), "%u", utilities.timer_minutes());
@@ -72,13 +71,13 @@ esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_
                 timer.state() != FocusTimer::State::Finished ? Text::FocusSilent :
                 timer.phase() == FocusTimer::Phase::Focus ? Text::FocusNextBreak : Text::FocusNextSession;
             WrapText(16, 215 + dy, Tr(detail), width - 32, 18, 2, true);
-            WrapText(16, 246 + dy + (portrait ? 18 : 0), Tr(Text::UtilityTemporary), width - 32, 18, 2, true);
-            break;
+            WrapText(16, 246 + dy + (page.portrait() ? 18 : 0), Tr(Text::UtilityTemporary), width - 32, 18, 2, true);
+            return page.Commit(full_refresh);
         }
         case UtilityPage::Calendar: {
-            BeginPage(Tr(Text::OfflineCalendar), Tr(Text::NavCalendar), true);
-            const bool portrait = canvas_.portrait();
-            const int width = canvas_.width(), height = canvas_.height();
+            auto page = EnterPage(zectrix::ui::PageSpec().Title(Tr(Text::OfflineCalendar)).Footer(Tr(Text::NavCalendar)));
+            const bool portrait = page.portrait();
+            const int width = page.width(), height = page.height();
             const auto& month = session.month;
             std::snprintf(line, sizeof(line), "%04d - %02d", month.year(), month.month());
             canvas_.TextCentered(53, line, 2);
@@ -106,7 +105,7 @@ esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_
                 today.year, today.month, today.day);
             else std::snprintf(line, sizeof(line), "%s", Tr(Text::CalendarBrowseOnly));
             WrapText(16, height - (portrait ? 60 : 51), line, width - 32, 18, 1, true);
-            break;
+            return page.Commit(full_refresh);
         }
         case UtilityPage::CalendarOptions: {
             const char* items[] = {Tr(utilities.has_today() ? Text::CalendarToday : Text::CalendarSetClock),
@@ -115,8 +114,9 @@ esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_
                             Tr(Text::NavOpenBack), full_refresh);
         }
         case UtilityPage::CalendarJump: {
-            BeginPage(Tr(Text::CalendarJump), Tr(utilities.selected() == 0 ? Text::NavClockNext : Text::NavCalendarJump), true);
-            const int width = canvas_.width();
+            auto page = EnterPage(zectrix::ui::PageSpec().Title(Tr(Text::CalendarJump))
+                .Footer(Tr(utilities.selected() == 0 ? Text::NavClockNext : Text::NavCalendarJump)));
+            const int width = page.width();
             WrapText(16, 62, Tr(Text::CalendarRange), width - 32, 18, 2, true);
             for (unsigned i = 0; i < 2; ++i) {
                 const int y = 99 + static_cast<int>(i) * 52;
@@ -128,19 +128,20 @@ esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_
                 canvas_.Text(40, y + 10, line, 1, chosen);
             }
             WrapText(16, 220, Tr(Text::CalendarKeepsClock), width - 32, 18, 2, true);
-            break;
+            return page.Commit(full_refresh);
         }
         case UtilityPage::Counter: {
-            BeginPage(Tr(Text::Counter), Tr(session.count == 0 && session.undo_count ? Text::NavCounterUndo : Text::NavCounterReset), true);
-            const int width = canvas_.width(), height = canvas_.height();
-            const int dy = (height - 300) / 2;
+            auto page = EnterPage(zectrix::ui::PageSpec().Title(Tr(Text::Counter))
+                .Footer(Tr(session.count == 0 && session.undo_count ? Text::NavCounterUndo : Text::NavCounterReset)));
+            const int width = page.width();
+            const int dy = page.dy();
             WrapText(16, 59 + dy, Tr(Text::UtilityCountHint), width - 32, 18, 2, true);
             std::snprintf(line, sizeof(line), "%04u", session.count);
             canvas_.TextCentered(101 + dy, line, 6);
             std::snprintf(line, sizeof(line), Tr(Text::UtilityCount), session.count);
             canvas_.TextCentered(215 + dy, line);
             WrapText(16, 246 + dy, Tr(Text::UtilityTemporary), width - 32, 18, 2, true);
-            break;
+            return page.Commit(full_refresh);
         }
         default: return ESP_ERR_INVALID_STATE;
     }

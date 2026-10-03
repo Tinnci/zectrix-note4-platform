@@ -1,4 +1,5 @@
 #include "layout.h"
+#include "page_shell.h"
 #include <cassert>
 #include <cstdio>
 
@@ -79,10 +80,26 @@ void TestUniformGrid() {
     assert(p0.x == 12 && p0.y == 170 && p0.width == 276);
 }
 
+void TestPageSpec() {
+    using zectrix::ui::PageSpec;
+    PageSpec spec = PageSpec()
+        .Title("Test Title")
+        .CenterTitle()
+        .Footer("Test Footer")
+        .Badge("1/3")
+        .Portrait(true);
+    assert(spec.title != nullptr);
+    assert(spec.center_title == true);
+    assert(spec.footer != nullptr);
+    assert(spec.badge != nullptr);
+    assert(spec.portrait_capable == true);
+}
+
 int main() {
     TestRectBasics();
     TestInsetsAndCutting();
     TestUniformGrid();
-    std::printf("PASS: zero-allocation layout algebra and responsive grid tests.\n");
+    TestPageSpec();
+    std::printf("PASS: zero-allocation layout algebra, responsive grid and page spec tests.\n");
     return 0;
 }
