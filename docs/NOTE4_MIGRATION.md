@@ -63,6 +63,13 @@ do not silently uninstall it or copy private credentials between packages.
 Use the new NFC MIME with the new application; a pre-migration APK does not
 handle that record type.
 
+The HA bridge changes state topics from `zectrix/note4/<id>/state` to
+`note4/<id>/state`, and discovery/device identifiers from `zectrix_note4_<id>`
+to `note4_<id>`. Existing retained discovery messages are not deleted remotely.
+After checking the new entities, explicitly remove the old retained config
+topics and update any automations that reference old entity IDs. BTHome packet
+format and sensor object IDs are unchanged; no HA credentials are migrated.
+
 ## Display and ownership
 
 See [display architecture](DISPLAY_ARCHITECTURE.md). The SSD2683 driver still

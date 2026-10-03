@@ -7,7 +7,7 @@ import { renderStates } from "./renderer";
 export async function mqttReport(client: MqttClient, id: string, request: Request, page: Uint8Array) {
   if (!client.connected) throw new Error("MQTT unavailable");
   const sample=deviceState(request,page);
-  const messages = [...discovery(id,sample.interval_seconds*2+60), { topic: `note4/note4/${id}/state`, payload: JSON.stringify(sample) }];
+  const messages = [...discovery(id,sample.interval_seconds*2+60), { topic: `note4/${id}/state`, payload: JSON.stringify(sample) }];
   // One publish in flight; no offline queue or reconnect replay of stale samples.
   for (const message of messages) await new Promise<void>((resolve,reject) => {
     const timer=setTimeout(()=>{ client.end(true); reject(new Error("MQTT publish timeout")); },400);

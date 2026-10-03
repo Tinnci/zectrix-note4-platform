@@ -51,7 +51,7 @@ connectivity bthome 1
 
 HA 配置 MQTT integration 后，通过 retained discovery 自动发现电量、电压、充电和
 “提供的页面版本”四个实体。后者不代表设备已经保存或显示页面。
-状态写入 `note4/note4/<id>/state`，discovery 写入 `homeassistant/.../config`。
+状态写入 `note4/<id>/state`，discovery 写入 `homeassistant/.../config`。
 QoS1，状态有效期为两次本地周期加 60 秒；保留消息中的采样时间用于拒绝过期数据，不能据此判断设备常在线。
 设备快照在下载前采集；无效电池值不伪装成 0%。修改设备 ID 后，旧 discovery 需单独清理。
 
