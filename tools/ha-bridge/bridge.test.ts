@@ -57,7 +57,10 @@ test("HA layout reflows all eight entities in both native orientations", async (
 test("discovery separates offered page from displayed page, and rejects stale retained state",()=>{
   const entries=discovery("test"); expect(entries).toHaveLength(4);
   const battery=JSON.parse(entries[0]!.payload);
-  expect(battery.device.identifiers).toEqual(["note4_note4_test"]);
+  expect(battery.device.identifiers).toEqual(["note4_test"]);
+  expect(entries[0]!.topic).toBe("homeassistant/sensor/note4_test/battery/config");
+  expect(battery.unique_id).toBe("note4_test_battery");
+  expect(battery.state_topic).toBe("note4/test/state");
   expect(battery.device_class).toBe("battery"); expect(battery.expire_after).toBe(43260);
   expect(battery.availability[0].value_template).toContain("sampled_at");
   expect(entries[3]!.topic).toContain("offered_revision");
@@ -73,6 +76,7 @@ test("authenticated page GET carries validated telemetry into retained MQTT publ
   expect((await handler(new Request("https://display.example/note4/page"))).status).toBe(401); expect(published).toHaveLength(0);
   const request=new Request("https://display.example/note4/page",{headers:{Authorization:`Bearer ${token}`,"X-Note4-Battery":"80","X-Note4-Millivolts":"3700","X-Note4-Charging":"1","X-Note4-Interval":"86400"}});
   expect((await handler(request)).status).toBe(200); expect(published).toHaveLength(5);
+  expect(published[4]!.topic).toBe("note4/test/state");
   const state=JSON.parse(published[4]!.payload); expect(state.battery).toBe(80);expect(state.voltage).toBe(3.7);expect(state.charging).toBe(true);
   expect(JSON.parse(published[0]!.payload).expire_after).toBe(172860);
   expect(JSON.stringify(published)).not.toContain(token);
