@@ -1,7 +1,7 @@
 #include "cli_host/stdio_transport.h"
-#include "zectrix_cli_diagnostics.h"
-#include "zectrix_host_protocol.h"
-#include "zectrix_host_books.h"
+#include "note4_cli_diagnostics.h"
+#include "note4_host_protocol.h"
+#include "note4_host_books.h"
 
 #include <atomic>
 #include <chrono>
@@ -13,34 +13,34 @@ namespace {
 std::atomic<bool> stopped{false};
 void Stop(int) { stopped.store(true); }
 
-class Settings final : public zectrix::host::Settings {
+class Settings final : public note4::host::Settings {
 public:
-    zectrix::host::Status Get(zectrix::host::Setting key, uint32_t* value) override {
+    note4::host::Status Get(note4::host::Setting key, uint32_t* value) override {
         *value = values[static_cast<unsigned>(key)];
-        return zectrix::host::Status::Ok;
+        return note4::host::Status::Ok;
     }
-    zectrix::host::Status Set(zectrix::host::Setting key, uint32_t value) override {
+    note4::host::Status Set(note4::host::Setting key, uint32_t value) override {
         const auto index = static_cast<unsigned>(key);
-        if (value > (index == 2 ? 2u : 1u)) return zectrix::host::Status::Invalid;
+        if (value > (index == 2 ? 2u : 1u)) return note4::host::Status::Invalid;
         values[index] = value;
-        return zectrix::host::Status::Ok;
+        return note4::host::Status::Ok;
     }
     uint32_t values[3]{};
 };
 
-class Diagnostics final : public zectrix::cli::ControlOwner {
+class Diagnostics final : public note4::cli::ControlOwner {
 public:
     bool IsCurrentTaskOwner() const override { return true; }
     void Wake() override {}
-    zectrix::cli::ControlStatus Inspect(const zectrix::cli::ControlRequest&, zectrix::cli::ControlResult*) override {
-        return zectrix::cli::ControlStatus::kUnavailable;
+    note4::cli::ControlStatus Inspect(const note4::cli::ControlRequest&, note4::cli::ControlResult*) override {
+        return note4::cli::ControlStatus::kUnavailable;
     }
 };
 }
 
 int main(int argc, char** argv) {
     if (argc != 2) { std::fprintf(stderr, "Usage: usb-manager-host BOOK_DIRECTORY\n"); return 2; }
-    using namespace zectrix;
+    using namespace note4;
     std::signal(SIGTERM, Stop);
     std::signal(SIGINT, Stop);
     std::signal(SIGHUP, Stop);

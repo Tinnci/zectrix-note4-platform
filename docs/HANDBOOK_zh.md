@@ -2,7 +2,7 @@
 
 [English](HANDBOOK.md) | 简体中文
 
-适用于 Note4 Open Platform **v1.2.0**，这是面向黑白 Note4 的独立社区固件：
+适用于 Note4 Open Platform **v2.0.0**，这是面向黑白 Note4 的独立社区固件：
 ESP32-S3、16 MiB Flash、8 MiB 八线 PSRAM、400×300 SSD2683 墨水屏。
 NOTE4C 的硬件不同，不适用本固件。本项目不提供厂商固件或云服务。
 
@@ -10,6 +10,9 @@ NOTE4C 的硬件不同，不适用本固件。本项目不提供厂商固件或�
 
 插图来自固件渲染预览，日期、书籍和电量为示例。下载版 HTML 手册内嵌图片，
 可以离线阅读，也可以通过浏览器打印。
+
+
+> v2.0.0 尚未发布；以下归档名称为发布示例。迁移现有开发环境请参见 [v2 迁移指南](NOTE4_MIGRATION.md)。
 
 [TOC]
 
@@ -26,9 +29,9 @@ NOTE4C 的硬件不同，不适用本固件。本项目不提供厂商固件或�
 从 [GitHub Releases](https://github.com/Tinnci/zectrix-note4-platform/releases)
 下载。首次安装 Full 时，准备这些文件：
 
-- `zectrix-note4-v1.2.0-full.zip`：完整的分段固件。
-- `zectrix-note4-v1.2.0-host-tools.zip`：USB 传输与应用打包工具。
-- `zectrix-note4-v1.2.0-library-init.zip`：可选的首次书库初始化包。
+- `note4-v2.0.0-full.zip`：完整的分段固件。
+- `note4-v2.0.0-host-tools.zip`：USB 传输与应用打包工具。
+- `note4-v2.0.0-library-init.zip`：可选的首次书库初始化包。
 - `SHA256SUMS`：发布文件校验列表。
 
 其他配置选择对应的 `reader.zip` 或 `minimal.zip`。单独的 `*-app.bin` 用于
@@ -276,7 +279,7 @@ ZIP、示例应用、离线手册和 `SHA256SUMS`，不会刷写设备。矩阵�
 
 Full/Reader 可以通过串口终端执行 `help`、`sysinfo`、`system health`、
 `display status`、`display telemetry`。打开串口监视器前先关闭 USB 管理的
-电脑端客户端。硬件由平台服务管理，应用使用 [SDK](SDK_V1.md)。
+电脑端客户端。硬件由平台服务管理，应用使用 [SDK](SDK_V2.md)。
 [架构](ARCHITECTURE.md)保留单一前台所有者、延后处理的 SceneManager 转场
 和有裁剪边界的 ViewPort 绘制。
 
@@ -284,7 +287,7 @@ Full/Reader 可以通过串口终端执行 `help`、`sysinfo`、`system health`�
 局域网传书与休眠画面，以及
 [Flipper Zero SceneManager/ViewPort](https://github.com/flipperdevices/flipperzero-firmware/tree/dev/applications/services/gui)
 为本项目提供设计参考，具体功能由 Note4 独立实现。参见
-[参考研究](FIRMWARE_UI_STUDY.md)与[版本说明](releases/v1.2.0.md)。
+[参考研究](FIRMWARE_UI_STUDY.md)与[版本说明](releases/v2.0.0.md)。
 
 Host 测试与编译验证软件行为。物理 NFC/BLE 兼容性、断电 OTA 回滚、显示质量、
 RTC 断电保持和待机电流各有独立[验收记录](qualification/C2.1-COMPANION-INTEGRATION.md)。

@@ -1,4 +1,4 @@
-#include "zectrix_wifi_http.h"
+#include "note4_wifi_http.h"
 #include "esp_http_client.h"
 
 #include <algorithm>
@@ -7,7 +7,7 @@
 #include <cstring>
 #include <string>
 
-using namespace zectrix::connectivity;
+using namespace note4::connectivity;
 static int64_t clock_us = 1234567;
 int64_t esp_timer_get_time() { return clock_us; }
 
@@ -71,7 +71,7 @@ esp_err_t esp_transport_set_func(esp_transport_handle_t transport,
 }
 
 esp_http_client_handle_t esp_http_client_init(const esp_http_client_config_t* config) {
-    assert(std::strcmp(config->url, "https://zectrix.com/robots.txt") == 0);
+    assert(std::strcmp(config->url, "https://raw.githubusercontent.com/Tinnci/zectrix-note4-platform/main/version.txt") == 0);
     assert(config->is_async && config->disable_auto_redirect);
     assert(config->max_authorization_retries < 0 && config->buffer_size <= 512);
     ++live_clients;
@@ -86,9 +86,9 @@ esp_err_t esp_http_client_perform(esp_http_client_handle_t client) {
     ++perform_calls;
     const auto transport = client->transport;
     if (!client->sent) {
-        assert(transport->connect(transport, "zectrix.com", 443, 20) == 1);
+        assert(transport->connect(transport, "raw.githubusercontent.com", 443, 20) == 1);
         assert(transport->connect(transport, "example.com", 443, 20) < 0);
-        const std::string request = "GET /robots.txt HTTP/1.1\r\nHost: zectrix.com\r\n" +
+        const std::string request = "GET /Tinnci/zectrix-note4-platform/main/version.txt HTTP/1.1\r\nHost: raw.githubusercontent.com\r\n" +
             client->headers + "\r\n";
         assert(transport->write(transport, request.data(), 17, 20) == 17);
         const auto rest = static_cast<int>(request.size() - 17);
@@ -255,11 +255,11 @@ void TestNonBlockingClientAndReuse() {
             scenario == 4 ? WifiDriverResult::kResponseTooLarge : WifiDriverResult::kTransferFailure;
         assert(result == expected);
         assert(size == (scenario < 2 ? 1500 : 0));
-        zectrix::time::TimeSample sample;
+        note4::time::TimeSample sample;
         assert(client.ClockSample(&sample) == (scenario < 2));
         if (scenario < 2) assert(sample.received_us < clock_us && sample.unix_ms == 1709179200000);
         if (scenario != 3) {
-            assert(stream.request.find("GET /robots.txt HTTP/1.1\r\n") == 0);
+            assert(stream.request.find("GET /Tinnci/zectrix-note4-platform/main/version.txt HTTP/1.1\r\n") == 0);
             assert(stream.request.find("GET ", 1) == std::string::npos);
             assert(stream.request.find("Accept: text/plain\r\n") != std::string::npos);
             assert(stream.request.find("Accept-Encoding: identity\r\n") != std::string::npos);
@@ -287,13 +287,13 @@ void TestDateHints() {
         if (mode == 5) header += "Age: invalid\r\n";
         header += mode == 6 ? "Transfer-Encoding: chunked\r\n\r\n" : "Content-Length: 3\r\n\r\n";
         assert(response.Feed(reinterpret_cast<const uint8_t*>(header.data()), header.size(), 1234) == WifiDriverResult::kPending);
-        zectrix::time::TimeSample sample;
+        note4::time::TimeSample sample;
         assert(!response.ClockSample(&sample));
         const auto payload = mode == 6 ? "3\r\nok\n\r\n0\r\n" + date + "\r\n" : std::string("ok\n");
         assert(response.Feed(reinterpret_cast<const uint8_t*>(payload.data()), payload.size(), 9999999) == WifiDriverResult::kReady);
         assert(response.ClockSample(&sample) == (mode == 0));
         if (mode == 0) assert(sample.received_us == 1234 && !sample.has_offset &&
-            sample.source == zectrix::time::SyncSource::HttpsDate);
+            sample.source == note4::time::SyncSource::HttpsDate);
     }
 }
 

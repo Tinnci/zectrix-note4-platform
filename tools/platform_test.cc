@@ -1,11 +1,11 @@
-#include "zectrix_platform.h"
+#include "note4_platform.h"
 #include <cstring>
 #include "sdkconfig.h"
-#include "zectrix_boot_esp.h"
-#include "zectrix_health_esp.h"
-#include "zectrix_board.h"
-#if CONFIG_ZECTRIX_ENABLE_USB_HOST
-#include "zectrix_host_channel.h"
+#include "note4_boot_esp.h"
+#include "note4_health_esp.h"
+#include "note4_board.h"
+#if CONFIG_NOTE4_ENABLE_USB_HOST
+#include "note4_host_channel.h"
 #endif
 
 #include <algorithm>
@@ -15,28 +15,28 @@
 #include <string>
 #include <vector>
 
-#include "zectrix_display_service.h"
-#if CONFIG_ZECTRIX_ENABLE_USB_CLI
-#include "zectrix_cli_usb.h"
-#include "zectrix_cli_diagnostics.h"
+#include "note4_display_service.h"
+#if CONFIG_NOTE4_ENABLE_USB_CLI
+#include "note4_cli_usb.h"
+#include "note4_cli_diagnostics.h"
 #endif
-namespace zectrix::cli { class CliUsbService; }
+namespace note4::cli { class CliUsbService; }
 #include "freertos/task.h"
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
-#include "zectrix_connectivity_service.h"
-#include "zectrix_nfc_service.h"
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
+#include "note4_connectivity_service.h"
+#include "note4_nfc_service.h"
 #endif
-#include "zectrix_input_service.h"
-#include "zectrix_power_service.h"
-#include "zectrix_storage_service.h"
-#include "zectrix_system_service.h"
-#include "zectrix_time_service.h"
-#if CONFIG_ZECTRIX_ENABLE_UPDATE
-#include "zectrix_update_esp.h"
+#include "note4_input_service.h"
+#include "note4_power_service.h"
+#include "note4_storage_service.h"
+#include "note4_system_service.h"
+#include "note4_time_service.h"
+#if CONFIG_NOTE4_ENABLE_UPDATE
+#include "note4_update_esp.h"
 #endif
 #include "update_test_fixture.h"
 
-class ZectrixNfc {};
+class Note4Nfc {};
 
 namespace {
 struct SleepEntered {};
@@ -44,12 +44,12 @@ std::vector<std::string> events;
 std::string fail_at;
 int nothrow_allocation_count = 0;
 int fail_nothrow_allocation = 0;
-#if CONFIG_ZECTRIX_ENABLE_USB_CLI
-zectrix::cli::CliExecutor* cli_executor = nullptr;
+#if CONFIG_NOTE4_ENABLE_USB_CLI
+note4::cli::CliExecutor* cli_executor = nullptr;
 #endif
 unsigned inspections = 0;
 unsigned time_polls = 0;
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
 bool pending_clock_sample = false;
 #endif
 int64_t applied_clock_ms = 0;
@@ -57,32 +57,32 @@ bool boot_watchdog_armed = false;
 uint32_t watchdog_timeout_ms = 0;
 uint64_t health_now_ms = 0;
 unsigned health_feeds = 0;
-zectrix::system::ResetReason reset_reason = zectrix::system::ResetReason::PowerOn;
+note4::system::ResetReason reset_reason = note4::system::ResetReason::PowerOn;
 bool pending_boot = false;
 bool scheduled_wake = false;
 uint64_t shutdown_timer_us = 0;
 bool boot_confirmed = false;
 unsigned boot_probe_count = 0;
-const zectrix::ServiceRegistry* inspected_registry = nullptr;
+const note4::ServiceRegistry* inspected_registry = nullptr;
 
 template <typename Interface>
 void AssertWithdrawn() {
     if (inspected_registry) assert(!inspected_registry->Get<Interface>());
 }
 
-void AssertNoServices(const zectrix::Platform& platform) {
+void AssertNoServices(const note4::Platform& platform) {
     const auto& registry = platform.Services();
-    assert(!registry.Get<zectrix::display::DisplayService>());
-    assert(!registry.Get<zectrix::input::InputService>());
-    assert(!registry.Get<zectrix::power::PowerService>());
-    assert(!registry.Get<zectrix::time::TimeService>());
-    assert(!registry.Get<zectrix::storage::StorageService>());
-    assert(!registry.Get<zectrix::system::SystemService>());
-    assert(!registry.Get<zectrix::connectivity::ConnectivityService>());
-    assert(!registry.Get<zectrix::update::UpdateService>());
-    assert(!registry.Get<zectrix::update::BootGuard>());
-    assert(!registry.Get<zectrix::cli::CliUsbService>());
-    assert(!registry.Get<ZectrixSelfTest>());
+    assert(!registry.Get<note4::display::DisplayService>());
+    assert(!registry.Get<note4::input::InputService>());
+    assert(!registry.Get<note4::power::PowerService>());
+    assert(!registry.Get<note4::time::TimeService>());
+    assert(!registry.Get<note4::storage::StorageService>());
+    assert(!registry.Get<note4::system::SystemService>());
+    assert(!registry.Get<note4::connectivity::ConnectivityService>());
+    assert(!registry.Get<note4::update::UpdateService>());
+    assert(!registry.Get<note4::update::BootGuard>());
+    assert(!registry.Get<note4::cli::CliUsbService>());
+    assert(!registry.Get<Note4SelfTest>());
 }
 esp_err_t Result(const char* name) {
     events.emplace_back(std::string("create:") + name);
@@ -102,15 +102,15 @@ void operator delete(void* pointer, const std::nothrow_t&) noexcept {
 
 const char* esp_err_to_name(esp_err_t) { return "host-error"; }
 
-esp_err_t ZectrixBoard::Init() {
+esp_err_t Note4Board::Init() {
     assert(boot_probe_count != 0);
-    if (inspected_registry) assert(inspected_registry->Get<zectrix::update::BootGuard>());
+    if (inspected_registry) assert(inspected_registry->Get<note4::update::BootGuard>());
     events.emplace_back("init:board");
     return init_result;
 }
 
-namespace zectrix::update {
-#if CONFIG_ZECTRIX_ENABLE_UPDATE
+namespace note4::update {
+#if CONFIG_NOTE4_ENABLE_UPDATE
 EspUpdateBackend::~EspUpdateBackend() { AbortImage(); }
 #endif
 Result EspBootBackend::ReadBootInfo(BootInfo* info) {
@@ -133,7 +133,7 @@ Result EspBootBackend::ConfirmRunningImage(const Partition&) {
     boot_confirmed = true;
     return Result::kOk;
 }
-#if CONFIG_ZECTRIX_ENABLE_UPDATE
+#if CONFIG_NOTE4_ENABLE_UPDATE
 Result EspUpdateBackend::BeginImage(const Partition&, uint32_t, const uint8_t*, std::size_t) {
     return Result::kInvalidState;
 }
@@ -145,8 +145,8 @@ void EspUpdateBackend::AbortImage() {}
 
 [[noreturn]] void esp_restart() { events.emplace_back("reboot"); throw SleepEntered{}; }
 
-namespace zectrix::input {
-esp_err_t InputService::Attach(ZectrixBoard& board, InputService** output) {
+namespace note4::input {
+esp_err_t InputService::Attach(Note4Board& board, InputService** output) {
     const esp_err_t result = Result("input");
     if (result == ESP_OK) *output = new InputService(board);
     return result;
@@ -159,8 +159,8 @@ void InputService::SetWaitHook(WaitHook hook, void* context) {
 void InputService::WakeWait() { board_->WakeButtonWait(); }
 TraceBatch InputService::ReadTrace(uint64_t cursor) const { TraceBatch result; result.cursor = cursor ? cursor : 1; return result; }
 }
-namespace zectrix::power {
-esp_err_t PowerService::Attach(ZectrixBoard& board, PowerService** output) {
+namespace note4::power {
+esp_err_t PowerService::Attach(Note4Board& board, PowerService** output) {
     const esp_err_t result = Result("power");
     if (result == ESP_OK) *output = new PowerService(board);
     return result;
@@ -182,8 +182,8 @@ bool PowerService::IsScheduledWake() const { return scheduled_wake; }
     throw SleepEntered{};
 }
 }
-namespace zectrix::time {
-esp_err_t TimeService::Attach(ZectrixBoard& board, TimeService** output) {
+namespace note4::time {
+esp_err_t TimeService::Attach(Note4Board& board, TimeService** output) {
     const esp_err_t result = Result("time");
     if (result == ESP_OK) *output = new TimeService(board);
     return result;
@@ -210,7 +210,7 @@ esp_err_t TimeService::SetUnixTime(int64_t milliseconds, int32_t offset) {
 }
 int64_t TimeService::MonotonicMicroseconds() const { ++inspections; return 1234000; }
 }
-namespace zectrix::storage {
+namespace note4::storage {
 struct StorageService::Impl {};
 esp_err_t StorageService::Create(StorageService** output) {
     const esp_err_t result = Result("storage");
@@ -226,7 +226,7 @@ StorageService::~StorageService() {
     events.emplace_back("delete:storage");
 }
 }
-namespace zectrix::system {
+namespace note4::system {
 uint64_t EspHealthWatchdog::Milliseconds() const { return health_now_ms; }
 esp_err_t EspHealthWatchdog::Arm(uint32_t timeout_ms) {
     assert(!boot_watchdog_armed && timeout_ms == kForegroundWatchdogMs);
@@ -237,7 +237,7 @@ esp_err_t EspHealthWatchdog::Arm(uint32_t timeout_ms) {
 }
 void EspHealthWatchdog::Feed() { assert(boot_watchdog_armed); ++health_feeds; }
 void EspHealthWatchdog::Disarm() { boot_watchdog_armed = false; }
-esp_err_t SystemService::Attach(ZectrixBoard& board, SystemService** output) {
+esp_err_t SystemService::Attach(Note4Board& board, SystemService** output) {
     const esp_err_t result = Result("system");
     if (result == ESP_OK) *output = new SystemService(board);
     return result;
@@ -260,7 +260,7 @@ esp_err_t SystemService::ReadTasks(TaskSnapshot* result) const {
     return ESP_OK;
 }
 }
-namespace zectrix::display {
+namespace note4::display {
 esp_err_t DisplayService::Create(DisplayService** output) {
     const esp_err_t result = Result("display");
     if (result == ESP_OK) *output = new DisplayService(nullptr);
@@ -273,9 +273,9 @@ esp_err_t DisplayService::ReadInspection(DisplayInspection* result) const {
     return ESP_OK;
 }
 }
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
-namespace zectrix::nfc {
-esp_err_t NfcService::Attach(ZectrixNfc& nfc, NfcService** output) {
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
+namespace note4::nfc {
+esp_err_t NfcService::Attach(Note4Nfc& nfc, NfcService** output) {
     events.emplace_back("create:nfc");
     *output = new NfcService(nfc);
     return ESP_OK;
@@ -283,7 +283,7 @@ esp_err_t NfcService::Attach(ZectrixNfc& nfc, NfcService** output) {
 NfcService::~NfcService() { events.emplace_back("delete:nfc"); }
 }
 
-namespace zectrix::connectivity {
+namespace note4::connectivity {
 struct ConnectivityService::Impl {};
 void ConnectivityService::SetNfcService(nfc::NfcService*) {}
 void ConnectivityService::SetStorageService(storage::StorageService*) {}
@@ -333,13 +333,13 @@ ConnectivityService::~ConnectivityService() {
 
 #endif
 
-#if CONFIG_ZECTRIX_ENABLE_USB_CLI
-namespace zectrix::cli {
+#if CONFIG_NOTE4_ENABLE_USB_CLI
+namespace note4::cli {
 CliUsbService::CliUsbService() = default;
 CliUsbService::~CliUsbService() { AssertWithdrawn<CliUsbService>(); events.emplace_back("delete:cli"); }
 esp_err_t CliUsbService::Start(CliExecutor* executor) {
     assert(executor != nullptr);
-    assert((executor->BinarySession() != nullptr) == (CONFIG_ZECTRIX_ENABLE_USB_HOST != 0));
+    assert((executor->BinarySession() != nullptr) == (CONFIG_NOTE4_ENABLE_USB_HOST != 0));
     cli_executor = executor;
     return Result("cli");
 }
@@ -353,12 +353,12 @@ LogBuffer& MaintenanceLogs() { static LogBuffer logs; return logs; }
 void TestMaintenanceReset() {
     for (const char* failure : {"", "wipe", "stop-connectivity"}) {
         fail_at.clear();
-        zectrix::Platform platform;
+        note4::Platform platform;
         assert(platform.Initialize() == ESP_OK);
         events.clear();
         fail_at = failure;
         const auto result = platform.ResetUserData(true);
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
         assert(events[0] == "stop:connectivity");
         if (fail_at == "stop-connectivity") {
             assert(result == ESP_ERR_INVALID_STATE && events.size() == 1);
@@ -380,9 +380,9 @@ void TestMaintenanceReset() {
 void TestUnsetClockDoesNotBlockStartup() {
     fail_at = "rtc-restore";
     {
-        zectrix::Platform platform;
+        note4::Platform platform;
         assert(platform.Initialize() == ESP_OK);
-        assert(platform.Services().Get<zectrix::time::TimeService>());
+        assert(platform.Services().Get<note4::time::TimeService>());
         platform.Poll();
     }
     fail_at.clear();
@@ -396,10 +396,10 @@ void TestCalendarWake() {
         events.clear();
         pending_boot = trial;
         {
-            zectrix::Platform platform;
+            note4::Platform platform;
             assert(platform.Initialize() == ESP_OK);
             const auto initialized = std::count(events.begin(), events.end(), "create:connectivity-init");
-            assert(initialized == (trial && CONFIG_ZECTRIX_ENABLE_CONNECTIVITY ? 1 : 0));
+            assert(initialized == (trial && CONFIG_NOTE4_ENABLE_CONNECTIVITY ? 1 : 0));
             assert(platform.Boot().ReadBootStatus().confirmation_pending == trial);
             if (!trial) {
                 try { platform.Shutdown(90000000); } catch (const SleepEntered&) {}
@@ -417,32 +417,32 @@ void TestCalendarWake() {
 
 void TestDegradedStorageAndHealth() {
     fail_at = "storage-init";
-    reset_reason = zectrix::system::ResetReason::Watchdog;
+    reset_reason = note4::system::ResetReason::Watchdog;
     {
-        zectrix::Platform platform;
+        note4::Platform platform;
         assert(platform.Initialize() == ESP_OK);
         const auto health = platform.Health().Snapshot();
         assert(health.storage_error == ESP_FAIL && health.recovery_boot && health.watchdog_armed);
         assert(!platform.Health().AutomaticAppsAllowed());
-        assert(platform.Services().Get<zectrix::storage::StorageService>());
+        assert(platform.Services().Get<note4::storage::StorageService>());
         assert(std::count(events.begin(), events.end(), "create:connectivity-init") == 0);
-        assert((platform.Services().Get<zectrix::connectivity::ConnectivityService>() != nullptr) ==
-               (CONFIG_ZECTRIX_ENABLE_CONNECTIVITY != 0));
+        assert((platform.Services().Get<note4::connectivity::ConnectivityService>() != nullptr) ==
+               (CONFIG_NOTE4_ENABLE_CONNECTIVITY != 0));
         const auto feeds = health_feeds;
         platform.Poll();
         platform.PollMaintenance();
         assert(health_feeds == feeds);
         assert(platform.Health().CompleteForeground(0, 1) == false && health_feeds == feeds + 1);
-        assert(platform.ConfirmBoot() == zectrix::update::Result::kOk);
-        assert(boot_watchdog_armed && watchdog_timeout_ms == zectrix::system::kForegroundWatchdogMs);
+        assert(platform.ConfirmBoot() == note4::update::Result::kOk);
+        assert(boot_watchdog_armed && watchdog_timeout_ms == note4::system::kForegroundWatchdogMs);
         try { platform.Shutdown(); } catch (const SleepEntered&) {}
         assert(!boot_watchdog_armed);
     }
     fail_at.clear();
-    for (const auto reason : {zectrix::system::ResetReason::Panic, zectrix::system::ResetReason::Watchdog}) {
+    for (const auto reason : {note4::system::ResetReason::Panic, note4::system::ResetReason::Watchdog}) {
         events.clear();
         reset_reason = reason;
-        zectrix::Platform platform;
+        note4::Platform platform;
         assert(platform.Initialize() == ESP_OK);
         assert(platform.Health().Snapshot().storage_error == ESP_OK);
         assert(platform.Health().Snapshot().recovery_boot && !platform.Health().AutomaticAppsAllowed());
@@ -450,29 +450,29 @@ void TestDegradedStorageAndHealth() {
     }
     fail_at = "health";
     {
-        zectrix::Platform platform;
+        note4::Platform platform;
         assert(platform.Initialize() == ESP_FAIL);
         AssertNoServices(platform);
     }
     fail_at = "confirm";
     pending_boot = true;
     {
-        zectrix::Platform platform;
+        note4::Platform platform;
         assert(platform.Initialize() == ESP_OK);
         assert(!platform.Health().Snapshot().watchdog_armed);
         platform.Health().Progress();
-        assert(platform.ConfirmBoot() == zectrix::update::Result::kIoError);
+        assert(platform.ConfirmBoot() == note4::update::Result::kIoError);
         assert(!boot_confirmed && boot_watchdog_armed && watchdog_timeout_ms == 60000);
     }
     assert(boot_watchdog_armed);
     pending_boot = false;
-    reset_reason = zectrix::system::ResetReason::PowerOn;
+    reset_reason = note4::system::ResetReason::PowerOn;
     fail_at.clear();
     events.clear();
     inspections = time_polls = 0;
 }
 
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY && CONFIG_ZECTRIX_ENABLE_USB_CLI && CONFIG_ZECTRIX_ENABLE_UPDATE
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY && CONFIG_NOTE4_ENABLE_USB_CLI && CONFIG_NOTE4_ENABLE_UPDATE
 int main() {
     host_current_task = reinterpret_cast<void*>(1);
     TestUnsetClockDoesNotBlockStartup();
@@ -480,7 +480,7 @@ int main() {
     TestMaintenanceReset();
     TestDegradedStorageAndHealth();
     {
-        zectrix::Platform platform;
+        note4::Platform platform;
         inspected_registry = &platform.Services();
         assert(!platform.IsInitialized());
         AssertNoServices(platform);
@@ -496,54 +496,54 @@ int main() {
         (void)platform.Connectivity();
         (void)platform.Update();
         const auto& registry = platform.Services();
-        assert(&registry == inspected_registry && registry.size() == 11 + CONFIG_ZECTRIX_ENABLE_USB_HOST);
+        assert(&registry == inspected_registry && registry.size() == 11 + CONFIG_NOTE4_ENABLE_USB_HOST);
         // These lookups compile in another translation unit than registration.
-        assert(registry.Get<zectrix::display::DisplayService>() == &platform.Display());
-        assert(registry.Get<zectrix::input::InputService>() == &platform.Input());
-        assert(registry.Get<zectrix::power::PowerService>() == &platform.Power());
-        assert(registry.Get<zectrix::time::TimeService>() == &platform.Time());
-        assert(registry.Get<zectrix::storage::StorageService>() == &platform.Storage());
-        assert(registry.Get<zectrix::system::SystemService>() == &platform.System());
-        assert(registry.Get<zectrix::connectivity::ConnectivityService>() == &platform.Connectivity());
-        assert(registry.Get<zectrix::update::UpdateService>() == &platform.Update());
-        assert(registry.Get<zectrix::update::BootGuard>() == &platform.Boot());
+        assert(registry.Get<note4::display::DisplayService>() == &platform.Display());
+        assert(registry.Get<note4::input::InputService>() == &platform.Input());
+        assert(registry.Get<note4::power::PowerService>() == &platform.Power());
+        assert(registry.Get<note4::time::TimeService>() == &platform.Time());
+        assert(registry.Get<note4::storage::StorageService>() == &platform.Storage());
+        assert(registry.Get<note4::system::SystemService>() == &platform.System());
+        assert(registry.Get<note4::connectivity::ConnectivityService>() == &platform.Connectivity());
+        assert(registry.Get<note4::update::UpdateService>() == &platform.Update());
+        assert(registry.Get<note4::update::BootGuard>() == &platform.Boot());
         assert(&platform.Boot() == &platform.Update().Boot());
-        assert(registry.Get<ZectrixSelfTest>() == &platform.Diagnostics());
-        assert(registry.Get<zectrix::cli::CliUsbService>());
-        assert(!registry.Get<zectrix::nfc::NfcService>());
+        assert(registry.Get<Note4SelfTest>() == &platform.Diagnostics());
+        assert(registry.Get<note4::cli::CliUsbService>());
+        assert(!registry.Get<note4::nfc::NfcService>());
         assert(boot_watchdog_armed && platform.Health().Snapshot().watchdog_armed);
         assert((events == std::vector<std::string>{
             "init:board", "create:input", "create:power",
             "create:storage", "create:storage-init", "create:time", "init:time", "create:system",
             "create:display", "create:connectivity",
             "create:connectivity-init", "create:cli"}));
-        zectrix::cli::Invocation invocation;
-        zectrix::cli::BoundedOutput output;
+        note4::cli::Invocation invocation;
+        note4::cli::BoundedOutput output;
         inspections = 0;
-        assert(zectrix::cli::ParseLine("uptime", 6, &invocation) == zectrix::cli::ParseStatus::kOk);
-        assert(cli_executor->Execute(invocation, &output) == zectrix::cli::ExecuteStatus::kPending);
+        assert(note4::cli::ParseLine("uptime", 6, &invocation) == note4::cli::ParseStatus::kOk);
+        assert(cli_executor->Execute(invocation, &output) == note4::cli::ExecuteStatus::kPending);
         assert(inspections == 0);
         host_current_task = reinterpret_cast<void*>(2);
         platform.PollMaintenance();
         assert(inspections == 0);
         host_current_task = reinterpret_cast<void*>(1);
         platform.PollMaintenance();
-        assert(cli_executor->Poll(&output) == zectrix::cli::ExecuteStatus::kOk);
+        assert(cli_executor->Poll(&output) == note4::cli::ExecuteStatus::kOk);
         assert(inspections == 1);
         assert(std::string(output.data()).find("1234 ms") != std::string::npos);
         const auto query = [&](const char* command) {
             output.Clear();
-            assert(zectrix::cli::ParseLine(command, std::strlen(command), &invocation) == zectrix::cli::ParseStatus::kOk);
-            assert(cli_executor->Execute(invocation, &output) == zectrix::cli::ExecuteStatus::kPending);
+            assert(note4::cli::ParseLine(command, std::strlen(command), &invocation) == note4::cli::ParseStatus::kOk);
+            assert(cli_executor->Execute(invocation, &output) == note4::cli::ExecuteStatus::kPending);
             platform.PollMaintenance();
             std::string text;
-            auto state = zectrix::cli::ExecuteStatus::kPending;
-            for (unsigned i = 0; state == zectrix::cli::ExecuteStatus::kPending && i < 20; ++i) {
+            auto state = note4::cli::ExecuteStatus::kPending;
+            for (unsigned i = 0; state == note4::cli::ExecuteStatus::kPending && i < 20; ++i) {
                 output.Clear();
                 state = cli_executor->Poll(&output);
                 text += output.data();
             }
-            assert(state == zectrix::cli::ExecuteStatus::kOk);
+            assert(state == note4::cli::ExecuteStatus::kOk);
             return text;
         };
         platform.Power().ReadSnapshot();
@@ -554,26 +554,26 @@ int main() {
         assert(query("time status").find("unix_seconds=1709179200") != std::string::npos);
         assert(query("connectivity status").find("ssid=bad?ssid") != std::string::npos);
         fail_at = "snapshot-busy";
-        assert(zectrix::cli::ParseLine("connectivity status", 19, &invocation) == zectrix::cli::ParseStatus::kOk);
-        assert(cli_executor->Execute(invocation, &output) == zectrix::cli::ExecuteStatus::kPending);
+        assert(note4::cli::ParseLine("connectivity status", 19, &invocation) == note4::cli::ParseStatus::kOk);
+        assert(cli_executor->Execute(invocation, &output) == note4::cli::ExecuteStatus::kPending);
         platform.PollMaintenance();
-        assert(cli_executor->Poll(&output) == zectrix::cli::ExecuteStatus::kBusy);
+        assert(cli_executor->Poll(&output) == note4::cli::ExecuteStatus::kBusy);
         fail_at.clear();
         pending_clock_sample = true;
         platform.Poll();
         assert(time_polls == 1 && applied_clock_ms == 1709179200123 && !pending_clock_sample);
-#if CONFIG_ZECTRIX_ENABLE_USB_HOST
-        auto* host = registry.Get<zectrix::host::Channel>();
+#if CONFIG_NOTE4_ENABLE_USB_HOST
+        auto* host = registry.Get<note4::host::Channel>();
         assert(host && !host->Connect());
         host->Enable();
         assert(host->Connect());
 #endif
         platform.StopMaintenance();
-#if CONFIG_ZECTRIX_ENABLE_USB_HOST
+#if CONFIG_NOTE4_ENABLE_USB_HOST
         assert(!host->Session() && !host->Connect());
 #endif
         output.Clear();
-        assert(cli_executor->Execute(invocation, &output) == zectrix::cli::ExecuteStatus::kUnavailable);
+        assert(cli_executor->Execute(invocation, &output) == note4::cli::ExecuteStatus::kUnavailable);
     }
     inspected_registry = nullptr;
     assert((events == std::vector<std::string>{
@@ -586,9 +586,9 @@ int main() {
 
     events.clear();
     {
-        ZectrixNfc nfc;
-        ZectrixBoard::nfc_device = &nfc;
-        zectrix::Platform platform;
+        Note4Nfc nfc;
+        Note4Board::nfc_device = &nfc;
+        note4::Platform platform;
         inspected_registry = &platform.Services();
         assert(platform.Initialize() == ESP_OK);
         events.clear();
@@ -601,7 +601,7 @@ int main() {
             "delete:cli", "delete:connectivity", "delete:nfc", "delete:display",
             "delete:system", "delete:time", "delete:storage", "shutdown:power"}));
         assert(platform.Initialize() == ESP_ERR_INVALID_STATE);
-        ZectrixBoard::nfc_device = nullptr;
+        Note4Board::nfc_device = nullptr;
     }
     inspected_registry = nullptr;
     assert(events[events.size() - 2] == "delete:power" && events.back() == "delete:input");
@@ -609,7 +609,7 @@ int main() {
     events.clear();
     fail_at = "boot";
     {
-        zectrix::Platform failed_boot;
+        note4::Platform failed_boot;
         assert(failed_boot.Initialize() == ESP_FAIL);
         assert(events.empty());
         assert(boot_watchdog_armed);
@@ -619,18 +619,18 @@ int main() {
     fail_at = "system";
     pending_boot = true;
     {
-        zectrix::Platform failed_trial;
+        note4::Platform failed_trial;
         assert(failed_trial.Initialize() == ESP_FAIL);
         assert(!boot_confirmed);
     }
     assert(boot_watchdog_armed);
     fail_at.clear();
     {
-        zectrix::Platform trial;
+        note4::Platform trial;
         assert(trial.Initialize() == ESP_OK);
         assert(boot_watchdog_armed);
         assert(!boot_confirmed);
-        assert(trial.ConfirmBoot() == zectrix::update::Result::kOk);
+        assert(trial.ConfirmBoot() == note4::update::Result::kOk);
         assert(boot_confirmed);
         assert(boot_watchdog_armed && trial.Health().Snapshot().watchdog_armed);
     }
@@ -638,7 +638,7 @@ int main() {
 
     events.clear();
     fail_at = "system";
-    zectrix::Platform failed;
+    note4::Platform failed;
     assert(failed.Initialize() == ESP_FAIL);
     assert(!failed.IsInitialized());
     AssertNoServices(failed);
@@ -654,7 +654,7 @@ int main() {
     fail_at.clear();
     nothrow_allocation_count = 0;
     fail_nothrow_allocation = 1;
-    zectrix::Platform no_impl_memory;
+    note4::Platform no_impl_memory;
     assert(no_impl_memory.Initialize() == ESP_ERR_NO_MEM);
     assert(!no_impl_memory.IsInitialized());
     AssertNoServices(no_impl_memory);
@@ -665,7 +665,7 @@ int main() {
     events.clear();
     nothrow_allocation_count = 0;
     fail_nothrow_allocation = 2;
-    zectrix::Platform no_diagnostics_memory;
+    note4::Platform no_diagnostics_memory;
     assert(no_diagnostics_memory.Initialize() == ESP_ERR_NO_MEM);
     assert(!no_diagnostics_memory.IsInitialized());
     AssertNoServices(no_diagnostics_memory);
@@ -678,7 +678,7 @@ int main() {
 
     events.clear();
     fail_at = "cli";
-    zectrix::Platform failed_cli;
+    note4::Platform failed_cli;
     assert(failed_cli.Initialize() == ESP_FAIL);
     assert(!failed_cli.IsInitialized());
     AssertNoServices(failed_cli);
@@ -691,13 +691,13 @@ int main() {
         "delete:power", "delete:input"}));
 
     // Exercise every adapter failure with NFC already attached by the board.
-    ZectrixNfc nfc;
-    ZectrixBoard::nfc_device = &nfc;
+    Note4Nfc nfc;
+    Note4Board::nfc_device = &nfc;
     for (const char* failure : {"input", "power", "time", "storage",
                                "system", "display", "connectivity", "connectivity-init", "cli"}) {
         events.clear();
         fail_at = failure;
-        zectrix::Platform partial;
+        note4::Platform partial;
         inspected_registry = &partial.Services();
         assert(partial.Initialize() != ESP_OK);
         AssertNoServices(partial);
@@ -711,7 +711,7 @@ int main() {
         events.clear();
         nothrow_allocation_count = 0;
         fail_nothrow_allocation = allocation;
-        zectrix::Platform partial;
+        note4::Platform partial;
         inspected_registry = &partial.Services();
         assert(partial.Initialize() == ESP_ERR_NO_MEM);
         AssertNoServices(partial);
@@ -719,7 +719,7 @@ int main() {
         fail_nothrow_allocation = 0;
     }
     inspected_registry = nullptr;
-    ZectrixBoard::nfc_device = nullptr;
+    Note4Board::nfc_device = nullptr;
 }
 #else
 int main() {
@@ -728,25 +728,25 @@ int main() {
     TestCalendarWake();
     TestMaintenanceReset();
     TestDegradedStorageAndHealth();
-    ZectrixNfc nfc;
-    ZectrixBoard::nfc_device = &nfc;
+    Note4Nfc nfc;
+    Note4Board::nfc_device = &nfc;
     {
-        zectrix::Platform platform;
+        note4::Platform platform;
         inspected_registry = &platform.Services();
         AssertNoServices(platform);
         assert(platform.Initialize() == ESP_OK);
         const auto& registry = platform.Services();
-        assert(registry.Get<zectrix::update::BootGuard>() == &platform.Boot());
-        assert(registry.Get<zectrix::time::TimeService>() == &platform.Time());
-        assert(registry.Get<zectrix::display::DisplayService>() == &platform.Display());
-        assert((registry.Get<zectrix::connectivity::ConnectivityService>() != nullptr) ==
-               (CONFIG_ZECTRIX_ENABLE_CONNECTIVITY != 0));
-        assert((registry.Get<zectrix::cli::CliUsbService>() != nullptr) ==
-               (CONFIG_ZECTRIX_ENABLE_USB_CLI != 0));
-        assert((registry.Get<zectrix::update::UpdateService>() != nullptr) ==
-               (CONFIG_ZECTRIX_ENABLE_UPDATE != 0));
+        assert(registry.Get<note4::update::BootGuard>() == &platform.Boot());
+        assert(registry.Get<note4::time::TimeService>() == &platform.Time());
+        assert(registry.Get<note4::display::DisplayService>() == &platform.Display());
+        assert((registry.Get<note4::connectivity::ConnectivityService>() != nullptr) ==
+               (CONFIG_NOTE4_ENABLE_CONNECTIVITY != 0));
+        assert((registry.Get<note4::cli::CliUsbService>() != nullptr) ==
+               (CONFIG_NOTE4_ENABLE_USB_CLI != 0));
+        assert((registry.Get<note4::update::UpdateService>() != nullptr) ==
+               (CONFIG_NOTE4_ENABLE_UPDATE != 0));
         assert(boot_watchdog_armed && platform.Health().Snapshot().watchdog_armed);
-        assert(std::count(events.begin(), events.end(), "create:nfc") == CONFIG_ZECTRIX_ENABLE_CONNECTIVITY);
+        assert(std::count(events.begin(), events.end(), "create:nfc") == CONFIG_NOTE4_ENABLE_CONNECTIVITY);
         platform.Poll();
         platform.StopMaintenance();
         events.clear();
@@ -754,19 +754,19 @@ int main() {
         assert(!platform.IsInitialized());
         AssertNoServices(platform);
         assert(events.back() == "shutdown:power");
-        assert(std::count(events.begin(), events.end(), "delete:cli") == CONFIG_ZECTRIX_ENABLE_USB_CLI);
-        assert(std::count(events.begin(), events.end(), "delete:connectivity") == CONFIG_ZECTRIX_ENABLE_CONNECTIVITY);
-        assert(std::count(events.begin(), events.end(), "delete:nfc") == CONFIG_ZECTRIX_ENABLE_CONNECTIVITY);
+        assert(std::count(events.begin(), events.end(), "delete:cli") == CONFIG_NOTE4_ENABLE_USB_CLI);
+        assert(std::count(events.begin(), events.end(), "delete:connectivity") == CONFIG_NOTE4_ENABLE_CONNECTIVITY);
+        assert(std::count(events.begin(), events.end(), "delete:nfc") == CONFIG_NOTE4_ENABLE_CONNECTIVITY);
         assert(platform.Initialize() == ESP_ERR_INVALID_STATE);
     }
     inspected_registry = nullptr;
     assert(events[events.size() - 2] == "delete:power" && events.back() == "delete:input");
-    ZectrixBoard::nfc_device = nullptr;
+    Note4Board::nfc_device = nullptr;
 
     // Removing the update writer must not remove trial-boot protection.
     pending_boot = true;
     {
-        zectrix::Platform unconfirmed;
+        note4::Platform unconfirmed;
         assert(unconfirmed.Initialize() == ESP_OK);
         assert(boot_watchdog_armed && !boot_confirmed);
     }
@@ -774,23 +774,23 @@ int main() {
     events.clear();
     fail_at = "system";
     {
-        zectrix::Platform failed;
+        note4::Platform failed;
         assert(failed.Initialize() == ESP_FAIL);
         AssertNoServices(failed);
         assert(!boot_confirmed && boot_watchdog_armed);
     }
     fail_at.clear();
     {
-        zectrix::Platform trial;
+        note4::Platform trial;
         assert(trial.Initialize() == ESP_OK);
         assert(boot_watchdog_armed && !boot_confirmed);
-        assert(trial.ConfirmBoot() == zectrix::update::Result::kOk);
+        assert(trial.ConfirmBoot() == note4::update::Result::kOk);
         assert(boot_confirmed && boot_watchdog_armed && trial.Health().Snapshot().watchdog_armed);
     }
     events.clear();
     fail_at = "boot";
     {
-        zectrix::Platform failed;
+        note4::Platform failed;
         assert(failed.Initialize() == ESP_FAIL);
         assert(events.empty() && boot_watchdog_armed);
         AssertNoServices(failed);

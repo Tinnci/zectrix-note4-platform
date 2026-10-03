@@ -1,21 +1,21 @@
-#include "zectrix_locale.h"
+#include "note4_locale.h"
 #include "terminal_internal.h"
 
 #include <cstdio>
 #include <cstring>
 
 #include "esp_log.h"
-#include "zectrix_first_party_app_controllers.h"
+#include "note4_first_party_app_controllers.h"
 
-#include "zectrix_connectivity_service.h"
-#if CONFIG_ZECTRIX_ENABLE_READER
-#include "zectrix_reader_platform.h"
+#include "note4_connectivity_service.h"
+#if CONFIG_NOTE4_ENABLE_READER
+#include "note4_reader_platform.h"
 #endif
 
-using zectrix::i18n::Tr;
-using zectrix::i18n::Text;
+using note4::i18n::Tr;
+using note4::i18n::Text;
 
-namespace zectrix::terminal {
+namespace note4::terminal {
 
 class TerminalApp::ConnectivityApplication final : public sdk::Application {
 public:
@@ -37,7 +37,7 @@ public:
 
     sdk::Status HandleIdle(sdk::ApplicationContext& context) override {
         bool changed = false;
-        zectrix::connectivity::ResourceResponse response{};
+        note4::connectivity::ResourceResponse response{};
         if (owner_->connectivity_->TakeResourceResponse(&response)) {
             SetResourceStatus(response);
             changed = true;
@@ -53,27 +53,27 @@ public:
         if (current_state != displayed_state_) {
             displayed_state_ = current_state;
             if (current_state ==
-                    zectrix::connectivity::ConnectivityState::kSecure ||
+                    note4::connectivity::ConnectivityState::kSecure ||
                 current_state ==
-                    zectrix::connectivity::ConnectivityState::kLinkReady ||
-                current_state == zectrix::connectivity::
+                    note4::connectivity::ConnectivityState::kLinkReady ||
+                current_state == note4::connectivity::
                     ConnectivityState::kProtocolNegotiatedLocal) {
                 std::memset(passkey_, 0, sizeof(passkey_));
-                status_ = current_state == zectrix::connectivity::
+                status_ = current_state == note4::connectivity::
                                   ConnectivityState::kProtocolNegotiatedLocal
                               ? Tr(Text::HelloAccepted)
                               : current_state ==
-                                  zectrix::connectivity::ConnectivityState::kLinkReady
+                                  note4::connectivity::ConnectivityState::kLinkReady
                               ? Tr(Text::VerifyingPhone)
                               : Tr(Text::EnablingUpdates);
             } else if (current_state ==
-                       zectrix::connectivity::ConnectivityState::kPairing) {
+                       note4::connectivity::ConnectivityState::kPairing) {
                 status_ = Tr(Text::SelectNote4OnPhone);
             } else if (current_state ==
-                       zectrix::connectivity::ConnectivityState::kAdvertising) {
+                       note4::connectivity::ConnectivityState::kAdvertising) {
                 status_ = Tr(Text::PhoneCanReconnect);
             } else if (current_state ==
-                       zectrix::connectivity::ConnectivityState::kFault) {
+                       note4::connectivity::ConnectivityState::kFault) {
                 status_ = Tr(Text::BluetoothRestart);
             }
             changed = true;
@@ -175,34 +175,34 @@ private:
         }
         if (decision == Decision::StartPairing) {
             const auto result = owner_->connectivity_->StartLocalPairing();
-            status_ = result == zectrix::connectivity::ConnectivityResult::kOk
+            status_ = result == note4::connectivity::ConnectivityResult::kOk
                           ? Tr(Text::PairingOpen120)
                           : Tr(Text::PairingUnavailable);
         } else if (decision == Decision::FetchResource) {
-            zectrix::companion::ResourceRequestMessage request{};
+            note4::companion::ResourceRequestMessage request{};
             owner_->connectivity_->UpdatePower(owner_->power_->ReadSnapshot());
             const auto result =
                 owner_->connectivity_->RequestResource(request);
             if (result ==
-                zectrix::connectivity::ConnectivityResult::kOk) {
+                note4::connectivity::ConnectivityResult::kOk) {
                 status_ = Tr(Text::RequestingDocument);
             } else if (result ==
-                       zectrix::connectivity::ConnectivityResult::kBusy) {
+                       note4::connectivity::ConnectivityResult::kBusy) {
                 status_ = Tr(Text::ResourceBusy);
             } else {
                 status_ = Tr(Text::ResourceUnavailable);
             }
         } else if (decision == Decision::ClearBonds) {
             const auto result = owner_->connectivity_->ClearPeerBonds();
-            status_ = result == zectrix::connectivity::ConnectivityResult::kOk
+            status_ = result == note4::connectivity::ConnectivityResult::kOk
                           ? Tr(Text::PhoneForgotten)
                           : Tr(Text::DisconnectBeforeForget);
-#if CONFIG_ZECTRIX_ENABLE_READER
-            if (result == zectrix::connectivity::ConnectivityResult::kOk) {
-                zectrix::reader::PlatformBookmarkStore store(*owner_->storage_, *owner_->connectivity_);
-                zectrix::reader::Bookmarks bookmarks(store);
-                if (bookmarks.Load() != zectrix::reader::Result::Ok ||
-                    bookmarks.ResetPeer() != zectrix::reader::Result::Ok) {
+#if CONFIG_NOTE4_ENABLE_READER
+            if (result == note4::connectivity::ConnectivityResult::kOk) {
+                note4::reader::PlatformBookmarkStore store(*owner_->storage_, *owner_->connectivity_);
+                note4::reader::Bookmarks bookmarks(store);
+                if (bookmarks.Load() != note4::reader::Result::Ok ||
+                    bookmarks.ResetPeer() != note4::reader::Result::Ok) {
                     status_ = Tr(Text::PhoneResetReaderError);
                     ESP_LOGW(kTag, "reader phone cursor reset failed");
                 }
@@ -216,15 +216,15 @@ private:
     }
 
     void SetResourceStatus(
-        const zectrix::connectivity::ResourceResponse& response) {
-        using Status = zectrix::companion::ResourceStatus;
+        const note4::connectivity::ResourceResponse& response) {
+        using Status = note4::companion::ResourceStatus;
         switch (response.status) {
             case Status::kSuccess:
                 std::snprintf(
                     resource_status_, sizeof(resource_status_),
                     Tr(Text::FetchedBytes),
                     static_cast<unsigned>(response.body_size),
-                    response.path == zectrix::companion::ConnectivityPath::kDirectWifi
+                    response.path == note4::companion::ConnectivityPath::kDirectWifi
                         ? "WI-FI" : Tr(Text::Phone));
                 break;
             case Status::kPhoneUnavailable:
@@ -254,7 +254,7 @@ private:
             case Status::kNotAuthorized:
                 std::snprintf(resource_status_, sizeof(resource_status_),
                               "%s", response.path ==
-                                  zectrix::companion::ConnectivityPath::kDirectWifi
+                                  note4::companion::ConnectivityPath::kDirectWifi
                                   ? Tr(Text::WifiAuthFailed)
                                   : Tr(Text::PhoneAuthRequired));
                 break;
@@ -267,7 +267,7 @@ private:
                               "%s", Tr(Text::ResourceInvalid));
                 break;
         }
-        if (response.wifi_stop == zectrix::connectivity::WifiStopResult::kFailure) {
+        if (response.wifi_stop == note4::connectivity::WifiStopResult::kFailure) {
             std::snprintf(resource_status_, sizeof(resource_status_),
                           "%s", Tr(Text::WifiStopFailed));
         }
@@ -275,22 +275,22 @@ private:
     }
 
     static const char* StateText(
-        zectrix::connectivity::ConnectivityState state) {
+        note4::connectivity::ConnectivityState state) {
         switch (state) {
-            case zectrix::connectivity::ConnectivityState::kIdle: return Tr(Text::Offline);
-            case zectrix::connectivity::ConnectivityState::kAdvertising:
+            case note4::connectivity::ConnectivityState::kIdle: return Tr(Text::Offline);
+            case note4::connectivity::ConnectivityState::kAdvertising:
                 return Tr(Text::ReadyToReconnect);
-            case zectrix::connectivity::ConnectivityState::kPairing:
+            case note4::connectivity::ConnectivityState::kPairing:
                 return Tr(Text::PairingOpen);
-            case zectrix::connectivity::ConnectivityState::kSecuring:
+            case note4::connectivity::ConnectivityState::kSecuring:
                 return Tr(Text::SecuringLink);
-            case zectrix::connectivity::ConnectivityState::kSecure:
+            case note4::connectivity::ConnectivityState::kSecure:
                 return Tr(Text::SecureLink);
-            case zectrix::connectivity::ConnectivityState::kLinkReady:
+            case note4::connectivity::ConnectivityState::kLinkReady:
                 return Tr(Text::BleReady);
-            case zectrix::connectivity::ConnectivityState::kProtocolNegotiatedLocal:
+            case note4::connectivity::ConnectivityState::kProtocolNegotiatedLocal:
                 return Tr(Text::ProtocolNegotiated);
-            case zectrix::connectivity::ConnectivityState::kFault: return Tr(Text::Fault);
+            case note4::connectivity::ConnectivityState::kFault: return Tr(Text::Fault);
             default: return Tr(Text::Stopped);
         }
     }
@@ -300,12 +300,12 @@ private:
     const char* status_ = "";
     char resource_status_[48]{};
     char passkey_[7]{};
-    zectrix::connectivity::ConnectivityState displayed_state_ =
-        zectrix::connectivity::ConnectivityState::kStopped;
+    note4::connectivity::ConnectivityState displayed_state_ =
+        note4::connectivity::ConnectivityState::kStopped;
 };
 
 sdk::Status TerminalApp::CreateConnectivity(TerminalApp& owner, sdk::Application** output) {
     return CreateApplication<ConnectivityApplication>(owner, output);
 }
 
-}  // namespace zectrix::terminal
+}  // namespace note4::terminal

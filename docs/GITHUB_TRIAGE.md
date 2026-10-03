@@ -157,7 +157,7 @@ The review used [ASTRA_TASKS.md](../ASTRA_TASKS.md),
 [ADR-0005](adr/0005-ab-ota-boot-confirmation.md), the
 [connectivity](CONNECTIVITY_CONTRACT.md), [CLI](MAINTENANCE_CLI_CONTRACT.md)
 and [application](M3_APPLICATION_CONTRACT.md) contracts, the
-[production CLI descriptors](../components/zectrix_cli/zectrix_cli_diagnostics.cc),
+[production CLI descriptors](../components/note4_cli/note4_cli_diagnostics.cc),
 and the [reader](READER.md), [transfer](BOOK_TRANSFER.md),
 [sleep](SLEEP_COVER.md), [RTC](TIME.md), [modular build](MODULAR_BUILD.md)
 and [localization](LOCALIZATION.md) delivery records. The

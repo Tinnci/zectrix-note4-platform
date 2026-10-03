@@ -26,8 +26,8 @@ default without rewriting storage. In particular, loading a Chinese preference
 on an English-only build leaves the preference available for a later Full build.
 No language change modifies book contents, source-byte bookmarks or sync keys.
 
-`zectrix_locale.h` exposes `Text` identifiers and `Tr()` for system copy.
-`zectrix_strings.inc` defines 339 pairs of translations beside their identifiers; static
+`note4_locale.h` exposes `Text` identifiers and `Tr()` for system copy.
+`note4_strings.inc` defines 339 pairs of translations beside their identifiers; static
 pointer tables provide direct lookup and an English fallback. Only the language
 value is persisted. Text IDs can move as copy is added. Queries return immutable
 strings and never allocate, read storage or build a dictionary during drawing.
@@ -43,12 +43,12 @@ module selection, focus and the scene stack intact.
 | Configuration | System languages | Font source |
 | --- | --- | --- |
 | Full | Chinese and English; Chinese default | Existing reader glyph data plus the proportional ASCII face |
-| Reader off, `ZECTRIX_ENABLE_UI_CHINESE=y` | Chinese and English | 355 system glyphs: 12,425 bytes including Unicode indices |
+| Reader off, `NOTE4_ENABLE_UI_CHINESE=y` | Chinese and English | 355 system glyphs: 12,425 bytes including Unicode indices |
 | Minimal | English | Existing ASCII face; both Chinese font sources are excluded |
 
-`ZECTRIX_ENABLE_UI_CHINESE` controls the Chinese strings and the small UI font.
-`ZECTRIX_UI_DEFAULT_CHINESE` selects the default when the pack is available.
-The two options live in **Zectrix modules**. Reader remains independently
+`NOTE4_ENABLE_UI_CHINESE` controls the Chinese strings and the small UI font.
+`NOTE4_UI_DEFAULT_CHINESE` selects the default when the pack is available.
+The two options live in **Note4 modules**. Reader remains independently
 selectable: it supplies broad CJK coverage for book text and dynamic titles.
 With only the UI subset, characters outside the system catalog use a fallback
 glyph. English-only builds also replace unsupported Unicode scalars once per
@@ -94,9 +94,9 @@ inform the private picker and coordinated content/status refresh. The existing
 
 ```bash
 bash tools/test-host.sh
-ZECTRIX_LOCALIZATION_SANITIZE=1 bash tools/test-localization.sh
+NOTE4_LOCALIZATION_SANITIZE=1 bash tools/test-localization.sh
 mkdir -p build-ui-e1-7/previews
-ZECTRIX_UI_PREVIEW_DIR="$PWD/build-ui-e1-7/previews" bash tools/test-display-service.sh
+NOTE4_UI_PREVIEW_DIR="$PWD/build-ui-e1-7/previews" bash tools/test-display-service.sh
 ```
 
 The localization suite runs Full, Chinese without Reader and English-only

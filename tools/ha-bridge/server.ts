@@ -7,7 +7,7 @@ import { renderStates } from "./renderer";
 export async function mqttReport(client: MqttClient, id: string, request: Request, page: Uint8Array) {
   if (!client.connected) throw new Error("MQTT unavailable");
   const sample=deviceState(request,page);
-  const messages = [...discovery(id,sample.interval_seconds*2+60), { topic: `zectrix/note4/${id}/state`, payload: JSON.stringify(sample) }];
+  const messages = [...discovery(id,sample.interval_seconds*2+60), { topic: `note4/note4/${id}/state`, payload: JSON.stringify(sample) }];
   // One publish in flight; no offline queue or reconnect replay of stale samples.
   for (const message of messages) await new Promise<void>((resolve,reject) => {
     const timer=setTimeout(()=>{ client.end(true); reject(new Error("MQTT publish timeout")); },400);
@@ -27,11 +27,11 @@ if (import.meta.main) {
     const c=connect(MQTT_URL,{username:Bun.env.MQTT_USERNAME,password:Bun.env.MQTT_PASSWORD,
       // MQTT.js packet debug can include CONNECT credentials. Keep only our
       // credential-free event logs, even when DEBUG is set externally.
-      log:()=>{},connectTimeout:3000,reconnectPeriod:10000,queueQoSZero:false,clean:true,clientId:`zectrix_bridge_${NOTE4_DEVICE_ID}`});
+      log:()=>{},connectTimeout:3000,reconnectPeriod:10000,queueQoSZero:false,clean:true,clientId:`note4_bridge_${NOTE4_DEVICE_ID}`});
     c.on("error",()=>console.warn("event=mqtt_unavailable")); return c;
   };
   let client=newClient();
-  const font=new Uint8Array(await Bun.file(`${import.meta.dir}/../../components/zectrix_reader/font/reader_font.bin`).arrayBuffer());
+  const font=new Uint8Array(await Bun.file(`${import.meta.dir}/../../components/note4_reader/font/reader_font.bin`).arrayBuffer());
   const db=new Database(Bun.env.EDGE_DB_PATH ?? `${import.meta.dir}/bridge.sqlite`,{create:true});
   const nextRevision=revisionCounter(db), entities=HA_ENTITIES.split(",");
   const handler=createPageHandler(async()=>renderStates(font,await readStates(HA_URL,HA_TOKEN,entities,Bun.env.HA_ALLOW_HTTP==="1"),`${new Date().toISOString().slice(0,16)} UTC`,orientation),EDGE_TOKEN,

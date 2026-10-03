@@ -1,9 +1,9 @@
-#include "zectrix_health_supervisor.h"
+#include "note4_health_supervisor.h"
 
 #include <cassert>
 #include <cstdio>
 
-using namespace zectrix::system;
+using namespace note4::system;
 
 namespace {
 class Watchdog final : public HealthWatchdog {

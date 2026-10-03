@@ -1,7 +1,7 @@
-# Zectrix board hardware map
+# Note4 board hardware map
 
-The standalone board adapter is in `components/zectrix_board`. The defaults
-target the current Zectrix 4.2-inch ESP32-S3 e-paper board.
+The standalone board adapter is in `components/note4_board`. The defaults
+target the current Note4 4.2-inch ESP32-S3 e-paper board.
 
 ## GPIO map
 
@@ -22,8 +22,8 @@ target the current Zectrix 4.2-inch ESP32-S3 e-paper board.
 | Charge detect / full | GPIO2 / GPIO1 | Charger status inputs |
 
 The EPD GPIO and SPI defaults are public through
-`zectrix_epd_get_default_config()`. Applications can override each value in the
-returned `zectrix_epd_config_t` before creating the driver.
+`note4_epd_get_default_config()`. Applications can override each value in the
+returned `note4_epd_config_t` before creating the driver.
 
 ## Power behavior
 
@@ -61,8 +61,8 @@ battery is fitted.
 
 ## Porting to another revision
 
-1. Update `components/zectrix_board/include/zectrix_board_config.h`.
-2. Update `zectrix_epd_get_default_config()` in `components/zectrix_epd/zectrix_epd.cc`
+1. Update `components/note4_board/include/note4_board_config.h`.
+2. Update `note4_epd_get_default_config()` in `components/note4_epd/note4_epd.cc`
    if the EPD SPI wiring changed.
 3. Confirm flash size, PSRAM mode and partition layout in `sdkconfig.defaults`.
 4. Re-run every item in `docs/TEST_CRITERIA.md` on real hardware.

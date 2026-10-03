@@ -1,6 +1,6 @@
 #include "simulated_platform.h"
 #include "stdio_transport.h"
-#include "zectrix_cli_diagnostics.h"
+#include "note4_cli_diagnostics.h"
 
 #include <atomic>
 #include <charconv>
@@ -42,7 +42,7 @@ private:
 };
 
 void Usage() {
-    std::puts("Usage: zectrix-cli-host [options]\n"
+    std::puts("Usage: note4-cli-host [options]\n"
               "Interactive maintenance CLI with synthetic Note4 hardware data.\n"
               "  --owner-delay-ms N    Delay owner safe points (0..60000, default 0)\n"
               "  --log-interval-ms N   Generate logs every N ms (0..60000, default 1000; 0 disables)\n"
@@ -58,8 +58,8 @@ bool Number(const char* text, uint32_t maximum, uint32_t* value) {
     return parsed.ec == std::errc{} && parsed.ptr == end && *value <= maximum;
 }
 
-int Run(zectrix::cli::host::SimulationOptions options) {
-    using namespace zectrix::cli;
+int Run(note4::cli::host::SimulationOptions options) {
+    using namespace note4::cli;
     Signals signals;
     if (!signals.Open()) {
         std::perror("Cannot install host signal handlers");
@@ -117,7 +117,7 @@ int Run(zectrix::cli::host::SimulationOptions options) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    zectrix::cli::host::SimulationOptions options;
+    note4::cli::host::SimulationOptions options;
     for (int index = 1; index < argc; index += 2) {
         if (std::strcmp(argv[index], "--help") == 0) {
             Usage();

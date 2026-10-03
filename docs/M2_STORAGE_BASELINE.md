@@ -20,7 +20,7 @@ filesystem or change the qualified Wi-Fi self-test behavior.
 - `StorageService` owns default NVS initialization and recovery policy.
 - Initialization remains on demand. The application does not initialize or
   erase NVS at boot only because the service exists.
-- Platform-owned values use the `zectrix` NVS namespace.
+- Platform-owned values use the `note4` NVS namespace.
 - A successful write or erase operation commits immediately.
 - Read operations do not modify storage.
 - The service supports Boolean, signed 32-bit, unsigned 32-bit, string, and

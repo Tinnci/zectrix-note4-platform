@@ -3,28 +3,28 @@
 #include "styled_glyph.h"
 #include <climits>
 #include "sdkconfig.h"
-#if CONFIG_ZECTRIX_ENABLE_READER
-#include "zectrix_reader.h"
+#if CONFIG_NOTE4_ENABLE_READER
+#include "note4_reader.h"
 #endif
 
-namespace zectrix::ui {
-#if CONFIG_ZECTRIX_ENABLE_READER
-using namespace zectrix::reader;
+namespace note4::ui {
+#if CONFIG_NOTE4_ENABLE_READER
+using namespace note4::reader;
 
-void DrawGlyph(ZectrixCanvas& canvas, int x, int y, uint32_t cp, FontSize font,
+void DrawGlyph(Canvas& canvas, int x, int y, uint32_t cp, FontSize font,
                bool inverted, sdk::TextStyle style) {
     detail::PaintGlyph(canvas, x, y, cp, GlyphBitmap(cp), FontHeight(font), style, inverted);
 }
 #endif
 
-void DrawUtf8Line(ZectrixCanvas& canvas, int x, int y, const char* text, int width,
+void DrawUtf8Line(Canvas& canvas, int x, int y, const char* text, int width,
                   bool inverted, sdk::TextStyle style) {
     if (!text || width <= 0) return;
     if (sdk::HasStyle(style, sdk::TextStyle::Keycap)) {
         canvas.TextFitted(x, y, text, width, inverted, style);
         return;
     }
-#if CONFIG_ZECTRIX_ENABLE_READER
+#if CONFIG_NOTE4_ENABLE_READER
     const int64_t right = static_cast<int64_t>(x) + width;
     int64_t cursor = x;
     int measured = 0;
@@ -47,4 +47,4 @@ void DrawUtf8Line(ZectrixCanvas& canvas, int x, int y, const char* text, int wid
     canvas.TextFitted(x, y, text, width, inverted, style);
 #endif
 }
-}  // namespace zectrix::ui
+}  // namespace note4::ui

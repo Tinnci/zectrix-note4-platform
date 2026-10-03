@@ -1,6 +1,6 @@
-#include "zectrix/sdk/application.h"
-#include "zectrix_application_catalog.h"
-#include "zectrix_foreground_dispatch.h"
+#include "note4/sdk/application.h"
+#include "note4_application_catalog.h"
+#include "note4_foreground_dispatch.h"
 
 #include <cassert>
 #include <cstdio>
@@ -11,7 +11,7 @@
 
 namespace {
 
-namespace sdk = zectrix::sdk;
+namespace sdk = note4::sdk;
 
 void CheckReentry(sdk::ApplicationRuntime* runtime) {
     if (runtime == nullptr) return;
@@ -333,7 +333,7 @@ int main() {
         sdk::ApplicationRuntime runtime(descriptors, 3, "launcher", delegate);
         assert(runtime.Start() == sdk::Status::Ok && runtime.Step() == sdk::Status::Ok);
         launcher.event_render = true;
-        std::deque<sdk::InputEvent> backlog(zectrix::app::kMaxInputBurst * 2, down);
+        std::deque<sdk::InputEvent> backlog(note4::app::kMaxInputBurst * 2, down);
         const auto poll = [&backlog](sdk::InputEvent* event) {
             if (backlog.empty()) return false;
             *event = backlog.front();
@@ -343,8 +343,8 @@ int main() {
         sdk::InputEvent event;
         for (int batch = 1; batch <= 2; ++batch) {
             assert(poll(&event));
-            assert(zectrix::app::DispatchInputBurst(runtime, event, poll) == sdk::Status::Ok);
-            assert(launcher.event_count == batch * static_cast<int>(zectrix::app::kMaxInputBurst));
+            assert(note4::app::DispatchInputBurst(runtime, event, poll) == sdk::Status::Ok);
+            assert(launcher.event_count == batch * static_cast<int>(note4::app::kMaxInputBurst));
             assert(launcher.idle_count == batch && launcher.render_count == batch + 1);
         }
         assert(backlog.empty());
@@ -354,7 +354,7 @@ int main() {
         launcher.event_open = "clock";
         launcher.open_on_ok_only = true;
         backlog = {down, input, down};
-        assert(zectrix::app::DispatchInputBurst(runtime, down, poll) == sdk::Status::Ok);
+        assert(note4::app::DispatchInputBurst(runtime, down, poll) == sdk::Status::Ok);
         assert(IsForeground(runtime, "clock") && backlog.size() == 1);
         assert(clock.render_count == 1 && clock.event_count == 0 && clock.idle_count == 0);
         assert(launcher.render_count == 3 && launcher.destroy_count == 1);
@@ -371,7 +371,7 @@ int main() {
         if (boundary == 2) launcher.event_result = sdk::Status::IoError;
         const auto event = boundary == 3
             ? sdk::InputEvent{sdk::Button::Ok, sdk::InputAction::LongPress} : down;
-        const auto result = zectrix::app::DispatchInputBurst(runtime, event,
+        const auto result = note4::app::DispatchInputBurst(runtime, event,
             [](sdk::InputEvent*) { assert(false); return false; });
         assert(result == (boundary == 2 ? sdk::Status::IoError : sdk::Status::Ok));
         assert(launcher.event_count == 1 && launcher.idle_count == 0);
@@ -383,7 +383,7 @@ int main() {
     }
 
     {
-        zectrix::app::ApplicationCatalog catalog;
+        note4::app::ApplicationCatalog catalog;
         assert(catalog.size() == 0 && catalog.menu_size() == 0 && !catalog.MenuAt(0));
         assert(catalog.Add("launcher", "Launcher", launcher_factory));
         assert(catalog.Add("clock", "Clock", clock_factory));

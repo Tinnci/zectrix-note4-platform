@@ -1,17 +1,17 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
-#include "zectrix_connectivity_settings.h"
-#include "zectrix_storage_service.h"
-#include "zectrix_wifi_credentials.h"
-#include "zectrix_edge_settings.h"
+#include "note4_connectivity_settings.h"
+#include "note4_storage_service.h"
+#include "note4_wifi_credentials.h"
+#include "note4_edge_settings.h"
 
 namespace {
 bool ready = true;
 esp_err_t read_result = ESP_ERR_NOT_FOUND, write_result = ESP_OK;
 uint32_t value = 0;
 unsigned writes = 0;
-zectrix::connectivity::WifiCredentials station{};
+note4::connectivity::WifiCredentials station{};
 std::size_t station_size = sizeof(station);
 esp_err_t blob_result = ESP_ERR_NOT_FOUND;
 std::array<uint8_t, 152> edge_blob{};
@@ -20,7 +20,7 @@ unsigned edge_writes = 0;
 std::array<char, 65> token_store{};
 bool token_present = false;
 }
-namespace zectrix::storage {
+namespace note4::storage {
 struct StorageService::Impl {};
 esp_err_t StorageService::Create(StorageService** output) {
     *output = new StorageService(nullptr);
@@ -92,7 +92,7 @@ esp_err_t StorageService::Erase(const char* key) {
 }
 }
 int main() {
-    using namespace zectrix;
+    using namespace note4;
     using Policy = companion::UserConnectivityPolicy;
     storage::StorageService* storage = nullptr;
     assert(storage::StorageService::Create(&storage) == ESP_OK);

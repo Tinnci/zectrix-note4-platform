@@ -116,7 +116,7 @@ class Client:
         self._write(b"\x03")
         # The port can open before firmware/console initialization finishes.
         # Wait for CLI ownership before submitting the mode-change command.
-        self._until(b"zectrix> ", 4096, deadline)
+        self._until(b"note4> ", 4096, deadline)
         self._write(b"host start 1\n")
         while True:
             line = self._until(b"\n", 1024, deadline).strip()

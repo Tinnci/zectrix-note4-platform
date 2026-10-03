@@ -86,7 +86,7 @@ and do the on-screen steps. Have the following ready:
 idf.py menuconfig
 ```
 
-Use **Zectrix hardware showcase** to set a qualification SSID, RSSI threshold
+Use **Note4 hardware showcase** to set a qualification SSID, RSSI threshold
 and temporary NFC URL. Rebuild and reflash after changing configuration.
 
 ## Common problems
@@ -105,7 +105,7 @@ and octal PSRAM. Flash the whole project, not only the app image.
 ### BUSY timeout during an e-paper refresh
 
 Confirm the board revision and display cable, then verify the EPD pin mapping
-in `components/zectrix_epd/zectrix_epd.cc`. Do not start a partial refresh
+in `components/note4_epd/note4_epd.cc`. Do not start a partial refresh
 before a successful full 1bpp base refresh.
 
 ### The board does not power off while connected to USB

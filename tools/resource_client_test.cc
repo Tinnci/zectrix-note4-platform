@@ -1,10 +1,10 @@
-#include "zectrix_resource_client.h"
+#include "note4_resource_client.h"
 
 #include <cassert>
 #include <cstring>
 
-using namespace zectrix::companion;
-using namespace zectrix::connectivity;
+using namespace note4::companion;
+using namespace note4::connectivity;
 
 namespace {
 

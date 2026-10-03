@@ -118,7 +118,7 @@ imported. See [FIRMWARE_UI_STUDY.md](FIRMWARE_UI_STUDY.md).
 
 ```bash
 mkdir -p build-ui-e1-4
-ZECTRIX_UI_PREVIEW_DIR="$PWD/build-ui-e1-4" bash tools/test-host.sh
+NOTE4_UI_PREVIEW_DIR="$PWD/build-ui-e1-4" bash tools/test-host.sh
 source tools/activate-dev-env.sh
 bash tools/build-firmware.sh --profile full
 bash tools/build-firmware.sh --profile minimal

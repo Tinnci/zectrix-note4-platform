@@ -4,37 +4,37 @@
 #include <new>
 
 #include "sdkconfig.h"
-#include "zectrix/zectrix_sdk.h"
-#include "zectrix_application_catalog.h"
-#include "zectrix_launcher_controller.h"
-#include "zectrix_reading_overview.h"
+#include "note4/note4_sdk.h"
+#include "note4_application_catalog.h"
+#include "note4_launcher_controller.h"
+#include "note4_reading_overview.h"
 #include "ui_engine.h"
-#include "zectrix_platform.h"
-#include "zectrix_health_supervisor.h"
-#include "zectrix_sleep_cover.h"
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
-#include "zectrix_edge_settings.h"
+#include "note4_platform.h"
+#include "note4_health_supervisor.h"
+#include "note4_sleep_cover.h"
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
+#include "note4_edge_settings.h"
 #endif
-#if CONFIG_ZECTRIX_ENABLE_USB_CLI
-#include "zectrix_cli_control.h"
+#if CONFIG_NOTE4_ENABLE_USB_CLI
+#include "note4_cli_control.h"
 #endif
-#if CONFIG_ZECTRIX_ENABLE_UTILITIES
-#include "zectrix_utilities.h"
+#if CONFIG_NOTE4_ENABLE_UTILITIES
+#include "note4_utilities.h"
 #endif
-#if CONFIG_ZECTRIX_ENABLE_USB_HOST
-#include "zectrix_host_channel.h"
+#if CONFIG_NOTE4_ENABLE_USB_HOST
+#include "note4_host_channel.h"
 #endif
 
-namespace zectrix::terminal {
+namespace note4::terminal {
 
-namespace sdk = zectrix::sdk;
+namespace sdk = note4::sdk;
 inline constexpr char kTag[] = "terminal";
 enum class ControlResult { kContinue, kBack, kShutdown };
 struct SceneResult { esp_err_t error = ESP_OK; int64_t elapsed_ms = 0; };
 sdk::Status ToSdkStatus(esp_err_t result);
 
 class TerminalApp final : public sdk::RuntimeDelegate
-#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+#if CONFIG_NOTE4_ENABLE_USB_CLI
     , public cli::MaintenanceDelegate
 #endif
 {
@@ -55,7 +55,7 @@ private:
     template <typename ApplicationType>
     static sdk::Status CreateApplication(TerminalApp& owner, sdk::Application** output) {
         if (!output) return sdk::Status::InvalidArgument;
-#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+#if CONFIG_NOTE4_ENABLE_USB_CLI
         owner.scene_snapshot_ = {};
         owner.guest_inspection_ = {};
 #endif
@@ -108,7 +108,7 @@ private:
                                bool preview = false, bool preference_saved = true);
     app::ReadingOverview ReadReadingOverview();
     [[noreturn]] void PowerOff();
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
     void LoadEdgeConfiguration();
     bool RefreshEdgeOnWake();
     esp_err_t PresentEdgeCover();
@@ -119,13 +119,13 @@ private:
     bool edge_schedule_failure_ = false;
 #endif
     template <typename Controller> void BindScenes(Controller& controller) {
-#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+#if CONFIG_NOTE4_ENABLE_USB_CLI
         controller.ObserveScenes(&scene_snapshot_);
 #else
         (void)controller;
 #endif
     }
-#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+#if CONFIG_NOTE4_ENABLE_USB_CLI
     cli::ControlStatus InspectApps(cli::ControlResult* result) override;
     cli::ControlStatus ScheduleMaintenance(cli::ControlOperation operation) override;
     sdk::ApplicationRuntime* runtime_ = nullptr;
@@ -138,45 +138,45 @@ private:
 
     app::ApplicationCatalog applications_;
     std::array<Factory, app::ApplicationCatalog::kCapacity> factories_{};
-    zectrix::Platform platform_;
-    zectrix::input::InputService* input_ = nullptr;
-    zectrix::power::PowerService* power_ = nullptr;
-    zectrix::display::DisplayService* display_ = nullptr;
-    zectrix::time::TimeService* time_ = nullptr;
-    zectrix::storage::StorageService* storage_ = nullptr;
-    zectrix::system::SystemService* system_ = nullptr;
-#if CONFIG_ZECTRIX_ENABLE_USB_HOST
+    note4::Platform platform_;
+    note4::input::InputService* input_ = nullptr;
+    note4::power::PowerService* power_ = nullptr;
+    note4::display::DisplayService* display_ = nullptr;
+    note4::time::TimeService* time_ = nullptr;
+    note4::storage::StorageService* storage_ = nullptr;
+    note4::system::SystemService* system_ = nullptr;
+#if CONFIG_NOTE4_ENABLE_USB_HOST
     host::Channel* usb_host_ = nullptr;
 #endif
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY || CONFIG_ZECTRIX_ENABLE_READER
-    zectrix::connectivity::ConnectivityService* connectivity_ = nullptr;
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY || CONFIG_NOTE4_ENABLE_READER
+    note4::connectivity::ConnectivityService* connectivity_ = nullptr;
 #endif
     UiEngine ui_;
-    ZectrixSelfTest* tests_ = nullptr;
-    std::array<ZectrixTestState,
-               static_cast<size_t>(ZectrixTestId::kCount)> test_states_;
+    Note4SelfTest* tests_ = nullptr;
+    std::array<Note4TestState,
+               static_cast<size_t>(Note4TestId::kCount)> test_states_;
     app::LauncherSelection launcher_selection_{};
     bool launcher_back_requested_ = false;
-#if CONFIG_ZECTRIX_ENABLE_UTILITIES
+#if CONFIG_NOTE4_ENABLE_UTILITIES
     app::UtilitySession utilities_;
 #endif
-#if CONFIG_ZECTRIX_ENABLE_RUNTIME
+#if CONFIG_NOTE4_ENABLE_RUNTIME
     bool micro_app_busy_ = false;
 #endif
     uint32_t gallery_selection_ = 0;
-#if CONFIG_ZECTRIX_ENABLE_READER
+#if CONFIG_NOTE4_ENABLE_READER
     uint32_t reader_selection_ = 0;
     bool reader_continue_requested_ = false;
     bool reader_busy_ = false;
 #endif
-    zectrix::app::SleepCoverStyle sleep_cover_style_ = zectrix::app::kSleepCoverDefault;
+    note4::app::SleepCoverStyle sleep_cover_style_ = note4::app::kSleepCoverDefault;
     bool sleep_cover_saved_ = true;
-    bool sleep_portrait_ = zectrix::app::kSleepPortraitDefault;
+    bool sleep_portrait_ = note4::app::kSleepPortraitDefault;
     bool language_saved_ = true;
-    zectrix::power::PowerSnapshot power_snapshot_{};
-    zectrix::ui::StatusBarState status_{};
+    note4::power::PowerSnapshot power_snapshot_{};
+    note4::ui::StatusBarState status_{};
     int64_t next_power_sample_us_ = 0;
     int64_t next_clock_sample_us_ = 0;
 };
 
-}  // namespace zectrix::terminal
+}  // namespace note4::terminal

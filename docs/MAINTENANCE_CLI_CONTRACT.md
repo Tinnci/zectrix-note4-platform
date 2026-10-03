@@ -252,7 +252,7 @@ sink. Early-boot and panic output retain their direct paths.
 `tools/run-cli-host.sh` builds and starts a POSIX terminal simulator on Linux
 and macOS. `tools/build-cli-host.sh [output-binary]` builds it separately with
 a C++17 compiler and no ESP-IDF dependency. `CXX` selects another compiler.
-The default binary is `build-host/zectrix-cli-host`.
+The default binary is `build-host/note4-cli-host`.
 
 The simulator uses the production parser, `CliSession`, diagnostic executor,
 dispatcher and display state model. A separate owner thread supplies bounded

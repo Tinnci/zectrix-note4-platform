@@ -1,8 +1,8 @@
-#include "zectrix_board.h"
-#include "zectrix_board_config.h"
-#include "zectrix_nfc.h"
-#include "zectrix_nfc_service.h"
-#include "zectrix_power_service.h"
+#include "note4_board.h"
+#include "note4_board_config.h"
+#include "note4_nfc.h"
+#include "note4_nfc_service.h"
+#include "note4_power_service.h"
 #include "audio_codec.h"
 #include "acoustic_selftest.h"
 #include "esp_adc/adc_cali_scheme.h"
@@ -141,31 +141,31 @@ void Reset() {
 }
 
 void TestButtonBuffer() {
-    const ZectrixButtonEvent up{ZectrixButton::kUp, ZectrixButtonAction::kClick};
-    const ZectrixButtonEvent down{ZectrixButton::kDown, ZectrixButtonAction::kClick};
-    const ZectrixButtonEvent ok{ZectrixButton::kOk, ZectrixButtonAction::kClick};
-    const ZectrixButtonEvent back{ZectrixButton::kOk, ZectrixButtonAction::kLongPress};
-    const ZectrixButtonEvent shutdown{ZectrixButton::kDown, ZectrixButtonAction::kLongPress};
-    ZectrixButtonEvent event;
-    ZectrixButtonBuffer buffer;
+    const Note4ButtonEvent up{Note4Button::kUp, Note4ButtonAction::kClick};
+    const Note4ButtonEvent down{Note4Button::kDown, Note4ButtonAction::kClick};
+    const Note4ButtonEvent ok{Note4Button::kOk, Note4ButtonAction::kClick};
+    const Note4ButtonEvent back{Note4Button::kOk, Note4ButtonAction::kLongPress};
+    const Note4ButtonEvent shutdown{Note4Button::kDown, Note4ButtonAction::kLongPress};
+    Note4ButtonEvent event;
+    Note4ButtonBuffer buffer;
     assert(!buffer.Pop(&event) && !buffer.Pop(nullptr));
-    for (std::size_t i = 0; i < ZectrixButtonBuffer::kCapacity; ++i)
+    for (std::size_t i = 0; i < Note4ButtonBuffer::kCapacity; ++i)
         assert(buffer.Push(i % 2 ? up : down));
     assert(!buffer.Push(down));
     assert(buffer.Push(ok) && buffer.Push(back));
-    for (std::size_t i = 0; i < ZectrixButtonBuffer::kCapacity - 2; ++i) {
+    for (std::size_t i = 0; i < Note4ButtonBuffer::kCapacity - 2; ++i) {
         assert(buffer.Pop(&event) && event.button == (i % 2 ? up.button : down.button));
-        assert(event.action == ZectrixButtonAction::kClick);
+        assert(event.action == Note4ButtonAction::kClick);
     }
     assert(buffer.Pop(&event) && event.button == ok.button && event.action == ok.action);
     assert(buffer.Pop(&event) && event.button == back.button && event.action == back.action);
     assert(!buffer.Pop(&event));
-    for (std::size_t i = 0; i < ZectrixButtonBuffer::kCapacity; ++i) assert(buffer.Push(ok));
+    for (std::size_t i = 0; i < Note4ButtonBuffer::kCapacity; ++i) assert(buffer.Push(ok));
     assert(!buffer.Push(ok) && buffer.Push(back));
-    for (std::size_t i = 0; i < ZectrixButtonBuffer::kCapacity - 1; ++i)
+    for (std::size_t i = 0; i < Note4ButtonBuffer::kCapacity - 1; ++i)
         assert(buffer.Pop(&event) && event.action == ok.action);
     assert(buffer.Pop(&event) && event.action == back.action);
-    for (std::size_t i = 0; i < ZectrixButtonBuffer::kCapacity; ++i) assert(buffer.Push(back));
+    for (std::size_t i = 0; i < Note4ButtonBuffer::kCapacity; ++i) assert(buffer.Push(back));
     assert(!buffer.Push(back) && buffer.Push(shutdown));
     assert(!buffer.Push(up) && !buffer.Push(ok) && !buffer.Push(back));
     assert(buffer.Push(shutdown));
@@ -177,19 +177,19 @@ void TestButtonBuffer() {
 void TestButtonProducerAndWake() {
     Reset();
     {
-        ZectrixBoard board;
+        Note4Board board;
         assert(board.Init() == ESP_OK);
         WaitFor([] { return button_polls.load() > 0; });
         std::thread waiter([&] {
-            ZectrixButtonEvent event;
+            Note4ButtonEvent event;
             assert(board.WaitButton(&event, portMAX_DELAY));
-            assert(event.action == ZectrixButtonAction::kWake);
+            assert(event.action == Note4ButtonAction::kWake);
         });
         WaitFor([] { return queue_waits.load() > 0; });
         for (unsigned i = 0; i < 1000; ++i) board.WakeButtonWait();
         waiter.join();
         board.DrainButtons();
-        ZectrixButtonEvent event;
+        Note4ButtonEvent event;
         assert(!board.WaitButton(&event, 0));
         const auto trace_cursor = board.ReadInputTrace(0).cursor;
         assert(board.ReadInputTrace(trace_cursor).count == 0);
@@ -200,7 +200,7 @@ void TestButtonProducerAndWake() {
         std::thread waker([&] {
             while (!stop.load()) { board.WakeButtonWait(); std::this_thread::yield(); }
         });
-        levels[ZECTRIX_BUTTON_UP] = 0;
+        levels[NOTE4_BUTTON_UP] = 0;
         std::this_thread::sleep_for(100ms);
         stop = true;
         waker.join();
@@ -208,7 +208,7 @@ void TestButtonProducerAndWake() {
         assert(trace.count == 1 && trace.records[0].button == 0 && trace.records[0].action == 0 && trace.records[0].queued);
         assert(board.ReadInputTrace(trace_cursor).records[0].sequence == trace.records[0].sequence);
         assert(board.WaitButton(&event, 0));
-        assert(event.button == ZectrixButton::kUp && event.action == ZectrixButtonAction::kClick);
+        assert(event.button == Note4Button::kUp && event.action == Note4ButtonAction::kClick);
         board.DrainButtons();
         const auto started = std::chrono::steady_clock::now();
         assert(!board.WaitButton(&event, pdMS_TO_TICKS(20)));
@@ -219,8 +219,8 @@ void TestButtonProducerAndWake() {
 }
 
 void EmitField(bool present) {
-    levels[ZECTRIX_NFC_FD] = present ? ZECTRIX_NFC_FD_ACTIVE_LEVEL
-                                     : !ZECTRIX_NFC_FD_ACTIVE_LEVEL;
+    levels[NOTE4_NFC_FD] = present ? NOTE4_NFC_FD_ACTIVE_LEVEL
+                                     : !NOTE4_NFC_FD_ACTIVE_LEVEL;
     std::lock_guard<std::mutex> lock(isr_mutex);
     if (field_isr != nullptr) field_isr(field_context);
 }
@@ -234,12 +234,12 @@ void BlockField(bool present) {
 void TestPowerTransition() {
     for (unsigned audio_mode = 0; audio_mode < 4; ++audio_mode) {
         Reset();
-        ZectrixBoard board;
+        Note4Board board;
         assert(board.Init() == ESP_OK);
         assert(board.HasRtc() && board.HasNfc());
         assert(rtc_registers[0x0d] == 0);
-        zectrix::nfc::NfcService* nfc = nullptr;
-        assert(zectrix::nfc::NfcService::Attach(*board.nfc(), &nfc) == ESP_OK);
+        note4::nfc::NfcService* nfc = nullptr;
+        assert(note4::nfc::NfcService::Attach(*board.nfc(), &nfc) == ESP_OK);
         if (audio_mode != 0) {
             if (audio_mode == 3) failure = Failure::Codec;
             auto* audio = board.PrepareAudio();
@@ -251,24 +251,24 @@ void TestPowerTransition() {
             }
         }
         delete nfc;
-        zectrix::power::PowerService* power = nullptr;
-        assert(zectrix::power::PowerService::Attach(board, &power) == ESP_OK);
+        note4::power::PowerService* power = nullptr;
+        assert(note4::power::PowerService::Attach(board, &power) == ESP_OK);
         try { power->Shutdown(); } catch (const SleepEntered&) {}
         AssertReleased();
         assert(rtc_control_writes == 0 && rtc_calendar_writes == 0);
         assert(rtc_registers[0x02] == 0x80);
         assert(deep_sleep_hold);
-        assert(wake_pins == (1ULL << ZECTRIX_BUTTON_DOWN));
-        assert(rtc_mode[ZECTRIX_BUTTON_DOWN] && rtc_pullup[ZECTRIX_BUTTON_DOWN]);
-        for (const int pin : {ZECTRIX_AUDIO_POWER, ZECTRIX_NFC_POWER, ZECTRIX_VBAT_LATCH}) {
+        assert(wake_pins == (1ULL << NOTE4_BUTTON_DOWN));
+        assert(rtc_mode[NOTE4_BUTTON_DOWN] && rtc_pullup[NOTE4_BUTTON_DOWN]);
+        for (const int pin : {NOTE4_AUDIO_POWER, NOTE4_NFC_POWER, NOTE4_VBAT_LATCH}) {
             assert(levels[pin] == 0 && held[pin]);
         }
-        assert(levels[ZECTRIX_POWER_LED] == 1 && held[ZECTRIX_POWER_LED]);
-        if (audio_mode != 0) assert(levels[ZECTRIX_AUDIO_PA] == 0 && held[ZECTRIX_AUDIO_PA]);
-        assert(modes[ZECTRIX_I2C_SDA] == GPIO_MODE_DISABLE && pullups[ZECTRIX_I2C_SDA] == 0);
-        assert(modes[ZECTRIX_I2C_SCL] == GPIO_MODE_DISABLE && pullups[ZECTRIX_I2C_SCL] == 0);
-        for (int pin : {ZECTRIX_AUDIO_MCLK, ZECTRIX_AUDIO_BCLK, ZECTRIX_AUDIO_WS,
-                       ZECTRIX_AUDIO_DOUT, ZECTRIX_AUDIO_DIN}) {
+        assert(levels[NOTE4_POWER_LED] == 1 && held[NOTE4_POWER_LED]);
+        if (audio_mode != 0) assert(levels[NOTE4_AUDIO_PA] == 0 && held[NOTE4_AUDIO_PA]);
+        assert(modes[NOTE4_I2C_SDA] == GPIO_MODE_DISABLE && pullups[NOTE4_I2C_SDA] == 0);
+        assert(modes[NOTE4_I2C_SCL] == GPIO_MODE_DISABLE && pullups[NOTE4_I2C_SCL] == 0);
+        for (int pin : {NOTE4_AUDIO_MCLK, NOTE4_AUDIO_BCLK, NOTE4_AUDIO_WS,
+                       NOTE4_AUDIO_DOUT, NOTE4_AUDIO_DIN}) {
             assert(modes[pin] == GPIO_MODE_DISABLE && pullups[pin] == 0);
         }
         assert(board.ShutdownPeripherals() == ESP_OK);
@@ -281,7 +281,7 @@ void TestPowerTransition() {
 void TestRtcCalendar() {
     Reset();
     {
-        ZectrixBoard board;
+        Note4Board board;
         assert(board.Init() == ESP_OK);
         tm value{};
         assert(!board.ReadRtc(&value));
@@ -324,7 +324,7 @@ void TestRtcCalendar() {
     }
     {
         // Peripheral teardown and a fresh board owner leave the RTC running.
-        ZectrixBoard rebooted;
+        Note4Board rebooted;
         assert(rebooted.Init() == ESP_OK);
         tm read{};
         assert(rebooted.ReadRtc(&read) && read.tm_year == 124 && read.tm_mday == 29);
@@ -333,7 +333,7 @@ void TestRtcCalendar() {
     Reset();
     for (unsigned stage = 0; stage < 3; ++stage) {
         {
-            ZectrixBoard board;
+            Note4Board board;
             assert(board.Init() == ESP_OK);
             tm value{};
             value.tm_year = 126;
@@ -349,7 +349,7 @@ void TestRtcCalendar() {
             assert((rtc_registers[0] & 0x20) == (stage == 0 ? 0 : 0x20));
         }
         {
-            ZectrixBoard rebooted;
+            Note4Board rebooted;
             assert(rebooted.Init() == ESP_OK);
             tm read{};
             assert(rebooted.ReadRtc(&read) == (stage == 0));
@@ -370,19 +370,19 @@ void TestRtcCalendar() {
 void TestPowerButtonWake() {
     for (unsigned scenario = 0; scenario < 4; ++scenario) {
         Reset();
-        ZectrixBoard board;
-        rtc_mode[ZECTRIX_BUTTON_DOWN] = held[ZECTRIX_BUTTON_DOWN] = true;
+        Note4Board board;
+        rtc_mode[NOTE4_BUTTON_DOWN] = held[NOTE4_BUTTON_DOWN] = true;
         assert(board.Init() == ESP_OK);
-        assert(!rtc_mode[ZECTRIX_BUTTON_DOWN] && !held[ZECTRIX_BUTTON_DOWN]);
+        assert(!rtc_mode[NOTE4_BUTTON_DOWN] && !held[NOTE4_BUTTON_DOWN]);
         assert(board.ShutdownPeripherals() == ESP_OK);
-        if (scenario == 1) { levels[ZECTRIX_BUTTON_DOWN] = 0; release_after_polls = 4; }
-        if (scenario == 2) levels[ZECTRIX_BUTTON_DOWN] = 0;
+        if (scenario == 1) { levels[NOTE4_BUTTON_DOWN] = 0; release_after_polls = 4; }
+        if (scenario == 2) levels[NOTE4_BUTTON_DOWN] = 0;
         if (scenario == 3) fail_wake = true;
-        zectrix::power::PowerService* power = nullptr;
-        assert(zectrix::power::PowerService::Attach(board, &power) == ESP_OK);
+        note4::power::PowerService* power = nullptr;
+        assert(note4::power::PowerService::Attach(board, &power) == ESP_OK);
         try { power->Shutdown(); } catch (const SleepEntered&) {}
-        assert(wake_pins == (scenario < 2 ? 1ULL << ZECTRIX_BUTTON_DOWN : 0));
-        assert(deep_sleep_hold && levels[ZECTRIX_VBAT_LATCH] == 0 && held[ZECTRIX_VBAT_LATCH]);
+        assert(wake_pins == (scenario < 2 ? 1ULL << NOTE4_BUTTON_DOWN : 0));
+        assert(deep_sleep_hold && levels[NOTE4_VBAT_LATCH] == 0 && held[NOTE4_VBAT_LATCH]);
         AssertReleased();
         delete power;
     }
@@ -396,7 +396,7 @@ void TestPartialInitialization() {
         Reset();
         failure = point;
         {
-            ZectrixBoard board;
+            Note4Board board;
             const auto result = board.Init();
             const bool optional = point >= Failure::NfcSemaphore;
             assert((result == ESP_OK) == optional);
@@ -406,7 +406,7 @@ void TestPartialInitialization() {
     }
     Reset();
     {
-        ZectrixBoard board;
+        Note4Board board;
         assert(board.Init() == ESP_OK);
         fail_bus_delete = true;
         assert(board.ShutdownPeripherals() == ESP_FAIL);
@@ -421,7 +421,7 @@ void TestPartialInitialization() {
 void TestCallbackRemovalWaits() {
     Reset();
     {
-        ZectrixBoard board;
+        Note4Board board;
         assert(board.Init() == ESP_OK);
         board.nfc()->SetFieldCallback(BlockField);
         EmitField(true);
@@ -444,10 +444,10 @@ void TestCallbackRemovalWaits() {
 void TestServiceDetachAndFieldTaskExit() {
     Reset();
     {
-        ZectrixBoard board;
+        Note4Board board;
         assert(board.Init() == ESP_OK);
-        zectrix::nfc::NfcService* service = nullptr;
-        assert(zectrix::nfc::NfcService::Attach(*board.nfc(), &service) == ESP_OK);
+        note4::nfc::NfcService* service = nullptr;
+        assert(note4::nfc::NfcService::Attach(*board.nfc(), &service) == ESP_OK);
         service->SetEventCallback([] { BlockField(true); });
         EmitField(true);
         WaitFor([] { return callback_entered.load(); });
@@ -460,7 +460,7 @@ void TestServiceDetachAndFieldTaskExit() {
     }
     Reset();
     {
-        ZectrixBoard board;
+        Note4Board board;
         assert(board.Init() == ESP_OK);
         board.nfc()->SetFieldCallback(BlockField);
         EmitField(true);
@@ -554,7 +554,7 @@ BaseType_t xSemaphoreGiveRecursive(SemaphoreHandle_t semaphore) { semaphore->rec
 void vSemaphoreDelete(SemaphoreHandle_t semaphore) { --semaphores; delete semaphore; }
 BaseType_t xTaskCreate(TaskFunction_t function, const char* name, uint32_t, void* context,
                        UBaseType_t, TaskHandle_t* output) {
-    const bool field = std::strcmp(name, "zectrix_nfc_fd") == 0;
+    const bool field = std::strcmp(name, "note4_nfc_fd") == 0;
     if (std::strcmp(name, "ft_audio_tx") == 0 && failure == Failure::PlaybackTask) return pdFALSE;
     if ((field && failure == Failure::NfcTask) || (!field && failure == Failure::ButtonTask)) return pdFALSE;
     auto task = std::make_unique<BoardHostTask>();
@@ -595,7 +595,7 @@ TickType_t xTaskGetTickCount() {
         std::chrono::steady_clock::now() - epoch).count());
 }
 void vTaskDelay(TickType_t ticks) {
-    if (current_task && current_task->name == "zectrix_buttons") ++button_polls;
+    if (current_task && current_task->name == "note4_buttons") ++button_polls;
     std::this_thread::sleep_for(std::chrono::milliseconds(std::min(ticks, 1u)));
 }
 void vTaskDelete(TaskHandle_t task) { assert(task == nullptr); current_task->deleted = true; throw TaskExit{}; }
@@ -637,12 +637,12 @@ esp_err_t gpio_config(const gpio_config_t* config) {
     return ESP_OK;
 }
 esp_err_t gpio_set_level(gpio_num_t pin, uint32_t level) {
-    if (pin == ZECTRIX_AUDIO_POWER && level == 0) AssertReleased();
+    if (pin == NOTE4_AUDIO_POWER && level == 0) AssertReleased();
     levels[pin] = level;
     return ESP_OK;
 }
 int gpio_get_level(gpio_num_t pin) {
-    if (pin == ZECTRIX_BUTTON_DOWN && release_after_polls >= 0) {
+    if (pin == NOTE4_BUTTON_DOWN && release_after_polls >= 0) {
         if (release_after_polls-- == 0) levels[pin] = 1;
     }
     return levels[pin];
@@ -707,12 +707,12 @@ esp_err_t i2c_master_bus_rm_device(i2c_master_dev_handle_t device) {
 }
 esp_err_t i2c_master_bus_reset(i2c_master_bus_handle_t bus) { assert(bus != nullptr); return ESP_OK; }
 esp_err_t i2c_master_probe(i2c_master_bus_handle_t bus, uint16_t address, int) {
-    assert(bus != nullptr && levels[ZECTRIX_AUDIO_POWER] == 1);
-    return failure == Failure::NfcProbe && address == ZECTRIX_NFC_ADDR ? ESP_FAIL : ESP_OK;
+    assert(bus != nullptr && levels[NOTE4_AUDIO_POWER] == 1);
+    return failure == Failure::NfcProbe && address == NOTE4_NFC_ADDR ? ESP_FAIL : ESP_OK;
 }
 esp_err_t i2c_master_transmit(i2c_master_dev_handle_t device, const uint8_t* data, std::size_t size, int) {
-    assert(device->bus->devices != 0 && levels[ZECTRIX_AUDIO_POWER] == 1);
-    if (device->address == ZECTRIX_RTC_ADDR) {
+    assert(device->bus->devices != 0 && levels[NOTE4_AUDIO_POWER] == 1);
+    if (device->address == NOTE4_RTC_ADDR) {
         assert(size >= 2 && data[0] + size - 1 <= rtc_registers.size());
         if (data[0] == 0) {
             ++rtc_control_writes;
@@ -731,13 +731,13 @@ esp_err_t i2c_master_transmit(i2c_master_dev_handle_t device, const uint8_t* dat
     return ESP_OK;
 }
 esp_err_t i2c_master_receive(i2c_master_dev_handle_t device, uint8_t* data, std::size_t size, int) {
-    assert(device->bus->devices != 0 && levels[ZECTRIX_AUDIO_POWER] == 1);
+    assert(device->bus->devices != 0 && levels[NOTE4_AUDIO_POWER] == 1);
     std::memset(data, 0, size);
     return ESP_OK;
 }
 esp_err_t i2c_master_transmit_receive(i2c_master_dev_handle_t device, const uint8_t* address, std::size_t address_size,
                                      uint8_t* data, std::size_t size, int timeout) {
-    if (device->address == ZECTRIX_RTC_ADDR) {
+    if (device->address == NOTE4_RTC_ADDR) {
         assert(address_size == 1 && address[0] + size <= rtc_registers.size());
         if (size > 1) assert(address[0] == 0 && size == 9);
         std::memcpy(data, rtc_registers.data() + address[0], size);
@@ -826,8 +826,8 @@ void esp_rom_delay_us(uint32_t) {}
 esp_sleep_wakeup_cause_t esp_sleep_get_wakeup_cause() { return ESP_SLEEP_WAKEUP_UNDEFINED; }
 esp_err_t esp_sleep_enable_timer_wakeup(uint64_t) { return ESP_OK; }
 esp_err_t esp_sleep_enable_ext1_wakeup_io(uint64_t mask, esp_sleep_ext1_wakeup_mode_t mode) {
-    assert(mode == ESP_EXT1_WAKEUP_ANY_LOW && mask == (1ULL << ZECTRIX_BUTTON_DOWN));
-    assert(rtc_mode[ZECTRIX_BUTTON_DOWN] && rtc_pullup[ZECTRIX_BUTTON_DOWN] && !rtc_pulldown[ZECTRIX_BUTTON_DOWN]);
+    assert(mode == ESP_EXT1_WAKEUP_ANY_LOW && mask == (1ULL << NOTE4_BUTTON_DOWN));
+    assert(rtc_mode[NOTE4_BUTTON_DOWN] && rtc_pullup[NOTE4_BUTTON_DOWN] && !rtc_pulldown[NOTE4_BUTTON_DOWN]);
     if (fail_wake) return ESP_FAIL;
     wake_pins = mask; return ESP_OK;
 }

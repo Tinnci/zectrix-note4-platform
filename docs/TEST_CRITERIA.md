@@ -1,6 +1,6 @@
 # Hardware test criteria
 
-The test implementation is in `components/zectrix_self_test`. Interactive
+The test implementation is in `components/note4_self_test`. Interactive
 tests time out after 60 seconds unless stated otherwise.
 
 | Test | PASS criterion | Operator setup |
@@ -44,7 +44,7 @@ and startup only. Implementation and Host coverage are in
 ## Production recommendations
 
 Generic Wi-Fi scan is intended for demonstrations only. Set
-`CONFIG_ZECTRIX_DEMO_RF_TARGET_SSID` and choose an RSSI threshold that matches
+`CONFIG_NOTE4_QUALIFICATION_RF_TARGET_SSID` and choose an RSSI threshold that matches
 the fixture before you use RF results for qualification.
 
 The LED test is intentionally visual. For a fully automated fixture, add an

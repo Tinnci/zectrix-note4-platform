@@ -200,14 +200,14 @@ L1 uses independently implemented adaptations of these upstream designs:
 
 - Flipper Zero [SceneManager](https://github.com/flipperdevices/flipperzero-firmware/blob/dev/applications/services/gui/scene_manager.c)
   provides the enter/event/exit handler pattern, retained scene state and Back
-  propagation. Zectrix bounds the stack and defers transitions until event
+  propagation. Note4 bounds the stack and defers transitions until event
   return on its existing owner task.
 - Flipper Zero [ViewPort](https://github.com/flipperdevices/flipperzero-firmware/blob/dev/applications/services/gui/view_port.c)
-  separates bounded drawing from invalidation. Zectrix uses fixed slots, canvas
+  separates bounded drawing from invalidation. Note4 uses fixed slots, canvas
   clipping and one DisplayService commit without another GUI task.
 - CrossPoint [ActivityManager](https://github.com/crosspoint-reader/crosspoint-reader/blob/develop/src/activities/ActivityManager.cpp)
   separates pending navigation, activity lifetime and requested rendering.
-  Zectrix keeps its SDK lifecycle and a single owner instead of adopting the
+  Note4 keeps its SDK lifecycle and a single owner instead of adopting the
   upstream render task and dynamically sized activity stack.
 - CrossPoint [EpubReaderActivity](https://github.com/crosspoint-reader/crosspoint-reader/blob/develop/src/activities/reader/EpubReaderActivity.cpp)
   loads the current section page, keeps pagination position and bounds page-load
@@ -226,6 +226,6 @@ back/rotation/error paths, invalid RTC/system/uptime behavior, clipped canvas
 composition, status-only dirty regions, gray-content preservation, display
 failure recovery, final cover retention, privacy clearing and button-wake
 preparation. For optional visual
-inspection, set `ZECTRIX_UI_PREVIEW_DIR` to an existing directory when running
+inspection, set `NOTE4_UI_PREVIEW_DIR` to an existing directory when running
 `tools/test-display-service.sh`; it writes PBM previews without a golden-image
 comparison or release gate.

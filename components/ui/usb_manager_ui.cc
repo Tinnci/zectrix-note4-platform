@@ -1,13 +1,13 @@
 #include "ui_engine.h"
-#include "zectrix_host_books.h"
-#include "zectrix_locale.h"
+#include "note4_host_books.h"
+#include "note4_locale.h"
 #include "unicode_text.h"
 #include "sdkconfig.h"
 
 #include <cstdio>
 
-esp_err_t UiEngine::ShowUsbManager(const zectrix::host::Snapshot& status, bool storage_ready, bool full_refresh) {
-    using namespace zectrix;
+esp_err_t UiEngine::ShowUsbManager(const note4::host::Snapshot& status, bool storage_ready, bool full_refresh) {
+    using namespace note4;
     using i18n::Text;
     using i18n::Tr;
     using host::TransferState;
@@ -42,7 +42,7 @@ esp_err_t UiEngine::ShowUsbManager(const zectrix::host::Snapshot& status, bool s
             ui::DrawUtf8Line(canvas_, 20, 112, status.name.data(), 360);
         } else {
             canvas_.TextCentered(118, Tr(Text::UsbToolHint));
-#if CONFIG_ZECTRIX_ENABLE_RUNTIME
+#if CONFIG_NOTE4_ENABLE_RUNTIME
             canvas_.TextCentered(150, Tr(Text::UsbFilesHint));
 #else
             canvas_.TextCentered(150, Tr(Text::UsbBooksHint));

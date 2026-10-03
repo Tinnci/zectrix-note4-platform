@@ -99,7 +99,7 @@ jobs:
 
       - name: Test and build Android companion
         env:
-          ZECTRIX_ANDROID_CLEAN: "1"
+          NOTE4_ANDROID_CLEAN: "1"
         run: tools/test-android-companion.sh
 
       - name: Upload Android test report

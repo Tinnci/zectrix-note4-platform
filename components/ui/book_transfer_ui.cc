@@ -1,21 +1,21 @@
-#include "zectrix_locale.h"
+#include "note4_locale.h"
 #include "ui_engine.h"
-#include "zectrix_book_transfer.h"
+#include "note4_book_transfer.h"
 #include "unicode_text.h"
 #include "sdkconfig.h"
 
 #include <cstdio>
 
-using zectrix::i18n::Tr;
-using zectrix::i18n::Text;
+using note4::i18n::Tr;
+using note4::i18n::Text;
 
-using zectrix::ui::DrawUtf8Line;
+using note4::ui::DrawUtf8Line;
 
-esp_err_t UiEngine::ShowBookTransfer(const zectrix::connectivity::BookTransferSnapshot& status,
+esp_err_t UiEngine::ShowBookTransfer(const note4::connectivity::BookTransferSnapshot& status,
                                         bool choosing_mode, bool station_selected, bool full_refresh) {
-    using namespace zectrix::connectivity;
+    using namespace note4::connectivity;
     if (choosing_mode) {
-        auto page = EnterPage(zectrix::ui::PageSpec().Title(Tr(Text::SendBooks)).Footer(Tr(Text::NavTransferMode)));
+        auto page = EnterPage(note4::ui::PageSpec().Title(Tr(Text::SendBooks)).Footer(Tr(Text::NavTransferMode)));
         const bool portrait = page.portrait();
         const int width = page.width();
         const int column = width - 32;
@@ -38,10 +38,10 @@ esp_err_t UiEngine::ShowBookTransfer(const zectrix::connectivity::BookTransferSn
         }
         return page.Commit(full_refresh);
     } else if (status.state == BookTransferState::Complete) {
-#if CONFIG_ZECTRIX_ENABLE_READER
-        auto page = EnterPage(zectrix::ui::PageSpec().Title(Tr(Text::TransferFinished)).Footer(Tr(Text::NavTransferRead)));
+#if CONFIG_NOTE4_ENABLE_READER
+        auto page = EnterPage(note4::ui::PageSpec().Title(Tr(Text::TransferFinished)).Footer(Tr(Text::NavTransferRead)));
 #else
-        auto page = EnterPage(zectrix::ui::PageSpec().Title(Tr(Text::TransferFinished)).Footer(Tr(Text::NavTransferHome)));
+        auto page = EnterPage(note4::ui::PageSpec().Title(Tr(Text::TransferFinished)).Footer(Tr(Text::NavTransferHome)));
 #endif
         const bool portrait = page.portrait();
         const int dy = page.dy();
@@ -54,7 +54,7 @@ esp_err_t UiEngine::ShowBookTransfer(const zectrix::connectivity::BookTransferSn
         WrapText(16, 194 + dy, Tr(Text::LibraryUpdated), column, 18, 2, true);
         return page.Commit(full_refresh);
     } else if (status.state == BookTransferState::Failed || status.state == BookTransferState::Stopping) {
-        auto page = EnterPage(zectrix::ui::PageSpec()
+        auto page = EnterPage(note4::ui::PageSpec()
             .Title(Tr(Text::BookTransfer))
             .Footer(status.state == BookTransferState::Stopping ? Tr(Text::NavRetryStop) : Tr(Text::NavTransferBack)));
         const bool portrait = page.portrait();
@@ -78,7 +78,7 @@ esp_err_t UiEngine::ShowBookTransfer(const zectrix::connectivity::BookTransferSn
         WrapText(16, 158 + dy + (portrait ? (lines - 1) * 18 : 0), detail, column, 18, 3, true);
         return page.Commit(full_refresh);
     } else {
-        auto page = EnterPage(zectrix::ui::PageSpec()
+        auto page = EnterPage(note4::ui::PageSpec()
             .Title(status.state == BookTransferState::Starting ? Tr(Text::StartingWifi) : Tr(Text::SendBooks))
             .Footer(Tr(Text::NavFinishCancel)));
         const bool portrait = page.portrait();

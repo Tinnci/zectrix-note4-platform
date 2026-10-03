@@ -3,9 +3,9 @@
 #include <cstdint>
 #include <cstring>
 
-#include "zectrix_wifi_backend.h"
+#include "note4_wifi_backend.h"
 
-using namespace zectrix::connectivity;
+using namespace note4::connectivity;
 
 namespace {
 
@@ -46,27 +46,27 @@ public:
     }
 
     WifiDriverResult Resolve(
-        zectrix::companion::ResourceCapability capability) override {
+        note4::companion::ResourceCapability capability) override {
         ++resolves;
         saw_fixed_capability = capability ==
-            zectrix::companion::ResourceCapability::kPublicTestDocumentV1;
+            note4::companion::ResourceCapability::kPublicTestDocumentV1;
         return dns_result;
     }
 
     WifiDriverResult OpenTls(
-        zectrix::companion::ResourceCapability capability) override {
+        note4::companion::ResourceCapability capability) override {
         ++tls_opens;
         saw_fixed_capability = saw_fixed_capability && capability ==
-            zectrix::companion::ResourceCapability::kPublicTestDocumentV1;
+            note4::companion::ResourceCapability::kPublicTestDocumentV1;
         return tls_result;
     }
 
     WifiDriverResult Fetch(
-        zectrix::companion::ResourceCapability capability, uint8_t* body,
+        note4::companion::ResourceCapability capability, uint8_t* body,
         std::size_t body_capacity, std::size_t* body_size) override {
         ++fetches;
         saw_fixed_capability = saw_fixed_capability && capability ==
-            zectrix::companion::ResourceCapability::kPublicTestDocumentV1;
+            note4::companion::ResourceCapability::kPublicTestDocumentV1;
         if (fetch_result == WifiDriverResult::kReady) {
             assert(body_capacity >= response_size);
             for (std::size_t i = 0; i < response_size; ++i) {
@@ -276,7 +276,7 @@ void TestUnsupportedCapabilityIsTypedWithoutRadioUse() {
     WifiBackend backend(&credentials, &driver);
     WifiBackendRequest request = Request();
     request.capability =
-        static_cast<zectrix::companion::ResourceCapability>(0xffff);
+        static_cast<note4::companion::ResourceCapability>(0xffff);
     assert(backend.Begin(request, 0));
     WifiBackendOutcome outcome{};
     assert(backend.TakeOutcome(&outcome));

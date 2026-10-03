@@ -5,14 +5,14 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "zectrix/sdk/text_style.h"
-#include "zectrix_digit_style.h"
+#include "note4/sdk/text_style.h"
+#include "note4_digit_style.h"
 #include "layout.h"
 
 class Canvas {
 public:
-    using TextStyle = zectrix::sdk::TextStyle;
-    using Clip = zectrix::ui::Rect;
+    using TextStyle = note4::sdk::TextStyle;
+    using Clip = note4::ui::Rect;
     static constexpr int kWidth = 400;
     static constexpr int kHeight = 300;
     static constexpr int kStride = kWidth / 8;
@@ -38,8 +38,8 @@ public:
               bool inverted = false, TextStyle style = TextStyle::Regular);
     void TextCentered(int y, const char* text, int scale = 1,
                       bool inverted = false, TextStyle style = TextStyle::Regular);
-    void SetDigitStyle(zectrix::ui::DigitStyle style) { digit_style_ = zectrix::ui::NormalizeDigitStyle(static_cast<unsigned>(style)); }
-    zectrix::ui::DigitStyle digit_style() const { return digit_style_; }
+    void SetDigitStyle(note4::ui::DigitStyle style) { digit_style_ = note4::ui::NormalizeDigitStyle(static_cast<unsigned>(style)); }
+    note4::ui::DigitStyle digit_style() const { return digit_style_; }
     int LargeNumberWidth(unsigned value) const;
     // Two proportional native-size digits (00–99); no runtime font scaling.
     void LargeNumber(int x, int y, unsigned value, bool inverted = false);
@@ -53,12 +53,11 @@ public:
     size_t size() const { return pixels_.size(); }
 
 private:
-    zectrix::ui::DigitStyle digit_style_ = zectrix::ui::DigitStyle::Serif;
+    note4::ui::DigitStyle digit_style_ = note4::ui::DigitStyle::Serif;
     std::array<uint8_t, kFrameBytes> pixels_ = {};
     Clip clip_{0, 0, kWidth, kHeight};
     bool portrait_ = false;
 };
 
-using ZectrixCanvas = Canvas;
 
 #endif  // UI_CANVAS_H_

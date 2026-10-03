@@ -248,7 +248,7 @@ recovery; physical BLE disconnect timing still requires device qualification.
 The first resource capability is `public_test_document_v1`. The phone owns the
 HTTPS endpoint and enforces the response content type, 2048-byte body limit and
 timeout. Firmware sends no URL or credential. Android maps this capability to
-`https://zectrix.com/robots.txt`, uses `GET`, rejects redirects and accepts only
+`https://raw.githubusercontent.com/Tinnci/zectrix-note4-platform/main/version.txt`, uses `GET`, rejects redirects and accepts only
 a non-empty, valid UTF-8 `text/plain` response within the requested bound.
 Stable result classes are:
 
@@ -311,7 +311,7 @@ A terminal response stays available until consumed. Reboot persistence and
 cursor replay belong to the subsequent sync work.
 
 The ESP driver uses asynchronous DNS and verified TLS, then `esp_http_client`
-over that TLS stream for `GET https://zectrix.com/robots.txt`. It validates the
+over that TLS stream for `GET https://raw.githubusercontent.com/Tinnci/zectrix-note4-platform/main/version.txt`. It validates the
 CA chain, hostname and certificate dates. The bounded reader accepts a
 non-empty UTF-8 `text/plain` body with fixed-length, chunked or connection-close
 framing. It rejects redirects, compressed content, conflicting lengths,
@@ -400,7 +400,7 @@ or BLE link quality under RF contention.
 `StartBookTransfer`, `StopBookTransfer` and `BookTransferStatus` form an internal
 service boundary for Send Books. The application chooses hotspot or saved-network
 mode and receives copied status. Credentials, HTTP requests and socket lifetimes
-stay inside Connectivity. No SDK v1 signature changes.
+stay inside Connectivity. No SDK v2 signature changes.
 
 The existing session owner starts/polls the shared ESP Wi-Fi driver under the
 resource mutex. AP mode uses WPA2, a new 12-character password and at most two
@@ -547,7 +547,7 @@ The first implementation has two stages:
 1. A prepared NDEF record identifies the Note4 and its BLE peripheral role. An
    NFC field event opens a short local pairing window. Existing authenticated
    passkey pairing remains available.
-2. A versioned Zectrix MIME record carries a 128-bit random enrollment token
+2. A versioned Note4 MIME record carries a 128-bit random enrollment token
    and generation. Android returns that token in the protocol Hello after the
    BLE link is encrypted, authenticated, bonded and subscribed. The firmware
    binds it to the current enrollment generation and BLE session, marks the
@@ -567,7 +567,7 @@ interrupting an RF transfer and preserves execution ownership.
 The ownership path is:
 
 ```text
-ZectrixNfc board driver
+Note4Nfc board driver
         |
    internal NfcService
         |
@@ -609,7 +609,7 @@ Hardware evidence:
 
 ## C2.1 Android handoff and local content integration
 
-The Android manifest resolves `application/vnd.zectrix.enroll.v1`; onCreate and
+The Android manifest resolves `application/vnd.note4.enroll.v1`; onCreate and
 onNewIntent share one decoder. It removes NDEF extras after consumption and
 rejects multiple matching records. A supported enrollment target has a valid
 public/static-random peripheral address and a nonzero device ID. CDM approval

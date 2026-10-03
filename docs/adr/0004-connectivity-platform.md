@@ -25,7 +25,7 @@ internal product semantics: state, command and resource request
     |
 SyncEngine and ConnectivityPolicy
     |
-Zectrix Companion Protocol 1.x
+Note4 Companion Protocol 1.x
     |                         |
 BleLink                  WifiLink
     |                         |
@@ -177,12 +177,12 @@ References:
 ### NFC-assisted enrollment
 
 Adopt NFC field presence as a local physical enrollment action and use a
-single-use Zectrix enrollment token to complete protocol peer authorization.
+single-use Note4 enrollment token to complete protocol peer authorization.
 Keep BLE bonding and protocol authorization as separate gates. Pre-write NDEF
 before field entry; never start I2C writes from the field callback.
 
 Adjust NFC Forum/Bluetooth handover concepts to the public Android application
-boundary: use the companion app to consume the Zectrix enrollment record, then
+boundary: use the companion app to consume the Note4 enrollment record, then
 return it through the authenticated Companion Protocol session. Do not put an
 LTK, bond key or persistent device secret in NDEF.
 

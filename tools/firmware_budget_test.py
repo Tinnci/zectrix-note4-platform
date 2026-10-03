@@ -86,11 +86,11 @@ class FirmwareBudgetTest(unittest.TestCase):
     def test_linked_font_uses_built_symbol(self):
         self.write_json("project_description.json", {
             "target": "esp32s3", "app_bin": "product.bin", "app_elf": "product.elf",
-            "build_components": ["zectrix_reader"],
+            "build_components": ["note4_reader"],
         })
         (self.root / "CMakeCache.txt").write_text("CMAKE_NM:FILEPATH=/toolchain/nm\n")
         with patch("firmware_budget.subprocess.run") as run:
-            run.return_value.stdout = "unrelated T 4000 12\nzectrix_reader_font_data R 3c000000 12345\n"
+            run.return_value.stdout = "unrelated T 4000 12\nnote4_reader_font_data R 3c000000 12345\n"
             self.assertEqual(inspect_budget(self.root)["reader_font_bytes"], 0x12345)
             self.assertEqual(run.call_args.args[0][0], "/toolchain/nm")
 

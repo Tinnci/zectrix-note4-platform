@@ -2,9 +2,9 @@
 
 #include <cstdint>
 
-#include "zectrix_canvas.h"
+#include "canvas.h"
 
-namespace zectrix::ui {
+namespace note4::ui {
 
 enum class RadioIndicator : uint8_t { Off, Ready, Connected, Active, Fault };
 
@@ -26,6 +26,6 @@ struct StatusBarState {
 };
 
 constexpr int kStatusBarHeight = 24;
-void DrawStatusBar(ZectrixCanvas& canvas, const StatusBarState& state, bool inverted = false);
+void DrawStatusBar(Canvas& canvas, const StatusBarState& state, bool inverted = false);
 
-}  // namespace zectrix::ui
+}  // namespace note4::ui

@@ -16,7 +16,7 @@ import time
 SUITES = {
     "foundation": (
         "host-runner", "app-contract", "application-runtime", "first-party-app-controllers",
-        "scene-manager", "sdk-v1", "service-registry", "runtime", "module-config",
+        "scene-manager", "sdk-v2", "service-registry", "runtime", "module-config",
         "localization", "input-event", "layout",
     ),
     "connectivity": (
@@ -75,7 +75,7 @@ class Runner:
             try:
                 work = self.reports / "work" / name
                 work.mkdir(parents=True, exist_ok=True)
-                env = dict(os.environ, TMPDIR=str(work), ZECTRIX_RUNTIME_BUILD_DIR=str(work / "runtime"))
+                env = dict(os.environ, TMPDIR=str(work), NOTE4_RUNTIME_BUILD_DIR=str(work / "runtime"))
                 env.setdefault("CMAKE_BUILD_PARALLEL_LEVEL", "2")
                 process = subprocess.Popen(command, cwd=self.root, stdout=output, stderr=subprocess.STDOUT,
                                            start_new_session=True, env=env)

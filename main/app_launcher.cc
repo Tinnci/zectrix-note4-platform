@@ -1,10 +1,10 @@
 #include "terminal_internal.h"
 
 #include "esp_log.h"
-#include "zectrix_first_party_app_controllers.h"
-#include "zectrix_storage_service.h"
+#include "note4_first_party_app_controllers.h"
+#include "note4_storage_service.h"
 
-namespace zectrix::terminal {
+namespace note4::terminal {
 
 constexpr int64_t kHomeIdleTimeoutUs = 15000000;
 
@@ -15,18 +15,18 @@ public:
 
     sdk::Status Enter(sdk::ApplicationContext& context) override {
         owner_->BindScenes(controller_);
-        uint32_t stored = zectrix::app::kAutoShowcaseDefault;
+        uint32_t stored = note4::app::kAutoShowcaseDefault;
         const esp_err_t read = owner_->storage_->GetUInt32(
-            zectrix::app::kAutoShowcaseSettingKey, &stored);
+            note4::app::kAutoShowcaseSettingKey, &stored);
         bool valid = read == ESP_OK &&
-            zectrix::app::NormalizeAutoShowcaseSetting(
+            note4::app::NormalizeAutoShowcaseSetting(
                 stored, &auto_showcase_);
         if (!valid) {
-            auto_showcase_ = zectrix::app::kAutoShowcaseDefault != 0;
+            auto_showcase_ = note4::app::kAutoShowcaseDefault != 0;
             if (read == ESP_ERR_NOT_FOUND || read == ESP_OK) {
                 const esp_err_t repair = owner_->storage_->SetUInt32(
-                    zectrix::app::kAutoShowcaseSettingKey,
-                    zectrix::app::kAutoShowcaseDefault);
+                    note4::app::kAutoShowcaseSettingKey,
+                    note4::app::kAutoShowcaseDefault);
                 if (repair != ESP_OK) {
                     ESP_LOGW(kTag, "default setting save failed: %s",
                              esp_err_to_name(repair));
@@ -91,13 +91,13 @@ private:
         }
         const auto submitted = context.RequestCommand(command);
         const bool accepted = submitted == sdk::SubmitResult::Accepted || submitted == sdk::SubmitResult::Superseded;
-#if CONFIG_ZECTRIX_ENABLE_READER
+#if CONFIG_NOTE4_ENABLE_READER
         if (accepted) owner_->reader_continue_requested_ = result.decision == Decision::ContinueReading;
 #endif
         return accepted ? sdk::Status::Ok : sdk::Status::InvalidState;
     }
     TerminalApp* owner_;
-    zectrix::app::LauncherController controller_;
+    note4::app::LauncherController controller_;
     app::ReadingOverview reading_{};
     time::ClockSnapshot clock_{};
     bool auto_showcase_ = false;
@@ -112,4 +112,4 @@ sdk::Status TerminalApp::CreateLauncher(TerminalApp& owner, sdk::Application** o
     return result;
 }
 
-}  // namespace zectrix::terminal
+}  // namespace note4::terminal

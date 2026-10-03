@@ -1,15 +1,15 @@
-#include "zectrix_input_service.h"
-#include "zectrix_board.h"
+#include "note4_input_service.h"
+#include "note4_board.h"
 #include "freertos/task.h"
 #include <cassert>
 #include <type_traits>
 
-static zectrix::input::InputTrace trace;
-zectrix::input::TraceBatch ZectrixBoard::ReadInputTrace(uint64_t cursor) { return trace.Read(cursor); }
+static note4::input::InputTrace trace;
+note4::input::TraceBatch Note4Board::ReadInputTrace(uint64_t cursor) { return trace.Read(cursor); }
 
 namespace {
 struct WaitProbe {
-    ZectrixBoard* board;
+    Note4Board* board;
     unsigned calls = 0;
     bool deliver_event = true;
 };
@@ -18,14 +18,14 @@ void ServiceWait(void* context) {
     ++probe.calls;
     host_ticks += 5;
     if (probe.calls == 2 && probe.deliver_event) {
-        probe.board->next_event = {ZectrixButton::kUp, ZectrixButtonAction::kClick};
+        probe.board->next_event = {Note4Button::kUp, Note4ButtonAction::kClick};
         probe.board->has_event = true;
     }
 }
 }
 
 int main() {
-    using namespace zectrix::input;
+    using namespace note4::input;
     const InputEvent up = InputService::MakeEvent(Button::Up, Action::Click);
     const InputEvent hold = InputService::MakeEvent(Button::Ok, Action::LongPress);
     assert(up.button == Button::Up && up.action == Action::Click);
@@ -35,7 +35,7 @@ int main() {
     static_assert(std::is_same_v<decltype(&InputService::Wait), WaitSignature>);
     static_assert(portMAX_DELAY == UINT32_MAX);
 
-    ZectrixBoard board;
+    Note4Board board;
     InputService* service = nullptr;
     assert(InputService::Attach(board, &service) == ESP_OK);
     assert(service != nullptr);
@@ -51,15 +51,15 @@ int main() {
     assert(batch.records[3].sequence == 40 && service->ReadTrace(batch.cursor).count == 0);
     assert(!service->Wait(&event, 17));
     assert(board.last_timeout == 17);
-    board.next_event = {ZectrixButton::kUp, ZectrixButtonAction::kClick};
+    board.next_event = {Note4Button::kUp, Note4ButtonAction::kClick};
     board.has_event = true;
     service->ReadTrace(0);
     assert(board.has_event);
     assert(service->Wait(&event, portMAX_DELAY));
     assert(board.last_timeout == portMAX_DELAY);
     assert(event.button == Button::Up && event.action == Action::Click);
-    board.next_event = {ZectrixButton::kDown,
-                        ZectrixButtonAction::kLongPress};
+    board.next_event = {Note4Button::kDown,
+                        Note4ButtonAction::kLongPress};
     board.has_event = true;
     assert(service->Wait(&event, 2));
     assert(event.button == Button::Down && event.action == Action::LongPress);
@@ -77,7 +77,7 @@ int main() {
     // A notification in the predicate-to-block window is retained by the
     // queue, and cannot become a synthetic application input or idle event.
     probe.calls = 0;
-    board.on_wait = [](ZectrixBoard& waiting) { waiting.WakeButtonWait(); };
+    board.on_wait = [](Note4Board& waiting) { waiting.WakeButtonWait(); };
     assert(service->Wait(&event, portMAX_DELAY));
     assert(event.button == Button::Up && board.last_timeout == portMAX_DELAY);
 

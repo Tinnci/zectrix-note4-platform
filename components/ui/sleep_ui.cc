@@ -1,24 +1,24 @@
-#include "zectrix_locale.h"
+#include "note4_locale.h"
 #include "ui_engine.h"
-#include "zectrix_sleep_cover.h"
+#include "note4_sleep_cover.h"
 #include "unicode_text.h"
 #include "sdkconfig.h"
 
 #include <algorithm>
 #include <cstdio>
 
-using zectrix::i18n::Tr;
-using zectrix::i18n::Text;
+using note4::i18n::Tr;
+using note4::i18n::Text;
 
 namespace {
-using namespace zectrix::app;
+using namespace note4::app;
 constexpr Text kMonths[] = {Text::Jan, Text::Feb, Text::Mar, Text::Apr, Text::May, Text::Jun,
     Text::Jul, Text::Aug, Text::Sep, Text::Oct, Text::Nov, Text::Dec};
 constexpr Text kWeekdays[] = {Text::Monday, Text::Tuesday, Text::Wednesday, Text::Thursday,
     Text::Friday, Text::Saturday, Text::Sunday};
 
 // Both orientations keep Monday-first placement and a single, solid today marker.
-void DrawMonthGrid(ZectrixCanvas& canvas, const SleepCalendar& calendar, int today,
+void DrawMonthGrid(Canvas& canvas, const SleepCalendar& calendar, int today,
                    int left, int heading_y, int top, int column_width, int row_height) {
     constexpr Text weekdays[] = {Text::WeekMon, Text::WeekTue, Text::WeekWed, Text::WeekThu,
         Text::WeekFri, Text::WeekSat, Text::WeekSun};
@@ -40,7 +40,7 @@ void DrawMonthGrid(ZectrixCanvas& canvas, const SleepCalendar& calendar, int tod
     }
 }
 
-void DrawLandscape(ZectrixCanvas& canvas, unsigned variation) {
+void DrawLandscape(Canvas& canvas, unsigned variation) {
     const int sun_x = 265 + static_cast<int>(variation % 3) * 20;
     for (int y = -13; y <= 13; ++y) {
         for (int x = -13; x <= 13; ++x) {
@@ -61,12 +61,12 @@ void DrawLandscape(ZectrixCanvas& canvas, unsigned variation) {
     }
 }
 
-void DrawCalendar(ZectrixCanvas& canvas, const SleepCoverSnapshot& snapshot, const SleepCalendar& calendar) {
+void DrawCalendar(Canvas& canvas, const SleepCoverSnapshot& snapshot, const SleepCalendar& calendar) {
     const auto& date = snapshot.clock.value;
     if (!calendar.valid) {
         canvas.TextCentered(58, Tr(Text::TimeNotSet), 2);
         canvas.TextCentered(114, Tr(Text::SetClockForCalendar));
-#if CONFIG_ZECTRIX_ENABLE_READER
+#if CONFIG_NOTE4_ENABLE_READER
         canvas.TextCentered(147, Tr(Text::SavedReadingBelow));
 #endif
         return;
@@ -81,8 +81,8 @@ void DrawCalendar(ZectrixCanvas& canvas, const SleepCoverSnapshot& snapshot, con
     DrawMonthGrid(canvas, calendar, date.day, 186, 32, 54, 28, 20);
 }
 
-#if CONFIG_ZECTRIX_ENABLE_READER
-void DrawReading(ZectrixCanvas& canvas, const SleepCoverSnapshot& snapshot) {
+#if CONFIG_NOTE4_ENABLE_READER
+void DrawReading(Canvas& canvas, const SleepCoverSnapshot& snapshot) {
     canvas.Line(16, 175, 383, 175);
     canvas.Text(16, 183, Tr(Text::LastSavedReading));
     if (!snapshot.has_reading) {
@@ -95,7 +95,7 @@ void DrawReading(ZectrixCanvas& canvas, const SleepCoverSnapshot& snapshot) {
     canvas.Text(384 - canvas.TextWidth(label), 183, label);
     auto title = snapshot.reading.book_id;
     title.back() = 0;
-    zectrix::ui::DrawUtf8Line(canvas, 16, 205, title.data(), 368);
+    note4::ui::DrawUtf8Line(canvas, 16, 205, title.data(), 368);
     canvas.Rect(16, 229, 368, 5);
     canvas.FillRect(17, 230, 366 * progress / 1000, 3, true);
 }
@@ -109,7 +109,7 @@ esp_err_t UiEngine::ShowSleepCoverMenu(SleepCoverStyle selected, SleepCoverStyle
     const int width = canvas_.width(), height = canvas_.height();
     const char* styles[] = {Tr(Text::DailyDashboard), Tr(Text::QuietLandscape), Tr(Text::BlankPrivacy), Tr(Text::PhonePicture)};
     const char* details[] = {
-#if CONFIG_ZECTRIX_ENABLE_READER
+#if CONFIG_NOTE4_ENABLE_READER
         Tr(Text::DashboardDetail),
 #else
         Tr(Text::CalendarDetail),
@@ -154,7 +154,7 @@ esp_err_t UiEngine::ShowSleepCover(const SleepCoverSnapshot& snapshot, SleepCove
     const auto& quote = QuoteForSleep(calendar);
     bool picture_loaded = false;
     if (style == SleepCoverStyle::Picture && picture && picture->read) {
-        std::array<uint8_t, ZectrixCanvas::kStride> row{};
+        std::array<uint8_t, Canvas::kStride> row{};
         picture_loaded = true;
         for (int y = preview ? 24 : 0; y < 273; ++y) {
             if (!picture->read(picture->context, y * row.size(), row.data(), row.size())) {
@@ -168,12 +168,12 @@ esp_err_t UiEngine::ShowSleepCover(const SleepCoverSnapshot& snapshot, SleepCove
     }
     if (style == SleepCoverStyle::Dashboard) {
         DrawCalendar(canvas_, snapshot, calendar);
-#if CONFIG_ZECTRIX_ENABLE_READER
+#if CONFIG_NOTE4_ENABLE_READER
         DrawReading(canvas_, snapshot);
 #endif
         char line[96];
         std::snprintf(line, sizeof(line), "%s %s", Tr(quote.first_text, quote.first), Tr(quote.second_text, quote.second));
-        zectrix::ui::DrawUtf8Line(canvas_, 16, 246, snapshot.weather_line[0] ? snapshot.weather_line.data() : line, 368);
+        note4::ui::DrawUtf8Line(canvas_, 16, 246, snapshot.weather_line[0] ? snapshot.weather_line.data() : line, 368);
     } else if (style == SleepCoverStyle::Quote) {
         canvas_.TextCentered(31, Tr(Text::BetweenPages));
         DrawLandscape(canvas_, calendar.day_number);
@@ -206,7 +206,7 @@ esp_err_t UiEngine::ShowSleepCover(const SleepCoverSnapshot& snapshot, SleepCove
     canvas_.TextCentered(278, Tr(Text::WakeHint), 1, true);
     // Commit the final surface directly. Pending status invalidations stay dormant.
     sleep_surface_ = true;
-    return display_->Present1Bpp(zectrix::display::DisplayIntent::FullClean, canvas_.data(), canvas_.size());
+    return display_->Present1Bpp(note4::display::DisplayIntent::FullClean, canvas_.data(), canvas_.size());
 }
 
 esp_err_t UiEngine::ShowPortraitCalendar(const SleepCoverSnapshot& snapshot,
@@ -219,7 +219,7 @@ esp_err_t UiEngine::ShowPortraitCalendar(const SleepCoverSnapshot& snapshot,
     } restore{*this};
     canvas_.Clear();
     const auto calendar = CalendarForSleep(snapshot.clock);
-    canvas_.TextFitted(16, 12, Tr(Text::OfflineCalendar), 180, false, ZectrixCanvas::TextStyle::Bold);
+    canvas_.TextFitted(16, 12, Tr(Text::OfflineCalendar), 180, false, Canvas::TextStyle::Bold);
     char battery[24];
     if (snapshot.power.battery_valid && !snapshot.power.battery_absent)
         std::snprintf(battery, sizeof(battery), "%u%%", std::min<unsigned>(snapshot.power.battery_percent, 100));

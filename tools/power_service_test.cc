@@ -1,6 +1,6 @@
-#include "zectrix_power_service.h"
+#include "note4_power_service.h"
 #include "esp_sleep.h"
-#include "zectrix_board.h"
+#include "note4_board.h"
 
 #include <cassert>
 #include <csetjmp>
@@ -24,8 +24,8 @@ void vTaskDelay(TickType_t ticks) { delays[delay_count++] = ticks; }
 [[noreturn]] void esp_deep_sleep_start() { assert(power_ready); std::longjmp(shutdown_jump, 1); }
 
 int main() {
-    using namespace zectrix::power;
-    ZectrixBoard board;
+    using namespace note4::power;
+    Note4Board board;
     board.power_snapshot = {
         true, 3900, 72, {true, true, false, true, false}};
     PowerService* service = nullptr;
@@ -70,7 +70,7 @@ int main() {
         board.power_wake_result = cleanup_result;
         power_ready = false;
         if (setjmp(shutdown_jump) == 0) service->Shutdown([](void* context) {
-            const auto& board = *static_cast<ZectrixBoard*>(context);
+            const auto& board = *static_cast<Note4Board*>(context);
             assert(!power_ready && board.power_event_count == 4 && board.power_events[3] == 7);
             power_ready = true;
         }, &board);

@@ -18,7 +18,7 @@ build_dir="$repo_dir/build${profile:+-$profile}"
 build_args=("$repo_dir/tools/build-firmware.sh")
 if [ -n "$profile" ]; then build_args+=(--profile "$profile"); fi
 cd "$repo_dir"
-port="${ZECTRIX_PORT:-/dev/cu.usbmodem14301}"
+port="${NOTE4_PORT:-/dev/cu.usbmodem14301}"
 if [ ! -e "$port" ]; then
     printf 'FAIL: USB hardware device not found at %s\n' "$port" >&2
     exit 1
@@ -29,7 +29,7 @@ if ! command -v idf.py >/dev/null 2>&1 || [ -z "${IDF_PATH:-}" ]; then
     source "$repo_dir/tools/activate-dev-env.sh"
 fi
 command -v idf.py >/dev/null
-printf '=== Zectrix Device Smoke Test ===\nHardware Port: %s; profile: %s\n' "$port" "${profile:-local}"
+printf '=== Note4 Device Smoke Test ===\nHardware Port: %s; profile: %s\n' "$port" "${profile:-local}"
 printf 'Building firmware...\n'
 bash "${build_args[@]}"
 printf 'Flashing firmware to %s...\n' "$port"
@@ -52,7 +52,7 @@ build_dir = Path(sys.argv[2])
 config = json.loads((build_dir / "config/sdkconfig.json").read_text())
 partitions = json.loads((build_dir / "firmware-budget.json").read_text())["partitions"]
 # Count the mandatory catalog and the service-backed optional destinations.
-expected_apps = 9 + sum(bool(config.get(f"ZECTRIX_ENABLE_{module}"))
+expected_apps = 9 + sum(bool(config.get(f"NOTE4_ENABLE_{module}"))
                         for module in ("CONNECTIVITY", "READER", "BOOK_TRANSFER", "USB_HOST", "RUNTIME", "UTILITIES"))
 try:
     with serial.Serial(sys.argv[1], 115200, timeout=0.2) as ser:
@@ -65,7 +65,7 @@ try:
         following = False
         while time.monotonic() < deadline:
             captured.extend(ser.read(ser.in_waiting or 1))
-            if not following and b"zectrix> " in captured:
+            if not following and b"note4> " in captured:
                 # The CLI owns log output after platform initialization.
                 ser.write(b"log follow debug\r")
                 following = True
@@ -90,7 +90,7 @@ checks = {
     "application runtime": "heap M3 runtime active:" in output,
     "first Launcher frame and boot confirmation": ready is not None,
     "selected application catalog": ready is not None and int(ready[1]) == expected_apps,
-    "selected USB CLI": following == bool(config.get("ZECTRIX_ENABLE_USB_CLI")),
+    "selected USB CLI": following == bool(config.get("NOTE4_ENABLE_USB_CLI")),
 }
 for label, passed in checks.items():
     print(f"{'PASS' if passed else 'FAIL'}: {label}")

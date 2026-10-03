@@ -32,9 +32,9 @@ tools/check-dev-env.sh
 ```
 
 Override non-standard locations before activation with
-`ZECTRIX_IDF_PATH`, `ZECTRIX_IDF_PYTHON_ENV_PATH`,
-`ZECTRIX_CMAKE_BIN_DIR`, `ZECTRIX_JAVA_HOME` and
-`ZECTRIX_ANDROID_SDK_ROOT`. Do not put machine-specific absolute paths in the
+`NOTE4_IDF_PATH`, `NOTE4_IDF_PYTHON_ENV_PATH`,
+`NOTE4_CMAKE_BIN_DIR`, `NOTE4_JAVA_HOME` and
+`NOTE4_ANDROID_SDK_ROOT`. Do not put machine-specific absolute paths in the
 repository.
 
 Do not activate an ESP-IDF environment unconditionally from the shell startup
@@ -55,7 +55,7 @@ globally installed Gradle distribution:
 
 ```bash
 tools/test-android-companion.sh
-ZECTRIX_ANDROID_CLEAN=1 tools/test-android-companion.sh
+NOTE4_ANDROID_CLEAN=1 tools/test-android-companion.sh
 ```
 
 ## Network

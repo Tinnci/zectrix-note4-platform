@@ -1,16 +1,16 @@
-#include "zectrix_locale.h"
+#include "note4_locale.h"
 #include "terminal_internal.h"
 
 #include <iterator>
 
 #include "esp_log.h"
-#include "zectrix_first_party_app_controllers.h"
+#include "note4_first_party_app_controllers.h"
 
 
-using zectrix::i18n::Tr;
-using zectrix::i18n::Text;
+using note4::i18n::Tr;
+using note4::i18n::Text;
 
-namespace zectrix::terminal {
+namespace note4::terminal {
 
 class TerminalApp::DiagnosticsApplication final : public sdk::Application {
 public:
@@ -18,7 +18,7 @@ public:
 
     sdk::Status Enter(sdk::ApplicationContext& context) override {
         owner_->BindScenes(controller_);
-        owner_->test_states_.fill(ZectrixTestState::kWait);
+        owner_->test_states_.fill(Note4TestState::kWait);
         const auto started = controller_.Start();
         return sdk::IsOk(started) ? Apply(controller_.Tick(), context) : started;
     }
@@ -34,9 +34,9 @@ public:
 
     sdk::Status Render(const sdk::RenderRequest& request) override {
         esp_err_t result;
-        if (controller_.page() == zectrix::app::DiagnosticsPage::Summary) {
+        if (controller_.page() == note4::app::DiagnosticsPage::Summary) {
             result = owner_->ui_.ShowTestSummary(owner_->test_states_);
-        } else if (controller_.page() == zectrix::app::DiagnosticsPage::Individual) {
+        } else if (controller_.page() == note4::app::DiagnosticsPage::Individual) {
             result = owner_->ui_.ShowTestMenu(
                 controller_.selected(), owner_->test_states_,
                 request.intent == sdk::RenderIntent::Quality);
@@ -74,11 +74,11 @@ private:
         return sdk::Status::InternalError;
     }
 
-    ZectrixTestResult Execute(ZectrixTestId id) {
+    Note4TestResult Execute(Note4TestId id) {
         owner_->test_states_[static_cast<size_t>(id)] =
-            ZectrixTestState::kRunning;
+            Note4TestState::kRunning;
         const auto result = owner_->tests_->Run(
-            id, [this](const ZectrixTestUpdate& update) {
+            id, [this](const Note4TestUpdate& update) {
                 owner_->UpdateSystemStatus();
                 owner_->test_states_[static_cast<size_t>(update.id)] =
                     update.state;
@@ -96,10 +96,10 @@ private:
     }
 
     sdk::Status RunAll(sdk::ApplicationContext& context) {
-        owner_->test_states_.fill(ZectrixTestState::kWait);
+        owner_->test_states_.fill(Note4TestState::kWait);
         bool cancelled = false;
         for (size_t index = 0;
-             index < static_cast<size_t>(ZectrixTestId::kCount); ++index) {
+             index < static_cast<size_t>(Note4TestId::kCount); ++index) {
             esp_err_t draw = owner_->ui_.ShowTestMenu(
                 index, owner_->test_states_, true);
             if (draw != ESP_OK) {
@@ -107,14 +107,14 @@ private:
                 Apply(controller_.FinishRun(true), context);
                 return ToSdkStatus(draw);
             }
-            const ZectrixTestResult result =
-                Execute(static_cast<ZectrixTestId>(index));
-            if (result == ZectrixTestResult::kShutdown) {
+            const Note4TestResult result =
+                Execute(static_cast<Note4TestId>(index));
+            if (result == Note4TestResult::kShutdown) {
                 context.RequestCommand(sdk::AppCommand::Shutdown());
                 return sdk::Status::Ok;
             }
             RecordResult(index, result);
-            if (result == ZectrixTestResult::kCancelled) {
+            if (result == Note4TestResult::kCancelled) {
                 cancelled = true;
                 break;
             }
@@ -133,14 +133,14 @@ private:
 
     sdk::Status RunSelected(size_t selected,
                           sdk::ApplicationContext& context) {
-        const ZectrixTestResult result =
-            Execute(static_cast<ZectrixTestId>(selected));
-        if (result == ZectrixTestResult::kShutdown) {
+        const Note4TestResult result =
+            Execute(static_cast<Note4TestId>(selected));
+        if (result == Note4TestResult::kShutdown) {
             context.RequestCommand(sdk::AppCommand::Shutdown());
             return sdk::Status::Ok;
         }
         RecordResult(selected, result);
-        const bool cancelled = result == ZectrixTestResult::kCancelled;
+        const bool cancelled = result == Note4TestResult::kCancelled;
         if (!cancelled && owner_->Wait(1200, true) == ControlResult::kShutdown) {
             context.RequestCommand(sdk::AppCommand::Shutdown());
             return sdk::Status::Ok;
@@ -148,23 +148,23 @@ private:
         return Apply(controller_.FinishRun(cancelled), context);
     }
 
-    void RecordResult(size_t index, ZectrixTestResult result) {
+    void RecordResult(size_t index, Note4TestResult result) {
         auto& state = owner_->test_states_[index];
         switch (result) {
-            case ZectrixTestResult::kPass: state = ZectrixTestState::kPass; break;
-            case ZectrixTestResult::kFail: state = ZectrixTestState::kFail; break;
-            case ZectrixTestResult::kSkipped: state = ZectrixTestState::kSkipped; break;
-            case ZectrixTestResult::kCancelled: state = ZectrixTestState::kWait; break;
-            case ZectrixTestResult::kShutdown: break;
+            case Note4TestResult::kPass: state = Note4TestState::kPass; break;
+            case Note4TestResult::kFail: state = Note4TestState::kFail; break;
+            case Note4TestResult::kSkipped: state = Note4TestState::kSkipped; break;
+            case Note4TestResult::kCancelled: state = Note4TestState::kWait; break;
+            case Note4TestResult::kShutdown: break;
         }
     }
 
     TerminalApp* owner_;
-    zectrix::app::DiagnosticsController controller_;
+    note4::app::DiagnosticsController controller_;
 };
 
 sdk::Status TerminalApp::CreateDiagnostics(TerminalApp& owner, sdk::Application** output) {
     return CreateApplication<DiagnosticsApplication>(owner, output);
 }
 
-}  // namespace zectrix::terminal
+}  // namespace note4::terminal

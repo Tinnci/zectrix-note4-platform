@@ -109,9 +109,9 @@ def firmware_link(engine: str, sources: Path, output: Path) -> dict:
     run(["cmake", "--build", str(build), "--target", "gen_project_binary", "--parallel", "4"],
         build / "link.log", timeout=1200)
     run([python, "-m", "esp_idf_size", "--format", "json", "--output-file",
-         str(build / "size.json"), str(build / "zectrix_epd_demo.map")],
+         str(build / "size.json"), str(build / "note4_platform.map")],
         build / "size.log")
-    size = (build / "zectrix_epd_demo.bin").stat().st_size
+    size = (build / "note4_platform.bin").stat().st_size
     return {"image_bytes": size, "slot_bytes": 0x300000,
             "fits_existing_slot": size <= 0x300000,
             "size_report": str(build / "size.json")}

@@ -8,7 +8,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-namespace zectrix::cli::host {
+namespace note4::cli::host {
 
 StdioTransport::~StdioTransport() {
     if (terminal_changed_) tcsetattr(STDIN_FILENO, TCSANOW, &saved_terminal_);
@@ -162,4 +162,4 @@ void StdioTransport::DrainOutput(int timeout_ms) {
     }
 }
 
-}  // namespace zectrix::cli::host
+}  // namespace note4::cli::host

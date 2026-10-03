@@ -1,6 +1,6 @@
-#include "zectrix_locale.h"
+#include "note4_locale.h"
 #include "ui_engine.h"
-#include "zectrix_first_party_app_controllers.h"
+#include "note4_first_party_app_controllers.h"
 #include "utf8.h"
 #include "sdkconfig.h"
 
@@ -10,15 +10,15 @@
 #include <limits>
 #include <new>
 
-using zectrix::i18n::Tr;
-using zectrix::i18n::Text;
+using note4::i18n::Tr;
+using note4::i18n::Text;
 
 namespace {
 
 constexpr int kHeaderHeight = 44;
 constexpr size_t kContentViewPort = 0;
 constexpr size_t kStatusViewPort = 1;
-constexpr int kStatusHeight = zectrix::ui::kStatusBarHeight;
+constexpr int kStatusHeight = note4::ui::kStatusBarHeight;
 constexpr int kTestStripHeight = 42;
 constexpr int kTestContentLeft = 16;
 constexpr int kTestContentRight = 384;
@@ -43,8 +43,8 @@ int ScaleFraction(int extent, size_t numerator, size_t denominator) {
     return scaled;
 }
 
-const char* ScreenDirectionName(zectrix::display::DisplayOrientation orientation) {
-    using Orientation = zectrix::display::DisplayOrientation;
+const char* ScreenDirectionName(note4::display::DisplayOrientation orientation) {
+    using Orientation = note4::display::DisplayOrientation;
     switch (orientation) {
         case Orientation::Portrait: return "90 deg";
         case Orientation::Inverted: return "180 deg";
@@ -53,10 +53,10 @@ const char* ScreenDirectionName(zectrix::display::DisplayOrientation orientation
     }
 }
 
-constexpr std::array<ZectrixTestId, 7> kTestOrder = {
-    ZectrixTestId::kRf, ZectrixTestId::kAudio, ZectrixTestId::kRtc,
-    ZectrixTestId::kCharge, ZectrixTestId::kLed, ZectrixTestId::kButtons,
-    ZectrixTestId::kNfc};
+constexpr std::array<Note4TestId, 7> kTestOrder = {
+    Note4TestId::kRf, Note4TestId::kAudio, Note4TestId::kRtc,
+    Note4TestId::kCharge, Note4TestId::kLed, Note4TestId::kButtons,
+    Note4TestId::kNfc};
 
 constexpr std::array<Text, 7> kTestShortNames = {
     Text::TestRf, Text::TestAudio, Text::TestRtc, Text::TestPower,
@@ -64,12 +64,12 @@ constexpr std::array<Text, 7> kTestShortNames = {
 
 }  // namespace
 
-void UiEngine::DrawFittedText(ZectrixCanvas& canvas, int x, int y, const char* text,
+void UiEngine::DrawFittedText(Canvas& canvas, int x, int y, const char* text,
                                   int max_width, bool inverted) {
     canvas.TextFitted(x, y, text, max_width, inverted);
 }
 
-UiEngine::UiEngine(zectrix::display::DisplayService* display)
+UiEngine::UiEngine(note4::display::DisplayService* display)
     : display_(display) {
     canvas_.Clear();
     ConfigureViewports();
@@ -79,8 +79,8 @@ void UiEngine::ConfigureViewports() {
     viewports_.Configure(kContentViewPort, {{0, kStatusHeight, canvas_.width(), canvas_.height() - kStatusHeight},
                                           nullptr, nullptr});
     viewports_.Configure(kStatusViewPort, {{0, 0, canvas_.width(), kStatusHeight},
-        [](void* context, ZectrixCanvas& canvas) {
-            zectrix::ui::DrawStatusBar(canvas, static_cast<ZectrixDemoUi*>(context)->status_);
+        [](void* context, Canvas& canvas) {
+            note4::ui::DrawStatusBar(canvas, static_cast<UiEngine*>(context)->status_);
         }, this});
 }
 
@@ -100,7 +100,7 @@ void UiEngine::BeginContent(bool portrait_capable) {
     canvas_.Clear();
 }
 
-void UiEngine::UpdateStatus(const zectrix::ui::StatusBarState& state) {
+void UiEngine::UpdateStatus(const note4::ui::StatusBarState& state) {
     if (status_ == state) return;
     status_ = state;
     viewports_.Invalidate(kStatusViewPort);
@@ -110,7 +110,7 @@ void UiEngine::DrawFrame(const char* title, const char* footer, bool portrait_ca
     BeginContent(portrait_capable);
     const int width = canvas_.width();
     canvas_.FillRect(0, kStatusHeight, width, kHeaderHeight - kStatusHeight, true);
-    canvas_.TextFitted(10, kStatusHeight + 2, title, width - 20, true, ZectrixCanvas::TextStyle::Bold);
+    canvas_.TextFitted(10, kStatusHeight + 2, title, width - 20, true, Canvas::TextStyle::Bold);
     const int top = FooterTop();
     canvas_.Line(0, top, width - 1, top);
     if (!canvas_.portrait() || canvas_.TextWidth(footer) <= width - 16) {
@@ -141,15 +141,15 @@ void UiEngine::DrawFrame(const char* title, const char* footer, bool portrait_ca
     canvas_.TextFitted(8, top + 19, rest, width - 16);
 }
 
-zectrix::ui::Rect UiEngine::BeginPage(const char* title, const char* footer, bool portrait_capable) {
+note4::ui::Rect UiEngine::BeginPage(const char* title, const char* footer, bool portrait_capable) {
     DrawFrame(title, footer, portrait_capable);
     const int top = FooterTop();
-    const zectrix::ui::Rect body(0, kHeaderHeight, canvas_.width(), top - kHeaderHeight);
+    const note4::ui::Rect body(0, kHeaderHeight, canvas_.width(), top - kHeaderHeight);
     canvas_.SetClip(body);
     return body;
 }
 
-namespace zectrix::ui {
+namespace note4::ui {
 
 PageShell::PageShell(UiEngine& engine, Canvas& canvas, Rect body, const PageSpec& spec)
     : engine_(&engine), canvas_(canvas), body_(body), committed_(false) {
@@ -223,11 +223,11 @@ esp_err_t PageShell::Commit(bool full_refresh) {
     return full_refresh ? engine_->RefreshFull() : engine_->RefreshAuto();
 }
 
-}  // namespace zectrix::ui
+}  // namespace note4::ui
 
-zectrix::ui::PageShell UiEngine::EnterPage(const zectrix::ui::PageSpec& spec) {
+note4::ui::PageShell UiEngine::EnterPage(const note4::ui::PageSpec& spec) {
     const auto body = BeginPage("", spec.footer, spec.portrait_capable);
-    return zectrix::ui::PageShell(*this, canvas_, body, spec);
+    return note4::ui::PageShell(*this, canvas_, body, spec);
 }
 
 int UiEngine::WrapText(int x, int y, const char* text, int max_width, int line_height,
@@ -254,7 +254,7 @@ int UiEngine::WrapText(int x, int y, const char* text, int max_width, int line_h
         bool overflow = false;
         while (*scan) {
             const char* next = scan;
-            const auto cp = zectrix::ui::NextUtf8(next);
+            const auto cp = note4::ui::NextUtf8(next);
             const size_t add = static_cast<size_t>(next - scan);
             if (length + add >= sizeof(buffer)) { overflow = true; break; }
             std::memcpy(buffer + length, scan, add);
@@ -282,12 +282,12 @@ esp_err_t UiEngine::ShowSplash() {
     BeginContent();
     canvas_.FillRect(0, kStatusHeight, 400, 4, true);
     canvas_.FillRect(0, 292, 400, 8, true);
-    canvas_.TextCentered(58, "ZECTRIX", 2);
+    canvas_.TextCentered(58, "NOTE4", 2);
     canvas_.Line(72, 98, 327, 98);
     canvas_.TextCentered(118, Tr(Text::PocketEpaperTerminal), 1);
     canvas_.TextCentered(154, Tr(Text::ReadClockConnect), 1);
     canvas_.TextCentered(184, Tr(Text::DisplayGray), 1);
-    canvas_.TextCentered(236, "ZECTRIX LAB", 1);
+    canvas_.TextCentered(236, "OPEN PLATFORM", 1);
     return RefreshFull();
 }
 
@@ -296,7 +296,7 @@ esp_err_t UiEngine::ShowRecovery() {
     DrawFrame(Tr(Text::RecoveryTitle), Tr(Text::NavRecovery));
     canvas_.TextCentered(100, Tr(Text::RecoveryMessage), 1);
     canvas_.TextCentered(140, Tr(Text::OkRetry), 1);
-#if CONFIG_ZECTRIX_ENABLE_USB_CLI
+#if CONFIG_NOTE4_ENABLE_USB_CLI
     canvas_.TextCentered(196, Tr(Text::RecoveryUsb), 1);
 #endif
     return RefreshFull();
@@ -309,7 +309,7 @@ esp_err_t UiEngine::ShowMenu(const char* title,
     if (items == nullptr || count == 0 || selected >= count) {
         return ESP_ERR_INVALID_ARG;
     }
-    auto page = EnterPage(zectrix::ui::PageSpec().Title(title).Footer(footer));
+    auto page = EnterPage(note4::ui::PageSpec().Title(title).Footer(footer));
     const int width = page.width();
     const int kListHeight = page.height() - (page.portrait() ? 100 : 92);  // 208 px in landscape
     const size_t visible = std::min<size_t>(count, page.portrait() ? 11 : 8);
@@ -332,10 +332,10 @@ esp_err_t UiEngine::ShowMenu(const char* title,
     return page.Commit(full_refresh);
 }
 
-esp_err_t UiEngine::ShowClock(const zectrix::time::DateTime& value,
+esp_err_t UiEngine::ShowClock(const note4::time::DateTime& value,
                                    bool full_refresh, const char* source,
                                    bool calendar_valid) {
-    auto page = EnterPage(zectrix::ui::PageSpec().Title(Tr(Text::Clock)).Footer(Tr(Text::NavSetBackOff)));
+    auto page = EnterPage(note4::ui::PageSpec().Title(Tr(Text::Clock)).Footer(Tr(Text::NavSetBackOff)));
     const int dy = page.dy();  // centers the landscape layout in portrait
     char line[32] = {};
     if (calendar_valid) {
@@ -351,15 +351,15 @@ esp_err_t UiEngine::ShowClock(const zectrix::time::DateTime& value,
     return page.Commit(full_refresh);
 }
 
-esp_err_t UiEngine::ShowSettings(const zectrix::app::SettingsController& settings, const char* status,
+esp_err_t UiEngine::ShowSettings(const note4::app::SettingsController& settings, const char* status,
                                       bool full_refresh) {
-    const bool languages = settings.page() == zectrix::app::SettingsPage::Language;
-    auto page = EnterPage(zectrix::ui::PageSpec()
+    const bool languages = settings.page() == note4::app::SettingsPage::Language;
+    auto page = EnterPage(note4::ui::PageSpec()
         .Title(Tr(languages ? Text::Language : Text::Settings))
         .Footer(Tr(languages ? Text::NavApplyBack : Text::NavChangeBack)));
     const int width = page.width(), height = page.height();
     const bool portrait = page.portrait();
-    const auto count = languages ? zectrix::i18n::LanguageCount() : settings.option_count();
+    const auto count = languages ? note4::i18n::LanguageCount() : settings.option_count();
     for (std::size_t i = 0; i < count; ++i) {
         // Portrait has spare height, so rows are taller than the landscape 34/42 px pitch.
         const int pitch = portrait ? (count > 4 ? 46 : 54) : (count > 4 ? 34 : 42);
@@ -367,24 +367,24 @@ esp_err_t UiEngine::ShowSettings(const zectrix::app::SettingsController& setting
         const bool selected = settings.selected() == i;
         canvas_.FillRect(16, y, width - 32, pitch - 2, selected);
         canvas_.Rect(16, y, width - 32, pitch - 2);
-        const bool language_option = !languages && zectrix::i18n::LanguageCount() > 1 && i == 0;
+        const bool language_option = !languages && note4::i18n::LanguageCount() > 1 && i == 0;
         const bool digit_option = !languages && i == count - 1;
         const bool sleep_orientation_option = !languages && i == count - 2;
         const bool orientation_option = !languages && i == count - 3;
-        const char* label = languages ? zectrix::i18n::LanguageName(static_cast<zectrix::i18n::Language>(i)) :
+        const char* label = languages ? note4::i18n::LanguageName(static_cast<note4::i18n::Language>(i)) :
             Tr(digit_option ? Text::DateFont : sleep_orientation_option ? Text::SleepCover : orientation_option ? Text::DisplayLabel :
                 language_option ? Text::Language : Text::AutoShowcase);
         canvas_.TextFitted(28, y + (portrait ? (pitch - 18) / 2 : 13), label, languages ? width - 100 : (portrait ? 136 : 200), selected);
-        const char* value = languages ? (static_cast<zectrix::i18n::Language>(i) == zectrix::i18n::CurrentLanguage() ? "*" : "") :
-            language_option ? zectrix::i18n::LanguageName(zectrix::i18n::CurrentLanguage()) :
-            digit_option ? zectrix::ui::DigitStyleName(digit_style()) :
+        const char* value = languages ? (static_cast<note4::i18n::Language>(i) == note4::i18n::CurrentLanguage() ? "*" : "") :
+            language_option ? note4::i18n::LanguageName(note4::i18n::CurrentLanguage()) :
+            digit_option ? note4::ui::DigitStyleName(digit_style()) :
             sleep_orientation_option ? (sleep_portrait_ ? "90 deg" : "0 deg") :
             orientation_option ? ScreenDirectionName(display_->orientation()) :
             Tr(settings.auto_showcase() ? Text::On : Text::Off);
         canvas_.Text(width - 28 - canvas_.TextWidth(value), y + (portrait ? (pitch - 18) / 2 : 13), value, 1, selected);
     }
     if (count < 4) WrapText(16, portrait ? height - 118 : 220, Tr(languages ||
-        (zectrix::i18n::LanguageCount() > 1 && settings.selected() == 0) ?
+        (note4::i18n::LanguageCount() > 1 && settings.selected() == 0) ?
         Text::LanguageHint : Text::ShowcaseIdle), width - 32, 18, portrait ? 2 : 1);
     canvas_.TextFitted(16, height - (portrait ? 62 : 54), status, width - 32);
     return page.Commit(full_refresh);
@@ -444,22 +444,22 @@ esp_err_t UiEngine::ShowSceneInfo(const char* title, const char* mode,
     return full_refresh ? RefreshFull() : RefreshAuto();
 }
 
-const char* UiEngine::StateText(ZectrixTestState state) {
+const char* UiEngine::StateText(Note4TestState state) {
     switch (state) {
-        case ZectrixTestState::kRunning: return Tr(Text::Run);
-        case ZectrixTestState::kPass: return Tr(Text::Pass);
-        case ZectrixTestState::kFail: return Tr(Text::Fail);
-        case ZectrixTestState::kSkipped: return Tr(Text::Skip);
+        case Note4TestState::kRunning: return Tr(Text::Run);
+        case Note4TestState::kPass: return Tr(Text::Pass);
+        case Note4TestState::kFail: return Tr(Text::Fail);
+        case Note4TestState::kSkipped: return Tr(Text::Skip);
         default: return Tr(Text::Wait);
     }
 }
 
 void UiEngine::DrawTestStrip(
-    ZectrixTestId current,
-    const std::array<ZectrixTestState,
-                     static_cast<size_t>(ZectrixTestId::kCount)>& states) {
+    Note4TestId current,
+    const std::array<Note4TestState,
+                     static_cast<size_t>(Note4TestId::kCount)>& states) {
     for (size_t i = 0; i < kTestOrder.size(); ++i) {
-        const ZectrixTestId id = kTestOrder[i];
+        const Note4TestId id = kTestOrder[i];
         const int left = static_cast<int>(i) * 400 /
                          static_cast<int>(kTestOrder.size());
         const int right = static_cast<int>(i + 1) * 400 /
@@ -483,10 +483,10 @@ void UiEngine::DrawTestStrip(
 
 esp_err_t UiEngine::ShowTestMenu(
     size_t selected,
-    const std::array<ZectrixTestState,
-                     static_cast<size_t>(ZectrixTestId::kCount)>& states,
+    const std::array<Note4TestState,
+                     static_cast<size_t>(Note4TestId::kCount)>& states,
     bool full_refresh) {
-    const ZectrixTestId current = kTestOrder[std::min(selected, kTestOrder.size() - 1)];
+    const Note4TestId current = kTestOrder[std::min(selected, kTestOrder.size() - 1)];
     DrawFrame(Tr(Text::HardwareTests), Tr(Text::NavRunBack));
     DrawTestStrip(current, states);
     canvas_.Text(20, 92, Tr(kTestShortNames[std::min(selected, kTestOrder.size() - 1)]), 2);
@@ -501,15 +501,15 @@ esp_err_t UiEngine::ShowTestMenu(
 }
 
 esp_err_t UiEngine::ShowTestUpdate(
-    const ZectrixTestUpdate& update,
-    const std::array<ZectrixTestState,
-                     static_cast<size_t>(ZectrixTestId::kCount)>& states,
+    const Note4TestUpdate& update,
+    const std::array<Note4TestState,
+                     static_cast<size_t>(Note4TestId::kCount)>& states,
     bool force) {
     if (time_ == nullptr) return ESP_ERR_INVALID_STATE;
     const int64_t now = time_->MonotonicMicroseconds();
-    const bool terminal = update.state == ZectrixTestState::kPass ||
-                          update.state == ZectrixTestState::kFail ||
-                          update.state == ZectrixTestState::kSkipped;
+    const bool terminal = update.state == Note4TestState::kPass ||
+                          update.state == Note4TestState::kFail ||
+                          update.state == Note4TestState::kSkipped;
     if (!force && !terminal && now - last_update_us_ < kUpdateThrottleUs) {
         return ESP_OK;
     }
@@ -535,16 +535,16 @@ esp_err_t UiEngine::ShowTestUpdate(
 }
 
 esp_err_t UiEngine::ShowTestSummary(
-    const std::array<ZectrixTestState,
-                     static_cast<size_t>(ZectrixTestId::kCount)>& states) {
+    const std::array<Note4TestState,
+                     static_cast<size_t>(Note4TestId::kCount)>& states) {
     DrawFrame(Tr(Text::TestSummary), Tr(Text::NavReturnBackOff));
     int passed = 0;
     int failed = 0;
     int skipped = 0;
-    for (ZectrixTestState state : states) {
-        passed += state == ZectrixTestState::kPass ? 1 : 0;
-        failed += state == ZectrixTestState::kFail ? 1 : 0;
-        skipped += state == ZectrixTestState::kSkipped ? 1 : 0;
+    for (Note4TestState state : states) {
+        passed += state == Note4TestState::kPass ? 1 : 0;
+        failed += state == Note4TestState::kFail ? 1 : 0;
+        skipped += state == Note4TestState::kSkipped ? 1 : 0;
     }
     char line[64];
     std::snprintf(line, sizeof(line), Tr(Text::PassedCount), passed,
@@ -558,7 +558,7 @@ esp_err_t UiEngine::ShowTestSummary(
         const int row = i < 4 ? static_cast<int>(i) : static_cast<int>(i - 4);
         const int x = 28 + column * 196;
         const int y = 132 + row * 30;
-        const ZectrixTestId id = kTestOrder[i];
+        const Note4TestId id = kTestOrder[i];
         canvas_.TextFitted(x, y, Tr(kTestShortNames[i]), 96);
         canvas_.Text(x + 104, y, StateText(states[static_cast<size_t>(id)]));
     }
@@ -566,8 +566,8 @@ esp_err_t UiEngine::ShowTestSummary(
 }
 
 esp_err_t UiEngine::ShowDeviceInfo(
-    const zectrix::power::PowerSnapshot& power,
-    const zectrix::system::SystemSnapshot& system, bool full_refresh) {
+    const note4::power::PowerSnapshot& power,
+    const note4::system::SystemSnapshot& system, bool full_refresh) {
     DrawFrame(Tr(Text::DeviceInfo), Tr(Text::NavBackOff));
     char line[80];
     const char* labels[] = {"MCU", Tr(Text::DisplayLabel), "FLASH / PSRAM", "WI-FI MAC",
@@ -604,13 +604,13 @@ esp_err_t UiEngine::ShowDeviceInfo(
 
 esp_err_t UiEngine::ShowAbout(bool full_refresh) {
     DrawFrame(Tr(Text::About), Tr(Text::NavBackOff));
-    canvas_.TextCentered(54, Tr(Text::ZectrixTerminal), 1);
+    canvas_.TextCentered(54, Tr(Text::Note4Platform), 1);
     canvas_.TextCentered(88, Tr(Text::OpenSourceEpaper), 1);
     canvas_.Line(44, 118, 355, 118);
     canvas_.TextCentered(138, "COPYRIGHT (C) 2026", 1);
-    canvas_.TextCentered(164, "ZECTRIX LAB", 2);
+    canvas_.TextCentered(164, "Tinnci", 2);
     canvas_.TextCentered(210, Tr(Text::MitLicense), 1);
-    canvas_.TextCentered(238, "www.zectrix.com", 1);
+    canvas_.TextCentered(238, "Tinnci / GitHub", 1);
     return full_refresh ? RefreshFull() : RefreshAuto();
 }
 
@@ -636,22 +636,22 @@ esp_err_t UiEngine::RefreshPending() {
         // The gray content remains owned here during status-only updates.
         canvas_.ResetClip();
         canvas_.Clear();
-        result = display_->Present1Bpp(zectrix::display::DisplayIntent::FullClean,
+        result = display_->Present1Bpp(note4::display::DisplayIntent::FullClean,
                                       canvas_.data(), canvas_.size());
         canvas_.SetClip({0, 0, 400, kStatusHeight});
-        zectrix::ui::DrawStatusBar(canvas_, status_);
+        note4::ui::DrawStatusBar(canvas_, status_);
         canvas_.SetClip({0, kStatusHeight, 400, 300 - kStatusHeight});
         if (result == ESP_OK) {
-            result = display_->Present4Bpp(zectrix::display::DisplayIntent::Quality,
-                gray_frame_.get(), zectrix::display::DisplayService::kFrameBytes4Bpp);
+            result = display_->Present4Bpp(note4::display::DisplayIntent::Quality,
+                gray_frame_.get(), note4::display::DisplayService::kFrameBytes4Bpp);
         }
     } else if (canvas_.portrait()) {
         result = display_->PresentPortrait1Bpp(update.quality
-            ? zectrix::display::DisplayIntent::FullClean : zectrix::display::DisplayIntent::Auto,
+            ? note4::display::DisplayIntent::FullClean : note4::display::DisplayIntent::Auto,
             canvas_.data(), canvas_.size());
     } else {
         result = display_->Present1Bpp(update.quality
-            ? zectrix::display::DisplayIntent::FullClean : zectrix::display::DisplayIntent::Auto,
+            ? note4::display::DisplayIntent::FullClean : note4::display::DisplayIntent::Auto,
             canvas_.data(), canvas_.size());
     }
     viewports_.Complete(result == ESP_OK);
@@ -661,12 +661,12 @@ esp_err_t UiEngine::RefreshPending() {
 esp_err_t UiEngine::ShowImage1Bpp(const uint8_t* pixels, size_t size) {
     if (!pixels || size != canvas_.size()) return ESP_ERR_INVALID_SIZE;
     BeginContent();
-    const size_t offset = kStatusHeight * ZectrixCanvas::kStride;
+    const size_t offset = kStatusHeight * Canvas::kStride;
     std::memcpy(canvas_.data() + offset, pixels + offset, size - offset);
     return RefreshFull();
 }
 
-esp_err_t UiEngine::ShowImagePatch(zectrix::display::Rect r,
+esp_err_t UiEngine::ShowImagePatch(note4::display::Rect r,
                                        const uint8_t* pixels, size_t size) {
     if (gray_frame_) return ESP_ERR_INVALID_STATE;
     UseCanvasMode(false);
@@ -686,7 +686,7 @@ esp_err_t UiEngine::ShowImagePatch(zectrix::display::Rect r,
 }
 
 esp_err_t UiEngine::ShowImage4Bpp(const uint8_t* pixels, size_t size) {
-    if (!pixels || size != zectrix::display::DisplayService::kFrameBytes4Bpp)
+    if (!pixels || size != note4::display::DisplayService::kFrameBytes4Bpp)
         return ESP_ERR_INVALID_SIZE;
     UseCanvasMode(false);
     if (!gray_frame_) gray_frame_.reset(new (std::nothrow) uint8_t[size]);
@@ -700,7 +700,7 @@ esp_err_t UiEngine::ShowImage4Bpp(const uint8_t* pixels, size_t size) {
 void UiEngine::OverlayGrayStatus() {
     for (int y = 0; y < kStatusHeight; ++y) {
         for (int x = 0; x < 400; x += 2) {
-            const uint8_t bits = canvas_.data()[y * ZectrixCanvas::kStride + x / 8];
+            const uint8_t bits = canvas_.data()[y * Canvas::kStride + x / 8];
             gray_frame_[y * 200 + x / 2] =
                 ((bits & (0x80 >> (x & 7))) ? 0xf0 : 0) |
                 ((bits & (0x80 >> ((x + 1) & 7))) ? 0x0f : 0);
@@ -716,6 +716,6 @@ esp_err_t UiEngine::ClearDisplay() {
     canvas_.Clear();
     // Blank sleep and failed-cover recovery must not receive status overlays.
     sleep_surface_ = true;
-    return display_->Present1Bpp(zectrix::display::DisplayIntent::FullClean,
+    return display_->Present1Bpp(note4::display::DisplayIntent::FullClean,
                                  canvas_.data(), canvas_.size());
 }

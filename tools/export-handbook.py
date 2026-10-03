@@ -36,7 +36,7 @@ code { font-size: .87em; } blockquote { border-left: 3px solid #7c8f6c; padding-
 def export(version, output):
     output.mkdir(parents=True, exist_ok=True)
     documents = {"HANDBOOK.md": "en", "HANDBOOK_zh.md": "zh-CN"}
-    names = {name: f"zectrix-note4-{version}-handbook-{language}.html"
+    names = {name: f"note4-{version}-handbook-{language}.html"
              for name, language in documents.items()}
     for name, language in documents.items():
         source = ROOT / "docs" / name

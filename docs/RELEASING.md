@@ -16,13 +16,13 @@ bash tools/build-release.sh
 ```
 
 `version.txt` supplies ESP-IDF's embedded application version, currently
-`1.2.0`. The download tag is `v1.2.0`; `--version v1.2.0-rc.1` permits a
+`2.0.0`. The download tag is `v2.0.0`; `--version v2.0.0-rc.1` permits a
 prerelease of that base version. A prerelease suffix labels the download set;
 the native descriptor continues to use the committed `version.txt` value.
 
 The script builds `full`, `minimal` and `reader` from their committed Kconfig
 profiles into separate directories, captures the existing build provenance,
-exports the handbooks and packages the files into `build-release-v1.2.0/`.
+exports the handbooks and packages the files into `build-release-v2.0.0/`.
 An existing output directory is preserved; choose `--output ANOTHER_DIRECTORY`
 for the next candidate. Saved developer `sdkconfig` values are not rewritten.
 No command in this build path flashes a device or initializes its library.
@@ -49,11 +49,11 @@ demonstrated byte-identical builds.
 
 | Asset | Purpose |
 | --- | --- |
-| `zectrix-note4-v1.2.0-{full,minimal,reader}.zip` | Complete segmented USB installation/recovery, native flash arguments, profile manifest and licenses |
-| `zectrix-note4-v1.2.0-{full,minimal,reader}-app.bin` | Standalone native application image; not a complete USB installation |
-| `zectrix-note4-v1.2.0-library-init.zip` | Explicit, optional replacement of the 4 MiB content partition with the bundled reading guide |
-| `zectrix-note4-v1.2.0-host-tools.zip` | Portable USB manager, `.zapp` CLI and license; Python dependencies resolved by uv |
-| `zectrix-note4-v1.2.0-handbook-{en,zh-CN}.html` | Offline, printable handbooks with embedded PNG illustrations |
+| `note4-v2.0.0-{full,minimal,reader}.zip` | Complete segmented USB installation/recovery, native flash arguments, profile manifest and licenses |
+| `note4-v2.0.0-{full,minimal,reader}-app.bin` | Standalone native application image; not a complete USB installation |
+| `note4-v2.0.0-library-init.zip` | Explicit, optional replacement of the 4 MiB content partition with the bundled reading guide |
+| `note4-v2.0.0-host-tools.zip` | Portable USB manager, `.zapp` CLI and license; Python dependencies resolved by uv |
+| `note4-v2.0.0-handbook-{en,zh-CN}.html` | Offline, printable handbooks with embedded PNG illustrations |
 | `Calculator.zapp`, `Flashcards.zapp` | Independently installable example apps for Full |
 | `manifest.json` | Each profile's source/native version, IDF identity, enabled modules, partition map and size |
 | `SHA256SUMS` | Integrity of every other download, including the combined manifest |
@@ -101,16 +101,16 @@ Once the workflow is on the remote default branch, prepare a draft with:
 ```bash
 export SYNC_GH_IDENTITY=1
 gh auth switch -u Tinnci
-gh workflow run release.yml --ref main -f version=v1.2.0 -F publish=false
+gh workflow run release.yml --ref main -f version=v2.0.0 -F publish=false
 ```
 
 Review the draft's assets and the notes from
-[`docs/releases/v1.2.0.md`](releases/v1.2.0.md). To publish the reviewed source,
+[`docs/releases/v2.0.0.md`](releases/v2.0.0.md). To publish the reviewed source,
 push its version tag after that source has reached the remote repository:
 
 ```bash
-git tag v1.2.0 SOURCE_COMMIT
-git push origin v1.2.0
+git tag v2.0.0 SOURCE_COMMIT
+git push origin v2.0.0
 gh auth switch -u shisoratsu
 ```
 
@@ -139,7 +139,7 @@ retain complete filenames and table columns. Both languages are also checked
 with print media at A4 and Letter content widths (698px and 720px).
 The standard local package is unpacked and checked against the built images;
 both example packages are inspected with the shipped host tools. Recorded
-iteration results are in the [release notes](releases/v1.2.0.md).
+iteration results are in the [release notes](releases/v2.0.0.md).
 
 R2.1 local validation passed all 41 Host targets, 40 Android JVM tests and the
 debug build, three ESP32-S3 builds, the existing Full/Minimal comparison,

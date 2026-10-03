@@ -33,7 +33,7 @@ an obsolete, deferred or failed page cannot advance a bookmark, and only a
 successful physical refresh commits the partial-refresh debt model. R1.4
 replaces count-based cleanup with [spatial physics observations and debt](DISPLAY_PHYSICS.md);
 its recorder stays on this same foreground owner. Existing
-`Step` callers retain their behavior; [SDK_V1.md](SDK_V1.md) describes the
+`Step` callers retain their behavior; [SDK_V2.md](SDK_V2.md) describes the
 additive API and callback-reentry rejection.
 
 The same reentry protection covers factories, application destruction and
@@ -44,7 +44,7 @@ the initial E1.3 implementation without adding a mutex or another task.
 
 ## Bounded input storage
 
-`ZectrixButtonBuffer` stores 16 physical events. A short board critical section
+`Note4ButtonBuffer` stores 16 physical events. A short board critical section
 only copies/shifts those fixed entries; it contains no GPIO, RTOS wait,
 callback or display work. A separate one-byte, one-slot FreeRTOS queue wakes
 the consumer. Full wake queues already signal runnable work, so the producer

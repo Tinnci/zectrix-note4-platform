@@ -1,5 +1,5 @@
-#include "zectrix_terminal.h"
+#include "note4_terminal.h"
 
 extern "C" void app_main() {
-    zectrix::terminal::RunTerminal();
+    note4::terminal::RunTerminal();
 }

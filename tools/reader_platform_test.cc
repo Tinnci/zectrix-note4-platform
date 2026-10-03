@@ -1,7 +1,7 @@
-#include "zectrix_reader_platform.h"
+#include "note4_reader_platform.h"
 #include "sdkconfig.h"
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
-#include "zectrix_connectivity_service.h"
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
+#include "note4_connectivity_service.h"
 #endif
 
 #include <cassert>
@@ -11,11 +11,11 @@
 #include <vector>
 
 namespace {
-using namespace zectrix;
+using namespace note4;
 std::vector<uint8_t> local_record;
 bool fail_local_save = false;
 storage::BookStorage* files = nullptr;
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
 companion::SyncEngine* sync = nullptr;
 
 class MemorySyncStore final : public companion::SyncStore {
@@ -38,7 +38,7 @@ public:
 #endif
 }
 
-namespace zectrix::storage {
+namespace note4::storage {
 esp_err_t StorageService::Create(StorageService** output) { *output = new StorageService(nullptr); return ESP_OK; }
 StorageService::~StorageService() = default;
 esp_err_t StorageService::GetBlob(const char* key, void* value, std::size_t* size) const {
@@ -60,8 +60,8 @@ esp_err_t StorageService::ListBooks(BookEntry* entries, std::size_t capacity, st
 esp_err_t StorageService::OpenBook(const char* name, BookFile* file) { return files->Open(name, file); }
 }
 
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
-namespace zectrix::connectivity {
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
+namespace note4::connectivity {
 ConnectivityResult ConnectivityService::Create(ConnectivityService** output) {
     *output = new ConnectivityService(nullptr); return ConnectivityResult::kOk;
 }
@@ -85,7 +85,7 @@ companion::SyncStatus ConnectivityService::ReadDurableState(
 #endif
 
 void TestReaderPlatform(const char* directory) {
-    using namespace zectrix::reader;
+    using namespace note4::reader;
     namespace fs = std::filesystem;
     const auto root = fs::path(directory) / "library";
     fs::create_directory(root);
@@ -132,7 +132,7 @@ void TestReaderPlatform(const char* directory) {
     engine.Close();
     library.Close();
 
-#if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
     MemorySyncStore sync_store;
     companion::SyncEngine initial_sync;
     assert(initial_sync.Initialize(sync_store) == companion::SyncStatus::kOk);

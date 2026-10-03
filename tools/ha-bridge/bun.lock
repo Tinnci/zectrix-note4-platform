@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "zectrix-ha-bridge",
+      "name": "note4-ha-bridge",
       "dependencies": {
         "mqtt": "^5.16.0",
       },

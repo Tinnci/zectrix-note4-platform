@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # astra_autonomous_loop.sh
-# Long-running continuous autonomous iteration harness for gpt-6-astra on zectrix-note4-platform
+# Long-running continuous autonomous iteration harness for gpt-6-astra on note4-platform
 
 set -u
 
-PROJECT_DIR="/Users/driezy/Downloads/zectrix-note4-platform"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTANCE_HOME="/Users/driezy/.antigravity_cockpit/instances/codex/86c6f79a63e09b7c"
 CODEX_BIN="/Applications/ChatGPT.app/Contents/Resources/codex"
 BACKLOG_FILE="${PROJECT_DIR}/ASTRA_TASKS.md"
@@ -39,7 +39,7 @@ if [ -f "${PROJECT_DIR}/tools/activate-dev-env.sh" ]; then
     # shellcheck disable=SC1091
     source "${PROJECT_DIR}/tools/activate-dev-env.sh" >/dev/null 2>&1 || true
 fi
-export ZECTRIX_PORT="${ZECTRIX_PORT:-/dev/cu.usbmodem14301}"
+export NOTE4_PORT="${NOTE4_PORT:-/dev/cu.usbmodem14301}"
 
 echo "==================================================" | tee -a "$LOOP_LOG"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting Astra Autonomous Iteration Loop (PID: $$)..." | tee -a "$LOOP_LOG"

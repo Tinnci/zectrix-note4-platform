@@ -1,7 +1,7 @@
-#include "zectrix_book_web.h"
-#include "zectrix_book_storage.h"
-#include "zectrix_cover_image.h"
-#include "zectrix_book_transfer_controller.h"
+#include "note4_book_web.h"
+#include "note4_book_storage.h"
+#include "note4_cover_image.h"
+#include "note4_book_transfer_controller.h"
 #include "sdkconfig.h"
 
 #include <algorithm>
@@ -15,7 +15,7 @@
 #include <vector>
 
 namespace {
-using namespace zectrix;
+using namespace note4;
 using namespace connectivity;
 namespace fs = std::filesystem;
 constexpr char kCode[] = "ABCDEFGH2345";
@@ -256,7 +256,7 @@ void AppHttp(const fs::path& root, const fs::path& package) {
     assert(data.size() > 1024);
     Request listing(BookHttpMethod::Get, "/api/books");
     Check(api, listing, 200);
-#if CONFIG_ZECTRIX_ENABLE_RUNTIME
+#if CONFIG_NOTE4_ENABLE_RUNTIME
     assert(listing.output.find("\"apps_supported\":true") != std::string::npos);
     for (auto method : {BookHttpMethod::Get, BookHttpMethod::Put, BookHttpMethod::Delete}) {
         Request denied(method, "/api/apps/Calculator.zapp", data);

@@ -27,7 +27,7 @@ ITERATION_COUNT=0
 echo "==================================================" | tee -a "$LOG_FILE"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting Astra Continuous PR & CI/CD Loop (PID: $$)..." | tee -a "$LOG_FILE"
 
-PROMPT="你是 gpt-6-astra，Zectrix Note4 平台的自主研发代理。
+PROMPT="你是 gpt-6-astra，Note4 平台的自主研发代理。
 我们已圆满完成全部 5 大核心里程碑（C1 互联平台、D1 运维 CLI、M5 OTA 体系、R1 进阶墨水屏渲染引擎、Q1 质量与协议对标，共 15 个清晰的 Git Commit，且本地 26 项 Host 测试全通）。
 你现在进入全新的研发阶段，核心目标是：
 1. 【实机运行状态审查 (Physical Device Runtime Verification)】：

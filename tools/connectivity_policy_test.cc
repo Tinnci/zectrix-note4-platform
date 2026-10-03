@@ -3,9 +3,9 @@
 #include <cstdint>
 #include <vector>
 
-#include "zectrix_connectivity_policy.h"
+#include "note4_connectivity_policy.h"
 
-using namespace zectrix::companion;
+using namespace note4::companion;
 
 namespace {
 

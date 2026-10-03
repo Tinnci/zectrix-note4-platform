@@ -1,17 +1,17 @@
 #include "terminal_internal.h"
 #include <memory>
 #include "esp_log.h"
-#include "zectrix_connectivity_service.h"
-#include "zectrix_connectivity_settings.h"
-#include "zectrix_edge_page.h"
-#include "zectrix_storage_service.h"
-#include "zectrix_input_service.h"
-#include "zectrix_boot_guard.h"
-#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP && CONFIG_ZECTRIX_ENABLE_BOOK_STORAGE
-#include "zectrix_edge_download.h"
+#include "note4_connectivity_service.h"
+#include "note4_connectivity_settings.h"
+#include "note4_edge_page.h"
+#include "note4_storage_service.h"
+#include "note4_input_service.h"
+#include "note4_boot_guard.h"
+#if CONFIG_NOTE4_ENABLE_WIFI_HTTP && CONFIG_NOTE4_ENABLE_BOOK_STORAGE
+#include "note4_edge_download.h"
 #endif
 
-namespace zectrix::terminal {
+namespace note4::terminal {
 namespace {
 constexpr char kNextKey[] = "edge_next";
 bool WifiPolicy(companion::UserConnectivityPolicy policy) {
@@ -30,7 +30,7 @@ uint64_t TerminalApp::NextWakeDelay() {
     const auto power = power_->ReadSnapshot();
     if (power.battery_valid && !power.external_power_present && power.battery_percent <= 5) return 0;
     auto calendar = app::SleepRefreshDelayUs(sleep_cover_style_, time_->Now());
-#if CONFIG_ZECTRIX_ENABLE_BOOK_STORAGE
+#if CONFIG_NOTE4_ENABLE_BOOK_STORAGE
     if (edge_configuration_valid_ && edge_settings_.show_page && sleep_cover_style_ != app::SleepCoverStyle::Blank) {
         storage::BookFile file;
         uint8_t header[storage::edge::kHeaderSize];
@@ -43,7 +43,7 @@ uint64_t TerminalApp::NextWakeDelay() {
         }
     }
 #endif
-#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP && CONFIG_ZECTRIX_ENABLE_BOOK_STORAGE
+#if CONFIG_NOTE4_ENABLE_WIFI_HTTP && CONFIG_NOTE4_ENABLE_BOOK_STORAGE
     companion::UserConnectivityPolicy policy;
     const bool policy_valid = connectivity::StoredConnectivitySettings(storage_).LoadPolicy(&policy) == ESP_OK;
     const auto clock = time_->Status();
@@ -58,7 +58,7 @@ uint64_t TerminalApp::NextWakeDelay() {
 }
 
 bool TerminalApp::RefreshEdgeOnWake() {
-#if CONFIG_ZECTRIX_ENABLE_WIFI_HTTP && CONFIG_ZECTRIX_ENABLE_BOOK_STORAGE
+#if CONFIG_NOTE4_ENABLE_WIFI_HTTP && CONFIG_NOTE4_ENABLE_BOOK_STORAGE
     const auto health = platform_.Health().Snapshot();
     if (!edge_configuration_valid_ || health.recovery_boot || health.storage_error != ESP_OK ||
         platform_.Boot().ReadBootStatus().confirmation_pending) return false;
@@ -136,7 +136,7 @@ bool TerminalApp::RefreshEdgeOnWake() {
 }
 
 esp_err_t TerminalApp::PresentEdgeCover() {
-#if CONFIG_ZECTRIX_ENABLE_BOOK_STORAGE
+#if CONFIG_NOTE4_ENABLE_BOOK_STORAGE
     if (!edge_configuration_valid_ || !edge_settings_.show_page || sleep_cover_style_ == app::SleepCoverStyle::Blank) return ESP_ERR_NOT_FOUND;
     storage::BookFile file;
     uint8_t header[storage::edge::kHeaderSize];
@@ -153,4 +153,4 @@ esp_err_t TerminalApp::PresentEdgeCover() {
     return ESP_ERR_NOT_FOUND;
 #endif
 }
-}  // namespace zectrix::terminal
+}  // namespace note4::terminal

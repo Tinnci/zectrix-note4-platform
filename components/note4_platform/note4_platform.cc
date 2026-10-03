@@ -1,0 +1,398 @@
+#include "note4_platform.h"
+
+#include <cassert>
+#include <new>
+#include <utility>
+
+#include "esp_log.h"
+#include "esp_system.h"
+#include <cstdlib>
+#include "sdkconfig.h"
+#include "note4_board.h"
+#include "note4_boot_esp.h"
+#include "note4_health_esp.h"
+#if CONFIG_NOTE4_ENABLE_USB_HOST
+#include "note4_host_protocol.h"
+#endif
+#if CONFIG_NOTE4_ENABLE_USB_CLI
+#include "note4_platform_diagnostics.h"
+#include "note4_cli_usb.h"
+#endif
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
+#include "note4_connectivity_service.h"
+#include "note4_nfc_service.h"
+#endif
+#include "note4_display_service.h"
+#include "note4_input_service.h"
+#include "note4_power_service.h"
+#include "note4_self_test.h"
+#include "note4_storage_service.h"
+#include "note4_system_service.h"
+#include "note4_time_service.h"
+#if CONFIG_NOTE4_ENABLE_UPDATE
+#include "note4_update_esp.h"
+#endif
+
+namespace note4 {
+
+namespace {
+// Keep legacy factories and hardware ownership in the composition root. The
+// bindings are members of Impl, so lifecycle adaptation adds no allocations.
+template <typename Interface, typename Owner>
+class ServiceBinding final : public ServiceProvider<Interface> {
+public:
+    using Operation = esp_err_t (*)(Owner&);
+    ServiceBinding(Owner& owner, Interface*& instance, Operation init,
+                   Operation start = nullptr, Operation stop = nullptr)
+        : owner_(owner), instance_(instance), init_(init), start_(start), stop_(stop) {}
+
+    esp_err_t Init() override { return init_ ? init_(owner_) : ESP_OK; }
+    esp_err_t Start() override { return start_ ? start_(owner_) : ESP_OK; }
+    esp_err_t Stop() override {
+        if (stop_) return stop_(owner_);
+        delete std::exchange(instance_, nullptr);
+        return ESP_OK;
+    }
+    Interface* GetInterface() override { return instance_; }
+
+private:
+    Owner& owner_;
+    Interface*& instance_;
+    Operation init_, start_, stop_;
+};
+}  // namespace
+
+struct Platform::Impl {
+    const ServiceRegistry* services = nullptr;
+    system::EspHealthWatchdog health_watchdog;
+    system::HealthSupervisor health{health_watchdog};
+#if CONFIG_NOTE4_ENABLE_UPDATE
+    update::EspUpdateBackend update_backend;
+    update::UpdateService update{update_backend};
+    update::BootGuard* boot_facade = &update.Boot();
+#else
+    update::EspBootBackend boot_backend;
+    update::BootGuard boot{boot_backend};
+    update::BootGuard* boot_facade = &boot;
+#endif
+    Note4Board board;
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
+    nfc::NfcService* nfc_service = nullptr;
+    connectivity::ConnectivityService* connectivity = nullptr;
+#endif
+    input::InputService* input = nullptr;
+    power::PowerService* power = nullptr;
+    time::TimeService* time = nullptr;
+    storage::StorageService* storage = nullptr;
+    system::SystemService* system = nullptr;
+    display::DisplayService* display = nullptr;
+    Note4SelfTest* diagnostics = nullptr;
+#if CONFIG_NOTE4_ENABLE_USB_HOST
+    host::Channel host_channel;
+    host::Protocol host_protocol{host_channel};
+    host::Channel* host_facade = &host_channel;
+    ServiceBinding<host::Channel, Impl> host_binding{
+        *this, host_facade, nullptr, nullptr, [](Impl& self) {
+            self.host_channel.Disable();
+            return ESP_OK;
+        }};
+#endif
+#if CONFIG_NOTE4_ENABLE_USB_CLI
+    cli::CliUsbService* cli_usb = nullptr;
+    PlatformDiagnostics* maintenance = nullptr;
+#endif
+
+    void StopMaintenance() {
+#if CONFIG_NOTE4_ENABLE_USB_HOST
+        host_channel.Disable();
+#endif
+#if CONFIG_NOTE4_ENABLE_USB_CLI
+        if (maintenance != nullptr) maintenance->Shutdown();
+        if (cli_usb != nullptr) cli_usb->Stop();
+#endif
+    }
+
+    static esp_err_t KeepForPowerTransition(Impl&) { return ESP_OK; }
+    ServiceBinding<update::BootGuard, Impl> boot_binding{
+        *this, boot_facade, [](Impl& self) {
+            const auto result = self.boot_facade->BeginBoot();
+            if (result != update::Result::kOk) {
+                ESP_LOGE("update", "boot protection failed: %s", update::ResultName(result));
+                return ESP_FAIL;
+            }
+            const auto boot = self.boot_facade->ReadBootStatus();
+            ESP_LOGI("update", "running=0x%08lx selected=0x%08lx update=0x%08lx state=%u layout=%s",
+                     static_cast<unsigned long>(boot.running.address),
+                     static_cast<unsigned long>(boot.boot.address),
+                     static_cast<unsigned long>(boot.next_update.address),
+                     static_cast<unsigned>(boot.image_state), update::ResultName(boot.layout_result));
+            if (boot.confirmation_pending && !boot.rollback_available)
+                ESP_LOGW("update", "trial boot has no verified fallback image");
+            return boot.confirmation_pending ? ESP_OK : self.health.Start();
+        }, nullptr, KeepForPowerTransition};
+#if CONFIG_NOTE4_ENABLE_UPDATE
+    update::UpdateService* update_facade = &update;
+    ServiceBinding<update::UpdateService, Impl> update_binding{
+        *this, update_facade, nullptr, nullptr, [](Impl& self) {
+            // Stopping a provider must never confirm a trial image or disarm its watchdog.
+            self.update.AbortFirmware();
+            return ESP_OK;
+        }};
+#endif
+    ServiceBinding<input::InputService, Impl> input_binding{
+        *this, input, [](Impl& self) {
+            esp_err_t err = self.board.Init();
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
+            if (err == ESP_OK && self.board.HasNfc() && self.board.nfc() != nullptr)
+                err = nfc::NfcService::Attach(*self.board.nfc(), &self.nfc_service);
+#endif
+            if (err == ESP_OK) err = input::InputService::Attach(self.board, &self.input);
+            return err;
+        }, nullptr, KeepForPowerTransition};
+    ServiceBinding<power::PowerService, Impl> power_binding{
+        *this, power, [](Impl& self) { return power::PowerService::Attach(self.board, &self.power); },
+        nullptr, KeepForPowerTransition};
+    ServiceBinding<time::TimeService, Impl> time_binding{
+        *this, time, [](Impl& self) { return time::TimeService::Attach(self.board, &self.time); },
+        [](Impl& self) {
+            const esp_err_t restored = self.time->Initialize(*self.storage);
+            if (restored == ESP_OK) ESP_LOGI("time", "wall clock restored from RTC");
+            else ESP_LOGW("time", "RTC restoration unavailable: %s; clock setup remains available",
+                          esp_err_to_name(restored));
+            return ESP_OK;
+        }};
+    ServiceBinding<storage::StorageService, Impl> storage_binding{
+        *this, storage, [](Impl& self) { return storage::StorageService::Create(&self.storage); },
+        [](Impl& self) {
+            const auto result = self.storage->Initialize();
+            self.health.SetStorageError(result);
+            if (result != ESP_OK) ESP_LOGE("platform", "settings unavailable: %s; preserving NVS, radios disabled",
+                                          esp_err_to_name(result));
+            return ESP_OK;
+        }};
+    ServiceBinding<system::SystemService, Impl> system_binding{
+        *this, system, [](Impl& self) { return system::SystemService::Attach(self.board, &self.system); },
+        [](Impl& self) {
+            system::SystemSnapshot snapshot;
+            if (self.system->ReadSnapshot(&snapshot) == ESP_OK) self.health.SetResetReason(snapshot.reset_reason);
+            return ESP_OK;
+        }};
+    ServiceBinding<display::DisplayService, Impl> display_binding{
+        *this, display, [](Impl& self) { return display::DisplayService::Create(&self.display); }};
+    ServiceBinding<Note4SelfTest, Impl> diagnostics_binding{
+        *this, diagnostics, [](Impl& self) {
+            self.diagnostics = new (std::nothrow) Note4SelfTest(
+                self.board, *self.input, *self.power, *self.time, *self.storage, *self.system);
+            return self.diagnostics ? ESP_OK : ESP_ERR_NO_MEM;
+        }};
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
+    ServiceBinding<connectivity::ConnectivityService, Impl> connectivity_binding{
+        *this, connectivity, [](Impl& self) {
+            const auto result = connectivity::ConnectivityService::Create(&self.connectivity);
+            if (result != connectivity::ConnectivityResult::kOk) return ESP_ERR_NO_MEM;
+            self.connectivity->SetNfcService(self.nfc_service);
+            self.connectivity->SetStorageService(self.storage);
+            return ESP_OK;
+        }, [](Impl& self) {
+            // Keep a stopped facade available without starting NimBLE's NVS path.
+            const auto health = self.health.Snapshot();
+            const bool calendar_wake = self.power->IsScheduledWake() &&
+                !self.boot_facade->ReadBootStatus().confirmation_pending;
+            if (health.storage_error != ESP_OK || health.recovery_boot || calendar_wake) {
+                ESP_LOGW("platform", "recovery boot: keeping connectivity stopped");
+                return ESP_OK;
+            }
+            return self.connectivity->Initialize() == connectivity::ConnectivityResult::kOk ? ESP_OK : ESP_FAIL;
+        }, [](Impl& self) {
+            delete std::exchange(self.connectivity, nullptr);
+            delete std::exchange(self.nfc_service, nullptr);
+            return ESP_OK;
+        }};
+#endif
+#if CONFIG_NOTE4_ENABLE_USB_CLI
+    ServiceBinding<cli::CliUsbService, Impl> maintenance_binding{
+        *this, cli_usb, [](Impl& self) {
+            self.maintenance = new (std::nothrow) PlatformDiagnostics(
+                *self.services, *self.system, *self.display, *self.input, *self.time, self.health
+#if CONFIG_NOTE4_ENABLE_USB_HOST
+                , &self.host_protocol
+#endif
+            );
+            if (self.maintenance == nullptr) return ESP_ERR_NO_MEM;
+            self.cli_usb = new (std::nothrow) cli::CliUsbService;
+            return self.cli_usb ? ESP_OK : ESP_ERR_NO_MEM;
+        }, [](Impl& self) { return self.cli_usb->Start(&self.maintenance->executor()); },
+        [](Impl& self) {
+            self.StopMaintenance();
+            delete std::exchange(self.cli_usb, nullptr);
+            delete std::exchange(self.maintenance, nullptr);
+            return ESP_OK;
+        }};
+#endif
+
+    esp_err_t RegisterServices(ServiceRegistry& registry) {
+        services = &registry;
+        esp_err_t err = registry.Register(boot_binding);
+#if CONFIG_NOTE4_ENABLE_UPDATE
+        if (err == ESP_OK) err = registry.Register(update_binding);
+#endif
+        if (err == ESP_OK) err = registry.Register(input_binding);
+        if (err == ESP_OK) err = registry.Register(power_binding);
+        if (err == ESP_OK) err = registry.Register(storage_binding);
+        if (err == ESP_OK) err = registry.Register(time_binding);
+        if (err == ESP_OK) err = registry.Register(system_binding);
+        if (err == ESP_OK) err = registry.Register(display_binding);
+        if (err == ESP_OK) err = registry.Register(diagnostics_binding);
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
+        if (err == ESP_OK) err = registry.Register(connectivity_binding);
+#endif
+#if CONFIG_NOTE4_ENABLE_USB_CLI
+#if CONFIG_NOTE4_ENABLE_USB_HOST
+        if (err == ESP_OK) err = registry.Register(host_binding);
+#endif
+        if (err == ESP_OK) err = registry.Register(maintenance_binding);
+#endif
+        return err;
+    }
+};
+
+Platform::~Platform() { ResetServices(); }
+
+esp_err_t Platform::Initialize() {
+    if (initialized_) return ESP_OK;
+    if (initialization_attempted_) return ESP_ERR_INVALID_STATE;
+    impl_ = new (std::nothrow) Impl;
+    if (impl_ == nullptr) return ESP_ERR_NO_MEM;
+    initialization_attempted_ = true;
+
+    esp_err_t err = impl_->RegisterServices(services_);
+    if (err == ESP_OK) err = services_.StartAll();
+    if (err != ESP_OK) {
+        ResetServices();
+        return err;
+    }
+    initialized_ = true;
+    return ESP_OK;
+}
+
+system::HealthSupervisor& Platform::Health() const {
+    assert(initialized_ && impl_ != nullptr);
+    return impl_->health;
+}
+
+update::Result Platform::ConfirmBoot() {
+    if (!initialized_) return update::Result::kInvalidState;
+    const auto result = impl_->boot_facade->ConfirmBoot();
+    if (result != update::Result::kOk) return result;
+    const auto armed = impl_->health.Start();
+    return armed == ESP_OK ? update::Result::kOk :
+        armed == ESP_ERR_TIMEOUT ? update::Result::kTimeout : update::Result::kIoError;
+}
+
+#define NOTE4_PLATFORM_ACCESSOR(Type, Name)         \
+    Type& Platform::Name() const {                    \
+        auto* service = services_.Get<Type>();         \
+        assert(initialized_ && service != nullptr);   \
+        return *service;                             \
+    }
+
+NOTE4_PLATFORM_ACCESSOR(display::DisplayService, Display)
+NOTE4_PLATFORM_ACCESSOR(input::InputService, Input)
+NOTE4_PLATFORM_ACCESSOR(power::PowerService, Power)
+NOTE4_PLATFORM_ACCESSOR(time::TimeService, Time)
+NOTE4_PLATFORM_ACCESSOR(storage::StorageService, Storage)
+NOTE4_PLATFORM_ACCESSOR(system::SystemService, System)
+NOTE4_PLATFORM_ACCESSOR(update::BootGuard, Boot)
+NOTE4_PLATFORM_ACCESSOR(connectivity::ConnectivityService, Connectivity)
+NOTE4_PLATFORM_ACCESSOR(update::UpdateService, Update)
+NOTE4_PLATFORM_ACCESSOR(Note4SelfTest, Diagnostics)
+
+#undef NOTE4_PLATFORM_ACCESSOR
+
+void Platform::Poll() {
+    if (!initialized_) return;
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
+    companion::ClockSample sample;
+    if (impl_->connectivity && impl_->connectivity->TakeClockSample(&sample)) {
+        impl_->time->ApplySample({sample.unix_milliseconds, impl_->time->MonotonicMicroseconds(),
+            sample.utc_offset_seconds, time::SyncSource::Companion, true});
+    }
+    time::TimeSample network;
+    if (impl_->connectivity && impl_->connectivity->TakeNetworkClockSample(&network))
+        impl_->time->ApplySample(network);
+#endif
+    impl_->time->Poll();
+    PollMaintenance();
+}
+
+void Platform::PollMaintenance() {
+#if CONFIG_NOTE4_ENABLE_USB_CLI
+    if (impl_ != nullptr && impl_->maintenance != nullptr) impl_->maintenance->Poll();
+#endif
+}
+
+void Platform::StopMaintenance() {
+    if (impl_ != nullptr) impl_->StopMaintenance();
+}
+
+void Platform::SetMaintenanceDelegate(cli::MaintenanceDelegate* delegate) {
+#if CONFIG_NOTE4_ENABLE_USB_CLI
+    if (impl_ && impl_->maintenance) impl_->maintenance->SetDelegate(delegate);
+#else
+    (void)delegate;
+#endif
+}
+
+esp_err_t Platform::ResetUserData(bool factory) {
+    if (!initialized_) return ESP_ERR_INVALID_STATE;
+    StopMaintenance();
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
+    if (impl_->connectivity && impl_->connectivity->Stop() != connectivity::ConnectivityResult::kOk)
+        return ESP_ERR_INVALID_STATE;
+#endif
+    const auto wiped = impl_->storage->WipeUserFiles();
+    if (wiped != ESP_OK && wiped != ESP_ERR_NOT_SUPPORTED) return wiped;
+    return factory ? impl_->storage->ResetSettings() : wiped;
+}
+
+[[noreturn]] void Platform::Reboot() {
+    StopMaintenance();
+    ReleaseServices();
+    initialized_ = false;
+    if (impl_ != nullptr) impl_->health.DisarmForPowerTransition();
+    esp_restart();
+    std::abort();
+}
+
+[[noreturn]] void Platform::Shutdown(uint64_t wake_after_us) {
+    assert(initialized_ && impl_ != nullptr && impl_->power != nullptr);
+    ReleaseServices();
+    initialized_ = false;
+    // Lookup has been withdrawn, but this owner retains the final power handle.
+    impl_->power->Shutdown([](void* context) {
+        static_cast<system::HealthSupervisor*>(context)->DisarmForPowerTransition();
+    }, &impl_->health, wake_after_us);
+}
+
+void Platform::ReleaseServices() {
+    if (impl_ == nullptr) return;
+    const auto stopped = services_.StopAll();
+    if (stopped != ESP_OK) ESP_LOGW("platform", "service stop failed: %d", stopped);
+#if CONFIG_NOTE4_ENABLE_CONNECTIVITY
+    // Board initialization can attach NFC before the connectivity provider runs.
+    delete std::exchange(impl_->nfc_service, nullptr);
+#endif
+}
+
+void Platform::ResetServices() {
+    if (impl_ == nullptr) return;
+    ReleaseServices();
+    services_.Clear();
+    delete impl_->power;
+    delete impl_->input;
+    delete impl_;
+    impl_ = nullptr;
+    initialized_ = false;
+}
+
+}  // namespace note4

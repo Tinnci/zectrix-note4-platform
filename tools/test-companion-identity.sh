@@ -6,8 +6,8 @@ tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
 g++ -std=c++17 -Wall -Wextra -Werror -pedantic \
-  -I"$repo_root/components/zectrix_companion/include" \
-  "$repo_root/components/zectrix_companion/zectrix_companion_identity.cc" \
+  -I"$repo_root/components/note4_companion/include" \
+  "$repo_root/components/note4_companion/note4_companion_identity.cc" \
   "$repo_root/tools/companion_identity_test.cc" \
   -o "$tmp_dir/companion_identity_test"
 

@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ZectrixCompanion"
+rootProject.name = "Note4Companion"
 include(":app")

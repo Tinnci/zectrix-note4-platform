@@ -167,8 +167,8 @@ comparison is in [the runtime research](DYNAMIC_APPLICATION_RESEARCH.md).
 
 ```bash
 bash tools/test-zapp.sh
-ZECTRIX_ZAPP_SANITIZE=1 bash tools/test-zapp.sh
-ZECTRIX_RUNTIME_SANITIZE=1 bash tools/test-runtime.sh
+NOTE4_ZAPP_SANITIZE=1 bash tools/test-zapp.sh
+NOTE4_RUNTIME_SANITIZE=1 bash tools/test-runtime.sh
 bash tools/test-usb-manager.sh
 bash tools/test-book-transfer.sh
 bash tools/test-host.sh

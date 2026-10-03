@@ -77,7 +77,7 @@ no upstream tasks or code are imported for these tools.
 
 ## Build and verification
 
-`CONFIG_ZECTRIX_ENABLE_UTILITIES` defaults to `y`, is enabled by Full and is
+`CONFIG_NOTE4_ENABLE_UTILITIES` defaults to `y`, is enabled by Full and is
 disabled by Minimal. It has no dependency on Reader, Runtime, Connectivity or
 book storage. Disabling it removes the application source, controller,
 renderer, Launcher destination and RAM session. The common language catalog
@@ -85,7 +85,7 @@ still contains its labels, as it does for other optional applications.
 
 ```bash
 bash tools/test-utilities.sh
-ZECTRIX_UTILITIES_SANITIZE=1 bash tools/test-utilities.sh
+NOTE4_UTILITIES_SANITIZE=1 bash tools/test-utilities.sh
 bash tools/test-host.sh
 source tools/activate-dev-env.sh
 bash tools/build-firmware.sh --profile full

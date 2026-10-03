@@ -43,7 +43,7 @@ def boot_partition_matches(output, partition):
 
 
 def linked_font_bytes(directory, description):
-    if "zectrix_reader" not in description["build_components"]:
+    if "note4_reader" not in description["build_components"]:
         return 0
     cache = (directory / "CMakeCache.txt").read_text()
     match = re.search(r"^CMAKE_NM:FILEPATH=(.+)$", cache, re.MULTILINE)
@@ -54,7 +54,7 @@ def linked_font_bytes(directory, description):
                              check=True, capture_output=True, text=True).stdout
     for line in symbols.splitlines():
         fields = line.split()
-        if len(fields) == 4 and fields[0] == "zectrix_reader_font_data":
+        if len(fields) == 4 and fields[0] == "note4_reader_font_data":
             return int(fields[3], 16)
     raise ValueError("Reader build has no sized font symbol")
 

@@ -126,11 +126,11 @@ qualification.
 
 **PM-004** Interfaces in M2 and M3 MUST have Draft status.
 
-**PM-005** M4 MUST define the SDK v1 compatibility policy.
+**PM-005** M4 MUST define the SDK v2 compatibility policy.
 
-**PM-006** M4 MUST state whether SDK v1 gives source compatibility.
+**PM-006** M4 MUST state whether SDK v2 gives source compatibility.
 
-**PM-007** M4 MUST state whether SDK v1 gives binary ABI compatibility.
+**PM-007** M4 MUST state whether SDK v2 gives binary ABI compatibility.
 
 **PM-008** The project MUST NOT claim binary ABI stability before M4 makes this
 decision.

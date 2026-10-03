@@ -19,7 +19,7 @@ code from this device's memory or peripherals. Neither is the preferred route
 for third-party foreground apps.
 
 E2.1 completed the research and reproducible experiments. At that point the
-shipping firmware ran only static SDK v1 applications. A successful link
+shipping firmware ran only static SDK v2 applications. A successful link
 does not establish safe arbitrary-code execution: WAMR initialization bypasses
 the callback instruction limit, and both Wasm candidates produce the Host
 sanitizer findings below. The proposed application format and binary interface
@@ -28,7 +28,7 @@ are design directions, not a new frozen contract or compatibility promise.
 ## Existing constraints and reference designs
 
 The governing boundaries remain [M2](M2_PLATFORM_CONTRACT.md),
-[M3](M3_APPLICATION_CONTRACT.md), [SDK v1](SDK_V1.md),
+[M3](M3_APPLICATION_CONTRACT.md), [SDK v2](SDK_V2.md),
 [ADR-0003](adr/0003-freertos-runtime-sdk-boundary.md) and
 [USB management](USB_HOST.md). SDK 1.1.1 is a C++17 **source** interface; its
 classes, vtables, standard-library types and ESP-IDF services are not a binary
@@ -191,13 +191,13 @@ UI and additional fonts would consume more than these probes. All three fit,
 but WAMR leaves only 54,464 bytes and Lua 38,704 bytes in the current Full slot.
 Lua's lower guest heap therefore does not imply the smaller firmware addition.
 
-## A binary boundary beside SDK v1
+## A binary boundary beside SDK v2
 
-Keep SDK v1 for built-in C++ apps. Add an internal guest adapter that implements
+Keep SDK v2 for built-in C++ apps. Add an internal guest adapter that implements
 `sdk::Application`; the guest never receives its address, `ApplicationContext`,
 a vtable, `Platform`, an ESP-IDF handle or a FreeRTOS object.
 
-For Wasm, a versioned import namespace such as `zectrix_v1` is the binary
+For Wasm, a versioned import namespace such as `note4_v1` is the binary
 boundary. Firmware resolves those imports to a small C dispatch table. A native
 C jump table could later serve trusted ELF code, but Wasm receives imports,
 not a table of host addresses. Lua would wrap the same operations as functions
@@ -211,7 +211,7 @@ available merely because their firmware components are present.
 
 | Concern | Proposed rule |
 | --- | --- |
-| Interface identity | Separate package-format version, binary-interface major/minor and application version. Firmware version and SDK v1 version are not substitutes |
+| Interface identity | Separate package-format version, binary-interface major/minor and application version. Firmware version and SDK v2 version are not substitutes |
 | Calls and values | Fixed-width integers and explicit status values. Wasm strings/buffers are offsets plus lengths; check `offset <= memory_size` and `length <= memory_size - offset` before translating and copying |
 | Native table evolution | A fixed-width major/minor and table-size prefix; append compatible entries, preserve existing semantics and check availability before use. A table still depends on the native target calling convention |
 | Compatibility | Reject an unknown major, unsupported feature or missing required import before executing code. Additive minor support cannot silently change an older operation |

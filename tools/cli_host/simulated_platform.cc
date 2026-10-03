@@ -5,7 +5,7 @@
 #include <cstring>
 #include <ctime>
 
-namespace zectrix::cli::host {
+namespace note4::cli::host {
 namespace {
 thread_local const SimulatedPlatform* current_owner = nullptr;
 }
@@ -13,7 +13,7 @@ thread_local const SimulatedPlatform* current_owner = nullptr;
 SimulatedPlatform::SimulatedPlatform(LogBuffer& logs, SimulationOptions options)
     : logs_(logs), options_(options) {
     auto& system = snapshot_.system;
-    std::snprintf(system.firmware.project_name.data(), system.firmware.project_name.size(), "zectrix-host-sim");
+    std::snprintf(system.firmware.project_name.data(), system.firmware.project_name.size(), "note4-host-sim");
     std::snprintf(system.firmware.version.data(), system.firmware.version.size(), "D1.4-host");
     std::snprintf(system.firmware.idf_version.data(), system.firmware.idf_version.size(), "simulated");
     std::snprintf(system.capabilities.chip_model.data(), system.capabilities.chip_model.size(), "SIMULATED-ESP32-S3");
@@ -212,4 +212,4 @@ void SimulatedPlatform::Run(PlatformControlDispatcher& dispatcher) {
     current_owner = nullptr;
 }
 
-}  // namespace zectrix::cli::host
+}  // namespace note4::cli::host

@@ -5,10 +5,10 @@ test_binary=$(mktemp)
 trap 'rm -f "$test_binary"' EXIT
 c++ -std=c++17 -Wall -Wextra -Werror \
   -I"$root_dir/tools/host_include" \
-  -I"$root_dir/components/zectrix_time/include" \
-  -I"$root_dir/components/zectrix_storage/include" \
-  "$root_dir/components/zectrix_time/zectrix_time_service.cc" \
-  "$root_dir/components/zectrix_time/zectrix_time_sync.cc" \
+  -I"$root_dir/components/note4_time/include" \
+  -I"$root_dir/components/note4_storage/include" \
+  "$root_dir/components/note4_time/note4_time_service.cc" \
+  "$root_dir/components/note4_time/note4_time_sync.cc" \
   "$root_dir/tools/time_service_test.cc" -o "$test_binary"
 "$test_binary"
 echo 'PASS: time service tests.'

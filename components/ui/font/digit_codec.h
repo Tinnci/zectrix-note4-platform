@@ -6,7 +6,7 @@
 // A malformed stream may emit a prefix before returning false; static firmware
 // assets are validated offline and tests verify exact decoding of every glyph.
 template <bool EnableXor = true, bool EnableColumn = true, typename Emit>
-bool ZectrixDecodeDigit(const uint8_t* data, std::size_t size, unsigned width,
+bool Note4DecodeDigit(const uint8_t* data, std::size_t size, unsigned width,
                        unsigned height, uint8_t codec, Emit emit) {
     if (!data || width == 0 || width > 42 || height == 0 || height > 128 || codec > 3 ||
         (!EnableXor && codec == 2) || (!EnableColumn && codec == 3)) return false;

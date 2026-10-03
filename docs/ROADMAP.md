@@ -47,9 +47,9 @@ Status: Complete on qualified commit `4dc371a`.
 
 Exit: at least three applications use only the draft public API.
 
-## M4 — SDK v1
+## M4 — SDK v2
 
-Goal: freeze a source-stable SDK v1 for statically linked applications.
+Goal: freeze a source-stable SDK v2 for statically linked applications.
 
 Status: Complete on qualified firmware commit `91043ea`.
 
@@ -58,7 +58,7 @@ Status: Complete on qualified firmware commit `91043ea`.
 - Define ownership, lifecycle, execution, error and deprecation policy.
 - Migrate all M3 applications to the versioned contract.
 
-Exit: SDK v1 has an explicit source-compatibility guarantee and passes the
+Exit: SDK v2 has an explicit source-compatibility guarantee and passes the
 unified software and hardware gate. No binary ABI is promised.
 
 ## M5 — Update architecture
@@ -281,7 +281,7 @@ bounded app discovery, USB installation and cleanup through existing owners.
 E2.2 implements the [restricted Lua pilot](MICRO_APPS.md): an optional runtime,
 five-entry Apps pages, bounded initialization/events, copied clipped drawing,
 USB script installation/export/removal and Calculator/Flashcards examples.
-Guest errors and system exits reclaim the VM through private scenes. SDK v1
+Guest errors and system exits reclaim the VM through private scenes. SDK v2
 remains the source interface for static native adapters. Compiled Wasm apps
 and `.zapp` packaging remain subsequent work; no new binary ABI is frozen.
 

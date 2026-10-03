@@ -5,8 +5,8 @@ test_binary=$(mktemp)
 trap 'rm -f "$test_binary"' EXIT
 c++ -std=c++17 -Wall -Wextra -Werror \
   -I"$root_dir/tools/host_include" \
-  -I"$root_dir/components/zectrix_system/include" \
-  "$root_dir/components/zectrix_system/zectrix_system_service.cc" \
+  -I"$root_dir/components/note4_system/include" \
+  "$root_dir/components/note4_system/note4_system_service.cc" \
   "$root_dir/tools/system_service_test.cc" -o "$test_binary"
 "$test_binary"
 echo 'PASS: system service tests.'

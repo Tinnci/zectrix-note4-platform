@@ -1,17 +1,17 @@
-#include "zectrix_locale.h"
+#include "note4_locale.h"
 #include "terminal_internal.h"
 
 #include <cstdio>
 
 #include "esp_log.h"
-#include "zectrix_clock_editor.h"
-#include "zectrix_first_party_app_controllers.h"
-#include "zectrix_scene_manager.h"
+#include "note4_clock_editor.h"
+#include "note4_first_party_app_controllers.h"
+#include "note4_scene_manager.h"
 
-using zectrix::i18n::Tr;
-using zectrix::i18n::Text;
+using note4::i18n::Tr;
+using note4::i18n::Text;
 
-namespace zectrix::terminal {
+namespace note4::terminal {
 
 class TerminalApp::ClockApplication final : public sdk::Application {
 public:
@@ -169,4 +169,4 @@ sdk::Status TerminalApp::CreateClock(TerminalApp& owner, sdk::Application** outp
     return CreateApplication<ClockApplication>(owner, output);
 }
 
-}  // namespace zectrix::terminal
+}  // namespace note4::terminal

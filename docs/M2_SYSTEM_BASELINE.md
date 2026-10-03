@@ -1,6 +1,6 @@
 # M2 SystemService baseline
 
-Status: Draft. This baseline applies to issue #13 Stage A. It is not an SDK v1
+Status: Draft. This baseline applies to issue #13 Stage A. It is not an SDK v2
 specification.
 
 ## Purpose

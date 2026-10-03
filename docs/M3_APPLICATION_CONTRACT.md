@@ -1,9 +1,9 @@
 # M3 application contract
 
 Status: Accepted on commit `4dc371a`. This document records the M3 contract.
-M4 replaced its draft public signatures with SDK v1. See `docs/SDK_V1.md`.
+M4 replaced its draft public signatures with SDK v2. See `docs/SDK_V2.md`.
 L1.1 updates the first-party shell and internal scene/viewport implementation;
-the SDK v1 application lifecycle and public signatures remain unchanged.
+the SDK v2 application lifecycle and public signatures remain unchanged.
 L1.2 adds the Reader application and its private Library/Reading/Options scenes.
 Its streamed execution and persistence are described in [READER.md](READER.md).
 L1.3 adds Send Books with private Mode/Session scenes. Connectivity owns its
@@ -14,7 +14,7 @@ S1.3 separates entry, shell ownership and application modules; a bounded
 catalog supplies both enabled runtime registrations and Launcher navigation.
 Clock adds a private View/Edit scene pair and TimeService-owned calibration.
 E1.2 adds private Home/Tools Launcher scenes, catalog-derived tiles and a local
-Continue Reading action. SDK v1 is unchanged. See [HOME.md](HOME.md).
+Continue Reading action. SDK v2 is unchanged. See [HOME.md](HOME.md).
 E1.3 adds bounded input bursts through the source-compatible SDK 1.1 dispatch
 API. See [DISPLAY_RESPONSIVENESS.md](DISPLAY_RESPONSIVENESS.md).
 E1.4 unifies first-party button intents, restores the Launcher parent on root
@@ -57,7 +57,7 @@ contract immediately and requires a rename or migration policy.
 
 The registry is an immutable array view with deterministic order. M3 used a
 function factory, a Platform parameter, and a typed marker context during
-validation. M4 removed these details from the public contract. SDK v1 uses a
+validation. M4 removed these details from the public contract. SDK v2 uses a
 typed factory object. The composition root owns the factory, and the runtime
 receives only the inactive candidate. A factory must not perform application
 entry or hardware operations.
@@ -79,7 +79,7 @@ Task topology must not define the product dependency graph.
 S1.1 adds an internal Platform service registry alongside the application
 registry. `Services().Get<Interface>()` returns a borrowed interface or null;
 it cannot navigate or create an application. Platform owns service lifecycle,
-and foreground applications exit before service stop. SDK v1 is unchanged.
+and foreground applications exit before service stop. SDK v2 is unchanged.
 See [SERVICE_REGISTRY.md](SERVICE_REGISTRY.md).
 
 S1.3's `main/app_main.cc` only calls the terminal entry. `main/terminal.cc`

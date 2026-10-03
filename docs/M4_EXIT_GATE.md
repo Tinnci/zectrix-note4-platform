@@ -1,19 +1,19 @@
-# M4 SDK v1 exit gate
+# M4 SDK v2 exit gate
 
 Status: PASS on firmware commit `91043ea`.
 
 M4 closes only when all checks in this document pass on one pushed commit.
-Closure freezes the SDK v1 source contract. It does not promise a binary ABI,
+Closure freezes the SDK v2 source contract. It does not promise a binary ABI,
 dynamic loading, OTA compatibility, or partition compatibility.
 
 ## Contract gate
 
 - SDK version is 1.0.0.
-- The public-header set matches `tools/check-sdk-v1.sh`.
+- The public-header set matches `tools/check-sdk-v2.sh`.
 - Public SDK headers expose no ESP-IDF, FreeRTOS, board, driver, Platform, or
   opaque factory-context type.
 - The locked consumer and minimal example compile with public headers only.
-- Launcher, Clock, Settings, and Diagnostics use SDK v1 lifecycle and input.
+- Launcher, Clock, Settings, and Diagnostics use SDK v2 lifecycle and input.
 - The old M3 application headers and factory-context path do not exist.
 - Documentation and headers specify the same ownership and error rules.
 
@@ -68,7 +68,7 @@ The same-boot internal-heap checkpoints were:
 | Checkpoint | Free bytes | Minimum free bytes | Largest block bytes |
 | --- | ---: | ---: | ---: |
 | M2-equivalent platform | 244827 | 244827 | 163840 |
-| SDK v1 runtime active | 244803 | 244803 | 163840 |
+| SDK v2 runtime active | 244803 | 244803 | 163840 |
 
 The runtime delta was 24 bytes at this checkpoint. The largest internal block
 did not change. The user confirmed that all functional hardware tests passed

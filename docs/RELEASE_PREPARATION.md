@@ -34,9 +34,9 @@ The resulting downloads are:
 
 | File | Purpose |
 | --- | --- |
-| `zectrix-note4-v1.2.0-preview.1-full.zip` | Full initial/recovery image set and portable flashing arguments |
-| `zectrix-note4-v1.2.0-preview.1-minimal.zip` | Minimal initial/recovery image set with the same partition layout |
-| `zectrix-note4-v1.2.0-preview.1-{full,minimal}-app.bin` | Standalone application images for the existing image tooling |
+| `note4-v1.2.0-preview.1-full.zip` | Full initial/recovery image set and portable flashing arguments |
+| `note4-v1.2.0-preview.1-minimal.zip` | Minimal initial/recovery image set with the same partition layout |
+| `note4-v1.2.0-preview.1-{full,minimal}-app.bin` | Standalone application images for the existing image tooling |
 | `manifest.json` | Source/build identity, sizes and native partition maps for both profiles |
 | `SHA256SUMS` | Download-integrity checks for these files |
 

@@ -1,11 +1,11 @@
-#include "zectrix_edge_sync.h"
-#include "zectrix_bthome.h"
-#include "zectrix_book_storage.h"
+#include "note4_edge_sync.h"
+#include "note4_bthome.h"
+#include "note4_book_storage.h"
 #include <array>
 #include <cassert>
 #include <cstring>
 #include <filesystem>
-using namespace zectrix;
+using namespace note4;
 namespace {
 void Write32(uint8_t* p, uint32_t n) { for (unsigned i = 0; i < 4; ++i) p[i] = n >> (i * 8); }
 std::array<uint8_t, storage::edge::kFileSize> Page(uint32_t revision) {

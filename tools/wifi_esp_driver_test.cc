@@ -1,5 +1,5 @@
-#include "zectrix_wifi_esp_driver.h"
-#include "zectrix_wifi_http.h"
+#include "note4_wifi_esp_driver.h"
+#include "note4_wifi_http.h"
 #include "esp_crt_bundle.h"
 #include "esp_event.h"
 #include "esp_netif.h"
@@ -25,8 +25,8 @@
 struct WifiHostHandler { esp_event_base_t base; esp_event_handler_t callback; void* context; };
 
 namespace {
-using namespace zectrix::connectivity;
-constexpr auto capability = zectrix::companion::ResourceCapability::kPublicTestDocumentV1;
+using namespace note4::connectivity;
+constexpr auto capability = note4::companion::ResourceCapability::kPublicTestDocumentV1;
 constexpr ip_addr_t resolved_address{0xc0000207, true};
 std::mutex event_mutex, dns_mutex;
 std::vector<std::unique_ptr<WifiHostHandler>> handlers;
@@ -123,7 +123,7 @@ void CompleteDns(bool success = true) {
         call = dns_calls.front();
         dns_calls.pop_front();
     }
-    call.callback("zectrix.com", success ? &resolved_address : nullptr, call.context);
+    call.callback("raw.githubusercontent.com", success ? &resolved_address : nullptr, call.context);
 }
 
 void TestExclusiveClaimAndStartupFailure() {
@@ -353,7 +353,7 @@ void TestBurstPowersDownBeforeResult() {
         assert((cleanup == std::vector<std::string>{"http", "tls", "wifi-stop",
             "wifi-deinit", "wifi-handler", "ip-handler", "default-handlers", "netif"}));
         assert(backend.TakeOutcome(&outcome));
-        zectrix::time::TimeSample sample;
+        note4::time::TimeSample sample;
         assert(driver.TakeClockSample(&sample) == (mode == 0));
         if (mode == 0) assert(sample.unix_ms == 1709179200000 && sample.received_us == 1000000);
         assert(!driver.TakeClockSample(&sample));
@@ -548,7 +548,7 @@ err_t tcpip_try_callback(tcpip_callback_fn callback, void* context) {
 }
 err_t dns_gethostbyname_addrtype(const char* host, ip_addr_t* address,
                                 dns_found_callback callback, void* context, uint8_t) {
-    assert(std::strcmp(host, "zectrix.com") == 0);
+    assert(std::strcmp(host, "raw.githubusercontent.com") == 0);
     ++lookups;
     if (dns_result == ERR_OK) *address = resolved_address;
     if (dns_result == ERR_INPROGRESS) {
@@ -577,7 +577,7 @@ esp_err_t esp_tls_get_conn_sockfd(esp_tls_t*, int*) { return ESP_FAIL; }
 esp_err_t esp_tls_get_conn_state(esp_tls_t*, esp_tls_conn_state_t* state) { *state = ESP_TLS_INIT; return ESP_OK; }
 int esp_tls_conn_new_async(const char* host, int length, int port, const esp_tls_cfg_t* config, esp_tls_t*) {
     assert(std::strcmp(host, "192.0.2.7") == 0 && length == 9 && port == 443);
-    assert(std::strcmp(config->common_name, "zectrix.com") == 0 && config->crt_bundle_attach != nullptr);
+    assert(std::strcmp(config->common_name, "raw.githubusercontent.com") == 0 && config->crt_bundle_attach != nullptr);
     return 1;
 }
 

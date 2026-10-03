@@ -1,13 +1,13 @@
 #include "ui_engine.h"
 #include "layout.h"
-#include "zectrix_locale.h"
-#include "zectrix_utilities.h"
+#include "note4_locale.h"
+#include "note4_utilities.h"
 
 #include <cstdio>
 
-using zectrix::i18n::Text;
-using zectrix::i18n::Tr;
-using namespace zectrix::app;
+using note4::i18n::Text;
+using note4::i18n::Tr;
+using namespace note4::app;
 
 namespace {
 Text TimerState(const FocusTimer& timer) {
@@ -39,7 +39,7 @@ esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_
 
     switch (utilities.page()) {
         case UtilityPage::Menu: {
-            auto page = EnterPage(zectrix::ui::PageSpec().Title(Tr(Text::PocketTools)).Footer(Tr(Text::NavOpenBack)));
+            auto page = EnterPage(note4::ui::PageSpec().Title(Tr(Text::PocketTools)).Footer(Tr(Text::NavOpenBack)));
             const bool portrait = page.portrait();
             const int width = page.width(), height = page.height();
             constexpr Text names[] = {Text::FocusTimer, Text::OfflineCalendar, Text::Counter};
@@ -59,7 +59,7 @@ esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_
             return page.Commit(full_refresh);
         }
         case UtilityPage::Focus: {
-            auto page = EnterPage(zectrix::ui::PageSpec().Title(Tr(Text::FocusTimer)).Footer(Tr(TimerControls(timer))));
+            auto page = EnterPage(note4::ui::PageSpec().Title(Tr(Text::FocusTimer)).Footer(Tr(TimerControls(timer))));
             const int width = page.width();
             const int dy = page.dy();
             canvas_.TextCentered(56 + dy, Tr(phase));
@@ -75,7 +75,7 @@ esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_
             return page.Commit(full_refresh);
         }
         case UtilityPage::Calendar: {
-            auto page = EnterPage(zectrix::ui::PageSpec().Title(Tr(Text::OfflineCalendar)).Footer(Tr(Text::NavCalendar)));
+            auto page = EnterPage(note4::ui::PageSpec().Title(Tr(Text::OfflineCalendar)).Footer(Tr(Text::NavCalendar)));
             const bool portrait = page.portrait();
             const int width = page.width(), height = page.height();
             const auto& month = session.month;
@@ -114,7 +114,7 @@ esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_
                             Tr(Text::NavOpenBack), full_refresh);
         }
         case UtilityPage::CalendarJump: {
-            auto page = EnterPage(zectrix::ui::PageSpec().Title(Tr(Text::CalendarJump))
+            auto page = EnterPage(note4::ui::PageSpec().Title(Tr(Text::CalendarJump))
                 .Footer(Tr(utilities.selected() == 0 ? Text::NavClockNext : Text::NavCalendarJump)));
             const int width = page.width();
             WrapText(16, 62, Tr(Text::CalendarRange), width - 32, 18, 2, true);
@@ -131,7 +131,7 @@ esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_
             return page.Commit(full_refresh);
         }
         case UtilityPage::Counter: {
-            auto page = EnterPage(zectrix::ui::PageSpec().Title(Tr(Text::Counter))
+            auto page = EnterPage(note4::ui::PageSpec().Title(Tr(Text::Counter))
                 .Footer(Tr(session.count == 0 && session.undo_count ? Text::NavCounterUndo : Text::NavCounterReset)));
             const int width = page.width();
             const int dy = page.dy();

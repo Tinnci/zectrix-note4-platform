@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace zectrix::ui {
+namespace note4::ui {
 // Consume one scalar, replacing malformed sequences without reading past NUL.
 inline uint32_t NextUtf8(const char*& text) {
     const auto first = static_cast<uint8_t>(*text);
@@ -21,4 +21,4 @@ inline uint32_t NextUtf8(const char*& text) {
     return cp < (count == 2 ? 0x80U : count == 3 ? 0x800U : 0x10000U) ||
         cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) ? 0xfffd : cp;
 }
-}  // namespace zectrix::ui
+}  // namespace note4::ui

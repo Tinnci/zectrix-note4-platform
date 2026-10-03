@@ -1,4 +1,4 @@
-# Zectrix Note4 Android companion
+# Note4 Android companion
 
 This is the Android side of C1. It is a real application, not an SDK sample.
 It uses Android's built-in Kotlin support from Android Gradle Plugin 9.4.
@@ -46,7 +46,7 @@ tools/test-android-companion.sh
 
 The committed Gradle Wrapper is the only supported Gradle entry point. The
 environment must expose JDK 21 and Android SDK platform 37 with build-tools
-37.0.0. Set `ZECTRIX_ANDROID_CLEAN=1` for a clean rebuild instead of an
+37.0.0. Set `NOTE4_ANDROID_CLEAN=1` for a clean rebuild instead of an
 incremental developer build.
 
 This builds a debug APK and runs the protocol, persistent queue and lifecycle
@@ -85,7 +85,7 @@ BLE. System insets keep controls outside navigation bars and the keyboard.
 
 ```bash
 source tools/activate-dev-env.sh
-ZECTRIX_ANDROID_SERIAL=emulator-5554 bash tools/test-android-device.sh
+NOTE4_ANDROID_SERIAL=emulator-5554 bash tools/test-android-device.sh
 ```
 
 This installs the debug and instrumentation APKs and tests Android NDEF intent

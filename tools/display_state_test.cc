@@ -1,4 +1,4 @@
-#include "zectrix_display_telemetry.h"
+#include "note4_display_telemetry.h"
 
 #include <cassert>
 #include <chrono>
@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <initializer_list>
 
-using namespace zectrix::display;
+using namespace note4::display;
 
 void TestLifecycleAndDirtyBounds() {
     StateModel model;

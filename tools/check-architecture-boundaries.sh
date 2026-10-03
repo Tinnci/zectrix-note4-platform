@@ -8,7 +8,7 @@ check_root() {
     local patterns=(
         '#include[[:space:]]*[<"]driver/gpio\.h[>"]'
         '#include[[:space:]]*[<"]driver/spi_master\.h[>"]'
-        '#include[[:space:]]*[<"]zectrix_epd\.h[>"]'
+        '#include[[:space:]]*[<"]note4_epd\.h[>"]'
         'esp_deep_sleep_start[[:space:]]*\('
         'nvs_[a-zA-Z0-9_]*[[:space:]]*\('
         'PCF8563'
@@ -25,8 +25,8 @@ check_root() {
         '\besp_(wifi|netif)_[a-zA-Z0-9_]*[[:space:]]*\('
         '(DisplayService|InputService|PowerService|TimeService|StorageService|SystemService)::(Attach|Create)[[:space:]]*\('
         'BoardForSelfTest[[:space:]]*\('
-        '#include[[:space:]]*[<"]zectrix_board\.h[>"]'
-        '\bZectrixBoard\b'
+        '#include[[:space:]]*[<"]note4_board\.h[>"]'
+        '\bNote4Board\b'
     )
     for pattern in "${patterns[@]}"; do
         if rg -n -i --glob '*.{c,cc,cpp,h,hh,hpp}' "$pattern" "$scan_root"; then found=1; fi
@@ -43,8 +43,8 @@ check_application_headers() {
 
 is_infrastructure_component() {
     case "$1" in
-        zectrix_board|zectrix_companion|zectrix_connectivity|zectrix_display|zectrix_epd|zectrix_input|zectrix_nfc_service|zectrix_platform|\
-        zectrix_power|zectrix_self_test|zectrix_storage|zectrix_system|zectrix_time|zectrix_update)
+        note4_board|note4_companion|note4_connectivity|note4_display|note4_epd|note4_input|note4_nfc_service|note4_platform|\
+        note4_power|note4_self_test|note4_storage|note4_system|note4_time|note4_update)
             return 0
             ;;
     esac
@@ -60,16 +60,16 @@ run_self_test() {
     printf '%s\n' \
         '#include "driver/gpio.h"' \
         '#include "driver/spi_master.h"' \
-        '#include "zectrix_epd.h"' \
+        '#include "note4_epd.h"' \
         'void sleep_now() { esp_deep_sleep_start(); }' \
         'void load() { nvs_get_i32(0, "key", nullptr); }' \
         'void identity() { esp_read_mac(nullptr, 0); }' \
         'void service() { InputService::Attach(board, nullptr); }' \
-        '#include "zectrix_board.h"' \
+        '#include "note4_board.h"' \
         '#include "host/ble_gap.h"' \
         '#include "esp_wifi.h"' \
         'void radio() { ble_gap_adv_start(0, nullptr, 0, nullptr, nullptr, nullptr); esp_wifi_start(); }' \
-        'ZectrixBoard second_board;' \
+        'Note4Board second_board;' \
         'const char* rtc = "PCF8563";' > "$temp_dir/bad/app.cc"
     printf '%s\n' \
         '#include "freertos/task.h"' \
@@ -80,8 +80,8 @@ run_self_test() {
         echo 'FAIL: architecture boundary checker self-test.' >&2
         return 1
     fi
-    if ! is_infrastructure_component zectrix_platform || \
-        is_infrastructure_component zectrix_new_application; then
+    if ! is_infrastructure_component note4_platform || \
+        is_infrastructure_component note4_new_application; then
         echo 'FAIL: Infrastructure allowlist self-test.' >&2
         return 1
     fi

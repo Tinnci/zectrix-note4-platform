@@ -37,7 +37,7 @@ tools/test-host.sh
 tools/test-host.sh --list
 tools/test-host.sh --suite ui --jobs 2
 tools/test-host.sh --test reader --jobs 1 --verbose
-ZECTRIX_ANDROID_CLEAN=1 tools/test-android-companion.sh
+NOTE4_ANDROID_CLEAN=1 tools/test-android-companion.sh
 source tools/activate-dev-env.sh
 tools/build-firmware.sh --clean
 idf.py size

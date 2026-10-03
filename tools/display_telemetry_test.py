@@ -8,13 +8,13 @@ spec = importlib.util.spec_from_file_location("display_telemetry", Path(__file__
 telemetry = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(telemetry)
 
-CAPTURE = """Zectrix maintenance CLI
-zectrix> display telemetry
+CAPTURE = """Note4 maintenance CLI
+note4> display telemetry
 # epd next=7 latest=7 lost=2 frames=1
 frame,7,1000000,2,0,0,7,16,31,16,8,0,2,180000,80000,80000,65,32,1
 env,7,0,5000,3800,2000,0,512
 debt,7,0,30,600,30,600,0
-zectrix>
+note4>
 """
 
 

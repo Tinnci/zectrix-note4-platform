@@ -1,7 +1,7 @@
 #include "terminal_internal.h"
-#include "zectrix_utilities.h"
+#include "note4_utilities.h"
 
-namespace zectrix::terminal {
+namespace note4::terminal {
 
 class TerminalApp::UtilitiesApplication final : public sdk::Application {
 public:
@@ -51,4 +51,4 @@ sdk::Status TerminalApp::CreateUtilities(TerminalApp& owner, sdk::Application** 
     return CreateApplication<UtilitiesApplication>(owner, output);
 }
 
-}  // namespace zectrix::terminal
+}  // namespace note4::terminal

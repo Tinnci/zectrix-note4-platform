@@ -17,7 +17,7 @@ uv run --no-project tools/generate-large-digits.py
 
 # 普通算法、源图/参数/固件一致性和 Python/C++ 位级往返测试。
 tools/test-digit-font.sh
-ZECTRIX_DIGIT_SANITIZE=1 tools/test-digit-font.sh
+NOTE4_DIGIT_SANITIZE=1 tools/test-digit-font.sh
 
 # 真实界面预览及目标构建。
 bun tools/ui-preview.ts --docs

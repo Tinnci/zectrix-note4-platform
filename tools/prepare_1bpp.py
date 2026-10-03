@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare a 400x300, packed 1bpp image for the Zectrix EPD demo."""
+"""Prepare a 400x300, packed 1bpp image for the Note4 EPD demo."""
 
 import argparse
 from pathlib import Path

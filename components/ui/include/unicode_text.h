@@ -1,14 +1,14 @@
 #pragma once
 
-#include "zectrix_canvas.h"
+#include "canvas.h"
 
-namespace zectrix::reader { enum class FontSize : uint8_t; }
+namespace note4::reader { enum class FontSize : uint8_t; }
 
-namespace zectrix::ui {
-void DrawGlyph(ZectrixCanvas& canvas, int x, int y, uint32_t codepoint,
+namespace note4::ui {
+void DrawGlyph(Canvas& canvas, int x, int y, uint32_t codepoint,
                reader::FontSize font, bool inverted = false,
                sdk::TextStyle style = sdk::TextStyle::Regular);
-void DrawUtf8Line(ZectrixCanvas& canvas, int x, int y, const char* text,
+void DrawUtf8Line(Canvas& canvas, int x, int y, const char* text,
                   int width, bool inverted = false,
                   sdk::TextStyle style = sdk::TextStyle::Regular);
-}  // namespace zectrix::ui
+}  // namespace note4::ui

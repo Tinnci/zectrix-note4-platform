@@ -4,7 +4,7 @@
 
 **从这里开始：**[图文使用手册](docs/HANDBOOK_zh.md) ·
 [English handbook](docs/HANDBOOK.md) · [固件发布流程](docs/RELEASING.md) ·
-[v1.2.0 发布说明](docs/releases/v1.2.0.md)。
+[v2 迁移指南](docs/NOTE4_MIGRATION.md) · [v2.0.0 开发说明](docs/releases/v2.0.0.md)。
 
 本项目是由 **[Tinnci](https://github.com/Tinnci)** 维护的独立固件框架与应用平台，适用于搭载 SSD2683 黑白墨水屏的 ESP32-S3 设备（基于 Note4 硬件布局）。
 
@@ -33,7 +33,7 @@
 | SSD2683 1bpp 全刷、局刷和 4bpp 显示路径 | 可复现 ESP-IDF 工具链、构建溯源、硬件验收与原厂恢复流程 |
 | NOTE4 板级适配和外设访问 | 显示、输入、电源、时间、存储和系统服务的单一所有权 |
 | 图库 UI 和硬件能力展示 | 含 Launcher、Reader、Settings、Diagnostics、Clock 的静态应用运行时 |
-| Wi-Fi RF、音频、RTC、充电、LED、按键、NFC 和电池自检 | 具备兼容性与架构检查的源码稳定 C++17 SDK v1 |
+| Wi-Fi RF、音频、RTC、充电、LED、按键、NFC 和电池自检 | 具备兼容性与架构检查的源码稳定 C++17 SDK v2 |
 | 基础设备交互和关机流程 | 版本化伴侣协议、持久同步、安全 BLE、Android 伴侣端和 NFC 辅助注册 |
 | 面向硬件的串口诊断 | 有资源边界的维护 CLI、平台诊断和交互式 Host 模拟器 |
 
@@ -46,7 +46,7 @@
 | M1 | 已完成 | 可复现上游基线、硬件验收与原厂恢复 |
 | M2 | 已完成 | 平台统一管理显示、输入、电源、时间、存储和系统服务 |
 | M3 | 已完成 | 静态应用生命周期和首批内置应用 |
-| M4 | 已完成 | 源码稳定 SDK v1 和统一软硬件退出门 |
+| M4 | 已完成 | 源码稳定 SDK v2 和统一软硬件退出门 |
 | C1 | 进行中 | 伴侣协议、持久同步、安全 BLE/Android 路径和 NFC 辅助注册；完整硬件验收尚未结束 |
 | D1 | 已实现，USB 验收开放 | USB 会话、系统/显示状态、日志与输入观察、受控维护、前台健康恢复和 Host 模拟器 |
 | M5 | 进行中 | A/B 分区校验、固件流式校验和启动确认看门狗已实现；升级交付流程与硬件验收尚未结束 |
@@ -67,7 +67,7 @@
 重新编译或烧录固件；长按 OK 返回，长按 DOWN 关机。Full 默认启用，Minimal 可完整裁剪运行时。
 
 > [!IMPORTANT]
-> 本项目仅适用于黑白墨水屏版 ZECTRIX NOTE4，不适用于 NOTE4C。烧录本固件
+> 本项目仅适用于黑白墨水屏版 NOTE4，不适用于 NOTE4C。烧录本固件
 > 会替换连接设备上现有的固件，执行烧录命令前请确认设备型号和准确串口。
 
 ## 界面与功能展示 (UI & Feature Showcase)
@@ -150,7 +150,7 @@ idf.py -p /dev/ttyACM0 flash monitor
 
 编译会从 `books/` 生成 `build/books.bin`。使用 `idf.py -p 串口 books-flash` 单独
 安装书库；该命令替换整个书籍分区，普通固件刷写保留书库。通过
-`-D "ZECTRIX_BOOKS_DIR=/书籍目录的绝对路径"` 可选用自己的 TXT/EPUB 目录。
+`-D "NOTE4_BOOKS_DIR=/书籍目录的绝对路径"` 可选用自己的 TXT/EPUB 目录。
 首次升级须安装新分区表，完整步骤与格式限制见 [docs/READER.md](docs/READER.md)。
 
 首次安装书库后，进入 **SEND BOOKS**，选择创建 Note4 热点或使用已保存的家庭网络。
@@ -168,8 +168,8 @@ Linux 和 macOS 上可用 C++17 编译器运行维护 CLI。模拟器复用固�
 bash tools/run-cli-host.sh
 # Build once for repeated runs or piped commands.
 bash tools/build-cli-host.sh
-build-host/zectrix-cli-host --owner-delay-ms 500 --log-burst 80
-printf 'sysinfo\nheap\nepd-inspect\n' | build-host/zectrix-cli-host
+build-host/note4-cli-host --owner-delay-ms 500 --log-burst 80
+printf 'sysinfo\nheap\nepd-inspect\n' | build-host/note4-cli-host
 ```
 
 输入 `help` 查看命令。`Ctrl+C` 取消命令，`Ctrl+R` 重连会话，`Ctrl+D` 退出。
@@ -189,13 +189,13 @@ Host 测试默认两路并行。使用 `tools/test-host.sh --list` 查看五组�
 ## 目录结构
 
 ```text
-components/zectrix_epd/       SSD2683 墨水屏公开驱动
-components/zectrix_board/     NOTE4 引脚与外设适配层
+components/note4_epd/       SSD2683 墨水屏公开驱动
+components/note4_board/     NOTE4 引脚与外设适配层
 components/ui/               画布、点阵字库与双语原生 UI
-components/zectrix_self_test/ 硬件自检实现
-components/zectrix_platform/  平台组合根
-components/zectrix_reader/    TXT/EPUB 流式排版、字库与书签
-components/zectrix_*          系统服务与应用运行时
+components/note4_self_test/ 硬件自检实现
+components/note4_platform/  平台组合根
+components/note4_reader/    TXT/EPUB 流式排版、字库与书签
+components/note4_*          系统服务与应用运行时
 android-companion/            开发中的 Android BLE/NFC 伴侣端
 protocol/                     跨端协议黄金向量
 main/assets/                  内嵌显示素材
@@ -237,7 +237,7 @@ docs/                         架构、契约与验收记录
 - 显示图库：可单独运行三个刷新场景并查看格式、数据量、耗时和返回值。
 - 硬件测试：Wi-Fi RF、扬声器/麦克风声学回环、RTC、充电、电池、LED、三按键和 NFC。
 - 设备信息：Flash、PSRAM、MAC、RTC/NFC 状态、电池电压及充电状态。
-- 关于页面：Zectrix Lab 与 MIT License 信息。
+- 关于页面：Note4 Platform、Tinnci 与 MIT License 信息。
 
 4bpp 刷新前固定执行白色 1bpp 全刷，降低上一画面的残影。显示服务根据分区残影债务、
 温度与电池观测自适应决定全刷；单次大幅黑白翻转仍触发全刷，相同画面跳过刷新。
@@ -246,11 +246,11 @@ docs/                         架构、契约与验收记录
 
 ## 量产配置
 
-运行 `idf.py menuconfig`，进入 **Zectrix hardware showcase**：
+运行 `idf.py menuconfig`，进入 **Note4 hardware showcase**：
 
 - RF 目标 SSID 留空：扫描到任意 AP 即按展示模式通过。
 - 配置目标 SSID：必须连续 3 次找到该 SSID，且 RSSI 达到门限，默认 `-70 dBm`。
-- NFC URL 默认 `https://www.zectrix.com`；测试会备份 NFC 用户区，临时写入并
+- NFC URL 默认 `https://github.com/Tinnci/zectrix-note4-platform`；测试会备份 NFC 用户区，临时写入并
   回读验证，测试结束后恢复原数据。
 
 ## 开源与许可证说明

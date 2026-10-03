@@ -1,20 +1,20 @@
-#include "zectrix_locale.h"
+#include "note4_locale.h"
 #include "ui_engine.h"
 #include "layout.h"
 
 #include <algorithm>
 #include <cstdio>
 
-#include "zectrix_launcher_controller.h"
-#include "zectrix_reading_overview.h"
+#include "note4_launcher_controller.h"
+#include "note4_reading_overview.h"
 #include "unicode_text.h"
 
-using zectrix::i18n::Tr;
-using zectrix::i18n::Text;
+using note4::i18n::Tr;
+using note4::i18n::Text;
 
 namespace {
 
-using Icon = zectrix::app::ApplicationIcon;
+using Icon = note4::app::ApplicationIcon;
 using IconGlyph = std::array<uint16_t, 16>;
 
 // Original 16x16 glyphs. Rows are MSB-first; set bits use the tile's ink color.
@@ -60,7 +60,7 @@ const IconGlyph& GlyphForIcon(Icon icon) {
     return kAppIcon;
 }
 
-void DrawIcon(ZectrixCanvas& canvas, zectrix::app::ApplicationIcon icon, int x, int y, bool black) {
+void DrawIcon(Canvas& canvas, note4::app::ApplicationIcon icon, int x, int y, bool black) {
     const auto& glyph = GlyphForIcon(icon);
     for (int row = 0; row < 16; ++row) {
         for (int col = 0; col < 16; ++col) {
@@ -70,15 +70,15 @@ void DrawIcon(ZectrixCanvas& canvas, zectrix::app::ApplicationIcon icon, int x, 
 }
 
 // Portrait: a date strip above a full-width reading card, 276 px wide.
-void DrawOverviewPortrait(ZectrixCanvas& canvas, const zectrix::time::ClockSnapshot& clock,
-                          const zectrix::app::ReadingOverview& reading, bool active) {
+void DrawOverviewPortrait(Canvas& canvas, const note4::time::ClockSnapshot& clock,
+                          const note4::app::ReadingOverview& reading, bool active) {
     canvas.Rect(12, 52, 276, 40);
-    if (clock.source != zectrix::time::ClockSource::Uptime && zectrix::time::IsValid(clock.value)) {
+    if (clock.source != note4::time::ClockSource::Uptime && note4::time::IsValid(clock.value)) {
         constexpr Text months[] = {Text::Jan, Text::Feb, Text::Mar, Text::Apr, Text::May, Text::Jun,
             Text::Jul, Text::Aug, Text::Sep, Text::Oct, Text::Nov, Text::Dec};
         constexpr Text weekdays[] = {Text::Sun, Text::Mon, Text::Tue, Text::Wed, Text::Thu, Text::Fri, Text::Sat};
         const auto& date = clock.value;
-        const auto weekday = (zectrix::time::CalendarSeconds(date) / 86400 + 4) % 7;
+        const auto weekday = (note4::time::CalendarSeconds(date) / 86400 + 4) % 7;
         char value[12];
         std::snprintf(value, sizeof(value), "%02d", date.day);
         canvas.Text(22, 56, value, 2);
@@ -86,7 +86,7 @@ void DrawOverviewPortrait(ZectrixCanvas& canvas, const zectrix::time::ClockSnaps
         const char* month = Tr(months[date.month - 1]);
         canvas.Text(78, 74, month);
         std::snprintf(value, sizeof(value), "%04d", date.year);
-        canvas.Text(78 + canvas.TextWidth(month) + 8, 74, value, 1, false, ZectrixCanvas::TextStyle::Dim);
+        canvas.Text(78 + canvas.TextWidth(month) + 8, 74, value, 1, false, Canvas::TextStyle::Dim);
     } else {
         canvas.Text(22, 57, Tr(Text::NotSet));
         canvas.TextFitted(22, 73, Tr(Text::UseClock), 252);
@@ -94,13 +94,13 @@ void DrawOverviewPortrait(ZectrixCanvas& canvas, const zectrix::time::ClockSnaps
 
     canvas.Rect(12, 98, 276, 64);
     if (active) canvas.FillRect(13, 99, 274, 62, true);
-    using State = zectrix::app::ReadingOverview::State;
+    using State = note4::app::ReadingOverview::State;
     switch (reading.state) {
         case State::Saved: {
-            canvas.TextFitted(24, 104, Tr(Text::ContinueReading), 252, active, ZectrixCanvas::TextStyle::Bold);
+            canvas.TextFitted(24, 104, Tr(Text::ContinueReading), 252, active, Canvas::TextStyle::Bold);
             auto title = reading.book_id;
             title.back() = '\0';
-            zectrix::ui::DrawUtf8Line(canvas, 24, 122, title.data(), 252, active);
+            note4::ui::DrawUtf8Line(canvas, 24, 122, title.data(), 252, active);
             const unsigned progress = std::min<unsigned>(reading.progress_per_mille, 1000);
             char value[24];
             std::snprintf(value, sizeof(value), "%u.%u%%", progress / 10, progress % 10);
@@ -130,8 +130,8 @@ void DrawOverviewPortrait(ZectrixCanvas& canvas, const zectrix::time::ClockSnaps
 }
 
 // Adaptive overview responding to orientation and container geometry.
-void DrawOverview(ZectrixCanvas& canvas, const zectrix::time::ClockSnapshot& clock,
-                  const zectrix::app::ReadingOverview& reading, bool active) {
+void DrawOverview(Canvas& canvas, const note4::time::ClockSnapshot& clock,
+                  const note4::app::ReadingOverview& reading, bool active) {
     if (canvas.portrait()) {
         DrawOverviewPortrait(canvas, clock, reading, active);
         return;
@@ -140,32 +140,32 @@ void DrawOverview(ZectrixCanvas& canvas, const zectrix::time::ClockSnapshot& clo
     canvas.Rect(12, 52, 376, 78);
     canvas.Line(126, 60, 126, 121);
     if (active) canvas.FillRect(127, 53, 260, 76, true);
-    if (clock.source != zectrix::time::ClockSource::Uptime && zectrix::time::IsValid(clock.value)) {
+    if (clock.source != note4::time::ClockSource::Uptime && note4::time::IsValid(clock.value)) {
         constexpr Text months[] = {Text::Jan, Text::Feb, Text::Mar, Text::Apr, Text::May, Text::Jun,
             Text::Jul, Text::Aug, Text::Sep, Text::Oct, Text::Nov, Text::Dec};
         constexpr Text weekdays[] = {Text::Sun, Text::Mon, Text::Tue, Text::Wed, Text::Thu, Text::Fri, Text::Sat};
         const auto& date = clock.value;
-        const auto weekday = (zectrix::time::CalendarSeconds(date) / 86400 + 4) % 7;
+        const auto weekday = (note4::time::CalendarSeconds(date) / 86400 + 4) % 7;
         canvas.Text(24, 58, Tr(weekdays[weekday]));
         char value[12];
         std::snprintf(value, sizeof(value), "%02d", date.day);
         canvas.Text(24, 78, value, 2);
         canvas.Text(78, 79, Tr(months[date.month - 1]));
         std::snprintf(value, sizeof(value), "%04d", date.year);
-        canvas.Text(78, 102, value, 1, false, ZectrixCanvas::TextStyle::Dim);
+        canvas.Text(78, 102, value, 1, false, Canvas::TextStyle::Dim);
     } else {
         canvas.Text(24, 63, Tr(Text::Date));
         canvas.Text(24, 84, Tr(Text::NotSet));
         canvas.Text(24, 106, Tr(Text::UseClock));
     }
 
-    using State = zectrix::app::ReadingOverview::State;
+    using State = note4::app::ReadingOverview::State;
     switch (reading.state) {
         case State::Saved: {
-            canvas.TextFitted(140, 58, Tr(Text::ContinueReading), 236, active, ZectrixCanvas::TextStyle::Bold);
+            canvas.TextFitted(140, 58, Tr(Text::ContinueReading), 236, active, Canvas::TextStyle::Bold);
             auto title = reading.book_id;
             title.back() = '\0';
-            zectrix::ui::DrawUtf8Line(canvas, 140, 80, title.data(), 236, active);
+            note4::ui::DrawUtf8Line(canvas, 140, 80, title.data(), 236, active);
             const unsigned progress = std::min<unsigned>(reading.progress_per_mille, 1000);
             char value[24];
             std::snprintf(value, sizeof(value), "%u.%u%%", progress / 10, progress % 10);
@@ -196,13 +196,13 @@ void DrawOverview(ZectrixCanvas& canvas, const zectrix::time::ClockSnapshot& clo
 
 }  // namespace
 
-esp_err_t UiEngine::ShowLauncher(const zectrix::app::LauncherController& launcher,
-                                 const zectrix::time::ClockSnapshot& clock,
-                                 const zectrix::app::ReadingOverview& reading, bool full_refresh) {
-    using Scene = zectrix::app::LauncherScene;
+esp_err_t UiEngine::ShowLauncher(const note4::app::LauncherController& launcher,
+                                 const note4::time::ClockSnapshot& clock,
+                                 const note4::app::ReadingOverview& reading, bool full_refresh) {
+    using Scene = note4::app::LauncherScene;
     const auto count = launcher.count();
     if (launcher.scene() == Scene::Tools) {
-        std::array<const char*, zectrix::app::ApplicationCatalog::kCapacity> labels{};
+        std::array<const char*, note4::app::ApplicationCatalog::kCapacity> labels{};
         for (std::size_t i = 0; i < count; ++i) {
             const auto entry = launcher.EntryAt(i);
             labels[i] = Tr(entry.label_text, entry.label);
@@ -214,11 +214,11 @@ esp_err_t UiEngine::ShowLauncher(const zectrix::app::LauncherController& launche
 
     const char* footer = Tr(Text::NavOpenOff);
     if (launcher.overview_selected()) {
-        footer = reading.state == zectrix::app::ReadingOverview::State::Saved
+        footer = reading.state == note4::app::ReadingOverview::State::Saved
             ? Tr(Text::NavReadOff) : Tr(Text::NavLibraryOff);
     }
 
-    constexpr auto per_page = zectrix::app::LauncherController::kTilesPerPage;
+    constexpr auto per_page = note4::app::LauncherController::kTilesPerPage;
     const auto tiles = count - launcher.tile_offset();
     const auto page = launcher.tile_page();
 
@@ -228,7 +228,7 @@ esp_err_t UiEngine::ShowLauncher(const zectrix::app::LauncherController& launche
                       static_cast<unsigned>((tiles + per_page - 1) / per_page));
     }
 
-    auto shell = EnterPage(zectrix::ui::PageSpec()
+    auto shell = EnterPage(note4::ui::PageSpec()
         .Title(Tr(Text::Home))
         .CenterTitle()
         .Footer(footer)
@@ -246,8 +246,8 @@ esp_err_t UiEngine::ShowLauncher(const zectrix::app::LauncherController& launche
         const int top_y = shell.portrait() ? 170 : 138;
         const int area_h = shell.portrait() ? (FooterTop() - 6 - top_y) : 126;
         const int gap_y = shell.portrait() ? 4 : 6;
-        const zectrix::ui::Rect tiles_area(12, top_y, shell.width() - 24, area_h);
-        const auto grid = zectrix::ui::UniformGrid::Fit(
+        const note4::ui::Rect tiles_area(12, top_y, shell.width() - 24, area_h);
+        const auto grid = note4::ui::UniformGrid::Fit(
             tiles_area, static_cast<int>(visible), 160, 8, gap_y);
 
         for (std::size_t slot = 0; slot < visible; ++slot) {

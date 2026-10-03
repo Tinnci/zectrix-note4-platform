@@ -1,4 +1,4 @@
-#include "zectrix_utilities.h"
+#include "note4_utilities.h"
 
 #include <cassert>
 #include <climits>
@@ -6,9 +6,9 @@
 #include <ctime>
 #include <limits>
 
-using namespace zectrix::app;
-using namespace zectrix::sdk;
-using namespace zectrix::time;
+using namespace note4::app;
+using namespace note4::sdk;
+using namespace note4::time;
 
 namespace {
 constexpr InputEvent kUp{Button::Up, InputAction::Click}, kDown{Button::Down, InputAction::Click},

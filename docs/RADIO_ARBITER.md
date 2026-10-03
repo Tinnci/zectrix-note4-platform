@@ -85,7 +85,7 @@ policy stays in Connectivity, so application navigation cannot stop or recreate
 the Companion transport. Reader pagination and static sleep covers retain
 their existing foreground ownership; see [NAVIGATION.md](NAVIGATION.md).
 
-Run `bash tools/test-radio-arbiter.sh`, or set `ZECTRIX_RADIO_SANITIZE=1` for
+Run `bash tools/test-radio-arbiter.sh`, or set `NOTE4_RADIO_SANITIZE=1` for
 ASan/UBSan. It executes the production arbiter, sync sessions, resource client,
 book lifecycle, HTTP API and book storage with simulated transport/time. In
 both AP and STA scenarios, a 256 KiB upload uses 256 reads of at most 1 KiB;

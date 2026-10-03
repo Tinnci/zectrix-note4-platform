@@ -1,6 +1,6 @@
-#include "zectrix_reader.h"
-#include "zectrix_reader_bookmarks.h"
-#include "zectrix_reader_controller.h"
+#include "note4_reader.h"
+#include "note4_reader_bookmarks.h"
+#include "note4_reader_controller.h"
 #include "reader_internal.h"
 
 #include <algorithm>
@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-using namespace zectrix::reader;
+using namespace note4::reader;
 
 void TestReaderPlatform(const char* directory);
 
@@ -438,10 +438,10 @@ public:
 };
 
 void ControllerTests(const std::string& dir) {
-    using namespace zectrix::app;
-    using zectrix::sdk::Button;
-    using zectrix::sdk::InputAction;
-    using zectrix::sdk::InputEvent;
+    using namespace note4::app;
+    using note4::sdk::Button;
+    using note4::sdk::InputAction;
+    using note4::sdk::InputEvent;
     constexpr InputEvent next{Button::Down, InputAction::Click};
     constexpr InputEvent ok{Button::Ok, InputAction::Click};
     constexpr InputEvent back{Button::Ok, InputAction::LongPress};
@@ -451,7 +451,7 @@ void ControllerTests(const std::string& dir) {
     Store store;
     Bookmarks bookmarks(store);
     ReaderController reader(library, bookmarks, 0);
-    assert(zectrix::sdk::IsOk(reader.Start()));
+    assert(note4::sdk::IsOk(reader.Start()));
     assert(reader.scene() == ReaderScene::Library && !library.opened);
     assert(reader.Tick(0) == ReaderDecision::None);
     assert(reader.Handle(ok) == ReaderDecision::RenderQuality);
@@ -542,7 +542,7 @@ void ControllerTests(const std::string& dir) {
 
     Bookmarks restarted(store);
     ReaderController reboot(library, restarted);
-    assert(zectrix::sdk::IsOk(reboot.Start()));
+    assert(note4::sdk::IsOk(reboot.Start()));
     assert(reboot.Handle(ok) == ReaderDecision::RenderQuality);
     assert(reboot.engine().page().start == second);
     reboot.Presented(true);
@@ -555,11 +555,11 @@ void ControllerTests(const std::string& dir) {
 }
 
 void ContinueReadingTests(const std::string& dir) {
-    using namespace zectrix::app;
-    using zectrix::sdk::Button;
-    using zectrix::sdk::InputAction;
-    const zectrix::sdk::InputEvent back{Button::Ok, InputAction::LongPress};
-    const zectrix::sdk::InputEvent ok{Button::Ok, InputAction::Click};
+    using namespace note4::app;
+    using note4::sdk::Button;
+    using note4::sdk::InputAction;
+    const note4::sdk::InputEvent back{Button::Ok, InputAction::LongPress};
+    const note4::sdk::InputEvent ok{Button::Ok, InputAction::Click};
     Bytes text(std::string(12000, 'w'));
     Bytes epub(ReadFile(dir + "/long-hidden.epub"));
     TestLibrary library(text, epub);
@@ -568,7 +568,7 @@ void ContinueReadingTests(const std::string& dir) {
     assert(marks.Load() == Result::Ok);
     {
         ReaderController empty(library, marks, 1);
-        assert(zectrix::sdk::IsOk(empty.Start(true)));
+        assert(note4::sdk::IsOk(empty.Start(true)));
         assert(empty.scene() == ReaderScene::Library && empty.selected() == 1 && !library.opened);
     }
     Bookmark saved;
@@ -582,7 +582,7 @@ void ContinueReadingTests(const std::string& dir) {
         // Continue chooses the latest ID, independently of the old list index.
         Bookmarks loaded(store);
         ReaderController resumed(library, loaded, 1);
-        assert(zectrix::sdk::IsOk(resumed.Start(true)));
+        assert(note4::sdk::IsOk(resumed.Start(true)));
         assert(resumed.scene() == ReaderScene::Reading && resumed.selected() == 0);
         assert(resumed.engine().page().start == saved.position && resumed.engine().page().font == saved.font);
         resumed.Presented(false);
@@ -597,7 +597,7 @@ void ContinueReadingTests(const std::string& dir) {
     {
         Bookmarks loaded(store);
         ReaderController manual(library, loaded, 1);
-        assert(zectrix::sdk::IsOk(manual.Start()));
+        assert(note4::sdk::IsOk(manual.Start()));
         assert(manual.scene() == ReaderScene::Library && manual.selected() == 1 && !library.opened);
     }
 
@@ -632,7 +632,7 @@ void ContinueReadingTests(const std::string& dir) {
         assert(unavailable_marks.Save(mark) == Result::Ok);
         const auto persisted = unavailable_store.local;
         ReaderController recent(library, unavailable_marks);
-        assert(zectrix::sdk::IsOk(recent.Start(true)));
+        assert(note4::sdk::IsOk(recent.Start(true)));
         for (unsigned poll = 0; recent.busy() && poll < 10000; ++poll) recent.Tick(poll);
         assert(recent.scene() == ReaderScene::Library && recent.notice() == expected);
         assert(!library.opened && !recent.busy() && unavailable_store.local == persisted);
@@ -649,7 +649,7 @@ void ContinueReadingTests(const std::string& dir) {
         damaged.local = {99, 0, 0, 0};
         Bookmarks history(damaged);
         ReaderController reader(library, history);
-        assert(zectrix::sdk::IsOk(reader.Start(true)));
+        assert(note4::sdk::IsOk(reader.Start(true)));
         assert(reader.scene() == ReaderScene::Library && reader.notice() == ReaderNotice::HistoryUnavailable);
         assert(reader.Handle(ok) == ReaderDecision::RenderQuality);
         assert(reader.engine().has_page());
@@ -660,7 +660,7 @@ void ContinueReadingTests(const std::string& dir) {
         library.refresh_result = Result::IoError;
         Bookmarks history(store);
         ReaderController reader(library, history);
-        assert(zectrix::sdk::IsOk(reader.Start(true)));
+        assert(note4::sdk::IsOk(reader.Start(true)));
         assert(reader.scene() == ReaderScene::Library && reader.result() == Result::IoError);
         assert(!reader.busy() && !library.opened);
         library.refresh_result = Result::Ok;
@@ -675,7 +675,7 @@ void ContinueReadingTests(const std::string& dir) {
         assert(history.Save(saved) == Result::Ok);
         const auto persisted = pending_store.local;
         ReaderController reader(library, history);
-        assert(zectrix::sdk::IsOk(reader.Start(true)));
+        assert(note4::sdk::IsOk(reader.Start(true)));
         assert(reader.scene() == ReaderScene::Reading && reader.busy());
         assert(reader.Handle({Button::Down, InputAction::LongPress}) == ReaderDecision::Shutdown);
         assert(reader.Handle(back) == ReaderDecision::RenderQuality);

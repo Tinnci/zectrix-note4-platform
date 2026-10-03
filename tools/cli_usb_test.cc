@@ -1,5 +1,5 @@
-#include "zectrix_cli_usb.h"
-#include "zectrix_cli_log.h"
+#include "note4_cli_usb.h"
+#include "note4_cli_log.h"
 #include "driver/usb_serial_jtag.h"
 #include "driver/usb_serial_jtag_vfs.h"
 #include "freertos/semphr.h"
@@ -32,7 +32,7 @@ struct CliHostTask {
 };
 
 namespace {
-using namespace zectrix::cli;
+using namespace note4::cli;
 using namespace std::chrono_literals;
 struct TaskExit {};
 thread_local TaskHandle_t current_task = nullptr;
@@ -171,7 +171,7 @@ void TestDisconnectDropsBufferedInput() {
     CliUsbService service;
     RecordingExecutor executor;
     assert(service.Start(&executor) == ESP_OK);
-    WaitForOutput("zectrix> ");
+    WaitForOutput("note4> ");
     Send("partial");
     WaitForOutput("partial");
     {
@@ -189,9 +189,9 @@ void TestDisconnectDropsBufferedInput() {
         output.clear();
     }
     usb_connected = true;
-    WaitForOutput("Zectrix maintenance CLI\r\nzectrix> ");
+    WaitForOutput("Note4 maintenance CLI\r\nnote4> ");
     Send("fresh\r");
-    WaitForOutput("fresh reply\r\nzectrix> ");
+    WaitForOutput("fresh reply\r\nnote4> ");
     assert(executor.calls == 1);
     service.Stop();
     Reset();
@@ -204,7 +204,7 @@ void TestTxOverflowCannotExecuteBufferedTail() {
     CliUsbService service;
     RecordingExecutor executor;
     assert(service.Start(&executor) == ESP_OK);
-    WaitForOutput("zectrix> ");
+    WaitForOutput("note4> ");
     Send(std::string(180, 'a'));
     WaitForOutput(std::string(180, 'a'));
     blocked_output = true;
@@ -217,9 +217,9 @@ void TestTxOverflowCannotExecuteBufferedTail() {
     WaitFor([&] { return executor.cancelled != 0 && InputEmpty(); });
     assert(executor.calls == 0);
     blocked_output = false;
-    WaitForOutput("Zectrix maintenance CLI\r\nzectrix> ");
+    WaitForOutput("Note4 maintenance CLI\r\nnote4> ");
     Send("fresh\r");
-    WaitForOutput("fresh reply\r\nzectrix> ");
+    WaitForOutput("fresh reply\r\nnote4> ");
     assert(executor.calls == 1);
     service.Stop();
     Reset();
@@ -230,7 +230,7 @@ void TestShortDisconnectResetsSession() {
     CliUsbService service;
     RecordingExecutor executor;
     assert(service.Start(&executor) == ESP_OK);
-    WaitForOutput("zectrix> ");
+    WaitForOutput("note4> ");
     Send("stale");
     WaitForOutput("stale");
     {
@@ -241,9 +241,9 @@ void TestShortDisconnectResetsSession() {
     // before the next session poll, but the partial command must be retired.
     disconnect_after_read = 1;
     WaitFor([&] { return executor.cancelled != 0; });
-    WaitForOutput("Zectrix maintenance CLI\r\nzectrix> ");
+    WaitForOutput("Note4 maintenance CLI\r\nnote4> ");
     Send("fresh\r");
-    WaitForOutput("fresh reply\r\nzectrix> ");
+    WaitForOutput("fresh reply\r\nnote4> ");
     assert(executor.calls == 1);
     service.Stop();
     Reset();
@@ -254,7 +254,7 @@ void TestDisconnectDrainIsBoundedWithContinuousInput() {
     CliUsbService service;
     RecordingExecutor executor;
     assert(service.Start(&executor) == ESP_OK);
-    WaitForOutput("zectrix> ");
+    WaitForOutput("note4> ");
     {
         std::lock_guard<std::mutex> lock(input_mutex);
         input.assign(512, 'x');
@@ -274,7 +274,7 @@ void TestSessionDisconnectDiscardsPendingOutput() {
     CliUsbService service;
     RecordingExecutor executor;
     assert(service.Start(&executor) == ESP_OK);
-    WaitForOutput("zectrix> ");
+    WaitForOutput("note4> ");
     blocked_output = true;
     Send("stale");
     WaitFor(InputEmpty);
@@ -287,13 +287,13 @@ void TestSessionDisconnectDiscardsPendingOutput() {
     disconnect_after_read = 3;
     WaitFor([&] { return executor.cancelled != 0; });
     blocked_output = false;
-    WaitForOutput("Zectrix maintenance CLI\r\nzectrix> ");
+    WaitForOutput("Note4 maintenance CLI\r\nnote4> ");
     {
         std::lock_guard<std::mutex> lock(output_mutex);
         assert(output.find("stale") == std::string::npos);
     }
     Send("fresh\r");
-    WaitForOutput("fresh reply\r\nzectrix> ");
+    WaitForOutput("fresh reply\r\nnote4> ");
     assert(executor.calls == 1);
     service.Stop();
     Reset();
@@ -403,8 +403,8 @@ esp_err_t usb_serial_jtag_wait_tx_done(TickType_t ticks) {
 }
 void usb_serial_jtag_vfs_use_driver() { assert(installed && !vfs_driver.exchange(true)); }
 void usb_serial_jtag_vfs_use_nonblocking() { assert(installed && vfs_driver.exchange(false)); }
-void zectrix::cli::StartMaintenanceLogCapture() { assert(vfs_driver && !capturing.exchange(true)); }
-void zectrix::cli::StopMaintenanceLogCapture() { assert(capturing.exchange(false)); }
+void note4::cli::StartMaintenanceLogCapture() { assert(vfs_driver && !capturing.exchange(true)); }
+void note4::cli::StopMaintenanceLogCapture() { assert(capturing.exchange(false)); }
 
 int main() {
     TestStopDuringTaskExit();

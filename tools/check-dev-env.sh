@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-expected_idf="${ZECTRIX_IDF_PATH:-$HOME/esp/esp-idf-v5.5.2}"
+expected_idf="${NOTE4_IDF_PATH:-$HOME/esp/esp-idf-v5.5.2}"
 expected_idf_tag="v5.5.2"
 expected_idf_commit="30aaf64524299d3bde422ca9a2848090d1bc5d0f"
 repo_dir="$(cd "$(dirname "$0")/.." && pwd)"
@@ -12,7 +12,7 @@ case "$host_os" in
     Linux) android_default="$HOME/Android/Sdk" ;;
     *) android_default="" ;;
 esac
-expected_android="${ZECTRIX_ANDROID_SDK_ROOT:-${ANDROID_HOME:-$android_default}}"
+expected_android="${NOTE4_ANDROID_SDK_ROOT:-${ANDROID_HOME:-$android_default}}"
 
 required_submodules=(
     "components/esp_wifi/lib 01d52d9e69032c486015dc28b08c3bf6aaf348a9"

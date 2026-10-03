@@ -36,7 +36,7 @@ smoke test and application OTA preserve it. Mount errors never format it.
 To use your own directory of books:
 
 ```bash
-idf.py -D "ZECTRIX_BOOKS_DIR=/absolute/path/to/books" build
+idf.py -D "NOTE4_BOOKS_DIR=/absolute/path/to/books" build
 idf.py -p /dev/cu.usbmodem14301 books-flash
 ```
 
@@ -46,7 +46,7 @@ than 63 bytes. Extensions are case insensitive. The library shows the first
 other extensions and overlong names are skipped. Leave space for SPIFFS metadata;
 the image generator reports insufficient capacity. The source directory setting
 is retained by CMake. Reset it with
-`idf.py -D "ZECTRIX_BOOKS_DIR=$PWD/books" reconfigure`.
+`idf.py -D "NOTE4_BOOKS_DIR=$PWD/books" reconfigure`.
 
 For an existing generated `sdkconfig`, select an 8192-byte main-task stack and
 96-byte SPIFFS object names, as in `sdkconfig.defaults`, then rebuild. SPIFFS
@@ -133,7 +133,7 @@ There is no CSS layout, image rendering, embedded-font loading, fixed-layout
 support, navigation-link handling, complex-script shaping, ZIP64 or DRM support.
 Encrypted ZIP members and EPUBs with `META-INF/encryption.xml` are rejected,
 including font-obfuscated EPUBs. Other unsupported Unicode glyphs use the
-replacement bitmap. See the [font notice](../components/zectrix_reader/font/README.md).
+replacement bitmap. See the [font notice](../components/note4_reader/font/README.md).
 
 The built-in font uses shared 8x8 bitmap tiles. It preserves all 40,181 glyph
 slots while reducing font Flash from 1,325,973 to 824,959 bytes. Width and row
@@ -189,12 +189,12 @@ are independently implemented adaptations on the existing single owner and
 bounded viewport scheduler; upstream application code is not linked or copied.
 
 Run `bash tools/test-host.sh` for all Host targets, or
-`ZECTRIX_READER_SANITIZE=1 bash tools/test-reader.sh` for focused ASan/UBSan checks.
+`NOTE4_READER_SANITIZE=1 bash tools/test-reader.sh` for focused ASan/UBSan checks.
 Tests cover real file reads, compressed EPUB fixtures, malformed data, Unicode
 pagination, cancellation during metadata/body decoding, scene controls, display
 failure, NVS adapter errors and replay through the production C1 SyncEngine.
 A 2 MiB TXT tail-resume fixture reads 63 source bytes. UI integration tests check
-glyph pixels, font reflow and status preservation; set `ZECTRIX_UI_PREVIEW_DIR`
+glyph pixels, font reflow and status preservation; set `NOTE4_UI_PREVIEW_DIR`
 when running `tools/test-display-service.sh` to render PBM previews. Android's
 JVM tests check the same byte layout and durable revision handling.
 

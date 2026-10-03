@@ -1,5 +1,5 @@
-#include "zectrix_book_web.h"
-#include "zectrix_book_storage.h"
+#include "note4_book_web.h"
+#include "note4_book_storage.h"
 
 #include <arpa/inet.h>
 #include <poll.h>
@@ -19,7 +19,7 @@
 #include <unordered_map>
 
 namespace {
-using namespace zectrix::connectivity;
+using namespace note4::connectivity;
 volatile std::sig_atomic_t interrupted = 0;
 void Interrupt(int) { interrupted = 1; }
 uint32_t Now() {
@@ -122,7 +122,7 @@ class HostServer final : public BookTransferServer {
 public:
     explicit HostServer(uint16_t port) : port_(port) {}
     ~HostServer() override { Stop(); }
-    bool Start(zectrix::storage::BookStorage& books, const char* code, uint32_t now) override {
+    bool Start(note4::storage::BookStorage& books, const char* code, uint32_t now) override {
         listener_ = socket(AF_INET, SOCK_STREAM, 0);
         if (listener_ < 0) return false;
         sockaddr_in address{};
@@ -200,7 +200,7 @@ int main(int argc, char** argv) {
     }
     std::signal(SIGPIPE, SIG_IGN);
     std::signal(SIGINT, Interrupt); std::signal(SIGTERM, Interrupt);
-    zectrix::storage::BookStorage books(argv[1]);
+    note4::storage::BookStorage books(argv[1]);
     if (books.BeginManagement() != ESP_OK) { std::fprintf(stderr, "Cannot open the book directory.\n"); return 1; }
     HostRadio radio; HostServer server(port); BookTransfer transfer(radio, server);
     WifiCredentials credentials;

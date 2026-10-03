@@ -2,9 +2,9 @@
 #include <cassert>
 #include <cstring>
 
-#include "zectrix_resource_gateway.h"
+#include "note4_resource_gateway.h"
 
-using namespace zectrix::companion;
+using namespace note4::companion;
 
 namespace {
 

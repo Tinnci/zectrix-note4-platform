@@ -1,19 +1,19 @@
-#include "zectrix_display_service.h"
+#include "note4_display_service.h"
 #include "ui_engine.h"
-#include "zectrix_first_party_app_controllers.h"
-#include "zectrix_locale.h"
-#include "zectrix_book_transfer_controller.h"
-#include "zectrix_host_books.h"
-#include "zectrix_sleep_cover.h"
-#include "zectrix_utilities.h"
-#include "zectrix_reader_controller.h"
-#include "zectrix_launcher_controller.h"
-#include "zectrix_reading_overview.h"
-#include "zectrix_foreground_dispatch.h"
-#include "zectrix_button_buffer.h"
-#include "zectrix_epd.h"
-#include "zectrix_unicode_text.h"
-#include "zectrix_utf8.h"
+#include "note4_first_party_app_controllers.h"
+#include "note4_locale.h"
+#include "note4_book_transfer_controller.h"
+#include "note4_host_books.h"
+#include "note4_sleep_cover.h"
+#include "note4_utilities.h"
+#include "note4_reader_controller.h"
+#include "note4_launcher_controller.h"
+#include "note4_reading_overview.h"
+#include "note4_foreground_dispatch.h"
+#include "note4_button_buffer.h"
+#include "note4_epd.h"
+#include "unicode_text.h"
+#include "utf8.h"
 #include "ssd2683_waveform.h"
 #include "frame_transform.h"
 #include "../main/terminal_status.h"
@@ -43,7 +43,7 @@ struct FakeSemaphore { bool locked = false; };
 
 namespace {
 
-using namespace zectrix::display;
+using namespace note4::display;
 using Frame = std::array<uint8_t, DisplayService::kFrameBytes1Bpp>;
 struct Packet { uint8_t command; std::vector<uint8_t> data; };
 std::vector<Packet> packets;
@@ -128,7 +128,7 @@ void ToggleFirstPixels(Frame& frame, uint32_t count) {
     }
 }
 
-std::vector<uint8_t> Crop(const Frame& frame, const zectrix_epd_rect_t& rect) {
+std::vector<uint8_t> Crop(const Frame& frame, const note4_epd_rect_t& rect) {
     const int stride = (rect.width + 7) / 8;
     std::vector<uint8_t> pixels(stride * rect.height, 0xa5);
     for (int y = 0; y < rect.height; ++y) {
@@ -139,7 +139,7 @@ std::vector<uint8_t> Crop(const Frame& frame, const zectrix_epd_rect_t& rect) {
     return pixels;
 }
 
-zectrix_epd_rect_t ReferenceDirty(const Frame& before, const zectrix_epd_rect_t& source,
+note4_epd_rect_t ReferenceDirty(const Frame& before, const note4_epd_rect_t& source,
                                  const uint8_t* pixels) {
     int left = 400, top = 300, right = -1, bottom = -1;
     // This pixel-by-pixel reference is independent of the driver's byte scan.
@@ -154,12 +154,12 @@ zectrix_epd_rect_t ReferenceDirty(const Frame& before, const zectrix_epd_rect_t&
             }
         }
     }
-    return right < left ? zectrix_epd_rect_t{} :
-        zectrix_epd_rect_t{left, top, right - left + 1, bottom - top + 1};
+    return right < left ? note4_epd_rect_t{} :
+        note4_epd_rect_t{left, top, right - left + 1, bottom - top + 1};
 }
 
-void CheckTransitions(const Frame& before, const zectrix_epd_rect_t& source,
-                      const uint8_t* pixels, const zectrix_epd_diff_t& difference) {
+void CheckTransitions(const Frame& before, const note4_epd_rect_t& source,
+                      const uint8_t* pixels, const note4_epd_diff_t& difference) {
     std::array<PixelTransitions, kPhysicsTiles> reference{};
     for (int y = 0; y < source.height; ++y) for (int x = 0; x < source.width; ++x) {
         const bool old = Bit(before.data(), 50, source.x + x, source.y + y);
@@ -184,7 +184,7 @@ void SameRect(const Left& left, const Right& right) {
            left.width == right.width && left.height == right.height);
 }
 
-std::size_t CheckPartial(const Frame& before, const zectrix_epd_rect_t& source,
+std::size_t CheckPartial(const Frame& before, const note4_epd_rect_t& source,
                          const uint8_t* pixels) {
     const auto dirty = ReferenceDirty(before, source, pixels);
     assert(dirty.width > 0);
@@ -276,7 +276,7 @@ void TestCreationAndInputErrors() {
 }
 
 void TestPackedFrameTransforms() {
-    namespace transform = zectrix::display::detail;
+    namespace transform = note4::display::detail;
     Frame source, rotated, restored;
     for (std::size_t i = 0; i < source.size(); ++i) source[i] = static_cast<uint8_t>(i * 131 + 7);
     for (bool gray : {false, true}) {
@@ -334,7 +334,7 @@ void TestRotationAllocationFailures() {
 void TestScreenDirection() {
     Reset();
     auto service = CreateService();
-    using Orientation = zectrix::display::DisplayOrientation;
+    using Orientation = note4::display::DisplayOrientation;
     assert(service->SetOrientation(static_cast<Orientation>(4)) == ESP_ERR_INVALID_ARG);
     Frame logical, physical;
     logical.fill(0xff);
@@ -568,44 +568,44 @@ void TestPatchCompatibility() {
 
 void TestDriverDiffAndWindow() {
     Reset();
-    zectrix_epd_config_t config;
-    zectrix_epd_get_default_config(&config);
-    zectrix_epd_handle_t handle = nullptr;
-    assert(zectrix_epd_new(&config, &handle) == ESP_OK);
+    note4_epd_config_t config;
+    note4_epd_get_default_config(&config);
+    note4_epd_handle_t handle = nullptr;
+    assert(note4_epd_new(&config, &handle) == ESP_OK);
     Frame before;
     for (std::size_t i = 0; i < before.size(); ++i) before[i] = static_cast<uint8_t>(i * 79 + 23);
-    const zectrix_epd_rect_t full{0, 0, 400, 300};
-    zectrix_epd_rect_t dirty{1, 2, 3, 4};
-    assert(zectrix_epd_find_dirty_1bpp(handle, &full, before.data(), before.size(), &dirty) == ESP_ERR_INVALID_STATE);
-    SameRect(dirty, zectrix_epd_rect_t{});
-    zectrix_epd_diff_t difference{{1, 2, 3, 4}, 17, {}};
-    assert(zectrix_epd_analyze_1bpp(handle, &full, before.data(), before.size(), &difference) == ESP_ERR_INVALID_STATE);
-    SameRect(difference.dirty, zectrix_epd_rect_t{});
+    const note4_epd_rect_t full{0, 0, 400, 300};
+    note4_epd_rect_t dirty{1, 2, 3, 4};
+    assert(note4_epd_find_dirty_1bpp(handle, &full, before.data(), before.size(), &dirty) == ESP_ERR_INVALID_STATE);
+    SameRect(dirty, note4_epd_rect_t{});
+    note4_epd_diff_t difference{{1, 2, 3, 4}, 17, {}};
+    assert(note4_epd_analyze_1bpp(handle, &full, before.data(), before.size(), &difference) == ESP_ERR_INVALID_STATE);
+    SameRect(difference.dirty, note4_epd_rect_t{});
     assert(difference.changed_pixels == 0);
-    assert(zectrix_epd_power_on(handle) == ESP_OK);
-    assert(zectrix_epd_refresh_full_1bpp(handle, before.data(), before.size()) == ESP_OK);
-    assert(zectrix_epd_power_off(handle) == ESP_OK);
+    assert(note4_epd_power_on(handle) == ESP_OK);
+    assert(note4_epd_refresh_full_1bpp(handle, before.data(), before.size()) == ESP_OK);
+    assert(note4_epd_power_off(handle) == ESP_OK);
     ClearTraffic();
     const auto allocation_count = heap_allocations;
     for (int x = 0; x < 400; ++x) {
         for (int width = 1; width <= std::min(17, 400 - x); ++width) {
             for (int y : {0, 74, 149, 157, 224, 299}) {
-                const zectrix_epd_rect_t source{x, y, width, std::min(3, 300 - y)};
+                const note4_epd_rect_t source{x, y, width, std::min(3, 300 - y)};
                 auto pixels = Crop(before, source);
-                assert(zectrix_epd_find_dirty_1bpp(handle, &source, pixels.data(), pixels.size(), &dirty) == ESP_OK);
-                SameRect(dirty, zectrix_epd_rect_t{});
-                assert(zectrix_epd_analyze_1bpp(handle, &source, pixels.data(), pixels.size(), &difference) == ESP_OK);
+                assert(note4_epd_find_dirty_1bpp(handle, &source, pixels.data(), pixels.size(), &dirty) == ESP_OK);
+                SameRect(dirty, note4_epd_rect_t{});
+                assert(note4_epd_analyze_1bpp(handle, &source, pixels.data(), pixels.size(), &difference) == ESP_OK);
                 assert(difference.changed_pixels == 0);
                 const int dx = width - 1, dy = source.height - 1;
                 PutBit(pixels.data(), (width + 7) / 8, dx, dy,
                        !Bit(before.data(), 50, x + dx, y + dy));
-                assert(zectrix_epd_find_dirty_1bpp(handle, &source, pixels.data(), pixels.size(), &dirty) == ESP_OK);
+                assert(note4_epd_find_dirty_1bpp(handle, &source, pixels.data(), pixels.size(), &dirty) == ESP_OK);
                 SameRect(dirty, ReferenceDirty(before, source, pixels.data()));
-                assert(zectrix_epd_analyze_1bpp(handle, &source, pixels.data(), pixels.size(), &difference) == ESP_OK);
+                assert(note4_epd_analyze_1bpp(handle, &source, pixels.data(), pixels.size(), &difference) == ESP_OK);
                 SameRect(difference.dirty, dirty);
                 assert(difference.changed_pixels == 1);
                 for (auto& byte : pixels) byte = static_cast<uint8_t>(~byte);
-                assert(zectrix_epd_analyze_1bpp(handle, &source, pixels.data(), pixels.size(), &difference) == ESP_OK);
+                assert(note4_epd_analyze_1bpp(handle, &source, pixels.data(), pixels.size(), &difference) == ESP_OK);
                 SameRect(difference.dirty, ReferenceDirty(before, source, pixels.data()));
                 assert(difference.changed_pixels == static_cast<uint32_t>(width * source.height - 1));
                 CheckTransitions(before, source, pixels.data(), difference);
@@ -613,21 +613,21 @@ void TestDriverDiffAndWindow() {
         }
     }
     assert(packets.empty() && gpio_writes == 0 && heap_allocations == allocation_count);
-    const zectrix_epd_rect_t source{5, 10, 17, 4};
+    const note4_epd_rect_t source{5, 10, 17, 4};
     auto pixels = Crop(before, source);
     PutBit(pixels.data(), 3, 2, 1, !Bit(before.data(), 50, 7, 11));
     PutBit(pixels.data(), 3, 14, 3, !Bit(before.data(), 50, 19, 13));
     dirty = source;
-    assert(zectrix_epd_find_dirty_1bpp(handle, &dirty, pixels.data(), pixels.size(), &dirty) == ESP_OK);
-    SameRect(dirty, (zectrix_epd_rect_t{7, 11, 13, 3}));
+    assert(note4_epd_find_dirty_1bpp(handle, &dirty, pixels.data(), pixels.size(), &dirty) == ESP_OK);
+    SameRect(dirty, (note4_epd_rect_t{7, 11, 13, 3}));
     difference.dirty = source;
-    assert(zectrix_epd_analyze_1bpp(handle, &difference.dirty, pixels.data(), pixels.size(), &difference) == ESP_OK);
+    assert(note4_epd_analyze_1bpp(handle, &difference.dirty, pixels.data(), pixels.size(), &difference) == ESP_OK);
     SameRect(difference.dirty, dirty);
     assert(difference.changed_pixels == 2);
-    assert(zectrix_epd_refresh_partial_1bpp(handle, &source, pixels.data(), pixels.size()) == ESP_ERR_INVALID_STATE);
-    assert(zectrix_epd_power_on(handle) == ESP_OK);
+    assert(note4_epd_refresh_partial_1bpp(handle, &source, pixels.data(), pixels.size()) == ESP_ERR_INVALID_STATE);
+    assert(note4_epd_power_on(handle) == ESP_OK);
     ClearTraffic();
-    assert(zectrix_epd_refresh_partial_1bpp(handle, &source, pixels.data(), pixels.size()) == ESP_OK);
+    assert(note4_epd_refresh_partial_1bpp(handle, &source, pixels.data(), pixels.size()) == ESP_OK);
     assert(CheckPartial(before, source, pixels.data()) == 18);
     Frame expected = before, shadow;
     for (int y = 0; y < source.height; ++y) {
@@ -635,35 +635,35 @@ void TestDriverDiffAndWindow() {
             PutBit(expected.data(), 50, source.x + x, source.y + y, Bit(pixels.data(), 3, x, y));
         }
     }
-    assert(zectrix_epd_copy_shadow(handle, 0, shadow.data(), shadow.size()) == ESP_OK && shadow == expected);
+    assert(note4_epd_copy_shadow(handle, 0, shadow.data(), shadow.size()) == ESP_OK && shadow == expected);
     ClearTraffic();
-    assert(zectrix_epd_refresh_partial_1bpp(handle, &source, pixels.data(), pixels.size()) == ESP_OK);
+    assert(note4_epd_refresh_partial_1bpp(handle, &source, pixels.data(), pixels.size()) == ESP_OK);
     assert(packets.empty() && gpio_writes == 0);
     before = expected;
     PutBit(expected.data(), 50, 399, 299, !Bit(before.data(), 50, 399, 299));
-    assert(zectrix_epd_refresh_partial_1bpp(handle, &full, expected.data(), expected.size()) == ESP_OK);
+    assert(note4_epd_refresh_partial_1bpp(handle, &full, expected.data(), expected.size()) == ESP_OK);
     assert(CheckPartial(before, full, expected.data()) == 2);
-    assert(zectrix_epd_copy_shadow(handle, 0, shadow.data(), shadow.size()) == ESP_OK && shadow == expected);
+    assert(note4_epd_copy_shadow(handle, 0, shadow.data(), shadow.size()) == ESP_OK && shadow == expected);
     ClearTraffic();
     Frame inverted = expected;
     for (auto& byte : inverted) byte = static_cast<uint8_t>(~byte);
-    assert(zectrix_epd_analyze_1bpp(handle, &full, inverted.data(), inverted.size(), &difference) == ESP_OK);
+    assert(note4_epd_analyze_1bpp(handle, &full, inverted.data(), inverted.size(), &difference) == ESP_OK);
     SameRect(difference.dirty, full);
     assert(difference.changed_pixels == 120000);
     CheckTransitions(expected, full, inverted.data(), difference);
-    const zectrix_epd_rect_t invalid{1, 1, INT_MAX, INT_MAX};
-    assert(zectrix_epd_refresh_partial_1bpp(handle, &invalid, pixels.data(), pixels.size()) == ESP_ERR_INVALID_ARG);
-    assert(zectrix_epd_find_dirty_1bpp(handle, &full, expected.data(), SIZE_MAX, &dirty) == ESP_ERR_INVALID_SIZE);
-    SameRect(dirty, zectrix_epd_rect_t{});
-    assert(zectrix_epd_find_dirty_1bpp(handle, nullptr, expected.data(), expected.size(), &dirty) == ESP_ERR_INVALID_ARG);
-    assert(zectrix_epd_find_dirty_1bpp(handle, &full, expected.data(), expected.size(), nullptr) == ESP_ERR_INVALID_ARG);
-    assert(zectrix_epd_analyze_1bpp(handle, &full, expected.data(), SIZE_MAX, &difference) == ESP_ERR_INVALID_SIZE);
-    SameRect(difference.dirty, zectrix_epd_rect_t{});
+    const note4_epd_rect_t invalid{1, 1, INT_MAX, INT_MAX};
+    assert(note4_epd_refresh_partial_1bpp(handle, &invalid, pixels.data(), pixels.size()) == ESP_ERR_INVALID_ARG);
+    assert(note4_epd_find_dirty_1bpp(handle, &full, expected.data(), SIZE_MAX, &dirty) == ESP_ERR_INVALID_SIZE);
+    SameRect(dirty, note4_epd_rect_t{});
+    assert(note4_epd_find_dirty_1bpp(handle, nullptr, expected.data(), expected.size(), &dirty) == ESP_ERR_INVALID_ARG);
+    assert(note4_epd_find_dirty_1bpp(handle, &full, expected.data(), expected.size(), nullptr) == ESP_ERR_INVALID_ARG);
+    assert(note4_epd_analyze_1bpp(handle, &full, expected.data(), SIZE_MAX, &difference) == ESP_ERR_INVALID_SIZE);
+    SameRect(difference.dirty, note4_epd_rect_t{});
     assert(difference.changed_pixels == 0);
-    assert(zectrix_epd_analyze_1bpp(handle, nullptr, expected.data(), expected.size(), &difference) == ESP_ERR_INVALID_ARG);
-    assert(zectrix_epd_analyze_1bpp(handle, &full, expected.data(), expected.size(), nullptr) == ESP_ERR_INVALID_ARG);
+    assert(note4_epd_analyze_1bpp(handle, nullptr, expected.data(), expected.size(), &difference) == ESP_ERR_INVALID_ARG);
+    assert(note4_epd_analyze_1bpp(handle, &full, expected.data(), expected.size(), nullptr) == ESP_ERR_INVALID_ARG);
     assert(packets.empty() && gpio_writes == 0);
-    assert(zectrix_epd_del(handle) == ESP_OK);
+    assert(note4_epd_del(handle) == ESP_OK);
 }
 
 void TestFailuresRecoverWithFullFrame() {
@@ -889,11 +889,11 @@ void TestGrayTimeoutRecovery() {
 }
 
 void TestForegroundDisplayScheduling() {
-    using namespace zectrix::sdk;
-    using namespace zectrix::app;
+    using namespace note4::sdk;
+    using namespace note4::app;
     class Home final : public Application {
     public:
-        Home(LauncherController& controller, ZectrixDemoUi& ui) : controller_(controller), ui_(ui) {}
+        Home(LauncherController& controller, UiEngine& ui) : controller_(controller), ui_(ui) {}
         Status Enter(ApplicationContext& context) override {
             assert(controller_.Start() == Status::Ok);
             return Apply(controller_.Tick(), context);
@@ -918,12 +918,12 @@ void TestForegroundDisplayScheduling() {
             return Status::Ok;
         }
         LauncherController& controller_;
-        ZectrixDemoUi& ui_;
+        UiEngine& ui_;
     };
     class Factory final : public ApplicationFactory, public RuntimeDelegate {
     public:
         LauncherController* controller = nullptr;
-        ZectrixDemoUi* ui = nullptr;
+        UiEngine* ui = nullptr;
         Status Create(const ApplicationRegistry&, Application** output) override {
             *output = new Home(*controller, *ui);
             return Status::Ok;
@@ -937,28 +937,28 @@ void TestForegroundDisplayScheduling() {
     for (unsigned coalesce = 0; coalesce < 2; ++coalesce) {
         Reset();
         auto service = CreateService();
-        ZectrixDemoUi ui(service.get());
+        UiEngine ui(service.get());
         Factory factory;
         ApplicationCatalog catalog;
         assert(catalog.Add("launcher", "Launcher", factory));
-        assert(catalog.Add("reader", "BOOK READER", factory, {ApplicationIcon::Book, true, zectrix::i18n::Text::BookReader}));
-        assert(catalog.Add("transfer", "SEND BOOKS", factory, {ApplicationIcon::Transfer, true, zectrix::i18n::Text::SendBooks}));
-        assert(catalog.Add("clock", "CLOCK", factory, {ApplicationIcon::Clock, true, zectrix::i18n::Text::Clock}));
-        assert(catalog.Add("sleep", "SLEEP COVER", factory, {ApplicationIcon::Sleep, true, zectrix::i18n::Text::SleepCover}));
-        assert(catalog.Add("settings", "SETTINGS", factory, {ApplicationIcon::Settings, true, zectrix::i18n::Text::Settings}));
+        assert(catalog.Add("reader", "BOOK READER", factory, {ApplicationIcon::Book, true, note4::i18n::Text::BookReader}));
+        assert(catalog.Add("transfer", "SEND BOOKS", factory, {ApplicationIcon::Transfer, true, note4::i18n::Text::SendBooks}));
+        assert(catalog.Add("clock", "CLOCK", factory, {ApplicationIcon::Clock, true, note4::i18n::Text::Clock}));
+        assert(catalog.Add("sleep", "SLEEP COVER", factory, {ApplicationIcon::Sleep, true, note4::i18n::Text::SleepCover}));
+        assert(catalog.Add("settings", "SETTINGS", factory, {ApplicationIcon::Settings, true, note4::i18n::Text::Settings}));
         assert(catalog.Add("about", "ABOUT", factory));
         LauncherController controller(catalog);
         factory.controller = &controller;
         factory.ui = &ui;
         ApplicationRuntime runtime(catalog.data(), catalog.size(), "launcher", factory);
         assert(runtime.Start() == Status::Ok);
-        ZectrixButtonBuffer buttons;
+        Note4ButtonBuffer buttons;
         refresh_busy_us = 800000;
         unsigned produced = 0;
         int64_t next_input_us = 80000;
         during_delay = [&] {
             while (produced < 9 && now_us >= next_input_us) {
-                assert(buttons.Push({ZectrixButton::kDown, ZectrixButtonAction::kClick}));
+                assert(buttons.Push({Note4Button::kDown, Note4ButtonAction::kClick}));
                 ++produced;
                 next_input_us += 80000;
             }
@@ -967,14 +967,14 @@ void TestForegroundDisplayScheduling() {
         assert(runtime.Step() == Status::Ok && produced == 9);
         during_delay = {};
         const auto poll = [&buttons](InputEvent* event) {
-            ZectrixButtonEvent button;
+            Note4ButtonEvent button;
             if (!buttons.Pop(&button)) return false;
             *event = {Button::Down, InputAction::Click};
             return true;
         };
         const auto before = Inspect(*service).refresh_count;
         const auto started = now_us;
-        zectrix::ui::StatusBarState status;
+        note4::ui::StatusBarState status;
         status.time_valid = true;
         status.hour = 12;
         status.minute = 35;
@@ -1000,7 +1000,7 @@ void TestShutdownReleasesSpi() {
     for (unsigned failure = 0; failure < 5; ++failure) {
         Reset();
         auto service = CreateService();
-        ZectrixDemoUi ui(service.get());
+        UiEngine ui(service.get());
         if (failure == 1) assert(service->BeginBatch() == ESP_OK);
         if (failure == 2) fail_data = 0x10;
         if (failure == 3) timeout_refresh = true;
@@ -1017,14 +1017,14 @@ void TestShutdownReleasesSpi() {
         }
     }
     Reset();
-    zectrix_epd_config_t config;
-    zectrix_epd_get_default_config(&config);
+    note4_epd_config_t config;
+    note4_epd_get_default_config(&config);
     config.initialize_spi_bus = false;
     bus_active = true;
     modes[config.pin_mosi] = modes[config.pin_sclk] = GPIO_MODE_OUTPUT;
-    zectrix_epd_handle_t handle = nullptr;
-    assert(zectrix_epd_new(&config, &handle) == ESP_OK);
-    assert(zectrix_epd_del(handle) == ESP_OK);
+    note4_epd_handle_t handle = nullptr;
+    assert(note4_epd_new(&config, &handle) == ESP_OK);
+    assert(note4_epd_del(handle) == ESP_OK);
     assert(bus_active && devices == 0);
     assert(modes[config.pin_mosi] == GPIO_MODE_OUTPUT && modes[config.pin_sclk] == GPIO_MODE_OUTPUT);
     assert(spi_bus_free(config.spi_host) == ESP_OK);
@@ -1034,8 +1034,8 @@ void TestShutdownReleasesSpi() {
 void TestUiTraffic() {
     Reset();
     auto service = CreateService();
-    ZectrixDemoUi ui(service.get());
-    zectrix::time::DateTime clock;
+    UiEngine ui(service.get());
+    note4::time::DateTime clock;
     clock.year = 2026;
     clock.month = 9;
     clock.day = 8;
@@ -1078,15 +1078,15 @@ void TestUiTraffic() {
 // single-script. Mixed-script content appears only in the explicit
 // "reader-rich-*" typography scenes.
 const char* ForLanguage(const char* chinese, const char* english) {
-    return zectrix::i18n::CurrentLanguage() == zectrix::i18n::Language::Chinese ? chinese : english;
+    return note4::i18n::CurrentLanguage() == note4::i18n::Language::Chinese ? chinese : english;
 }
 
-void SavePreview(const ZectrixCanvas& canvas, const char* name, bool portrait = false) {
-    const char* directory = std::getenv("ZECTRIX_UI_PREVIEW_DIR");
+void SavePreview(const Canvas& canvas, const char* name, bool portrait = false) {
+    const char* directory = std::getenv("NOTE4_UI_PREVIEW_DIR");
     if (!directory) return;
     char path[1024];
     std::snprintf(path, sizeof(path), "%s/%s%s.pbm", directory,
-        zectrix::i18n::CurrentLanguage() == zectrix::i18n::Language::Chinese ? "zh-" : "", name);
+        note4::i18n::CurrentLanguage() == note4::i18n::Language::Chinese ? "zh-" : "", name);
     FILE* output = std::fopen(path, "wb");
     assert(output);
     const int width = portrait ? 300 : 400, height = portrait ? 400 : 300;
@@ -1105,9 +1105,9 @@ void SavePreview(const ZectrixCanvas& canvas, const char* name, bool portrait = 
 }
 
 void SaveStatusIconPreviews() {
-    const char* directory = std::getenv("ZECTRIX_UI_PREVIEW_DIR");
+    const char* directory = std::getenv("NOTE4_UI_PREVIEW_DIR");
     if (!directory) return;
-    using namespace zectrix::ui;
+    using namespace note4::ui;
     StatusBarState state;
     state.time_valid = state.battery_valid = true;
     state.hour = 12;
@@ -1151,14 +1151,14 @@ void SaveStatusIconPreviews() {
     }
 
     char path[1024];
-    const char* prefix = zectrix::i18n::CurrentLanguage() == zectrix::i18n::Language::Chinese ? "zh-" : "";
+    const char* prefix = note4::i18n::CurrentLanguage() == note4::i18n::Language::Chinese ? "zh-" : "";
     std::snprintf(path, sizeof(path), "%s/%sstatus-icons.pbm", directory, prefix);
     FILE* pixels = std::fopen(path, "wb");
     std::snprintf(path, sizeof(path), "%s/%sstatus-icons.txt", directory, prefix);
     FILE* ascii = std::fopen(path, "w");
     assert(pixels && ascii);
     std::fprintf(pixels, "P4\n800 %zu\n", cases.size() * 40);
-    ZectrixCanvas normal, inverse;
+    Canvas normal, inverse;
     const auto rows = [&](int height) {
         for (int y = 0; y < height; ++y) for (const auto* canvas : {&normal, &inverse})
             for (int x = 0; x < 50; ++x) std::fputc(canvas->data()[y * 50 + x] ^ 0xff, pixels);
@@ -1184,14 +1184,14 @@ void SaveStatusIconPreviews() {
 }
 
 void TestTypographyRendering() {
-    using zectrix::sdk::TextStyle;
-    using namespace zectrix::reader;
-    ZectrixCanvas canvas;
+    using note4::sdk::TextStyle;
+    using namespace note4::reader;
+    Canvas canvas;
     for (auto font : {FontSize::Small, FontSize::Large}) {
         for (unsigned flags = 0; flags < 16; ++flags) for (auto cp : {U'F', U'g', U'中', U'\ufffd'}) {
             const auto style = static_cast<TextStyle>(flags);
             canvas.Clear();
-            zectrix::ui::DrawGlyph(canvas, 20, 20, cp, font, false, style);
+            note4::ui::DrawGlyph(canvas, 20, 20, cp, font, false, style);
             for (int y = 0; y < 60; ++y) for (int x = 0; x < 60; ++x) {
                 if (x >= 20 && x < 20 + GlyphWidth(cp, font, style) &&
                     y >= 20 && y < 20 + GlyphHeight(cp, font, style)) continue;
@@ -1209,7 +1209,7 @@ void TestTypographyRendering() {
             int x = 136;
             for (char32_t cp : U"Astra 中文阅读") {
                 if (!cp) break;
-                zectrix::ui::DrawGlyph(canvas, x, y, cp, font, false, styles[row]);
+                note4::ui::DrawGlyph(canvas, x, y, cp, font, false, styles[row]);
                 x += GlyphWidth(cp, font, styles[row]);
             }
         }
@@ -1230,13 +1230,13 @@ void TestTypographyRendering() {
 void TestUsbManagerComposition() {
     Reset();
     auto service = CreateService();
-    ZectrixDemoUi ui(service.get());
-    zectrix::host::Snapshot snapshot;
+    UiEngine ui(service.get());
+    note4::host::Snapshot snapshot;
     assert(ui.ShowUsbManager(snapshot, false, true) == ESP_OK);
     SavePreview(ui.canvas(), "usb-unavailable");
     assert(ui.ShowUsbManager(snapshot, true, true) == ESP_OK);
     SavePreview(ui.canvas(), "usb-waiting");
-    snapshot.state = zectrix::host::TransferState::Uploading;
+    snapshot.state = note4::host::TransferState::Uploading;
     std::strcpy(snapshot.name.data(), ForLanguage("月光下的山路与远方的灯塔.epub", "The Lighthouse at the End of Moonlit Road.epub"));
     snapshot.expected = 102400;
     snapshot.transferred = 51200;
@@ -1250,28 +1250,28 @@ void TestUsbManagerComposition() {
     CheckPartial(before, {0, 0, 400, 300}, ui.canvas().data());
     ClearTraffic();
     assert(ui.ShowUsbManager(snapshot, true, false) == ESP_OK && packets.empty());
-    snapshot.error = zectrix::host::Status::NotSaved;
+    snapshot.error = note4::host::Status::NotSaved;
     assert(ui.ShowUsbManager(snapshot, true, false) == ESP_OK);
     SavePreview(ui.canvas(), "usb-setting-not-saved");
-    snapshot.state = zectrix::host::TransferState::Cancelled;
-    snapshot.error = zectrix::host::Status::Cancelled;
+    snapshot.state = note4::host::TransferState::Cancelled;
+    snapshot.error = note4::host::Status::Cancelled;
     assert(ui.ShowUsbManager(snapshot, true, true) == ESP_OK);
     SavePreview(ui.canvas(), "usb-cancelled");
 }
 
 void TestUtilitiesComposition() {
-    using namespace zectrix::app;
-    using namespace zectrix::sdk;
+    using namespace note4::app;
+    using namespace note4::sdk;
     Reset();
     auto service = CreateService();
-    ZectrixDemoUi ui(service.get());
-    zectrix::ui::StatusBarState status;
+    UiEngine ui(service.get());
+    note4::ui::StatusBarState status;
     status.time_valid = status.battery_valid = true;
     status.hour = 12; status.minute = 30; status.battery_percent = 80;
     ui.UpdateStatus(status);
     UtilitySession session;
     UtilityController controller(session);
-    zectrix::time::ClockSnapshot clock{{2026, 3, 31, 0, 12, 30, 0}, zectrix::time::ClockSource::Rtc};
+    note4::time::ClockSnapshot clock{{2026, 3, 31, 0, 12, 30, 0}, note4::time::ClockSource::Rtc};
     constexpr InputEvent up{Button::Up, InputAction::Click}, down{Button::Down, InputAction::Click},
         ok{Button::Ok, InputAction::Click}, back{Button::Ok, InputAction::LongPress};
     constexpr int64_t minute = FocusTimer::kMinuteUs;
@@ -1325,7 +1325,7 @@ void TestUtilitiesComposition() {
     assert(Bit(ui.canvas().data(), 50, 75, 221));
     draw(controller.Handle(down, 100 * minute + 1, clock));
     SavePreview(ui.canvas(), "utilities-calendar-today");
-    clock.source = zectrix::time::ClockSource::Uptime;
+    clock.source = note4::time::ClockSource::Uptime;
     draw(controller.Tick(100 * minute + 2, clock));
     SavePreview(ui.canvas(), "utilities-calendar-unset");
     draw(controller.Handle(ok, 100 * minute + 2, clock));
@@ -1353,12 +1353,12 @@ void TestUtilitiesComposition() {
 }
 
 void TestLauncherComposition() {
-    using namespace zectrix::app;
-    using namespace zectrix::sdk;
+    using namespace note4::app;
+    using namespace note4::sdk;
     using Icon = ApplicationIcon;
     Reset();
     auto service = CreateService();
-    ZectrixDemoUi ui(service.get());
+    UiEngine ui(service.get());
     class Factory final : public ApplicationFactory {
         Status Create(const ApplicationRegistry&, Application**) override {
             assert(false);
@@ -1367,18 +1367,18 @@ void TestLauncherComposition() {
     } factory;
     ApplicationCatalog full;
     assert(full.Add("launcher", "Launcher", factory));
-    assert(full.Add("reader", "BOOK READER", factory, {Icon::Book, true, zectrix::i18n::Text::BookReader}));
-    assert(full.Add("book-transfer", "SEND BOOKS", factory, {Icon::Transfer, true, zectrix::i18n::Text::SendBooks}));
-    assert(full.Add("apps", "APPS", factory, {Icon::App, true, zectrix::i18n::Text::Apps}));
-    assert(full.Add("utilities", "POCKET TOOLS", factory, {Icon::App, true, zectrix::i18n::Text::PocketTools}));
-    assert(full.Add("clock", "CLOCK", factory, {Icon::Clock, true, zectrix::i18n::Text::Clock}));
-    assert(full.Add("sleep-cover", "SLEEP COVER", factory, {Icon::Sleep, true, zectrix::i18n::Text::SleepCover}));
-    assert(full.Add("settings", "SETTINGS", factory, {Icon::Settings, true, zectrix::i18n::Text::Settings}));
+    assert(full.Add("reader", "BOOK READER", factory, {Icon::Book, true, note4::i18n::Text::BookReader}));
+    assert(full.Add("book-transfer", "SEND BOOKS", factory, {Icon::Transfer, true, note4::i18n::Text::SendBooks}));
+    assert(full.Add("apps", "APPS", factory, {Icon::App, true, note4::i18n::Text::Apps}));
+    assert(full.Add("utilities", "POCKET TOOLS", factory, {Icon::App, true, note4::i18n::Text::PocketTools}));
+    assert(full.Add("clock", "CLOCK", factory, {Icon::Clock, true, note4::i18n::Text::Clock}));
+    assert(full.Add("sleep-cover", "SLEEP COVER", factory, {Icon::Sleep, true, note4::i18n::Text::SleepCover}));
+    assert(full.Add("settings", "SETTINGS", factory, {Icon::Settings, true, note4::i18n::Text::Settings}));
     const char* tools[] = {"CONNECTIVITY", "AUTO SHOWCASE", "DISPLAY GALLERY",
         "HARDWARE TESTS", "DEVICE INFO", "ABOUT & LICENSE"};
-    constexpr zectrix::i18n::Text tool_labels[] = {zectrix::i18n::Text::Connectivity, zectrix::i18n::Text::AutoShowcase,
-        zectrix::i18n::Text::DisplayGallery, zectrix::i18n::Text::HardwareTests,
-        zectrix::i18n::Text::DeviceInfo, zectrix::i18n::Text::AboutLicense};
+    constexpr note4::i18n::Text tool_labels[] = {note4::i18n::Text::Connectivity, note4::i18n::Text::AutoShowcase,
+        note4::i18n::Text::DisplayGallery, note4::i18n::Text::HardwareTests,
+        note4::i18n::Text::DeviceInfo, note4::i18n::Text::AboutLicense};
     for (std::size_t i = 0; i < std::size(tools); ++i)
         assert(full.Add(tools[i], tools[i], factory, {Icon::App, false, tool_labels[i]}));
     LauncherController launcher(full);
@@ -1387,13 +1387,13 @@ void TestLauncherComposition() {
     const InputEvent down{Button::Down, InputAction::Click};
     const InputEvent ok{Button::Ok, InputAction::Click};
     const InputEvent back{Button::Ok, InputAction::LongPress};
-    zectrix::time::ClockSnapshot clock{{2026, 9, 10, 4, 12, 34, 0}, zectrix::time::ClockSource::Rtc};
-    zectrix::ui::StatusBarState status;
+    note4::time::ClockSnapshot clock{{2026, 9, 10, 4, 12, 34, 0}, note4::time::ClockSource::Rtc};
+    note4::ui::StatusBarState status;
     status.time_valid = status.battery_valid = true;
     status.hour = 12;
     status.minute = 34;
     status.battery_percent = 82;
-    status.ble = zectrix::ui::RadioIndicator::Connected;
+    status.ble = note4::ui::RadioIndicator::Connected;
     ui.UpdateStatus(status);
     ReadingOverview reading;
     reading.state = ReadingOverview::State::Saved;
@@ -1471,15 +1471,15 @@ void TestLauncherComposition() {
 
     ApplicationCatalog minimal;
     assert(minimal.Add("launcher", "Launcher", factory));
-    assert(minimal.Add("clock", "CLOCK", factory, {Icon::Clock, true, zectrix::i18n::Text::Clock}));
-    assert(minimal.Add("sleep-cover", "SLEEP COVER", factory, {Icon::Sleep, true, zectrix::i18n::Text::SleepCover}));
-    assert(minimal.Add("settings", "SETTINGS", factory, {Icon::Settings, true, zectrix::i18n::Text::Settings}));
+    assert(minimal.Add("clock", "CLOCK", factory, {Icon::Clock, true, note4::i18n::Text::Clock}));
+    assert(minimal.Add("sleep-cover", "SLEEP COVER", factory, {Icon::Sleep, true, note4::i18n::Text::SleepCover}));
+    assert(minimal.Add("settings", "SETTINGS", factory, {Icon::Settings, true, note4::i18n::Text::Settings}));
     for (std::size_t i = 1; i < std::size(tools); ++i)
         assert(minimal.Add(tools[i], tools[i], factory, {Icon::App, false, tool_labels[i]}));
     LauncherController compact(minimal);
     assert(compact.Start() == Status::Ok);
     reading = {};
-    status.ble = zectrix::ui::RadioIndicator::Off;
+    status.ble = note4::ui::RadioIndicator::Off;
     ui.UpdateStatus(status);
     assert(ui.ShowLauncher(compact, clock, reading, true) == ESP_OK);
     SavePreview(ui.canvas(), "home-minimal");
@@ -1512,12 +1512,12 @@ void TestLauncherComposition() {
 }
 
 void TestViewPorts() {
-    using zectrix::ui::ViewPortScheduler;
+    using note4::ui::ViewPortScheduler;
     ViewPortScheduler ports;
-    ZectrixCanvas canvas;
+    Canvas canvas;
     canvas.Clear();
     int content_draws = 0, status_draws = 0;
-    const auto draw = [](void* context, ZectrixCanvas& target) {
+    const auto draw = [](void* context, Canvas& target) {
         ++*static_cast<int*>(context);
         target.Clear(false);
         target.Text(0, 0, "OUTSIDE CLIP", 3);
@@ -1532,7 +1532,7 @@ void TestViewPorts() {
     assert(copied_views[0].configured && copied_views[0].enabled && copied_views[0].bounds.y == 24);
     assert(copied_views[0].dirty && !copied_views[1].enabled && !copied_views[2].configured);
     assert(content_draws == 0 && status_draws == 0);
-    const auto saved_clip = ZectrixCanvas::Clip{10, 30, 80, 60};
+    const auto saved_clip = Canvas::Clip{10, 30, 80, 60};
     canvas.SetClip(saved_clip);
     auto update = ports.Compose(canvas);
     assert(update.pending && update.dirty.y == 24 && update.dirty.height == 276);
@@ -1564,17 +1564,17 @@ void TestViewPorts() {
 void TestStatusAndImageComposition() {
     Reset();
     auto service = CreateService();
-    ZectrixDemoUi ui(service.get());
-    zectrix::ui::StatusBarState state;
+    UiEngine ui(service.get());
+    note4::ui::StatusBarState state;
     state.time_valid = state.battery_valid = state.charging = true;
     state.hour = 12;
     state.minute = 34;
     state.battery_percent = 65;
-    state.ble = zectrix::ui::RadioIndicator::Connected;
+    state.ble = note4::ui::RadioIndicator::Connected;
     ui.UpdateStatus(state);
     const char* items[] = {"BOOK READER", "SEND BOOKS", "CLOCK", "SLEEP COVER", "SETTINGS", "CONNECTIVITY", "AUTO SHOWCASE",
         "DISPLAY GALLERY", "HARDWARE TESTS", "DEVICE INFO", "ABOUT & LICENSE"};
-    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", items, std::size(items), 0,
+    assert(ui.ShowMenu("NOTE4 | LAUNCHER", items, std::size(items), 0,
         "UP/DOWN Move  OK Select  Hold DOWN Off", true) == ESP_OK);
     assert(Inspect(*service).refresh_count == 1);
     SavePreview(ui.canvas(), "launcher");
@@ -1595,12 +1595,12 @@ void TestStatusAndImageComposition() {
     assert(bytes <= 2400);
     std::printf("MEASURE: status-only minute update RAM payload=%zu bytes.\n", bytes);
 
-    state.wifi = zectrix::ui::RadioIndicator::Ready;
+    state.wifi = note4::ui::RadioIndicator::Ready;
     ui.UpdateStatus(state);
     assert(ui.RefreshPending() == ESP_OK);
     std::memcpy(before.data(), ui.canvas().data(), before.size());
     ClearTraffic();
-    state.wifi = zectrix::ui::RadioIndicator::Active;
+    state.wifi = note4::ui::RadioIndicator::Active;
     ui.UpdateStatus(state);
     assert(ui.RefreshPending() == ESP_OK);
     const auto radio_dirty = ReferenceDirty(before, {0, 0, 400, 300}, ui.canvas().data());
@@ -1611,14 +1611,14 @@ void TestStatusAndImageComposition() {
 
     std::memcpy(before.data(), ui.canvas().data(), before.size());
     ClearTraffic();
-    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", items, std::size(items), 10,
+    assert(ui.ShowMenu("NOTE4 | LAUNCHER", items, std::size(items), 10,
         "UP/DOWN Move  OK Select  Hold DOWN Off", false) == ESP_OK);
     assert(std::memcmp(before.data(), ui.canvas().data(), content_offset) == 0);
     SavePreview(ui.canvas(), "launcher-last");
     const auto count = Inspect(*service).refresh_count;
     ++state.minute;
     ui.UpdateStatus(state);
-    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", items, std::size(items), 9,
+    assert(ui.ShowMenu("NOTE4 | LAUNCHER", items, std::size(items), 9,
         "UP/DOWN Move  OK Select  Hold DOWN Off", false) == ESP_OK);
     assert(ui.RefreshPending() == ESP_OK && Inspect(*service).refresh_count == count + 1);
 
@@ -1635,15 +1635,15 @@ void TestStatusAndImageComposition() {
 
     const char* minimal_items[] = {"CLOCK", "SLEEP COVER", "SETTINGS", "AUTO SHOWCASE",
         "DISPLAY GALLERY", "HARDWARE TESTS", "DEVICE INFO", "ABOUT & LICENSE"};
-    state.ble = zectrix::ui::RadioIndicator::Off;
+    state.ble = note4::ui::RadioIndicator::Off;
     ui.UpdateStatus(state);
-    assert(ui.ShowMenu("ZECTRIX | LAUNCHER", minimal_items, std::size(minimal_items), 0,
+    assert(ui.ShowMenu("NOTE4 | LAUNCHER", minimal_items, std::size(minimal_items), 0,
         "UP/DOWN Move  OK Select  Hold DOWN Off", true) == ESP_OK);
     SavePreview(ui.canvas(), "launcher-minimal");
 
     state.time_valid = state.battery_valid = state.charging = false;
     state.charge_fault = true;
-    state.wifi = zectrix::ui::RadioIndicator::Fault;
+    state.wifi = note4::ui::RadioIndicator::Fault;
     ui.UpdateStatus(state);
     assert(ui.ShowClock({0, 0, 0, 0, 25, 42, 0}, true, "UPTIME (HH:MM)", false) == ESP_OK);
     SavePreview(ui.canvas(), "clock-fallback");
@@ -1694,7 +1694,7 @@ void TestStatusAndImageComposition() {
     assert(ui.ShowImagePatch({0, 24, 8, 4}, patch, sizeof(patch)) == ESP_ERR_INVALID_STATE);
     assert(ui.ShowAbout() == ESP_OK && Inspect(*service).bits_per_pixel == 1);
     SavePreview(ui.canvas(), "about");
-    std::array<ZectrixTestState, static_cast<size_t>(ZectrixTestId::kCount)> tests{};
+    std::array<Note4TestState, static_cast<size_t>(Note4TestId::kCount)> tests{};
     assert(ui.ShowTestMenu(2, tests, true) == ESP_OK);
     SavePreview(ui.canvas(), "diagnostics");
     ClearTraffic();
@@ -1707,11 +1707,11 @@ void TestStatusAndImageComposition() {
 }
 
 void TestStatusSources() {
-    using namespace zectrix::connectivity;
-    using namespace zectrix::terminal;
-    using Indicator = zectrix::ui::RadioIndicator;
-    zectrix::ui::StatusBarState status;
-    zectrix::power::PowerSnapshot power;
+    using namespace note4::connectivity;
+    using namespace note4::terminal;
+    using Indicator = note4::ui::RadioIndicator;
+    note4::ui::StatusBarState status;
+    note4::power::PowerSnapshot power;
     power.battery_valid = power.charge_full = power.external_power_present = true;
     power.battery_percent = 98;
     CopyPowerStatus(status, power);
@@ -1761,11 +1761,11 @@ void TestStatusSources() {
 }
 
 void TestConnectivityComposition() {
-    using namespace zectrix::i18n;
+    using namespace note4::i18n;
     Reset();
     auto service = CreateService();
-    ZectrixDemoUi ui(service.get());
-    zectrix::ui::StatusBarState status;
+    UiEngine ui(service.get());
+    note4::ui::StatusBarState status;
     status.time_valid = status.battery_valid = true;
     status.hour = 20; status.minute = 26; status.battery_percent = 82;
     ui.UpdateStatus(status);
@@ -1787,12 +1787,12 @@ void TestConnectivityComposition() {
 }
 
 void TestSettingsComposition() {
-    using namespace zectrix::i18n;
-    using namespace zectrix::app;
-    using namespace zectrix::sdk;
+    using namespace note4::i18n;
+    using namespace note4::app;
+    using namespace note4::sdk;
     Reset();
     auto service = CreateService();
-    ZectrixDemoUi ui(service.get());
+    UiEngine ui(service.get());
     SettingsController settings(false);
     assert(settings.Start() == Status::Ok);
     const auto original = CurrentLanguage();
@@ -1826,14 +1826,14 @@ void TestSettingsComposition() {
 }
 
 void TestReaderComposition() {
-    using namespace zectrix::reader;
-    using namespace zectrix::app;
-    using zectrix::sdk::Button;
-    using zectrix::sdk::InputAction;
+    using namespace note4::reader;
+    using namespace note4::app;
+    using note4::sdk::Button;
+    using note4::sdk::InputAction;
     Reset();
     auto service = CreateService();
-    ZectrixDemoUi ui(service.get());
-    zectrix::ui::StatusBarState status;
+    UiEngine ui(service.get());
+    note4::ui::StatusBarState status;
     status.time_valid = status.battery_valid = true;
     status.hour = 20; status.minute = 26; status.battery_percent = 82;
     ui.UpdateStatus(status);
@@ -1868,7 +1868,7 @@ void TestReaderComposition() {
     } store;
     Bookmarks bookmarks(store);
     ReaderController reader(library, bookmarks);
-    assert(zectrix::sdk::IsOk(reader.Start()));
+    assert(note4::sdk::IsOk(reader.Start()));
     assert(ui.ShowReader(reader, true) == ESP_OK);
     SavePreview(ui.canvas(), "reader-library");
     assert(reader.Handle({Button::Ok, InputAction::Click}) == ReaderDecision::RenderQuality);
@@ -1877,10 +1877,10 @@ void TestReaderComposition() {
     SavePreview(ui.canvas(), "reader-small");
     const auto small = reader.engine().page().count;
     const auto glyph = reader.engine().page().glyphs[0];
-    assert(glyph.codepoint == (zectrix::i18n::CurrentLanguage() == zectrix::i18n::Language::Chinese ? U'第' : U'C'));
+    assert(glyph.codepoint == (note4::i18n::CurrentLanguage() == note4::i18n::Language::Chinese ? U'第' : U'C'));
     const auto bitmap = GlyphBitmap(glyph.codepoint);
     // Pixel-exact 16px comparison applies to the CJK page; Latin glyphs use a different advance/offset.
-    const bool cjk_page = zectrix::i18n::CurrentLanguage() == zectrix::i18n::Language::Chinese;
+    const bool cjk_page = note4::i18n::CurrentLanguage() == note4::i18n::Language::Chinese;
     for (int row = 0; cjk_page && row < 16; ++row) {
         const uint16_t bits = bitmap.Row(row);
         for (int col = 0; col < 16; ++col)
@@ -1937,14 +1937,14 @@ void TestReaderComposition() {
     assert(displayed.position < bookmarks.Latest()->position);
     assert(bookmarks.Latest()->position == reader.engine().page().start);
     reader.Stop();
-    const auto* fixtures = std::getenv("ZECTRIX_READER_FIXTURES");
+    const auto* fixtures = std::getenv("NOTE4_READER_FIXTURES");
     assert(fixtures);
     std::ifstream styled(std::string(fixtures) + "/styled.epub", std::ios::binary);
     assert(styled.good());
     library.text.assign(std::istreambuf_iterator<char>(styled), std::istreambuf_iterator<char>());
     library.format = Format::Epub;
     library.source = std::make_unique<MemorySource>(reinterpret_cast<const uint8_t*>(library.text.data()), library.text.size());
-    assert(zectrix::sdk::IsOk(reader.Start()));
+    assert(note4::sdk::IsOk(reader.Start()));
     reader.Handle({Button::Ok, InputAction::Click});
     for (unsigned i = 0; reader.busy(); ++i) { assert(i < 10000); reader.Tick(now_us); }
     assert(reader.result() == Result::Ok && ui.ShowReader(reader, true) == ESP_OK);
@@ -1958,23 +1958,23 @@ void TestReaderComposition() {
 }
 
 void TestBookTransferComposition() {
-    using namespace zectrix::connectivity;
-    using namespace zectrix::app;
+    using namespace note4::connectivity;
+    using namespace note4::app;
     Reset();
     auto service = CreateService();
-    ZectrixDemoUi ui(service.get());
-    zectrix::ui::StatusBarState status;
+    UiEngine ui(service.get());
+    note4::ui::StatusBarState status;
     status.time_valid = status.battery_valid = true;
     status.hour = 20; status.minute = 26; status.battery_percent = 82;
     ui.UpdateStatus(status);
     BookTransferController controller;
-    assert(zectrix::sdk::IsOk(controller.Start()));
+    assert(note4::sdk::IsOk(controller.Start()));
     BookTransferSnapshot transfer;
     assert(ui.ShowBookTransfer(transfer, true, false, true) == ESP_OK);
     SavePreview(ui.canvas(), "books-mode");
     assert(ui.ShowBookTransfer(transfer, true, true, false) == ESP_OK);
     SavePreview(ui.canvas(), "books-mode-station");
-    assert(controller.Handle({zectrix::sdk::Button::Ok, zectrix::sdk::InputAction::Click}) == BookTransferDecision::Hotspot);
+    assert(controller.Handle({note4::sdk::Button::Ok, note4::sdk::InputAction::Click}) == BookTransferDecision::Hotspot);
     transfer.state = BookTransferState::Starting;
     std::strcpy(transfer.ssid.data(), "NOTE4-1234");
     std::strcpy(transfer.code.data(), "ABCDEFGH2345");
@@ -1984,7 +1984,7 @@ void TestBookTransferComposition() {
     transfer.state = BookTransferState::Sharing;
     transfer.expected = 20000; transfer.received = 11000; transfer.uploaded = 2;
     std::strcpy(transfer.address.data(), "192.168.4.1");
-    status.wifi = zectrix::ui::RadioIndicator::Connected;
+    status.wifi = note4::ui::RadioIndicator::Connected;
     ui.UpdateStatus(status);
     assert(controller.Update(transfer, 1000000) == BookTransferDecision::RenderQuality);
     assert(ui.ShowBookTransfer(controller.snapshot(), false, false, true) == ESP_OK);
@@ -2012,7 +2012,7 @@ void TestBookTransferComposition() {
     assert(ui.ShowBookTransfer(transfer, false, true, true) == ESP_OK);
     SavePreview(ui.canvas(), "books-station");
     transfer.state = BookTransferState::Complete;
-    status.wifi = zectrix::ui::RadioIndicator::Off;
+    status.wifi = note4::ui::RadioIndicator::Off;
     ui.UpdateStatus(status);
     assert(ui.ShowBookTransfer(transfer, false, false, true) == ESP_OK);
     SavePreview(ui.canvas(), "books-complete");
@@ -2028,7 +2028,7 @@ void TestBookTransferComposition() {
 void TestRecoveryComposition() {
     Reset();
     auto service = CreateService();
-    ZectrixDemoUi ui(service.get());
+    UiEngine ui(service.get());
     std::array<uint8_t, DisplayService::kFrameBytes4Bpp> gray{};
     assert(ui.ShowImage4Bpp(gray.data(), gray.size()) == ESP_OK);
     const auto allocated = heap_allocations;
@@ -2036,7 +2036,7 @@ void TestRecoveryComposition() {
     const auto objects = nothrow_allocations;
     fail_allocation_at = objects + 1;
     fail_heap_at = allocated + 1;
-    zectrix::app::SleepCoverSnapshot cover;
+    note4::app::SleepCoverSnapshot cover;
     for (unsigned cycle = 0; cycle < 256; ++cycle) {
         ClearTraffic();
         fail_command = 0xe9;
@@ -2045,7 +2045,7 @@ void TestRecoveryComposition() {
         assert(ui.RefreshPending() == ESP_OK && Inspect(*service).bits_per_pixel == 1);
         if (cycle == 0) SavePreview(ui.canvas(), "system-recovery");
         assert(ui.ShowClock({2026, 9, 12, 6, 8, static_cast<int>(cycle % 60), 0}, true) == ESP_OK);
-        assert(ui.ShowSleepCover(cover, zectrix::app::SleepCoverStyle::Blank) == ESP_OK);
+        assert(ui.ShowSleepCover(cover, note4::app::SleepCoverStyle::Blank) == ESP_OK);
         ClearTraffic();
         assert(ui.RefreshPending() == ESP_OK && packets.empty());
         assert(allocations.size() == live && heap_allocations == allocated && nothrow_allocations == objects);
@@ -2058,24 +2058,24 @@ void TestRecoveryComposition() {
 }
 
 void TestSleepCoverComposition() {
-    using namespace zectrix::app;
+    using namespace note4::app;
     Reset();
     auto service = CreateService();
-    ZectrixDemoUi ui(service.get());
-    zectrix::ui::StatusBarState status;
+    UiEngine ui(service.get());
+    note4::ui::StatusBarState status;
     status.hour = 20; status.minute = 27; status.battery_percent = 82;
     status.time_valid = status.battery_valid = true;
-    status.ble = status.wifi = zectrix::ui::RadioIndicator::Connected;
+    status.ble = status.wifi = note4::ui::RadioIndicator::Connected;
     ui.UpdateStatus(status);
     SleepCoverSnapshot snapshot;
-    snapshot.clock = {{2026, 9, 9, 0, 20, 27, 0}, zectrix::time::ClockSource::Rtc};
+    snapshot.clock = {{2026, 9, 9, 0, 20, 27, 0}, note4::time::ClockSource::Rtc};
     snapshot.power.battery_valid = true; snapshot.power.battery_percent = 82;
     snapshot.has_reading = true;
     std::strcpy(snapshot.reading.book_id.data(), ForLanguage("风从海上来——旅途中的阅读笔记.epub", "A Quiet Journey - Reading Notes.epub"));
     snapshot.reading.progress_per_mille = 425;
 
-    for (unsigned style = 0; style < zectrix::ui::kDigitStyleCount; ++style) {
-        ui.SetDigitStyle(static_cast<zectrix::ui::DigitStyle>(style));
+    for (unsigned style = 0; style < note4::ui::kDigitStyleCount; ++style) {
+        ui.SetDigitStyle(static_cast<note4::ui::DigitStyle>(style));
         for (bool portrait : {false, true}) {
             ui.SetSleepPortrait(portrait);
             for (int day = 1; day <= 31; ++day) {
@@ -2087,7 +2087,7 @@ void TestSleepCoverComposition() {
             }
         }
     }
-    ui.SetDigitStyle(zectrix::ui::DigitStyle::Serif);
+    ui.SetDigitStyle(note4::ui::DigitStyle::Serif);
     ui.SetSleepPortrait(true);
     for (int day = 1; day <= static_cast<int>(kSleepQuoteCount); ++day) {
         // A complete daily cycle covers every bilingual quote, including both halves.
@@ -2095,7 +2095,7 @@ void TestSleepCoverComposition() {
         assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard, true) == ESP_OK);
         const auto calendar = CalendarForSleep(snapshot.clock);
         const auto& quote = QuoteForSleep(calendar);
-        ZectrixCanvas expected = ui.canvas();
+        Canvas expected = ui.canvas();
         expected.SetPortrait(true);
         expected.FillRect(0, 316, 300, 34, false);
         const char* first = Tr(quote.first_text, quote.first);
@@ -2117,9 +2117,9 @@ void TestSleepCoverComposition() {
         int x = 16;
         const char* cursor = sentence;
         while (*cursor) {
-            const auto cp = zectrix::ui::NextUtf8(cursor);
-            zectrix::ui::DrawGlyph(expected, x, 246, cp, zectrix::reader::FontSize::Small);
-            x += zectrix::reader::GlyphWidth(cp, zectrix::reader::FontSize::Small);
+            const auto cp = note4::ui::NextUtf8(cursor);
+            note4::ui::DrawGlyph(expected, x, 246, cp, note4::reader::FontSize::Small);
+            x += note4::reader::GlyphWidth(cp, note4::reader::FontSize::Small);
         }
         assert(x <= 384); // All complete sentences fit without an ellipsis.
         assert(std::memcmp(expected.data(), ui.canvas().data(), expected.size()) == 0);
@@ -2152,7 +2152,7 @@ void TestSleepCoverComposition() {
     ui.UpdateStatus(status);
     assert(ui.RefreshPending() == ESP_OK && packets.empty());
     assert(ui.ShowSleepCoverMenu(SleepCoverStyle::Dashboard, SleepCoverStyle::Dashboard, nullptr, true) == ESP_OK);
-    snapshot.clock.source = zectrix::time::ClockSource::Uptime;
+    snapshot.clock.source = note4::time::ClockSource::Uptime;
     assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard) == ESP_OK);
     SavePreview(ui.canvas(), "sleep-portrait-unset", true);
     fail_command = 0xe9;
@@ -2160,7 +2160,7 @@ void TestSleepCoverComposition() {
     assert(ui.canvas().width() == 400 && ui.canvas().height() == 300);
     fail_command = -1;
     ui.SetSleepPortrait(false);
-    snapshot.clock = {{2026, 9, 9, 0, 20, 27, 0}, zectrix::time::ClockSource::Rtc};
+    snapshot.clock = {{2026, 9, 9, 0, 20, 27, 0}, note4::time::ClockSource::Rtc};
 
     assert(ui.ShowSleepCoverMenu(SleepCoverStyle::Dashboard, SleepCoverStyle::Dashboard, nullptr, true) == ESP_OK);
     SavePreview(ui.canvas(), "sleep-menu");
@@ -2183,7 +2183,7 @@ void TestSleepCoverComposition() {
     assert(Inspect(*service).bits_per_pixel == 1 && !service->IsPowered());
     SavePreview(ui.canvas(), "sleep-dashboard");
     ClearTraffic();
-    ++status.minute; status.wifi = zectrix::ui::RadioIndicator::Off;
+    ++status.minute; status.wifi = note4::ui::RadioIndicator::Off;
     ui.UpdateStatus(status);
     assert(ui.RefreshPending() == ESP_OK && ui.RefreshFull() == ESP_OK);
     assert(packets.empty() && gpio_writes == 0);
@@ -2192,11 +2192,11 @@ void TestSleepCoverComposition() {
     snapshot.clock.value = {2025, 3, 31, 0, 8, 4, 0};
     assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard) == ESP_OK);
     SavePreview(ui.canvas(), "sleep-six-week-month");
-    snapshot.clock.source = zectrix::time::ClockSource::Uptime;
+    snapshot.clock.source = note4::time::ClockSource::Uptime;
     snapshot.has_reading = snapshot.power.battery_valid = false;
     assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Dashboard) == ESP_OK);
     SavePreview(ui.canvas(), "sleep-empty");
-    snapshot.clock = {{2026, 9, 9, 0, 20, 27, 0}, zectrix::time::ClockSource::System};
+    snapshot.clock = {{2026, 9, 9, 0, 20, 27, 0}, note4::time::ClockSource::System};
     snapshot.power.battery_valid = true;
     assert(ui.ShowSleepCover(snapshot, SleepCoverStyle::Quote) == ESP_OK);
     SavePreview(ui.canvas(), "sleep-landscape");
@@ -2321,8 +2321,8 @@ void vTaskDelay(TickType_t ticks) {
     if (during_delay) during_delay();
 }
 int64_t esp_timer_get_time() { return now_us; }
-int64_t zectrix::time::TimeService::MonotonicMicroseconds() const { return now_us; }
-const char* ZectrixSelfTest::Name(ZectrixTestId) { return "test"; }
+int64_t note4::time::TimeService::MonotonicMicroseconds() const { return now_us; }
+const char* Note4SelfTest::Name(Note4TestId) { return "test"; }
 const char* esp_err_to_name(esp_err_t err) { return err == ESP_OK ? "ESP_OK" : "ESP_FAIL"; }
 esp_err_t gpio_config(const gpio_config_t* config) {
     for (unsigned pin = 0; pin < pins.size(); ++pin) {
@@ -2397,15 +2397,15 @@ esp_err_t spi_device_polling_transmit(spi_device_handle_t, spi_transaction_t* tr
 
 // Portrait (300 x 400) layouts for Home, Reader, Settings, Transfer and Tools.
 void TestPageShellHeaders() {
-    using zectrix::ui::PageSpec;
-    using Orientation = zectrix::display::DisplayOrientation;
+    using note4::ui::PageSpec;
+    using Orientation = note4::display::DisplayOrientation;
     for (const auto orientation : {Orientation::Standard, Orientation::Portrait}) {
         for (bool centered : {false, true}) {
             Reset();
             auto service = CreateService();
             assert(service->SetOrientation(orientation) == ESP_OK);
             UiEngine ui(service.get());
-            const char* title = zectrix::i18n::Tr(zectrix::i18n::Text::Home);
+            const char* title = note4::i18n::Tr(note4::i18n::Text::Home);
             auto page = ui.EnterPage(PageSpec().Title(title).CenterTitle(centered).Badge("42.5%"));
             auto& canvas = ui.canvas();
             const auto body_clip = canvas.clip();
@@ -2435,8 +2435,8 @@ void TestPageShellHeaders() {
 }
 
 void TestPageShellScrollbars() {
-    using zectrix::ui::PageSpec;
-    using Orientation = zectrix::display::DisplayOrientation;
+    using note4::ui::PageSpec;
+    using Orientation = note4::display::DisplayOrientation;
     struct Case {
         size_t visible, total, first;
         int start, height, expected_y, expected_height;
@@ -2478,20 +2478,20 @@ void TestPageShellScrollbars() {
 }
 
 void TestPortraitScreens() {
-    using namespace zectrix::app;
-    using namespace zectrix::sdk;
+    using namespace note4::app;
+    using namespace note4::sdk;
     using Icon = ApplicationIcon;
-    using Orientation = zectrix::display::DisplayOrientation;
-    using zectrix::i18n::Text;
-    using zectrix::i18n::Tr;
+    using Orientation = note4::display::DisplayOrientation;
+    using note4::i18n::Text;
+    using note4::i18n::Tr;
     Reset();
     auto service = CreateService();
     assert(service->SetOrientation(Orientation::Portrait) == ESP_OK);
-    ZectrixDemoUi ui(service.get());
-    zectrix::ui::StatusBarState status;
+    UiEngine ui(service.get());
+    note4::ui::StatusBarState status;
     status.time_valid = status.battery_valid = true;
     status.hour = 12; status.minute = 34; status.battery_percent = 82;
-    status.ble = zectrix::ui::RadioIndicator::Connected;
+    status.ble = note4::ui::RadioIndicator::Connected;
     ui.UpdateStatus(status);
     const auto portrait_ready = [&] {
         assert(ui.canvas().portrait() && ui.canvas().width() == 300 && ui.canvas().height() == 400);
@@ -2519,7 +2519,7 @@ void TestPortraitScreens() {
     LauncherController launcher(full);
     assert(launcher.Start() == Status::Ok);
     launcher.Tick();
-    zectrix::time::ClockSnapshot clock{{2026, 9, 10, 4, 12, 34, 0}, zectrix::time::ClockSource::Rtc};
+    note4::time::ClockSnapshot clock{{2026, 9, 10, 4, 12, 34, 0}, note4::time::ClockSource::Rtc};
     ReadingOverview reading;
     reading.state = ReadingOverview::State::Saved;
     std::strcpy(reading.book_id.data(), ForLanguage("风从海上来.epub", "A Quiet Journey.epub"));
@@ -2548,7 +2548,7 @@ void TestPortraitScreens() {
     LauncherController second(full);
     assert(second.Start() == Status::Ok);
     second.Tick();
-    assert(ui.ShowLauncher(second, {{0, 0, 0, 0, 0, 0, 0}, zectrix::time::ClockSource::Uptime}, empty, true) == ESP_OK);
+    assert(ui.ShowLauncher(second, {{0, 0, 0, 0, 0, 0, 0}, note4::time::ClockSource::Uptime}, empty, true) == ESP_OK);
     SavePreview(ui.canvas(), "home-portrait-empty", true);
 
     // Settings and language.
@@ -2562,38 +2562,38 @@ void TestPortraitScreens() {
     SavePreview(ui.canvas(), "language-picker-portrait", true);
 
     // Reader: library, reading page and options.
-    class PortraitLibrary final : public zectrix::reader::Library {
+    class PortraitLibrary final : public note4::reader::Library {
     public:
         std::string text;
-        std::unique_ptr<zectrix::reader::MemorySource> source;
+        std::unique_ptr<note4::reader::MemorySource> source;
         PortraitLibrary() {
             for (unsigned i = 0; i < 40; ++i)
                 text += ForLanguage("第一段：风从海上来，带着远方的消息。\n清晨的港口很安静，轻按按键，继续阅读。\n",
                                     "Chapter one: the wind came in from the sea, carrying news from afar.\nThe harbor was quiet that morning. Press a button to keep reading.\n");
-            source = std::make_unique<zectrix::reader::MemorySource>(reinterpret_cast<const uint8_t*>(text.data()), text.size());
+            source = std::make_unique<note4::reader::MemorySource>(reinterpret_cast<const uint8_t*>(text.data()), text.size());
         }
-        zectrix::reader::Result Refresh() override { return zectrix::reader::Result::Ok; }
+        note4::reader::Result Refresh() override { return note4::reader::Result::Ok; }
         std::size_t count() const override { return 3; }
-        zectrix::reader::BookInfo Get(std::size_t index) const override {
-            zectrix::reader::BookInfo book;
+        note4::reader::BookInfo Get(std::size_t index) const override {
+            note4::reader::BookInfo book;
             const char* names[] = {ForLanguage("风从海上来.txt", "A Quiet Journey.txt"),
                                    ForLanguage("月光下的山路.txt", "The Moonlit Road.txt"),
                                    ForLanguage("旅途中的阅读笔记.txt", "Reading Notes.txt")};
             std::strcpy(book.id.data(), names[index % 3]);
-            book.format = zectrix::reader::Format::Text; book.bytes = text.size(); return book;
+            book.format = note4::reader::Format::Text; book.bytes = text.size(); return book;
         }
         bool truncated() const override { return false; }
-        zectrix::reader::Result Open(std::size_t, zectrix::reader::Source** output) override { *output = source.get(); return zectrix::reader::Result::Ok; }
+        note4::reader::Result Open(std::size_t, note4::reader::Source** output) override { *output = source.get(); return note4::reader::Result::Ok; }
         void Close() override {}
     } library;
-    class PortraitStore final : public zectrix::reader::BookmarkStore {
+    class PortraitStore final : public note4::reader::BookmarkStore {
     public:
-        zectrix::reader::Result Load(uint8_t*, std::size_t, std::size_t*) override { return zectrix::reader::Result::End; }
-        zectrix::reader::Result Save(const uint8_t*, std::size_t) override { return zectrix::reader::Result::Ok; }
-        zectrix::reader::Result Publish(uint32_t, const uint8_t*, std::size_t) override { return zectrix::reader::Result::Ok; }
-        zectrix::reader::Result Receive(uint32_t*, uint8_t*, std::size_t, std::size_t*) override { return zectrix::reader::Result::End; }
+        note4::reader::Result Load(uint8_t*, std::size_t, std::size_t*) override { return note4::reader::Result::End; }
+        note4::reader::Result Save(const uint8_t*, std::size_t) override { return note4::reader::Result::Ok; }
+        note4::reader::Result Publish(uint32_t, const uint8_t*, std::size_t) override { return note4::reader::Result::Ok; }
+        note4::reader::Result Receive(uint32_t*, uint8_t*, std::size_t, std::size_t*) override { return note4::reader::Result::End; }
     } store;
-    zectrix::reader::Bookmarks bookmarks(store);
+    note4::reader::Bookmarks bookmarks(store);
     ReaderController reader(library, bookmarks);
     reader.SetPortrait(true);
     assert(IsOk(reader.Start()));
@@ -2608,8 +2608,8 @@ void TestPortraitScreens() {
     assert(page.count > 0);
     for (std::size_t i = 0; i < page.count; ++i) {
         // Portrait pages stay inside their 284 x 308 body.
-        assert(page.glyphs[i].x + zectrix::reader::GlyphWidth(page.glyphs[i].codepoint, page.font) <= 284);
-        assert(page.glyphs[i].y + zectrix::reader::GlyphHeight(page.glyphs[i].codepoint, page.font) <= 308);
+        assert(page.glyphs[i].x + note4::reader::GlyphWidth(page.glyphs[i].codepoint, page.font) <= 284);
+        assert(page.glyphs[i].y + note4::reader::GlyphHeight(page.glyphs[i].codepoint, page.font) <= 308);
     }
     const auto portrait_page_start = page.start;
     assert(reader.Handle({Button::Down, InputAction::Click}) == ReaderDecision::RenderFast);
@@ -2621,7 +2621,7 @@ void TestPortraitScreens() {
     SavePreview(ui.canvas(), "reader-options-portrait", true);
 
     // Send Books.
-    using namespace zectrix::connectivity;
+    using namespace note4::connectivity;
     BookTransferSnapshot transfer;
     assert(ui.ShowBookTransfer(transfer, true, false, true) == ESP_OK);
     portrait_ready();
@@ -2645,7 +2645,7 @@ void TestPortraitScreens() {
     // Pocket Tools.
     UtilitySession session;
     UtilityController utilities(session);
-    clock = {{2026, 3, 31, 0, 12, 30, 0}, zectrix::time::ClockSource::Rtc};
+    clock = {{2026, 3, 31, 0, 12, 30, 0}, note4::time::ClockSource::Rtc};
     const auto draw = [&](UtilityDecision decision) {
         assert(decision == UtilityDecision::RenderQuality || decision == UtilityDecision::RenderFast);
         assert(ui.ShowUtilities(utilities, true) == ESP_OK);
@@ -2680,9 +2680,9 @@ void TestPortraitScreens() {
 }
 
 int main() {
-    const char* language = std::getenv("ZECTRIX_UI_LANGUAGE");
-    zectrix::i18n::SetLanguage(language && std::strcmp(language, "zh") == 0 ?
-        zectrix::i18n::Language::Chinese : zectrix::i18n::Language::English);
+    const char* language = std::getenv("NOTE4_UI_LANGUAGE");
+    note4::i18n::SetLanguage(language && std::strcmp(language, "zh") == 0 ?
+        note4::i18n::Language::Chinese : note4::i18n::Language::English);
     TestCreationAndInputErrors();
     TestPackedFrameTransforms();
     TestRotationAllocationFailures();

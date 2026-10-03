@@ -1,0 +1,11 @@
+config NOTE4_ENABLE_READER
+    bool "TXT and EPUB reader"
+    default y
+    help
+        Enable streamed text/EPUB pagination, the CJK font and reading scenes.
+        Local bookmarks work without connectivity. Companion sync is used when
+        available. Disabling the reader keeps the calendar and sleep covers.
+
+config NOTE4_ENABLE_BOOK_STORAGE
+    bool
+    default y if NOTE4_ENABLE_READER || NOTE4_ENABLE_BOOK_TRANSFER || NOTE4_ENABLE_USB_HOST || NOTE4_ENABLE_RUNTIME

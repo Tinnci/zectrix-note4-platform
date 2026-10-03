@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-serial=${ZECTRIX_ANDROID_SERIAL:-$(adb get-serialno)}
+serial=${NOTE4_ANDROID_SERIAL:-$(adb get-serialno)}
 work_dir=$(mktemp -d)
 server_pid=""
 port=""
@@ -27,10 +27,10 @@ adb -s "$serial" reverse "tcp:$port" "tcp:$port"
 adb -s "$serial" install -r "$root_dir/android-companion/app/build/outputs/apk/debug/app-debug.apk"
 adb -s "$serial" install -r "$root_dir/android-companion/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
 if [ "$(adb -s "$serial" shell getprop ro.build.version.sdk | tr -d '\r')" -ge 37 ]; then
-    adb -s "$serial" shell pm grant dev.zectrix.note4.companion android.permission.ACCESS_LOCAL_NETWORK
+    adb -s "$serial" shell pm grant dev.note4.companion android.permission.ACCESS_LOCAL_NETWORK
 fi
 adb -s "$serial" shell am instrument -w -r -e transferUrl "http://127.0.0.1:$port" \
-    dev.zectrix.note4.companion.test/androidx.test.runner.AndroidJUnitRunner | tee "$work_dir/results.log"
+    dev.note4.companion.test/androidx.test.runner.AndroidJUnitRunner | tee "$work_dir/results.log"
 rg -q '^OK \([0-9]+ tests?\)' "$work_dir/results.log"
 echo 'PASS: Android intent, Keystore, durable storage, image conversion and native HTTP integration.'
 echo 'NFC antenna, BLE pairing and background presence still require a physical Note4 and phone.'

@@ -9,38 +9,38 @@ from pathlib import Path
 MODULES = ("CONNECTIVITY", "WIFI", "WIFI_HTTP", "BOOK_TRANSFER", "READER", "UI_CHINESE",
            "USB_CLI", "USB_HOST", "UPDATE", "BOOK_STORAGE", "RUNTIME", "UTILITIES")
 OPTIONAL_COMPONENTS = {
-    "zectrix_connectivity", "zectrix_companion", "zectrix_nfc_service",
-    "zectrix_reader", "zectrix_cli", "zectrix_host", "zectrix_update", "bt", "esp_wifi",
+    "note4_connectivity", "note4_companion", "note4_nfc_service",
+    "note4_reader", "note4_cli", "note4_host", "note4_update", "bt", "esp_wifi",
     "esp_http_client", "esp_http_server", "esp_netif", "lwip", "spiffs",
-    "esp-tls", "tcp_transport", "zectrix_runtime",
+    "esp-tls", "tcp_transport", "note4_runtime",
 }
 CORE_SOURCES = {
     "main/app_launcher.cc", "main/app_clock.cc", "main/app_sleep_cover.cc",
-    "main/application_modules.cc", "components/zectrix_app/zectrix_scene_manager.cc",
+    "main/application_modules.cc", "components/note4_app/note4_scene_manager.cc",
     "components/ui/view_port.cc",
-    "components/zectrix_system/zectrix_boot_guard.cc",
-    "components/zectrix_system/zectrix_boot_esp.cc",
-    "components/zectrix_time/zectrix_time_service.cc",
+    "components/note4_system/note4_boot_guard.cc",
+    "components/note4_system/note4_boot_esp.cc",
+    "components/note4_time/note4_time_service.cc",
 }
 OPTIONAL_SOURCES = {
-    "main/app_utilities.cc", "components/zectrix_app/zectrix_utilities.cc",
+    "main/app_utilities.cc", "components/note4_app/note4_utilities.cc",
     "components/ui/utilities_ui.cc",
     "main/app_connectivity.cc", "main/app_reader.cc", "main/app_book_transfer.cc",
     "main/app_usb_manager.cc",
     "main/app_micro_apps.cc",
-    "components/zectrix_runtime/zectrix_runtime.cc",
-    "components/zectrix_app/zectrix_micro_app_controller.cc",
+    "components/note4_runtime/note4_runtime.cc",
+    "components/note4_app/note4_micro_app_controller.cc",
     "components/ui/micro_app_ui.cc",
     "components/ui/micro_app_view.cc",
-    "components/zectrix_app/zectrix_usb_manager.cc",
+    "components/note4_app/note4_usb_manager.cc",
     "components/ui/usb_manager_ui.cc",
-    "components/zectrix_app/zectrix_reader_controller.cc",
-    "components/zectrix_app/zectrix_book_transfer_controller.cc",
+    "components/note4_app/note4_reader_controller.cc",
+    "components/note4_app/note4_book_transfer_controller.cc",
     "components/ui/reader_ui.cc",
     "components/ui/book_transfer_ui.cc",
-    "components/zectrix_reader/zectrix_reader_font_data.S",
-    "components/zectrix_connectivity/zectrix_book_web_data.S",
-    "components/zectrix_storage/zectrix_book_storage.cc",
+    "components/note4_reader/note4_reader_font_data.S",
+    "components/note4_connectivity/note4_book_web_data.S",
+    "components/note4_storage/note4_book_storage.cc",
 }
 BOOT_OPTIONS = ("BOOTLOADER_APP_ROLLBACK_ENABLE", "BOOTLOADER_WDT_ENABLE",
                 "BOOTLOADER_WDT_DISABLE_IN_USER_CODE", "BOOTLOADER_WDT_TIME_MS")
@@ -65,7 +65,7 @@ def inspect_profile(directory, enabled):
             f"{name}: expected an isolated profile sdkconfig")
     config = read_json(directory / "config/sdkconfig.json")
     for module in MODULES:
-        require(bool(config.get(f"ZECTRIX_ENABLE_{module}", False)) == enabled,
+        require(bool(config.get(f"NOTE4_ENABLE_{module}", False)) == enabled,
                 f"{name}: unexpected {module} selection")
     for option in BOOT_OPTIONS:
         require(config.get(option), f"{name}: missing boot protection: {option}")

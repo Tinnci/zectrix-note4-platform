@@ -1,5 +1,5 @@
-#include "zectrix_update_esp.h"
-#include "zectrix_health_esp.h"
+#include "note4_update_esp.h"
+#include "note4_health_esp.h"
 #include "update_test_fixture.h"
 
 #include <cassert>
@@ -21,7 +21,7 @@
 #include "hal/wdt_hal.h"
 #include "soc/rtc.h"
 
-using namespace zectrix::update;
+using namespace note4::update;
 
 namespace {
 
@@ -301,7 +301,7 @@ void ResetNative(PartitionKind running = PartitionKind::kFactory) {
 }
 
 void TestEspHealthHandoff() {
-    using namespace zectrix::system;
+    using namespace note4::system;
     ResetNative(PartitionKind::kOtaA);
     native_state = ESP_OTA_IMG_PENDING_VERIFY;
     EspBootBackend backend;
