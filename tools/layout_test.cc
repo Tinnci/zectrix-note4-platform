@@ -2,6 +2,7 @@
 #include "page_shell.h"
 #include <cassert>
 #include <cstdio>
+#include <climits>
 #include <type_traits>
 
 static_assert(std::is_move_constructible_v<zectrix::ui::PageShell>);
@@ -84,6 +85,41 @@ void TestUniformGrid() {
     assert(p0.x == 12 && p0.y == 170 && p0.width == 276);
 }
 
+void TestLayoutBoundaries() {
+    const Rect r(10, 20, 30, 40);
+    const auto [top, after_top] = r.CutTop(15, 100);
+    assert(top.height == 15 && after_top.height == 0 && after_top.y == r.bottom());
+    const auto [left, after_left] = r.CutLeft(15, -5);
+    assert(left.width == 15 && after_left.x == 25 && after_left.width == 15);
+    const auto [bottom, after_bottom] = r.CutBottom(-5, -5);
+    assert(bottom.height == 0 && after_bottom.height == 40);
+    const auto [right, after_right] = r.CutRight(15, 100);
+    assert(right.width == 15 && after_right.width == 0);
+    const Rect invalid(10, 20, -30, -40);
+    assert(invalid.CutTop(1).first.height == 0);
+    assert(invalid.CutBottom(1).second.height == 0);
+    assert(invalid.CutLeft(1).first.width == 0);
+    assert(invalid.CutRight(1).second.width == 0);
+
+    const UniformGrid cramped(r, 4, 4, 100, 100);
+    for (int i = 0; i < 16; ++i) {
+        const auto cell = cramped.CellAt(i);
+        assert(cell.width >= 0 && cell.height >= 0);
+        assert(cell.x >= r.x && cell.y >= r.y);
+        assert(cell.right() <= r.right() && cell.bottom() <= r.bottom());
+    }
+    assert(cramped.CellAt(16).IsEmpty());
+    assert(cramped.CellAt(-1, 0).IsEmpty());
+    assert(cramped.CellAt(0, 4).IsEmpty());
+    const UniformGrid negative_gap(r, 2, 2, -10, -20);
+    assert(negative_gap.CellAt(0).width == 15);
+    assert(negative_gap.CellAt(1).x == 25);
+    assert(UniformGrid(invalid, 2, 2).CellAt(0).IsEmpty());
+    const auto large = UniformGrid::Fit({0, 0, INT_MAX, 40}, INT_MAX, 1, INT_MAX);
+    assert(large.columns() == 1 && large.rows() == INT_MAX);
+    assert(large.CellAt(0).height >= 0);
+}
+
 void TestPageSpec() {
     using zectrix::ui::PageSpec;
     PageSpec spec = PageSpec()
@@ -103,6 +139,7 @@ int main() {
     TestRectBasics();
     TestInsetsAndCutting();
     TestUniformGrid();
+    TestLayoutBoundaries();
     TestPageSpec();
     std::printf("PASS: zero-allocation layout algebra, responsive grid and page spec tests.\n");
     return 0;

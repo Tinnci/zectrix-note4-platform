@@ -2366,6 +2366,49 @@ void TestPageShellHeaders() {
     }
 }
 
+void TestPageShellScrollbars() {
+    using zectrix::ui::PageSpec;
+    using Orientation = zectrix::display::DisplayOrientation;
+    struct Case {
+        size_t visible, total, first;
+        int start, height, expected_y, expected_height;
+    };
+    const Case cases[] = {
+        {1, 10, 0, 50, 4, 50, 4},  // Minimum thumb must fit a short track.
+        {1, 10, 100, 50, 40, 82, 8},  // Stale list position is clamped.
+        {2, 10, 4, 50, 40, 66, 8},
+        {2, 10, 0, 40, 10, 44, 6},  // Clip the requested track to the body.
+        {1, 10, 0, INT_MAX, 40, 0, 0},
+        {0, 10, 0, 50, 40, 0, 0},
+        {10, 10, 0, 50, 40, 0, 0},
+        {SIZE_MAX / 2, SIZE_MAX, SIZE_MAX, 50, 40, 71, 19},
+    };
+    for (const auto orientation : {Orientation::Standard, Orientation::Portrait}) {
+        Reset();
+        auto service = CreateService();
+        assert(service->SetOrientation(orientation) == ESP_OK);
+        UiEngine ui(service.get());
+        auto page = ui.EnterPage(PageSpec());
+        auto& canvas = page.canvas();
+        for (const auto& test : cases) {
+            canvas.Clear();
+            Canvas expected = canvas;
+            if (test.expected_height) {
+                const int top = std::max(44, test.start);
+                const int bottom = test.start + test.height;
+                const int x = canvas.width() - 9;
+                expected.Line(x, top, x, bottom - 1);
+                expected.FillRect(x - 2, test.expected_y, 5, test.expected_height, true);
+            }
+            const auto allocations = heap_allocations;
+            page.DrawScrollbar(test.visible, test.total, test.first, test.start, test.height);
+            assert(heap_allocations == allocations);
+            assert(std::memcmp(canvas.data(), expected.data(), canvas.size()) == 0);
+            assert(canvas.clip().y == page.body().y && canvas.clip().height == page.body().height);
+        }
+    }
+}
+
 void TestPortraitScreens() {
     using namespace zectrix::app;
     using namespace zectrix::sdk;
@@ -2601,6 +2644,7 @@ int main() {
     TestRecoveryComposition();
     TestSleepCoverComposition();
     TestPageShellHeaders();
+    TestPageShellScrollbars();
     TestPortraitScreens();
     Reset();
 }
