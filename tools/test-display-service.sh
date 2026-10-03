@@ -20,8 +20,8 @@ uv run --no-project "$root_dir/tools/generate-reader-fixtures.py" "$work_dir/fix
   -I"$root_dir/components/zectrix_display/include" \
   -I"$root_dir/components/zectrix_epd/include" \
   -I"$root_dir/components/zectrix_epd/private_include" \
-  -I"$root_dir/components/zectrix_demo_ui/include" \
-  -I"$root_dir/components/zectrix_demo_ui/font" \
+  -I"$root_dir/components/ui/include" \
+  -I"$root_dir/components/ui/font" \
   -I"$root_dir/components/zectrix_app/include" -I"$root_dir/components/zectrix_text/include" \
   -I"$root_dir/components/zectrix_runtime/include" \
   -I"$root_dir/components/zectrix_host/include" \
@@ -38,19 +38,19 @@ uv run --no-project "$root_dir/tools/generate-reader-fixtures.py" "$work_dir/fix
   "$root_dir/components/zectrix_display/zectrix_display_physics.cc" \
   "$root_dir/components/zectrix_display/zectrix_display_service.cc" \
   "$root_dir/components/zectrix_epd/zectrix_epd.cc" \
-  "$root_dir/components/zectrix_demo_ui/zectrix_canvas.cc" \
-  "$root_dir/components/zectrix_demo_ui/zectrix_demo_ui.cc" \
-  "$root_dir/components/zectrix_demo_ui/zectrix_launcher_ui.cc" \
-  "$root_dir/components/zectrix_demo_ui/zectrix_view_port.cc" \
-  "$root_dir/components/zectrix_demo_ui/zectrix_status_bar.cc" \
-  "$root_dir/components/zectrix_demo_ui/zectrix_reader_ui.cc" \
-  "$root_dir/components/zectrix_demo_ui/zectrix_book_transfer_ui.cc" \
-  "$root_dir/components/zectrix_demo_ui/zectrix_usb_manager_ui.cc" \
-  "$root_dir/components/zectrix_demo_ui/zectrix_micro_app_ui.cc" \
-  "$root_dir/components/zectrix_demo_ui/zectrix_micro_app_view.cc" \
-  "$root_dir/components/zectrix_demo_ui/zectrix_unicode_text.cc" \
-  "$root_dir/components/zectrix_demo_ui/zectrix_sleep_ui.cc" \
-  "$root_dir/components/zectrix_demo_ui/zectrix_utilities_ui.cc" \
+  "$root_dir/components/ui/canvas.cc" \
+  "$root_dir/components/ui/ui_engine.cc" \
+  "$root_dir/components/ui/launcher_ui.cc" \
+  "$root_dir/components/ui/view_port.cc" \
+  "$root_dir/components/ui/status_bar.cc" \
+  "$root_dir/components/ui/reader_ui.cc" \
+  "$root_dir/components/ui/book_transfer_ui.cc" \
+  "$root_dir/components/ui/usb_manager_ui.cc" \
+  "$root_dir/components/ui/micro_app_ui.cc" \
+  "$root_dir/components/ui/micro_app_view.cc" \
+  "$root_dir/components/ui/unicode_text.cc" \
+  "$root_dir/components/ui/sleep_ui.cc" \
+  "$root_dir/components/ui/utilities_ui.cc" \
   "$root_dir/components/zectrix_app/zectrix_scene_manager.cc" \
   "$root_dir/components/zectrix_app/zectrix_app_contract.cc" \
   "$root_dir/components/zectrix_app/zectrix_application_runtime.cc" \

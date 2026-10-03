@@ -20,11 +20,11 @@ add_executable(micro_app_test "${repo}/tools/micro_app_test.cc"
     "${repo}/components/zectrix_app/zectrix_micro_app_controller.cc"
     "${repo}/components/zectrix_app/zectrix_scene_manager.cc"
     "${repo}/components/zectrix_storage/zectrix_book_storage.cc"
-    "${repo}/components/zectrix_demo_ui/zectrix_micro_app_view.cc"
-    "${repo}/components/zectrix_demo_ui/zectrix_canvas.cc")
+    "${repo}/components/ui/micro_app_view.cc"
+    "${repo}/components/ui/canvas.cc")
 target_include_directories(micro_app_test PRIVATE "${repo}/tools/host_include"
     "${repo}/components/zectrix_app/include" "${repo}/components/zectrix_storage/include"
-    "${repo}/components/zectrix_demo_ui/include" "${repo}/components/zectrix_demo_ui/font")
+    "${repo}/components/ui/include" "${repo}/components/ui/font")
 target_compile_definitions(micro_app_test PRIVATE CONFIG_ZECTRIX_ENABLE_READER=0)
 target_compile_options(micro_app_test PRIVATE -Wall -Wextra -Werror)
 target_link_libraries(micro_app_test PRIVATE note4_runtime)

@@ -1,7 +1,7 @@
 #include "zectrix_locale.h"
-#include "zectrix_demo_ui.h"
+#include "ui_engine.h"
 #include "zectrix_book_transfer.h"
-#include "zectrix_unicode_text.h"
+#include "unicode_text.h"
 #include "sdkconfig.h"
 
 #include <cstdio>
@@ -11,7 +11,7 @@ using zectrix::i18n::Text;
 
 using zectrix::ui::DrawUtf8Line;
 
-esp_err_t ZectrixDemoUi::ShowBookTransfer(const zectrix::connectivity::BookTransferSnapshot& status,
+esp_err_t UiEngine::ShowBookTransfer(const zectrix::connectivity::BookTransferSnapshot& status,
                                         bool choosing_mode, bool station_selected, bool full_refresh) {
     using namespace zectrix::connectivity;
     // Portrait text wraps inside a 268 px column; landscape keeps its single-line layout.

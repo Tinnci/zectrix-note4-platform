@@ -1,13 +1,13 @@
-#include "zectrix_demo_ui.h"
+#include "ui_engine.h"
 #include "zectrix_locale.h"
 #include "zectrix_micro_app_controller.h"
-#include "zectrix_micro_app_view.h"
-#include "zectrix_unicode_text.h"
+#include "micro_app_view.h"
+#include "unicode_text.h"
 #include "sdkconfig.h"
 
 #include <cstdio>
 
-esp_err_t ZectrixDemoUi::ShowMicroApps(const zectrix::app::MicroAppController& apps, bool full_refresh) {
+esp_err_t UiEngine::ShowMicroApps(const zectrix::app::MicroAppController& apps, bool full_refresh) {
     using namespace zectrix;
     using i18n::Text;
     using i18n::Tr;

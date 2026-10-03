@@ -8,7 +8,7 @@
 #include "zectrix_application_catalog.h"
 #include "zectrix_launcher_controller.h"
 #include "zectrix_reading_overview.h"
-#include "zectrix_demo_ui.h"
+#include "ui_engine.h"
 #include "zectrix_platform.h"
 #include "zectrix_health_supervisor.h"
 #include "zectrix_sleep_cover.h"
@@ -151,7 +151,7 @@ private:
 #if CONFIG_ZECTRIX_ENABLE_CONNECTIVITY || CONFIG_ZECTRIX_ENABLE_READER
     zectrix::connectivity::ConnectivityService* connectivity_ = nullptr;
 #endif
-    ZectrixDemoUi ui_;
+    UiEngine ui_;
     ZectrixSelfTest* tests_ = nullptr;
     std::array<ZectrixTestState,
                static_cast<size_t>(ZectrixTestId::kCount)> test_states_;

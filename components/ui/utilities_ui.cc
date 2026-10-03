@@ -1,4 +1,4 @@
-#include "zectrix_demo_ui.h"
+#include "ui_engine.h"
 #include "zectrix_locale.h"
 #include "zectrix_utilities.h"
 
@@ -30,7 +30,7 @@ Text TimerControls(const FocusTimer& timer) {
 }
 }
 
-esp_err_t ZectrixDemoUi::ShowUtilities(const UtilityController& utilities, bool full_refresh) {
+esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_refresh) {
     const auto& session = utilities.session();
     const auto& timer = session.timer;
     const auto phase = timer.phase() == FocusTimer::Phase::Focus ? Text::FocusPhase : Text::BreakPhase;

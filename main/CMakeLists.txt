@@ -3,7 +3,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../cmake/zectrix_features.cmake")
 set(sources "app_main.cc" "terminal.cc" "application_modules.cc"
     "app_launcher.cc" "app_clock.cc" "app_settings.cc" "app_sleep_cover.cc"
     "app_diagnostics.cc" "app_gallery.cc" "app_device_info.cc")
-set(requires zectrix_demo_ui zectrix_app zectrix_display zectrix_input
+set(requires ui zectrix_app zectrix_display zectrix_input
     zectrix_power zectrix_platform zectrix_self_test zectrix_storage
     zectrix_system zectrix_time esp_psram)
 if(CONFIG_ZECTRIX_ENABLE_UTILITIES)

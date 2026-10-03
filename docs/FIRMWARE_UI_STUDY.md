@@ -133,7 +133,7 @@ These are three different operations with different costs:
 The local [GlyphBitmap implementation](../components/zectrix_reader/zectrix_reader_font.cc)
 indexes eight Unicode ranges into uncompressed Flash records. Each record is
 33 bytes: width plus sixteen 16-bit rows. There is no glyph decompression or
-SD read to hide with a cache. The [drawing code](../components/zectrix_demo_ui/zectrix_unicode_text.cc)
+SD read to hide with a cache. The [drawing code](../components/ui/unicode_text.cc)
 expands 16px glyphs to 24px with nearest-neighbor sampling. A cache would retain
 the same sampled shapes. Native size-specific glyphs address the quality issue
 more directly, subject to Flash capacity and font licensing.

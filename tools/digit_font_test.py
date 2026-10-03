@@ -74,7 +74,7 @@ class CodecTests(unittest.TestCase):
 
     def test_native_header_matches_artwork_and_recipe(self):
         parameters = generator.load_recipe(ROOT / "docs/design/date-digits/raster-settings.json")
-        text = (ROOT / "components/zectrix_demo_ui/font/zectrix_large_digits.h").read_text()
+        text = (ROOT / "components/ui/font/large_digits.h").read_text()
         metadata = [tuple(map(int, entry)) for entry in re.findall(r"\{(\d+), (\d+), (\d+), (\d+)\}", text)]
         data = bytes(int(byte, 16) for byte in re.findall(r"0x([0-9a-f]{2})", text))
         self.assertEqual(len(metadata), 50)

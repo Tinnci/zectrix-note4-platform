@@ -1,5 +1,5 @@
-#ifndef ZECTRIX_CANVAS_H_
-#define ZECTRIX_CANVAS_H_
+#ifndef UI_CANVAS_H_
+#define UI_CANVAS_H_
 
 #include <array>
 #include <cstddef>
@@ -8,7 +8,7 @@
 #include "zectrix/sdk/text_style.h"
 #include "zectrix_digit_style.h"
 
-class ZectrixCanvas {
+class Canvas {
 public:
     using TextStyle = zectrix::sdk::TextStyle;
     static constexpr int kWidth = 400;
@@ -58,4 +58,6 @@ private:
     bool portrait_ = false;
 };
 
-#endif  // ZECTRIX_CANVAS_H_
+using ZectrixCanvas = Canvas;
+
+#endif  // UI_CANVAS_H_

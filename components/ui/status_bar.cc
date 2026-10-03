@@ -1,4 +1,4 @@
-#include "zectrix_status_bar.h"
+#include "status_bar.h"
 
 #include <algorithm>
 #include <cstdio>
