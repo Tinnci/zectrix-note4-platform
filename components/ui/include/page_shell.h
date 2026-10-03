@@ -40,7 +40,8 @@ public:
     PageShell(const PageShell&) = delete;
     PageShell& operator=(const PageShell&) = delete;
     PageShell(PageShell&& other) noexcept;
-    PageShell& operator=(PageShell&& other) noexcept;
+    // The canvas reference cannot be rebound to another engine's framebuffer.
+    PageShell& operator=(PageShell&& other) = delete;
 
     // Client drawing area (pre-clipped between header and footer)
     const Rect& body() const { return body_; }

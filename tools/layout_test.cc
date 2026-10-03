@@ -2,6 +2,10 @@
 #include "page_shell.h"
 #include <cassert>
 #include <cstdio>
+#include <type_traits>
+
+static_assert(std::is_move_constructible_v<zectrix::ui::PageShell>);
+static_assert(!std::is_move_assignable_v<zectrix::ui::PageShell>);
 
 using zectrix::ui::Insets;
 using zectrix::ui::Rect;

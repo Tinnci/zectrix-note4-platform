@@ -133,9 +133,18 @@ namespace zectrix::ui {
 
 PageShell::PageShell(UiEngine& engine, Canvas& canvas, Rect body, const PageSpec& spec)
     : engine_(&engine), canvas_(canvas), body_(body), committed_(false) {
-    if (spec.center_title && spec.title != nullptr && spec.title[0] != '\0') {
-        canvas_.TextCentered(26, spec.title, 1, true);
+    const auto saved_clip = canvas_.clip();
+    canvas_.SetClip({0, kStatusHeight, canvas_.width(), kHeaderHeight - kStatusHeight});
+    const int badge_width = spec.badge && spec.badge[0]
+        ? std::min(canvas_.TextWidth(spec.badge), canvas_.width() / 3) : 0;
+    const int title_width = canvas_.width() - 20 - (badge_width ? badge_width + 12 : 0);
+    if (spec.title && spec.title[0]) {
+        const auto style = Canvas::TextStyle::Bold;
+        const int ink_width = std::min(canvas_.TextWidth(spec.title, 1, style), title_width);
+        const int x = 10 + (spec.center_title ? (title_width - ink_width) / 2 : 0);
+        canvas_.TextFitted(x, 26, spec.title, title_width, true, style);
     }
+    canvas_.SetClip(saved_clip);
     if (spec.badge != nullptr && spec.badge[0] != '\0') {
         DrawBadge(spec.badge);
     }
@@ -145,17 +154,6 @@ PageShell::PageShell(PageShell&& other) noexcept
     : engine_(other.engine_), canvas_(other.canvas_),
       body_(other.body_), committed_(other.committed_) {
     other.committed_ = true;
-}
-
-PageShell& PageShell::operator=(PageShell&& other) noexcept {
-    if (this != &other) {
-        if (!committed_) canvas_.ResetClip();
-        engine_ = other.engine_;
-        body_ = other.body_;
-        committed_ = other.committed_;
-        other.committed_ = true;
-    }
-    return *this;
 }
 
 PageShell::~PageShell() {
@@ -172,8 +170,12 @@ int PageShell::center_y(int landscape_y) const { return landscape_y + dy(); }
 
 void PageShell::DrawBadge(const char* text) {
     if (text == nullptr || text[0] == '\0') return;
-    const int text_w = canvas_.TextWidth(text);
-    canvas_.Text(canvas_.width() - 12 - text_w, 26, text, 1, true);
+    const auto saved_clip = canvas_.clip();
+    canvas_.SetClip({0, kStatusHeight, canvas_.width(), kHeaderHeight - kStatusHeight});
+    const int max_width = canvas_.width() / 3;
+    const int text_w = std::min(canvas_.TextWidth(text), max_width);
+    canvas_.TextFitted(canvas_.width() - 12 - text_w, 26, text, max_width, true);
+    canvas_.SetClip(saved_clip);
 }
 
 void PageShell::DrawScrollbar(size_t visible_count, size_t total_count, size_t first_index,
@@ -190,16 +192,16 @@ void PageShell::DrawScrollbar(size_t visible_count, size_t total_count, size_t f
 }
 
 esp_err_t PageShell::Commit(bool full_refresh) {
+    if (committed_ || engine_ == nullptr) return ESP_ERR_INVALID_STATE;
     committed_ = true;
     canvas_.ResetClip();
-    if (engine_ == nullptr) return ESP_ERR_INVALID_STATE;
     return full_refresh ? engine_->RefreshFull() : engine_->RefreshAuto();
 }
 
 }  // namespace zectrix::ui
 
 zectrix::ui::PageShell UiEngine::EnterPage(const zectrix::ui::PageSpec& spec) {
-    const auto body = BeginPage(spec.title, spec.footer, spec.portrait_capable);
+    const auto body = BeginPage("", spec.footer, spec.portrait_capable);
     return zectrix::ui::PageShell(*this, canvas_, body, spec);
 }
 

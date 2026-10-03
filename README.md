@@ -347,7 +347,7 @@ Open `idf.py menuconfig`, then select **Zectrix hardware showcase**:
 ```text
 components/zectrix_epd/       Public SSD2683 display driver
 components/zectrix_board/     Board pins and peripheral adapters
-components/zectrix_demo_ui/   Canvas, bitmap font and English UI
+components/ui/               Canvas, bitmap fonts and bilingual native UI
 components/zectrix_self_test/ Hardware test implementations
 components/zectrix_platform/  Platform composition root
 components/zectrix_reader/    Streaming TXT/EPUB engine, fonts and bookmarks

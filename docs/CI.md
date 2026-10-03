@@ -25,7 +25,7 @@ actions. Action references are pinned to immutable commits, with the audited
 release version recorded in a comment. Dependabot proposes grouped weekly
 updates instead of allowing action tags to change underneath an existing run.
 Host integration tests install `uv` and Bun with their official standalone
-installers. The HTTP tests use Bun 1.3.14.
+installers. The HTTP tests use Bun 1.4.2, matching the HA bridge lockfile format.
 
 Run the corresponding checks locally with:
 

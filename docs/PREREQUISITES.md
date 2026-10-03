@@ -14,7 +14,7 @@ github-cli jq rg curl uv bun
 
 The host CLI simulator needs a C++17 compiler. Its integration tests use Python
 3 through `uv` and require no third-party Python packages.
-The book-transfer integration tests use Bun 1.3.14 and local TCP sockets.
+The book-transfer integration tests use Bun 1.4.2 and local TCP sockets.
 They require no JavaScript package installation or connected device.
 
 Install ESP-IDF v5.5.2 with the official installer and the `esp32s3` target.

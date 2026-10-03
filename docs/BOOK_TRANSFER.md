@@ -160,7 +160,7 @@ bash tools/run-book-web-host.sh "$book_test_dir"
 The runner prints a loopback URL and uses test code `ABCDEFGH2345`. It shares
 the firmware API, Storage code and timeout behavior. Browser deletion changes
 the supplied directory. Restart the runner for a fresh session. It requires a
-C++17 compiler. Automated socket tests require Bun 1.3.14.
+C++17 compiler. Automated socket tests use Bun 1.4.2.
 
 Tests exercise streamed binary transfer, authorization, filename validation,
 pagination, storage isolation, interrupted uploads, stop retries and timeout
