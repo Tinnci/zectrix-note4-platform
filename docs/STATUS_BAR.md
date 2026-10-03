@@ -32,7 +32,7 @@ PowerService sample; rendering performs no ADC or charger access.
 
 ## Radio vocabulary
 
-A 7 x 13 Bluetooth rune and 13 x 9 Wi-Fi fan each have a 5 x 7 companion mark.
+A 7 x 13 Bluetooth rune and 13 x 9 Wi-Fi fan each have a 7 x 7 companion mark.
 Their optical centers align with the battery and 16px text. The fan identifies
 Wi-Fi; its arcs do not encode RSSI.
 
@@ -41,7 +41,7 @@ Wi-Fi; its arcs do not encode RSSI.
 | Slash | Off; saved credentials alone leave Wi-Fi off |
 | Hollow circle | Ready or connecting: BLE advertising/pairing/securing, Wi-Fi startup/association/stopping, or a listening hotspot |
 | Solid dot | BLE transport connected, or station networking after IP acquisition |
-| Opposed arrows | A BLE frame in flight or waiting for consumption; a Wi-Fi resource transfer or active book upload |
+| Separated opposed arrows | A BLE frame in flight or waiting for consumption; a Wi-Fi resource transfer or active book upload. Not a directional traffic measurement. |
 | Exclamation mark | BLE fault or failed Wi-Fi shutdown |
 
 `BleLink` copies its existing transmit/receive work state under the existing
@@ -51,6 +51,10 @@ open server. A waiting hotspot shows the hollow circle. A waiting station
 server shows the connected dot. Fault and stopped states take precedence
 over activity. A connected BLE icon describes transport, without claiming
 peer authorization or synchronization convergence.
+
+The off slash has five diagonal pixels and clear endpoints. Activity arrows
+use two straight stems, separated by three columns, with symmetric three-pixel
+heads; connected dots and ready rings share a center. Neither radio slot moves.
 
 Activity is sampled on the existing foreground loop. A short exchange that
 finishes between samples may never show arrows. The icons have no animation,
@@ -66,7 +70,7 @@ separator all use that polarity. Drawing stays within rows 0–23 and preserves
 the caller's clip. Charge marks and all percentage widths leave adjacent
 slots stationary.
 
-The masks occupy 198 bytes in Flash. Integer row tests and five bounded fill
+The masks occupy 268 bytes in Flash. Integer row tests and five bounded fill
 operations use no drawing heap allocation, floating-point work, icon font or
 additional framebuffer. Minimal retains its existing font/module exclusions.
 State equality compares visible percentage and marks, so changes to an invalid
@@ -89,6 +93,10 @@ continue through those same boundaries. No upstream code or icon assets were
 imported.
 
 ## Previews and verification
+
+![Current power and radio states, normal and inverse](screenshots/status_bar_icons.png)
+
+All documentation screenshots can be refreshed with `bun tools/ui-preview.ts --docs`.
 
 ```bash
 mkdir -p build-status-icons/previews

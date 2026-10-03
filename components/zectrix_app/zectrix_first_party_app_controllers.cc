@@ -119,8 +119,10 @@ bool SettingsController::Event(void* context, const SceneEvent& event) {
             self.action_ = SettingsDecision::SaveLanguage;
             self.dirty_ = self.quality_ = true;
         } else if (self.selected() == self.option_count() - 1) {
-            self.action_ = SettingsDecision::SaveSleepOrientation;
+            self.action_ = SettingsDecision::SaveDigitStyle;
         } else if (self.selected() == self.option_count() - 2) {
+            self.action_ = SettingsDecision::SaveSleepOrientation;
+        } else if (self.selected() == self.option_count() - 3) {
             self.action_ = SettingsDecision::SaveOrientation;
             self.dirty_ = self.quality_ = true;
         } else if (i18n::LanguageCount() > 1 && self.selected() == 0) {

@@ -80,9 +80,14 @@ if (import.meta.main) {
   }
   if (magick) {
     const screenshots = resolve(root, "docs/screenshots");
-    const mapping = { home: "home-full", reader: "reader-rich-small", settings: "settings",
+    const mapping = { home: "home-full", reader: "reader-small", reader_mixed: "reader-rich-small", settings: "settings",
       book_transfer: "books-mode", calendar: "utilities-calendar-today", sleep_dashboard: "sleep-dashboard",
-      sleep_portrait: "sleep-portrait" };
+      sleep_portrait: "sleep-portrait",
+      sleep_portrait_four_weeks: "sleep-portrait-four-weeks", sleep_portrait_unset: "sleep-portrait-unset",
+      remote_landscape: "ha-landscape", remote_portrait: "ha-portrait",
+      home_portrait: "home-portrait", reader_portrait: "reader-small-portrait", settings_portrait: "settings-portrait",
+      book_transfer_portrait: "books-sharing-portrait", tools_portrait: "tools-portrait",
+      pocket_tools_portrait: "utilities-calendar-portrait" };
     for (const [name, scene] of Object.entries(mapping)) for (const language of ["en", "zh"]) {
       const pbm = `${output}/${language === "zh" ? "zh-" : ""}${scene}.pbm`;
       const conversion = Bun.spawn([magick, pbm, "-strip", `${screenshots}/${name}_${language}.png`], { stdout: "inherit", stderr: "inherit" });
@@ -90,11 +95,14 @@ if (import.meta.main) {
     }
     const icons = Bun.spawn([magick, `${output}/zh-status-icons.pbm`, "-strip", `${screenshots}/status_bar_icons.png`], { stdout: "inherit", stderr: "inherit" });
     if (await icons.exited !== 0) throw new Error("Documentation icon conversion failed");
+    // The final five cases are Off/Ready/Connected/Active/Fault, normal and inverse.
+    const radios = Bun.spawn([magick, `${output}/zh-status-icons.pbm`, "-gravity", "south", "-crop", "800x200+0+0", "+repage", "-strip", `${screenshots}/status_radio_marks.png`], { stdout: "inherit", stderr: "inherit" });
+    if (await radios.exited !== 0) throw new Error("Documentation radio detail conversion failed");
   }
   await Bun.write(`${output}/manifest.json`, JSON.stringify(entries, null, 2));
   await Bun.write(`${output}/index.html`, `<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Note4 UI 预览</title>
 <style>body{font:16px system-ui;margin:24px;background:#eee;color:#222}header{position:sticky;top:0;background:#eee;padding:12px 0}label{margin-right:16px}select{font:inherit}main{display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap}figure{margin:0}img{display:block;border:1px solid #bbb;image-rendering:pixelated;max-width:none}figcaption{max-width:400px;margin:8px 0 24px}small{display:block}</style>
-<header><h1>Note4 原生界面预览</h1><p>横屏 400×300 · 竖屏 300×400。竖屏支持日历与远程页面，应用/阅读器未重排。预览不代表实机刷新效果。</p>
+<header><h1>Note4 原生界面预览</h1><p>横屏 400×300 · 竖屏 300×400。主页、阅读器、设置、传书、工具、日历与远程页面支持竖屏；应用、USB 等页面仍为横屏。预览不代表实机刷新效果。</p>
 <label>方向 <select id="orientation"><option value="">全部</option><option>landscape</option><option>portrait</option></select></label>
 <label>语言 <select id="language"><option value="">全部</option><option>zh</option><option>en</option></select></label>
 <label>来源 <select id="source"><option value="">全部</option><option value="firmware">固件</option><option value="server">HA 示例</option></select></label>

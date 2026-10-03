@@ -62,6 +62,11 @@ private:
         if (result.decision == Decision::SaveLanguage) {
             owner_->language_saved_ = i18n::SaveLanguage(*owner_->storage_, result.language) == ESP_OK;
             status_ = owner_->language_saved_ ? i18n::Text::Saved : i18n::Text::LanguageSaveFailed;
+        } else if (result.decision == Decision::SaveDigitStyle) {
+            const auto next = ui::NormalizeDigitStyle((static_cast<unsigned>(owner_->ui_.digit_style()) + 1) % ui::kDigitStyleCount);
+            const auto saved = owner_->storage_->SetUInt32(ui::kDigitStyleSettingKey, static_cast<uint32_t>(next));
+            if (saved == ESP_OK) owner_->ui_.SetDigitStyle(next);
+            status_ = saved == ESP_OK ? i18n::Text::Saved : i18n::Text::SaveFailed;
         } else if (result.decision == Decision::SaveSleepOrientation) {
             const bool next = !owner_->sleep_portrait_;
             const auto saved = owner_->storage_->SetUInt32(app::kSleepPortraitSettingKey, next ? 1 : 0);
@@ -73,7 +78,10 @@ private:
         } else if (result.decision == Decision::SaveOrientation) {
             using Orientation = display::DisplayOrientation;
             const auto previous = owner_->display_->orientation();
-            const auto next = previous == Orientation::Standard ? Orientation::Inverted : Orientation::Standard;
+            // 0 -> 90 -> 180 -> 270 degrees; stored values 0/1 keep their original meaning.
+            const auto next = previous == Orientation::Standard ? Orientation::Portrait :
+                previous == Orientation::Portrait ? Orientation::Inverted :
+                previous == Orientation::Inverted ? Orientation::PortraitInverted : Orientation::Standard;
             auto saved = owner_->display_->SetOrientation(next);
             if (saved == ESP_OK) {
                 saved = owner_->storage_->SetUInt32(display::kOrientationSettingKey, static_cast<uint32_t>(next));

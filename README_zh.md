@@ -72,7 +72,7 @@
 
 ## 界面与功能展示 (UI & Feature Showcase)
 
-原生中英双语界面：应用使用 400×300 横屏，日历锁屏另支持 300×400 竖屏。
+原生中英双语界面：全面支持 400×300 横屏与 300×400 竖屏两种原生形态。
 以下截图来自当前固件画布，不是实机照片。参见[方向支持与预览生成](docs/UI_PREVIEW.md)。
 
 | 场景与功能 | 简体中文界面 | English UI |
@@ -80,17 +80,33 @@
 | **磁贴仪表盘主屏 (Home Dashboard)**<br>• 常驻 24px 顶部状态栏<br>• 阅读进度概览卡片与一键续读<br>• 快速应用导航磁贴 | ![Home ZH](docs/screenshots/home_zh.png) | ![Home EN](docs/screenshots/home_en.png) |
 | **流式电子书阅读 (Streamed E-Reader)**<br>• TXT 与 EPUB 原生轻量解析<br>• 算法级加粗/斜体/衬线排版<br>• CJK 字符智能避头尾与分页 | ![Reader ZH](docs/screenshots/reader_zh.png) | ![Reader EN](docs/screenshots/reader_en.png) |
 | **桌面待机画报 (Ambient Sleep Cover)**<br>• 日历日期与最新阅读进度仪表盘<br>• 灵感格言与休眠期间静态留屏<br>• 支持仪表盘/风景画报/纯白留白 | ![Sleep ZH](docs/screenshots/sleep_dashboard_zh.png) | ![Sleep EN](docs/screenshots/sleep_dashboard_en.png) |
-| **竖屏日历锁屏**<br>• 电量与六周月历<br>• 每日定时唤醒刷新 | ![Portrait ZH](docs/screenshots/sleep_portrait_zh.png) | ![Portrait EN](docs/screenshots/sleep_portrait_en.png) |
 | **局域网 Web 传书 (Local Web Transfer)**<br>• 浏览器拖拽上传 TXT/EPUB<br>• 临时便携热点或已有 Wi-Fi 局域网<br>• 传书结束无线射频自动断电 | ![Transfer ZH](docs/screenshots/book_transfer_zh.png) | ![Transfer EN](docs/screenshots/book_transfer_en.png) |
 | **随身极客工具箱 (Pocket Tools)**<br>• 静音番茄专注钟<br>• 1900–2199 离线万年历<br>• 防误触计数器与重置撤销 | ![Tools ZH](docs/screenshots/calendar_zh.png) | ![Tools EN](docs/screenshots/calendar_en.png) |
+
+### 横屏与竖屏 (400×300 / 300×400)
+
+同一固件原生支持两种方向。每种布局都按各自的宽高比单独设计，而不是旋转截图。
+原生竖屏（90° / 270°）已全面覆盖磁贴主页、流式阅读器、系统设置、Web 传书、极客工具箱和待机画报；
+Lua 独立微应用与系统底层诊断维持横屏（0° / 180°）。详见[方向支持与预览生成](docs/UI_PREVIEW.md)
+与[屏幕方向设计](docs/SCREEN_DIRECTION.md)。
+
+| 界面场景 | 横屏 400×300 | 竖屏 300×400 |
+| :--- | :---: | :---: |
+| **磁贴主屏 (Home Dashboard)**<br>• 横屏：三栏式日程卡片与网格磁贴<br>• 竖屏：垂直紧凑堆叠与单列磁贴 | ![主页横屏](docs/screenshots/home_zh.png) | ![主页竖屏](docs/screenshots/home_portrait_zh.png) |
+| **流式阅读器 (Streamed E-Reader)**<br>• 横屏：宽屏 384×216 排版<br>• 竖屏：高屏 284×308 原生重新分页 | ![阅读横屏](docs/screenshots/reader_zh.png) | ![阅读竖屏](docs/screenshots/reader_portrait_zh.png) |
+| **系统设置 (System Settings)**<br>• 屏幕方向支持 0° → 90° → 180° → 270° 循环切换<br>• 双行折行按键操作提示与自适应视口 | ![设置横屏](docs/screenshots/settings_zh.png) | ![设置竖屏](docs/screenshots/settings_portrait_zh.png) |
+| **Web 传书 (Book Transfer)**<br>• 横屏：双列连接说明与 IP 地址<br>• 竖屏：单列纵向流排版与醒目配对码 | ![传书横屏](docs/screenshots/book_transfer_zh.png) | ![传书竖屏](docs/screenshots/book_transfer_portrait_zh.png) |
+| **随身工具箱 (Pocket Tools)**<br>• 7 列万年历、番茄专注钟与计数器<br>• 底部按键提示自适应折行 | ![工具横屏](docs/screenshots/calendar_zh.png) | ![工具竖屏](docs/screenshots/pocket_tools_portrait_zh.png) |
+| **休眠日历 (Sleep Calendar)**<br>• 横屏：日期、月历与阅读进度<br>• 竖屏：电量与六周月历 | ![横屏日历](docs/screenshots/sleep_dashboard_zh.png) | ![竖屏日历](docs/screenshots/sleep_portrait_zh.png) |
+| **Home Assistant 远程页面**<br>• 横屏：双列，每列 4 个实体<br>• 竖屏：单列，最多 8 个实体 | ![横屏远程页面](docs/screenshots/remote_landscape_zh.png) | ![竖屏远程页面](docs/screenshots/remote_portrait_zh.png) |
 
 ### 状态栏微型图标系统 (E1.10)
 
 顶部 24px 状态栏全面采用去文本化纯点阵图形设计，划定绝对固定槽位，杜绝状态变迁时的邻近元素抖动：
 
-![状态栏多态微标全景](docs/screenshots/status_bar_icons.png)
+![最新无线微标，黑白与反色](docs/screenshots/status_radio_marks.png)
 
-- **蓝牙 (BLE)**：经典卢恩符文（7×13）结合 5 态伴随微标（关闭 `\`、就绪/广播 `○`、已连接 `●`、数据传输 `⇅`、故障 `!`）。
+- **蓝牙 (BLE)**：7×13 主图标配合居中的 7×7 微标：关闭 `/`、就绪/广播 `○`、已连接 `●`、双箭头表示数据活动、故障 `!`。双箭头不代表上下行流量统计。
 - **Wi-Fi**：对称双同心扇形信号弧（13×9）结合 5 态伴随微标。
 - **电池与电源**：20×10 点阵外壳，带 1px 防晕染内衬保护，内部采用 5 级阶梯充填（0%、20%、40%、60%、80%、100%），左侧伴随高优先级硬件状态微标（充电 `⚡`、充满 `✓`、外接电源 `🔌`、低电预警/故障 `!`、未装电池 `X`）。
 
@@ -205,7 +221,8 @@ docs/                         架构、契约与验收记录
 
 打开 **SLEEP COVER**，用上下键选择日历仪表盘、山水画报或空白隐私屏；OK 保存
 并预览，再按 OK 休眠，长按 OK 返回。仪表盘展示最近保存的书名与进度，并用
-**AS OF** 标注快照时间；休眠期间不会自动更新。时钟无有效日期时显示
+**AS OF** 标注快照时间；日期有效时，日历于本地约 00:01 自动唤醒刷新后继续休眠。
+内置 [31 组中英双语每日短句](docs/SLEEP_QUOTES.md)。时钟无有效日期时显示
 **TIME NOT SET**。设置保存失败会显示 **NOT SAVED**，本次开机仍可使用所选样式。
 操作、按键释放超时后的恢复方法与验证范围见 [docs/SLEEP_COVER.md](docs/SLEEP_COVER.md)。
 

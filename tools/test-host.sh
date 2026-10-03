@@ -17,6 +17,7 @@ host_tests=(
     test-ha-bridge.sh
     test-display-service.sh
     test-display-state.sh
+    test-digit-font.sh
     test-enrollment-ndef.sh
     test-first-party-app-controllers.sh
     test-firmware-budget.sh

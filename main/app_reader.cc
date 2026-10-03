@@ -17,6 +17,8 @@ public:
 
     sdk::Status Enter(sdk::ApplicationContext& context) override {
         owner_->BindScenes(controller_);
+        // The page layout follows the screen direction chosen in Settings.
+        controller_.SetPortrait(owner_->display_ != nullptr && owner_->display_->portrait());
         const auto result = controller_.Start(continue_reading_);
         if (!sdk::IsOk(result)) return result;
         owner_->reader_busy_ = controller_.busy();

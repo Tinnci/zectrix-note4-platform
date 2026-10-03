@@ -63,6 +63,11 @@ struct Glyph {
 struct Page {
     static constexpr int kWidth = 384;
     static constexpr int kHeight = 216;
+    // Portrait pages use a narrower, taller body inside these limits.
+    static constexpr int kMinWidth = 64;
+    static constexpr int kMaxWidth = kWidth;
+    static constexpr int kMinHeight = 32;
+    static constexpr int kMaxHeight = 312;
     static constexpr std::size_t kGlyphCapacity = 640;
     std::array<Glyph, kGlyphCapacity> glyphs{};
     std::size_t count = 0;
@@ -104,6 +109,8 @@ public:
     Result Next();
     Result Previous();
     Result SetFont(FontSize font);
+    // Re-paginates the visible page from its start; returns Pending like Seek.
+    Result SetPageSize(int width, int height);
     // Bound decoding steps per owner callback. A step consumes one body byte
     // or up to four UTF-8 context bytes; ZIP lookups account for header bytes.
     // Fixed-buffer I/O may read ahead by one entry or input block.

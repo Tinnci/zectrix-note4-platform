@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "zectrix/sdk/text_style.h"
+#include "zectrix_digit_style.h"
 
 class ZectrixCanvas {
 public:
@@ -14,11 +15,14 @@ public:
     static constexpr int kHeight = 300;
     static constexpr int kStride = kWidth / 8;
     static constexpr int kFrameBytes = kStride * kHeight;
+    static constexpr int kLargeNumberWidth = 90;
+    static constexpr int kLargeNumberHeight = 48;
 
     struct Clip { int x, y, width, height; };
     void SetClip(Clip clip);
     // Portrait frames use tightly packed scanlines (no per-row padding).
     void SetPortrait(bool portrait) { portrait_ = portrait; ResetClip(); }
+    bool portrait() const { return portrait_; }
     int width() const { return portrait_ ? kHeight : kWidth; }
     int height() const { return portrait_ ? kWidth : kHeight; }
     void ResetClip() { clip_ = {0, 0, width(), height()}; }
@@ -33,6 +37,11 @@ public:
               bool inverted = false, TextStyle style = TextStyle::Regular);
     void TextCentered(int y, const char* text, int scale = 1,
                       bool inverted = false, TextStyle style = TextStyle::Regular);
+    void SetDigitStyle(zectrix::ui::DigitStyle style) { digit_style_ = zectrix::ui::NormalizeDigitStyle(static_cast<unsigned>(style)); }
+    zectrix::ui::DigitStyle digit_style() const { return digit_style_; }
+    int LargeNumberWidth(unsigned value) const;
+    // Two proportional native-size digits (00–99); no runtime font scaling.
+    void LargeNumber(int x, int y, unsigned value, bool inverted = false);
     int TextWidth(const char* text, int scale = 1, TextStyle style = TextStyle::Regular) const;
     int TextHeight(const char* text, int scale = 1, TextStyle style = TextStyle::Regular) const;
     void TextFitted(int x, int y, const char* text, int max_width,
@@ -43,6 +52,7 @@ public:
     size_t size() const { return pixels_.size(); }
 
 private:
+    zectrix::ui::DigitStyle digit_style_ = zectrix::ui::DigitStyle::Serif;
     std::array<uint8_t, kFrameBytes> pixels_ = {};
     Clip clip_{0, 0, kWidth, kHeight};
     bool portrait_ = false;

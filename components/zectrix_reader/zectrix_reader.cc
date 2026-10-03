@@ -73,6 +73,9 @@ struct Engine::Impl {
     std::array<Position, 64> history{};
     std::size_t history_size = 0;
     std::size_t line_size = 0;
+    // Page geometry is configurable so portrait screens can paginate natively.
+    int page_width = Page::kWidth;
+    int page_height = Page::kHeight;
     int line_width = 0;
     int line_height = 0;
     int indent = 0;
@@ -155,7 +158,7 @@ struct Engine::Impl {
         return Result::Pending;
     }
 
-    bool PageFull() const { return y + FontHeight(work.font) > Page::kHeight; }
+    bool PageFull() const { return y + FontHeight(work.font) > page_height; }
 
     void MeasureLine() {
         while (line_size && line[0].codepoint == ' ') {
@@ -205,18 +208,18 @@ struct Engine::Impl {
     bool LayoutLine() {
         // A decorated bottom line moves intact to the next page. Its buffered
         // tokens retain styles even when the stream has already closed a tag.
-        if (y + line_height > Page::kHeight) {
+        if (y + line_height > page_height) {
             work.next = line[0].start;
             return true;
         }
-        if (line_width <= Page::kWidth) return false;
+        if (line_width <= page_width) return false;
         std::size_t split = 0;
         for (std::size_t i = 1; i < line_size; ++i)
             if (BreakBetween(line[i - 1].codepoint, line[i].codepoint)) split = i;
         // An overlong Latin word must still advance by complete Unicode scalars.
         if (!split) split = line_size - 1;
         Flush(split);
-        if (PageFull() || y + line_height > Page::kHeight) {
+        if (PageFull() || y + line_height > page_height) {
             if (line_size) work.next = line[0].start;
             return true;
         }
@@ -284,6 +287,19 @@ Result Engine::Seek(Position position, FontSize font) {
     if (!ValidPosition(position) || (font != FontSize::Small && font != FontSize::Large)) return Result::Invalid;
     impl_->history_size = 0;
     return impl_->Start(position, font, Impl::Job::Seek);
+}
+
+Result Engine::SetPageSize(int width, int height) {
+    if (!impl_) return Result::NoMemory;
+    if (width < Page::kMinWidth || width > Page::kMaxWidth ||
+        height < Page::kMinHeight || height > Page::kMaxHeight) return Result::Invalid;
+    if (impl_->active) return Result::Invalid;
+    if (width == impl_->page_width && height == impl_->page_height) return Result::Ok;
+    impl_->page_width = width;
+    impl_->page_height = height;
+    // Anchors are source offsets, so the current page start survives a new layout.
+    if (!impl_->visible) return Result::Ok;
+    return Seek(impl_->page.start, impl_->page.font);
 }
 
 Result Engine::Next() {

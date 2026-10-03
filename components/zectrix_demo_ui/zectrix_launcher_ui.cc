@@ -127,6 +127,66 @@ void DrawOverview(ZectrixCanvas& canvas, const zectrix::time::ClockSnapshot& clo
     }
 }
 
+// Portrait: a date strip above a full-width reading card, 276 px wide.
+void DrawOverviewPortrait(ZectrixCanvas& canvas, const zectrix::time::ClockSnapshot& clock,
+                          const zectrix::app::ReadingOverview& reading, bool active) {
+    canvas.Rect(12, 52, 276, 40);
+    if (clock.source != zectrix::time::ClockSource::Uptime && zectrix::time::IsValid(clock.value)) {
+        constexpr Text months[] = {Text::Jan, Text::Feb, Text::Mar, Text::Apr, Text::May, Text::Jun,
+            Text::Jul, Text::Aug, Text::Sep, Text::Oct, Text::Nov, Text::Dec};
+        constexpr Text weekdays[] = {Text::Sun, Text::Mon, Text::Tue, Text::Wed, Text::Thu, Text::Fri, Text::Sat};
+        const auto& date = clock.value;
+        const auto weekday = (zectrix::time::CalendarSeconds(date) / 86400 + 4) % 7;
+        char value[12];
+        std::snprintf(value, sizeof(value), "%02d", date.day);
+        canvas.Text(22, 56, value, 2);
+        canvas.Text(78, 58, Tr(weekdays[weekday]));
+        const char* month = Tr(months[date.month - 1]);
+        canvas.Text(78, 74, month);
+        std::snprintf(value, sizeof(value), "%04d", date.year);
+        canvas.Text(78 + canvas.TextWidth(month) + 8, 74, value, 1, false, ZectrixCanvas::TextStyle::Dim);
+    } else {
+        canvas.Text(22, 57, Tr(Text::NotSet));
+        canvas.TextFitted(22, 73, Tr(Text::UseClock), 252);
+    }
+
+    canvas.Rect(12, 98, 276, 64);
+    if (active) canvas.FillRect(13, 99, 274, 62, true);
+    using State = zectrix::app::ReadingOverview::State;
+    switch (reading.state) {
+        case State::Saved: {
+            canvas.TextFitted(24, 104, Tr(Text::ContinueReading), 252, active, ZectrixCanvas::TextStyle::Bold);
+            auto title = reading.book_id;
+            title.back() = '\0';
+            zectrix::ui::DrawUtf8Line(canvas, 24, 122, title.data(), 252, active);
+            const unsigned progress = std::min<unsigned>(reading.progress_per_mille, 1000);
+            char value[24];
+            std::snprintf(value, sizeof(value), "%u.%u%%", progress / 10, progress % 10);
+            const int label_x = 276 - canvas.TextWidth(value);
+            canvas.Text(label_x, 140, value, 1, active);
+            const int bar_width = label_x - 34;
+            canvas.Rect(24, 145, bar_width, 6, !active);
+            canvas.FillRect(26, 147, static_cast<int>((bar_width - 4) * progress / 1000), 2, !active);
+            break;
+        }
+        case State::Empty:
+            canvas.TextFitted(24, 104, Tr(Text::OpenLibrary), 252, active);
+            canvas.TextFitted(24, 124, Tr(Text::ChooseFirstBook), 252, active);
+            canvas.Text(24, 142, "TXT / EPUB", 1, active);
+            break;
+        case State::Error:
+            canvas.TextFitted(24, 104, Tr(Text::OpenLibrary), 252, active);
+            canvas.TextFitted(24, 124, Tr(Text::ProgressUnavailable), 252, active);
+            canvas.TextFitted(24, 142, Tr(Text::OkRetry), 252, active);
+            break;
+        case State::Unavailable:
+            canvas.TextFitted(24, 104, Tr(Text::PocketTerminal), 252);
+            canvas.TextFitted(24, 124, Tr(Text::ClockCoversTools), 252);
+            canvas.TextFitted(24, 142, Tr(Text::ChooseAppBelow), 252);
+            break;
+    }
+}
+
 }  // namespace
 
 esp_err_t ZectrixDemoUi::ShowLauncher(const zectrix::app::LauncherController& launcher,
@@ -144,6 +204,8 @@ esp_err_t ZectrixDemoUi::ShowLauncher(const zectrix::app::LauncherController& la
                         Tr(Text::NavOpenBack), full_refresh);
     }
     if (launcher.scene() != Scene::Home) return ESP_ERR_INVALID_STATE;
+    if (display_ != nullptr && display_->portrait())
+        return ShowLauncherPortrait(launcher, clock, reading, full_refresh);
     const char* footer = Tr(Text::NavOpenOff);
     if (launcher.overview_selected()) footer = reading.state == zectrix::app::ReadingOverview::State::Saved
         ? Tr(Text::NavReadOff) : Tr(Text::NavLibraryOff);
@@ -177,6 +239,47 @@ esp_err_t ZectrixDemoUi::ShowLauncher(const zectrix::app::LauncherController& la
             std::snprintf(pages, sizeof(pages), "%u/%u", static_cast<unsigned>(page + 1),
                           static_cast<unsigned>((tiles + per_page - 1) / per_page));
             canvas_.Text(388 - canvas_.TextWidth(pages), 26, pages, 1, true);
+        }
+    }
+    return full_refresh ? RefreshFull() : RefreshAuto();
+}
+
+esp_err_t ZectrixDemoUi::ShowLauncherPortrait(const zectrix::app::LauncherController& launcher,
+                                             const zectrix::time::ClockSnapshot& clock,
+                                             const zectrix::app::ReadingOverview& reading, bool full_refresh) {
+    const auto count = launcher.count();
+    const char* footer = Tr(Text::NavOpenOff);
+    if (launcher.overview_selected()) footer = reading.state == zectrix::app::ReadingOverview::State::Saved
+        ? Tr(Text::NavReadOff) : Tr(Text::NavLibraryOff);
+    DrawFrame("", footer, true);
+    canvas_.TextCentered(26, Tr(Text::Home), 1, true);
+    DrawOverviewPortrait(canvas_, clock, reading, launcher.overview_selected());
+    const auto tiles = count - launcher.tile_offset();
+    if (tiles == 0) {
+        canvas_.TextCentered(250, Tr(Text::NoApps));
+    } else {
+        // One column keeps the controller's six-tile pages and its top-to-bottom focus order.
+        constexpr auto per_page = zectrix::app::LauncherController::kTilesPerPage;
+        const auto page = launcher.tile_page();
+        const auto first = launcher.tile_offset() + page * per_page;
+        const auto visible = std::min(per_page, count - first);
+        const int gap = 4, top = 170, area = FooterTop() - 6 - top;
+        const int height = (area - (static_cast<int>(visible) - 1) * gap) / static_cast<int>(visible);
+        for (std::size_t slot = 0; slot < visible; ++slot) {
+            const auto index = first + slot;
+            const auto entry = launcher.EntryAt(index);
+            const int y = top + static_cast<int>(slot) * (height + gap);
+            const bool active = index == launcher.selected();
+            canvas_.FillRect(12, y, 276, height, active);
+            canvas_.Rect(12, y, 276, height);
+            DrawIcon(canvas_, entry.icon, 24, y + (height - 16) / 2, !active);
+            DrawFittedText(canvas_, 52, y + (height - 16) / 2, Tr(entry.label_text, entry.label), 224, active);
+        }
+        if (tiles > per_page) {
+            char pages[24];
+            std::snprintf(pages, sizeof(pages), "%u/%u", static_cast<unsigned>(page + 1),
+                          static_cast<unsigned>((tiles + per_page - 1) / per_page));
+            canvas_.Text(canvas_.width() - 12 - canvas_.TextWidth(pages), 26, pages, 1, true);
         }
     }
     return full_refresh ? RefreshFull() : RefreshAuto();

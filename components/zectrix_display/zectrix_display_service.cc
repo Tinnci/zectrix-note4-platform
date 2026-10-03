@@ -106,10 +106,11 @@ void DisplayService::StartMetrics(Observation* observation) const {
 }
 
 esp_err_t DisplayService::SetOrientation(DisplayOrientation orientation) {
-    if (orientation != DisplayOrientation::Standard && orientation != DisplayOrientation::Inverted)
+    if (orientation != DisplayOrientation::Standard && orientation != DisplayOrientation::Inverted &&
+        orientation != DisplayOrientation::Portrait && orientation != DisplayOrientation::PortraitInverted)
         return ESP_ERR_INVALID_ARG;
     if (orientation == orientation_) return ESP_OK;
-    if (orientation == DisplayOrientation::Inverted && !rotated_) {
+    if (orientation != DisplayOrientation::Standard && !rotated_) {
         rotated_.reset(new (std::nothrow) uint8_t[kFrameBytes4Bpp]);
         if (!rotated_) return ESP_ERR_NO_MEM;
     }
@@ -137,7 +138,7 @@ esp_err_t DisplayService::Present1Bpp(DisplayIntent intent, const uint8_t* frame
     std::size_t size, const Rect& region, const uint8_t* patch, std::size_t patch_size) {
     if (!frame || size != kFrameBytes1Bpp) return ESP_ERR_INVALID_ARG;
     Rect physical_region = region;
-    if (orientation_ == DisplayOrientation::Inverted) {
+    if (orientation_ == DisplayOrientation::Inverted || orientation_ == DisplayOrientation::PortraitInverted) {
         RotatePacked(frame, rotated_.get(), size, false);
         frame = rotated_.get();
         if (patch || patch_size) {
@@ -162,44 +163,59 @@ esp_err_t DisplayService::Present1Bpp(DisplayIntent intent, const uint8_t* frame
             physical_region.y = kPanelHeight - region.y - region.height;
         }
     }
-    if (orientation_changed_ && (intent == DisplayIntent::Auto || intent == DisplayIntent::Fast)) {
+    if ((orientation_changed_ || portrait_presented_) && (intent == DisplayIntent::Auto || intent == DisplayIntent::Fast)) {
         intent = DisplayIntent::Quality;
         patch = nullptr;
         patch_size = 0;
         physical_region = {};
     }
     const auto result = PresentPhysical1Bpp(intent, frame, size, physical_region, patch, patch_size);
-    if (result == ESP_OK) orientation_changed_ = false;
+    if (result == ESP_OK) orientation_changed_ = portrait_presented_ = false;
     return result;
 }
 
 esp_err_t DisplayService::Present4Bpp(DisplayIntent intent, const uint8_t* frame, std::size_t size) {
     if (!frame || size != kFrameBytes4Bpp) return ESP_ERR_INVALID_ARG;
-    if (orientation_ == DisplayOrientation::Inverted) {
+    if (orientation_ == DisplayOrientation::Inverted || orientation_ == DisplayOrientation::PortraitInverted) {
         RotatePacked(frame, rotated_.get(), size, true);
         frame = rotated_.get();
     }
     const auto result = PresentPhysical4Bpp(intent, frame, size);
-    if (result == ESP_OK) orientation_changed_ = false;
+    if (result == ESP_OK) orientation_changed_ = portrait_presented_ = false;
     return result;
 }
 
 esp_err_t DisplayService::PresentPortrait1Bpp(const uint8_t* frame, std::size_t size) {
+    // Lock-screen path: fixed clockwise mapping, always a clean full frame.
+    const auto saved = orientation_;
+    if (orientation_ == DisplayOrientation::PortraitInverted) orientation_ = DisplayOrientation::Portrait;
+    const auto result = PresentPortrait1Bpp(DisplayIntent::FullClean, frame, size);
+    orientation_ = saved;
+    orientation_changed_ = true;
+    return result;
+}
+
+esp_err_t DisplayService::PresentPortrait1Bpp(DisplayIntent intent, const uint8_t* frame, std::size_t size) {
     if (!frame || size != kFrameBytes1Bpp) return ESP_ERR_INVALID_ARG;
     if (!rotated_) rotated_.reset(new (std::nothrow) uint8_t[kFrameBytes4Bpp]);
     if (!rotated_) return ESP_ERR_NO_MEM;
+    const bool flipped = orientation_ == DisplayOrientation::PortraitInverted;
     std::memset(rotated_.get(), 0xff, size);
     for (int y = 0; y < 400; ++y) {
         for (int x = 0; x < 300; ++x) {
             const auto bit = static_cast<std::size_t>(y) * 300 + x;
             if ((frame[bit / 8] & (0x80 >> (bit & 7))) == 0) {
-                const auto target = static_cast<std::size_t>(x) * 400 + (399 - y);
+                const auto target = flipped ? static_cast<std::size_t>(299 - x) * 400 + y
+                                            : static_cast<std::size_t>(x) * 400 + (399 - y);
                 rotated_[target / 8] &= static_cast<uint8_t>(~(0x80 >> (target & 7)));
             }
         }
     }
-    const auto result = PresentPhysical1Bpp(DisplayIntent::FullClean, rotated_.get(), size, {}, nullptr, 0);
-    orientation_changed_ = true;
+    // The first portrait frame after any landscape or direction change is a clean full refresh.
+    if ((orientation_changed_ || !portrait_presented_) &&
+        (intent == DisplayIntent::Auto || intent == DisplayIntent::Fast)) intent = DisplayIntent::Quality;
+    const auto result = PresentPhysical1Bpp(intent, rotated_.get(), size, {}, nullptr, 0);
+    if (result == ESP_OK) { orientation_changed_ = false; portrait_presented_ = true; }
     return result;
 }
 
