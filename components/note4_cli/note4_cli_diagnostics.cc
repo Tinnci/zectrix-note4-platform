@@ -26,6 +26,9 @@ constexpr CommandDescriptor kSystem[] = {
 };
 constexpr CommandDescriptor kDisplay[] = {
     Leaf("status", "Refresh state and framebuffer preview", "display status", Handler::kDisplayInspect),
+    Leaf("settings", "Active, saved and default display directions", "display settings", Handler::kDisplaySettings),
+    Leaf("orientation", "Save screen direction for next boot", "display orientation [landscape|portrait|landscape-inverted|portrait-inverted]", Handler::kDisplayOrientation, Execution::kOwnerRequest, Access::kConfirm),
+    Leaf("lock-orientation", "Save independent lock-screen direction for next boot", "display lock-orientation [landscape|portrait]", Handler::kSleepOrientation, Execution::kOwnerRequest, Access::kConfirm),
     Leaf("telemetry", "Copy up to four frame observations as typed CSV rows",
          "display telemetry [after-sequence]", Handler::kDisplayTelemetry),
     Leaf("model", "Inspect fixed-point coefficients and calibration", "display model", Handler::kDisplayModel),
@@ -74,7 +77,7 @@ constexpr CommandDescriptor kCommands[] = {
          Handler::kVersion, Execution::kImmediate),
     {"system", "System diagnostics", "system <info|heap|tasks|uptime|health>",
      Access::kReadOnly, Execution::kImmediate, false, kSystem, std::size(kSystem)},
-    {"display", "Display diagnostics", "display <status|telemetry|model>", Access::kReadOnly,
+    {"display", "Display diagnostics and settings", "display <status|settings|orientation|lock-orientation|telemetry|model>", Access::kReadOnly,
      Execution::kImmediate, false, kDisplay, std::size(kDisplay)},
     {"log", "Log observation", "log <follow|stats>", Access::kReadOnly,
      Execution::kImmediate, false, kLog, std::size(kLog)},
@@ -101,6 +104,11 @@ template <typename T> bool Number(const char* text, T* result) {
     const auto end = text + std::strlen(text);
     const auto parsed = std::from_chars(text, end, *result);
     return parsed.ec == std::errc{} && parsed.ptr == end;
+}
+
+const char* OrientationName(uint8_t value) {
+    constexpr const char* names[] = {"landscape", "landscape-inverted", "portrait", "portrait-inverted"};
+    return value < std::size(names) ? names[value] : "unknown";
 }
 
 void Format(BoundedOutput* output, const char* format, ...) {
@@ -226,7 +234,8 @@ ExecuteStatus DiagnosticExecutor::Execute(const Invocation& invocation,
     }
     const bool configuration = command.handler >= Handler::kConnectivityConfigure && command.handler <= Handler::kEdgeDisplay;
     if (!configuration && command.handler != Handler::kLogFollow && command.handler != Handler::kTimeSync &&
-        command.handler != Handler::kDisplayTelemetry && arguments != 0) {
+        command.handler != Handler::kDisplayTelemetry && command.handler != Handler::kDisplayOrientation &&
+        command.handler != Handler::kSleepOrientation && arguments != 0) {
         return ExecuteStatus::kInvalidArguments;
     }
     if (command.handler == Handler::kVersion) {
@@ -274,6 +283,23 @@ ExecuteStatus DiagnosticExecutor::Execute(const Invocation& invocation,
             request.operation = ControlOperation::kDisplayTelemetry;
             break;
         case Handler::kDisplayModel: request.operation = ControlOperation::kDisplayModel; break;
+        case Handler::kDisplaySettings: request.operation = ControlOperation::kDisplaySettings; break;
+        case Handler::kDisplayOrientation: case Handler::kSleepOrientation: {
+            if (arguments == 0) { request.operation = ControlOperation::kDisplaySettings; break; }
+            if (arguments != 1) return ExecuteStatus::kInvalidArguments;
+            bool found = false;
+            for (uint8_t value = 0; value < 4; ++value) {
+                if (handler == Handler::kSleepOrientation && value != 0 && value != 2) continue;
+                if (std::strcmp(invocation[resolution.argument_index], OrientationName(value)) == 0) {
+                    request.values[0] = handler == Handler::kSleepOrientation ? value / 2 : value;
+                    found = true;
+                }
+            }
+            if (!found) return ExecuteStatus::kInvalidArguments;
+            request.values[1] = handler == Handler::kSleepOrientation ? 1 : 0;
+            request.operation = ControlOperation::kDisplayConfigure;
+            break;
+        }
         case Handler::kPower: request.operation = ControlOperation::kPower; break;
         case Handler::kTime: request.operation = ControlOperation::kTime; break;
         case Handler::kConnectivity: request.operation = ControlOperation::kConnectivity; break;
@@ -348,6 +374,9 @@ ExecuteStatus DiagnosticExecutor::Execute(const Invocation& invocation,
         confirmation_deadline_ = clock_() + 15000;
         if (handler == Handler::kTimeSync)
             Format(output, "Set UTC=%lld ms offset=%ld s. ", static_cast<long long>(request.unix_ms), static_cast<long>(request.offset_seconds));
+        else if (request.operation == ControlOperation::kDisplayConfigure)
+            Format(output, "target=%s orientation=%s apply_on=reboot. ",
+                request.values[1] ? "lock" : "screen", invocation[resolution.argument_index]);
         else Format(output, "%s. ", command.help);
         Format(output, "Type confirm %llu within 15 s; any other command or Ctrl+C cancels.",
                static_cast<unsigned long long>(confirmation_token_));
@@ -405,6 +434,7 @@ ExecuteStatus DiagnosticExecutor::FormatResult(BoundedOutput* output) {
         constexpr const char* pages[] = {
             "help [command], version\r\nsystem <info|heap|tasks|uptime|health>, display status\r\npower status, connectivity status\r\ntime <get|status|sync [unix-ms offset-seconds]>",
             "app <list|current>, scene dump, input watch\r\nlog follow [error|warn|info|debug], log stats\r\nreboot, sleep, storage wipe, factory reset, confirm <token>",
+            "display <status|settings|telemetry|model>\r\ndisplay orientation [landscape|portrait|landscape-inverted|portrait-inverted]\r\ndisplay lock-orientation [landscape|portrait]\r\nDirection writes require confirmation and apply after reboot.",
             "Aliases: sysinfo, heap, tasks, uptime, epd-inspect, log-stream\r\nCtrl+C cancels; host start 1 enters USB management.\r\nPairing and bond removal use the device's Connectivity screen."
         };
         output->Append(pages[page_]);
@@ -477,6 +507,11 @@ ExecuteStatus DiagnosticExecutor::FormatResult(BoundedOutput* output) {
                    task.application_owner ? "application" : "-");
         }
         more = page_ < tasks.count && page_ < tasks.tasks.size();
+    } else if (active_ == Handler::kDisplaySettings || active_ == Handler::kDisplayOrientation || active_ == Handler::kSleepOrientation) {
+        const auto& d = result_.display_settings;
+        Format(output, "screen_active=%s screen_saved=%s screen_default=portrait\r\n"
+            "lock_saved=%s lock_default=portrait apply_on=reboot",
+            OrientationName(d.active), OrientationName(d.configured), d.sleep_portrait ? "portrait" : "landscape");
     } else if (active_ == Handler::kDisplayInspect) {
         const auto& d = result_.display;
         if (page_ == 0) {

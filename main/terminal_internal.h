@@ -128,6 +128,7 @@ private:
 #if CONFIG_NOTE4_ENABLE_USB_CLI
     cli::ControlStatus InspectApps(cli::ControlResult* result) override;
     cli::ControlStatus ScheduleMaintenance(cli::ControlOperation operation) override;
+    cli::ControlStatus HandleDisplaySettings(const cli::ControlRequest&, cli::ControlResult*) override;
     sdk::ApplicationRuntime* runtime_ = nullptr;
     app::SceneSnapshot scene_snapshot_{};
     cli::SceneInspection guest_inspection_{};

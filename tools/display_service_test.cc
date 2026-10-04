@@ -1825,6 +1825,55 @@ void TestSettingsComposition() {
     assert(SetLanguage(original));
 }
 
+void TestSettingsOrientationComposition() {
+    using namespace note4::i18n;
+    using namespace note4::app;
+    using namespace note4::sdk;
+    using Orientation = note4::display::DisplayOrientation;
+    constexpr Orientation orientations[] = {Orientation::Standard, Orientation::Portrait,
+        Orientation::Inverted, Orientation::PortraitInverted};
+    constexpr Text names[] = {Text::Landscape, Text::Portrait, Text::LandscapeInverted, Text::PortraitInverted};
+    Reset();
+    auto service = CreateService();
+    UiEngine ui(service.get());
+    for (std::size_t direction = 0; direction < std::size(orientations); ++direction) {
+        assert(service->SetOrientation(orientations[direction]) == ESP_OK);
+        SettingsController settings(false);
+        assert(settings.Start() == Status::Ok);
+        while (settings.selected() != settings.option_count() - 3)
+            settings.Handle({Button::Down, InputAction::Click});
+        for (int row = 0; row < 2; ++row) {
+            const bool sleep_portrait = direction % 2 != 0;
+            ui.SetSleepPortrait(sleep_portrait);
+            assert(ui.ShowSettings(settings, Tr(Text::Saved), true) == ESP_OK);
+            const auto& actual = ui.canvas();
+            const int pitch = actual.portrait() ? (settings.option_count() > 4 ? 46 : 54) :
+                (settings.option_count() > 4 ? 34 : 42);
+            const char* value = Tr(row ? (sleep_portrait ? Text::Portrait : Text::Landscape) : names[direction]);
+            const char* label = Tr(row ? Text::LockOrientation : Text::ScreenOrientation);
+            const int value_width = actual.TextWidth(value);
+            const int x = actual.width() - 28 - value_width;
+            const int y = 54 + static_cast<int>(settings.selected()) * pitch + (pitch - 16) / 2;
+            assert(actual.TextWidth(label) + 12 <= x - 28);
+            Canvas expected;
+            expected.SetPortrait(actual.portrait());
+            expected.Clear();
+            expected.FillRect(x, y, value_width, 16, true);
+            expected.Text(x, y, value, 1, true);
+            // Compare the complete selected value, including its inverted background.
+            for (int py = y; py < y + 16; ++py) for (int px = x; px < x + value_width; ++px) {
+                const int bit = py * actual.width() + px;
+                const int mask = 0x80 >> (bit & 7);
+                assert((actual.data()[bit / 8] & mask) == (expected.data()[bit / 8] & mask));
+            }
+            char preview[64];
+            std::snprintf(preview, sizeof(preview), "settings-%s-direction-%zu", row ? "lock" : "screen", direction);
+            SavePreview(actual, preview, actual.portrait());
+            settings.Handle({Button::Down, InputAction::Click});
+        }
+    }
+}
+
 void TestReaderComposition() {
     using namespace note4::reader;
     using namespace note4::app;
@@ -2707,6 +2756,7 @@ int main() {
     TestStatusAndImageComposition();
     TestConnectivityComposition();
     TestSettingsComposition();
+    TestSettingsOrientationComposition();
     TestReaderComposition();
     TestBookTransferComposition();
     TestUsbManagerComposition();

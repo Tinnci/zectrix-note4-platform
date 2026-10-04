@@ -387,6 +387,30 @@ void TestReflectionAndConfirmation() {
     PlatformControlDispatcher dispatcher(owner, Clock);
     LogBuffer logs;
     DiagnosticExecutor executor(dispatcher, logs, nullptr, Clock);
+    assert(Run(executor, dispatcher, "display settings").find("screen_default=portrait") != std::string::npos);
+    assert(Run(executor, dispatcher, "display orientation").find("screen_active=portrait") != std::string::npos);
+    assert(Run(executor, dispatcher, "display lock-orientation").find("lock_saved=portrait") != std::string::npos);
+    const char* directions[] = {"landscape", "landscape-inverted", "portrait", "portrait-inverted"};
+    for (uint32_t direction = 0; direction < 4; ++direction) {
+        const std::string command = std::string("display orientation ") + directions[direction];
+        const auto before = owner.calls;
+        const auto confirm = Confirmation(executor, command.c_str());
+        assert(owner.calls == before); // Unconfirmed preferences never reach the owner.
+        Run(executor, dispatcher, confirm.c_str());
+        assert(owner.last_operation == ControlOperation::kDisplayConfigure);
+        assert(owner.last_request.values[0] == direction && owner.last_request.values[1] == 0);
+    }
+    for (const char* direction : {"landscape", "portrait"}) {
+        const auto confirm = Confirmation(executor, (std::string("display lock-orientation ") + direction).c_str());
+        Run(executor, dispatcher, confirm.c_str());
+        assert(owner.last_request.values[1] == 1);
+        assert(owner.last_request.values[0] == (std::strcmp(direction, "portrait") == 0 ? 1u : 0u));
+    }
+    for (const char* invalid : {"display settings extra", "display orientation 90", "display orientation portrait extra",
+        "display lock-orientation portrait-inverted", "display lock-orientation 1"}) {
+        BoundedOutput output;
+        assert(executor.Execute(Parse(invalid), &output) == ExecuteStatus::kInvalidArguments);
+    }
     owner.sample.power = {250, 3890, 71, true, false, false, false, false, false};
     owner.sample.time.local = {2024, 2, 29, 12, 0, 0};
     owner.sample.time.sync.source = note4::time::SyncSource::Companion;

@@ -14,7 +14,8 @@ namespace note4::cli {
 enum class ControlOperation : uint8_t {
     kSystemInfo, kHeap, kTasks, kUptime, kDisplay, kPower, kTime, kConnectivity,
     kApps, kScenes, kInput, kDisplayTelemetry, kDisplayModel, kHealth,
-    kTimeSync, kConnectivityConfigure, kReboot, kSleep, kStorageWipe, kFactoryReset,
+    kDisplaySettings,
+    kTimeSync, kConnectivityConfigure, kDisplayConfigure, kReboot, kSleep, kStorageWipe, kFactoryReset,
 };
 constexpr bool IsMutation(ControlOperation operation) { return operation >= ControlOperation::kTimeSync; }
 enum class ControlStatus : uint8_t {
@@ -47,6 +48,10 @@ inline void ClearRequestSecrets(ControlRequest* request) {
 }
 
 struct ControlResult {
+    struct DisplaySettings {
+        uint8_t active = 2, configured = 2;
+        bool sleep_portrait = true;
+    } display_settings;
     system::SystemSnapshot system;
     system::HealthSnapshot health;
     system::HeapSnapshot heap;
@@ -70,6 +75,9 @@ public:
     virtual ~MaintenanceDelegate() = default;
     virtual ControlStatus InspectApps(ControlResult*) = 0;
     virtual ControlStatus ScheduleMaintenance(ControlOperation operation) = 0;
+    virtual ControlStatus HandleDisplaySettings(const ControlRequest&, ControlResult*) {
+        return ControlStatus::kUnavailable;
+    }
 };
 
 class ControlOwner {

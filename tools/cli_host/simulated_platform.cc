@@ -90,6 +90,11 @@ ControlStatus SimulatedPlatform::Inspect(const ControlRequest& request, ControlR
             snapshot_.time.offset_seconds = request.offset_seconds;
             snapshot_.time.sync.source = time::SyncSource::Manual;
             snapshot_.time.sync.result = time::SyncResult::Applied;
+        } else if (request.operation == ControlOperation::kDisplayConfigure) {
+            if (request.values[1] > 1 || request.values[0] > (request.values[1] ? 1u : 3u))
+                return ControlStatus::kInvalidArgument;
+            if (request.values[1]) snapshot_.display_settings.sleep_portrait = request.values[0] == 1;
+            else snapshot_.display_settings.configured = static_cast<uint8_t>(request.values[0]);
         } else {
             logs_.Push(LogLevel::kInfo, "I host: maintenance action simulated; host files and power are unchanged");
         }

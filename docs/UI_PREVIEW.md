@@ -8,7 +8,11 @@
 | HA 远程页面 | 双列，每列 4 个实体 | 单列，最多 8 个实体 |
 | 手机图片锁屏 | 现有横屏格式 | 暂不支持 |
 
-设置 → 屏幕在 0°、90°、180°、270° 间循环。预览中搜索 `-portrait` 查看竖屏页面。
+设置 → 屏幕方向：按 OK 依次切换横屏、竖屏、横屏倒置、竖屏倒置，并保存；锁屏方向独立切换横屏／竖屏，不改变应用方向。选中方向行时，底部提示「OK 旋转」。
+
+应用与锁屏默认竖屏；已有方向偏好继续保留。CLI 使用 `display settings` 查询当前与已保存方向，`display orientation portrait` 和 `display lock-orientation portrait` 分别设置应用与锁屏方向；写入需要 `confirm <token>`，重启后生效。不带方向参数只查询，不写入。
+
+预览中搜索 `-portrait` 查看竖屏页面，搜索 `settings-screen-direction` 或 `settings-lock-direction` 查看四种方向下的选中状态。
 
 ## 生成
 

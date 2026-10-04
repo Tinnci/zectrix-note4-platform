@@ -48,11 +48,11 @@ void TerminalApp::Run() {
     power_ = &platform_.Power();
     time_ = &platform_.Time();
     storage_ = &platform_.Storage();
-    uint32_t orientation = 0;
-    if (storage_->GetUInt32(display::kOrientationSettingKey, &orientation) == ESP_OK && orientation <= 3) {
-        const auto restored = display_->SetOrientation(static_cast<display::DisplayOrientation>(orientation));
-        if (restored != ESP_OK) ESP_LOGW(kTag, "screen direction restore failed: %s", esp_err_to_name(restored));
-    }
+    uint32_t orientation = static_cast<uint32_t>(display::kDefaultOrientation);
+    if (storage_->GetUInt32(display::kOrientationSettingKey, &orientation) != ESP_OK || orientation > 3)
+        orientation = static_cast<uint32_t>(display::kDefaultOrientation);
+    const auto restored = display_->SetOrientation(static_cast<display::DisplayOrientation>(orientation));
+    if (restored != ESP_OK) ESP_LOGW(kTag, "screen direction restore failed: %s", esp_err_to_name(restored));
     system_ = &platform_.System();
 #if CONFIG_NOTE4_ENABLE_USB_HOST
     usb_host_ = platform_.Services().Get<host::Channel>();
@@ -263,6 +263,32 @@ sdk::Status TerminalApp::Shutdown() {
 }
 
 #if CONFIG_NOTE4_ENABLE_USB_CLI
+cli::ControlStatus TerminalApp::HandleDisplaySettings(const cli::ControlRequest& request, cli::ControlResult* result) {
+    if (!result || !storage_ || !display_) return cli::ControlStatus::kUnavailable;
+    if (request.operation == cli::ControlOperation::kDisplayConfigure) {
+        if (!request.confirmed || request.origin != cli::Origin::kUsbLocal) return cli::ControlStatus::kDenied;
+        if (request.values[1] > 1 || request.values[0] > (request.values[1] ? 1u : 3u))
+            return cli::ControlStatus::kInvalidArgument;
+    } else if (request.operation != cli::ControlOperation::kDisplaySettings) return cli::ControlStatus::kInvalidArgument;
+    uint32_t screen = static_cast<uint32_t>(display::kDefaultOrientation);
+    uint32_t sleep = app::kSleepPortraitDefault ? 1 : 0;
+    const auto screen_read = storage_->GetUInt32(display::kOrientationSettingKey, &screen);
+    const auto sleep_read = storage_->GetUInt32(app::kSleepPortraitSettingKey, &sleep);
+    if (screen_read == ESP_ERR_NOT_FOUND) screen = static_cast<uint32_t>(display::kDefaultOrientation);
+    if (sleep_read == ESP_ERR_NOT_FOUND) sleep = app::kSleepPortraitDefault ? 1 : 0;
+    if ((screen_read != ESP_OK && screen_read != ESP_ERR_NOT_FOUND) ||
+        (sleep_read != ESP_OK && sleep_read != ESP_ERR_NOT_FOUND) || screen > 3 || sleep > 1)
+        return cli::ControlStatus::kUnavailable;
+    if (request.operation == cli::ControlOperation::kDisplayConfigure) {
+        const char* key = request.values[1] ? app::kSleepPortraitSettingKey : display::kOrientationSettingKey;
+        if (storage_->SetUInt32(key, request.values[0]) != ESP_OK) return cli::ControlStatus::kUnavailable;
+        if (request.values[1]) sleep = request.values[0];
+        else screen = request.values[0];
+    }
+    result->display_settings = {static_cast<uint8_t>(display_->orientation()), static_cast<uint8_t>(screen), sleep == 1};
+    return cli::ControlStatus::kOk;
+}
+
 cli::ControlStatus TerminalApp::ScheduleMaintenance(cli::ControlOperation operation) {
     if (!runtime_ || (runtime_->state() != sdk::LifecycleState::Active && runtime_->state() != sdk::LifecycleState::Failsafe) ||
         maintenance_operation_ >= cli::ControlOperation::kReboot) return cli::ControlStatus::kBusy;
