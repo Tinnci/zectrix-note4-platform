@@ -94,6 +94,9 @@ cli::ControlStatus PlatformDiagnostics::Inspect(const cli::ControlRequest& reque
         case cli::ControlOperation::kDisplay:
             err = display_.ReadInspection(&result->display);
             break;
+        case cli::ControlOperation::kDisplaySettings:
+        case cli::ControlOperation::kDisplayConfigure:
+            return delegate_ ? delegate_->HandleDisplaySettings(request, result) : cli::ControlStatus::kUnavailable;
         case cli::ControlOperation::kDisplayTelemetry:
             result->display_telemetry = display_.ReadTelemetry(request.cursor);
             err = ESP_OK;

@@ -143,6 +143,9 @@ time status
 time sync [unix-ms offset-seconds]
 connectivity status
 display status
+display settings
+display orientation [landscape|portrait|landscape-inverted|portrait-inverted]
+display lock-orientation [landscape|portrait]
 display telemetry [after-sequence]
 display model
 app list
@@ -166,6 +169,13 @@ Connectivity screen. D1.4 deliberately does not add USB `connectivity pair` or
 `connectivity forget` shortcuts: terminal confirmation is not proof of a
 physical pairing action. Factory reset is a separate, explicit USB recovery
 operation that also clears bonds.
+
+Display directions use names rather than numeric angles. `display settings`
+reports `screen_active`, `screen_saved`, `screen_default`, `lock_saved` and
+`lock_default` as key/value fields. Both defaults are portrait; saved preferences
+take precedence. Direction commands without arguments are read-only. Writes use
+the existing USB confirmation flow and report `apply_on=reboot`; they do not
+interrupt the foreground renderer or change the other direction preference.
 
 Confirmed USB writes configure resource routing, Wi-Fi, HTTPS page source/token,
 background refresh and remote covers. They cannot change BLE pairing or bonds.

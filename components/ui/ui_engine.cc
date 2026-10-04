@@ -46,10 +46,10 @@ int ScaleFraction(int extent, size_t numerator, size_t denominator) {
 const char* ScreenDirectionName(note4::display::DisplayOrientation orientation) {
     using Orientation = note4::display::DisplayOrientation;
     switch (orientation) {
-        case Orientation::Portrait: return "90 deg";
-        case Orientation::Inverted: return "180 deg";
-        case Orientation::PortraitInverted: return "270 deg";
-        default: return "0 deg";
+        case Orientation::Portrait: return Tr(Text::Portrait);
+        case Orientation::Inverted: return Tr(Text::LandscapeInverted);
+        case Orientation::PortraitInverted: return Tr(Text::PortraitInverted);
+        default: return Tr(Text::Landscape);
     }
 }
 
@@ -354,9 +354,11 @@ esp_err_t UiEngine::ShowClock(const note4::time::DateTime& value,
 esp_err_t UiEngine::ShowSettings(const note4::app::SettingsController& settings, const char* status,
                                       bool full_refresh) {
     const bool languages = settings.page() == note4::app::SettingsPage::Language;
+    const bool rotating = !languages && (settings.selected() == settings.option_count() - 3 ||
+        settings.selected() == settings.option_count() - 2);
     auto page = EnterPage(note4::ui::PageSpec()
         .Title(Tr(languages ? Text::Language : Text::Settings))
-        .Footer(Tr(languages ? Text::NavApplyBack : Text::NavChangeBack)));
+        .Footer(Tr(languages ? Text::NavApplyBack : rotating ? Text::NavRotateBack : Text::NavChangeBack)));
     const int width = page.width(), height = page.height();
     const bool portrait = page.portrait();
     const auto count = languages ? note4::i18n::LanguageCount() : settings.option_count();
@@ -372,16 +374,19 @@ esp_err_t UiEngine::ShowSettings(const note4::app::SettingsController& settings,
         const bool sleep_orientation_option = !languages && i == count - 2;
         const bool orientation_option = !languages && i == count - 3;
         const char* label = languages ? note4::i18n::LanguageName(static_cast<note4::i18n::Language>(i)) :
-            Tr(digit_option ? Text::DateFont : sleep_orientation_option ? Text::SleepCover : orientation_option ? Text::DisplayLabel :
+            Tr(digit_option ? Text::DateFont : sleep_orientation_option ? Text::LockOrientation : orientation_option ? Text::ScreenOrientation :
                 language_option ? Text::Language : Text::AutoShowcase);
-        canvas_.TextFitted(28, y + (portrait ? (pitch - 18) / 2 : 13), label, languages ? width - 100 : (portrait ? 136 : 200), selected);
         const char* value = languages ? (static_cast<note4::i18n::Language>(i) == note4::i18n::CurrentLanguage() ? "*" : "") :
             language_option ? note4::i18n::LanguageName(note4::i18n::CurrentLanguage()) :
             digit_option ? note4::ui::DigitStyleName(digit_style()) :
-            sleep_orientation_option ? (sleep_portrait_ ? "90 deg" : "0 deg") :
+            sleep_orientation_option ? Tr(sleep_portrait_ ? Text::Portrait : Text::Landscape) :
             orientation_option ? ScreenDirectionName(display_->orientation()) :
             Tr(settings.auto_showcase() ? Text::On : Text::Off);
-        canvas_.Text(width - 28 - canvas_.TextWidth(value), y + (portrait ? (pitch - 18) / 2 : 13), value, 1, selected);
+        // Reserve the measured value width so translated labels never collide in portrait.
+        const int text_y = y + (pitch - 16) / 2;
+        const int value_x = width - 28 - canvas_.TextWidth(value);
+        canvas_.TextFitted(28, text_y, label, std::max(0, value_x - 28 - 12), selected);
+        canvas_.Text(value_x, text_y, value, 1, selected);
     }
     if (count < 4) WrapText(16, portrait ? height - 118 : 220, Tr(languages ||
         (note4::i18n::LanguageCount() > 1 && settings.selected() == 0) ?

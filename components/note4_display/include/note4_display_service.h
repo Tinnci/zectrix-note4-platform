@@ -24,6 +24,7 @@ enum class DisplayIntent : uint8_t {
 // degrees: portrait-capable screens use a 300x400 canvas; the rest stay landscape
 // (Portrait falls back to Standard, PortraitInverted to Inverted).
 enum class DisplayOrientation : uint8_t { Standard = 0, Inverted = 1, Portrait = 2, PortraitInverted = 3 };
+inline constexpr DisplayOrientation kDefaultOrientation = DisplayOrientation::Portrait;
 inline constexpr char kOrientationSettingKey[] = "ui.orientation";
 
 class DisplayService {

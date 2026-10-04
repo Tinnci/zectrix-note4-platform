@@ -138,6 +138,16 @@ class HostIntegrationTest(unittest.TestCase):
             self.assertRegex(telemetry, rb"env,\d+,2500,0,3920,0,")
             self.assertRegex(telemetry, rb"debt,\d+,")
             self.assertIn(b"energy mode=3 calibrated=0", terminal.command(b"display model\r"))
+            self.assertIn(b"screen_default=portrait", terminal.command(b"display settings\r"))
+            prompt = terminal.command(b"display orientation landscape\r")
+            self.assertIn(b"apply_on=reboot", prompt)
+            token = re.search(rb"Type confirm (\d+)", prompt).group(1)
+            saved = terminal.command(b"confirm " + token + b"\r")
+            self.assertIn(b"screen_active=portrait screen_saved=landscape", saved)
+            self.assertIn(b"screen_saved=landscape", terminal.command(b"display orientation\r"))
+            prompt = terminal.command(b"display lock-orientation landscape\r")
+            token = re.search(rb"Type confirm (\d+)", prompt).group(1)
+            self.assertIn(b"lock_saved=landscape", terminal.command(b"confirm " + token + b"\r"))
             self.assertIn(b"system heap", terminal.command(b"help system heap\r"))
             for command, error in (
                 (b'help "unfinished\r', b"unterminated quote"),
