@@ -36,6 +36,7 @@ ResetReason MapResetReason(esp_reset_reason_t reason) {
         case ESP_RST_DEEPSLEEP: return ResetReason::DeepSleep;
         case ESP_RST_BROWNOUT: return ResetReason::Brownout;
         case ESP_RST_EXT: return ResetReason::External;
+        case ESP_RST_USB: return ResetReason::Usb;
         default: return ResetReason::Unknown;
     }
 }

@@ -10,6 +10,7 @@ enum esp_reset_reason_t {
     ESP_RST_WDT,
     ESP_RST_DEEPSLEEP,
     ESP_RST_BROWNOUT,
+    ESP_RST_USB,
 };
 esp_reset_reason_t esp_reset_reason();
 [[noreturn]] void esp_restart();
