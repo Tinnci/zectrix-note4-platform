@@ -1414,9 +1414,14 @@ void TestLauncherComposition() {
     ClearTraffic();
     assert(launcher.Handle(down).decision == LauncherDecision::RenderFast);
     assert(ui.ShowLauncher(launcher, clock, reading, false) == ESP_OK);
-    assert(std::memcmp(before.data(), ui.canvas().data(), 138 * 50) == 0);
+    assert(std::memcmp(before.data(), ui.canvas().data(), 156 * 50) == 0);
     const auto dirty = ReferenceDirty(before, {0, 0, 400, 300}, ui.canvas().data());
-    assert(dirty.y >= 138 && dirty.y + dirty.height <= 176);
+    assert(dirty.y >= 156 && dirty.y + dirty.height <= 188);
+    // Selection changes rails and label weight, not the date or fixed dot band.
+    unsigned changed = 0;
+    for (int y = 0; y < 300; ++y) for (int x = 0; x < 400; ++x)
+        changed += Bit(before.data(), 50, x, y) != Bit(ui.canvas().data(), 50, x, y);
+    assert(changed >= 2 * 3 * 24);
     const auto bytes = CheckPartial(before, {0, 0, 400, 300}, ui.canvas().data());
     std::printf("MEASURE: home tile focus RAM payload=%zu bytes.\n", bytes);
     SavePreview(ui.canvas(), "home-transfer-selected");
@@ -1604,7 +1609,7 @@ void TestStatusAndImageComposition() {
     ui.UpdateStatus(state);
     assert(ui.RefreshPending() == ESP_OK);
     const auto radio_dirty = ReferenceDirty(before, {0, 0, 400, 300}, ui.canvas().data());
-    assert(radio_dirty.x >= 304 && radio_dirty.x + radio_dirty.width <= 311 &&
+    assert(radio_dirty.x >= 300 && radio_dirty.x + radio_dirty.width <= 315 &&
         radio_dirty.y >= 8 && radio_dirty.y + radio_dirty.height <= 15);
     const auto radio_bytes = CheckPartial(before, {0, 0, 400, 300}, ui.canvas().data());
     std::printf("MEASURE: status-only radio activity RAM payload=%zu bytes.\n", radio_bytes);
@@ -1851,16 +1856,15 @@ void TestSettingsOrientationComposition() {
                 (settings.option_count() > 4 ? 34 : 42);
             const char* value = Tr(row ? (sleep_portrait ? Text::Portrait : Text::Landscape) : names[direction]);
             const char* label = Tr(row ? Text::LockOrientation : Text::ScreenOrientation);
-            const int value_width = actual.TextWidth(value);
+            const int value_width = actual.UiTextWidth(value, Canvas::UiFace::Caption);
             const int x = actual.width() - 28 - value_width;
-            const int y = 54 + static_cast<int>(settings.selected()) * pitch + (pitch - 16) / 2;
-            assert(actual.TextWidth(label) + 12 <= x - 28);
+            const int y = 54 + static_cast<int>(settings.selected()) * pitch + (pitch - 18) / 2 + 2;
+            assert(actual.UiTextWidth(label, Canvas::UiFace::Selected) + 12 <= x - 28);
             Canvas expected;
             expected.SetPortrait(actual.portrait());
             expected.Clear();
-            expected.FillRect(x, y, value_width, 16, true);
-            expected.Text(x, y, value, 1, true);
-            // Compare the complete selected value, including its inverted background.
+            expected.UiText(x, y, value, value_width, Canvas::UiFace::Caption);
+            // Focus does not invert or modify the setting value.
             for (int py = y; py < y + 16; ++py) for (int px = x; px < x + value_width; ++px) {
                 const int bit = py * actual.width() + px;
                 const int mask = 0x80 >> (bit & 7);
@@ -2447,27 +2451,46 @@ esp_err_t spi_device_polling_transmit(spi_device_handle_t, spi_transaction_t* tr
 // Portrait (300 x 400) layouts for Home, Reader, Settings, Transfer and Tools.
 void TestPageShellHeaders() {
     using note4::ui::PageSpec;
+    using note4::ui::BadgeTone;
     using Orientation = note4::display::DisplayOrientation;
-    for (const auto orientation : {Orientation::Standard, Orientation::Portrait}) {
-        for (bool centered : {false, true}) {
+    for (const auto orientation : {Orientation::Standard, Orientation::Inverted,
+                                  Orientation::Portrait, Orientation::PortraitInverted}) {
+        for (bool centered : {false, true}) for (bool quiet : {false, true})
+        for (auto tone : {BadgeTone::Plain, BadgeTone::Info, BadgeTone::Warning})
+        for (unsigned progress : {0u, 500u, 1000u, 1200u}) {
             Reset();
             auto service = CreateService();
             assert(service->SetOrientation(orientation) == ESP_OK);
             UiEngine ui(service.get());
             const char* title = note4::i18n::Tr(note4::i18n::Text::Home);
-            auto page = ui.EnterPage(PageSpec().Title(title).CenterTitle(centered).Badge("42.5%"));
+            auto page = ui.EnterPage(PageSpec().Title(title).CenterTitle(centered).QuietTitle(quiet).Badge("42.5%", tone).Progress(progress));
             auto& canvas = ui.canvas();
             const auto body_clip = canvas.clip();
-            assert(body_clip.y == 44 && body_clip.height > 0);
+            assert(body_clip.y == 52 && body_clip.height > 0);
             Canvas expected = canvas;
             expected.ResetClip();
-            expected.FillRect(0, 24, canvas.width(), 20, true);
-            const int badge_width = expected.TextWidth("42.5%");
-            const int title_width = canvas.width() - 20 - badge_width - 12;
-            const auto style = Canvas::TextStyle::Bold;
-            const int x = 10 + (centered ? (title_width - expected.TextWidth(title, 1, style)) / 2 : 0);
-            expected.TextFitted(x, 26, title, title_width, true, style);
-            expected.Text(canvas.width() - 12 - badge_width, 26, "42.5%", 1, true);
+            expected.FillRect(0, 24, canvas.width(), 28, !quiet);
+            if (quiet) expected.Line(16, 51, canvas.width() - 17, 51);
+            const int padding = tone == BadgeTone::Plain ? 0 : 8;
+            const auto badge_face = tone == BadgeTone::Plain ? Canvas::UiFace::Label : Canvas::UiFace::Caption;
+            const int badge_width = expected.UiTextWidth("42.5%", badge_face) + padding;
+            const int margin = quiet ? 16 : 10;
+            const int meter_width = canvas.portrait() ? 52 : 80;
+            const int title_width = canvas.width() - 2 * margin - badge_width - 12 - meter_width - 12;
+            const auto face = Canvas::UiFace::Selected;
+            const int x = margin + (centered ? (title_width - expected.UiTextWidth(title, face)) / 2 : 0);
+            expected.UiText(x, 26, title, title_width, face, !quiet);
+            const int meter_x = margin + title_width + 12;
+            expected.Line(meter_x, 38, meter_x + meter_width - 1, 38, quiet);
+            expected.FillRect(meter_x, 37, meter_width * std::min(progress, 1000u) / 1000, 3, quiet);
+            const int badge_x = canvas.width() - (quiet ? 16 : 12) - badge_width;
+            const bool warning = tone == BadgeTone::Warning;
+            if (padding) {
+                expected.FillRect(badge_x, 29, badge_width, 20, warning);
+                expected.Rect(badge_x, 29, badge_width, 20, true);
+            }
+            expected.UiText(badge_x + padding / 2, padding ? 30 : 28, "42.5%", badge_width - padding,
+                            badge_face, padding ? warning : !quiet);
             assert(std::memcmp(canvas.data(), expected.data(), canvas.size()) == 0);
             page.DrawBadge("42.5%");
             assert(canvas.clip().x == body_clip.x && canvas.clip().y == body_clip.y &&
@@ -2483,6 +2506,63 @@ void TestPageShellHeaders() {
     }
 }
 
+void TestStableFocus() {
+    using namespace note4::app;
+    using namespace note4::sdk;
+    using Orientation = note4::display::DisplayOrientation;
+    class Factory final : public ApplicationFactory {
+        Status Create(const ApplicationRegistry&, Application**) override { return Status::Unsupported; }
+    } factory;
+    for (const auto orientation : {Orientation::Standard, Orientation::Inverted,
+                                  Orientation::Portrait, Orientation::PortraitInverted}) {
+        Reset();
+        auto service = CreateService();
+        assert(service->SetOrientation(orientation) == ESP_OK);
+        UiEngine ui(service.get());
+        ApplicationCatalog catalog;
+        assert(catalog.Add("launcher", "Launcher", factory));
+        assert(catalog.Add("reader", "Reader", factory, {ApplicationIcon::Book, true}));
+        assert(catalog.Add("transfer", "Transfer", factory, {ApplicationIcon::Transfer, true}));
+        LauncherController launcher(catalog);
+        assert(launcher.Start() == Status::Ok);
+        launcher.Handle({Button::Down, InputAction::Click});
+        assert(ui.ShowLauncher(launcher, {}, {}, true) == ESP_OK);
+        Canvas before = ui.canvas();
+        launcher.Handle({Button::Down, InputAction::Click});
+        assert(ui.ShowLauncher(launcher, {}, {}, false) == ESP_OK);
+        unsigned changed = 0;
+        for (std::size_t i = 0; i < before.size(); ++i)
+            changed += __builtin_popcount(static_cast<unsigned>(before.data()[i] ^ ui.canvas().data()[i]));
+        assert(changed >= 144 && changed < 1024);
+        // Title, date, reading summary and fixed dots must not react to focus.
+        assert(std::memcmp(before.data(), ui.canvas().data(),
+                           156 * ui.canvas().width() / 8) == 0);
+        assert(Inspect(*service).last_refresh == note4::display::RefreshKind::kPartial1Bpp);
+        ClearTraffic();
+        assert(ui.ShowLauncher(launcher, {}, {}, false) == ESP_OK && packets.empty());
+
+        SettingsController settings(false);
+        assert(settings.Start() == Status::Ok);
+        assert(ui.ShowSettings(settings, "", true) == ESP_OK);
+        before = ui.canvas();
+        settings.Handle({Button::Down, InputAction::Click});
+        assert(ui.ShowSettings(settings, "", false) == ESP_OK);
+        changed = 0;
+        for (std::size_t i = 0; i < before.size(); ++i)
+            changed += __builtin_popcount(static_cast<unsigned>(before.data()[i] ^ ui.canvas().data()[i]));
+        assert(changed >= 144);
+        const int pitch = ui.canvas().portrait() ? 46 : 34;
+        for (int y = 0; y < ui.canvas().height(); ++y) {
+            if (y >= 54 && y < 54 + 2 * pitch) continue;
+            for (int x = 0; x < ui.canvas().width(); ++x) {
+                const int bit = y * ui.canvas().width() + x;
+                assert(((before.data()[bit / 8] ^ ui.canvas().data()[bit / 8]) &
+                        (0x80 >> (bit & 7))) == 0);
+            }
+        }
+    }
+}
+
 void TestPageShellScrollbars() {
     using note4::ui::PageSpec;
     using Orientation = note4::display::DisplayOrientation;
@@ -2491,14 +2571,14 @@ void TestPageShellScrollbars() {
         int start, height, expected_y, expected_height;
     };
     const Case cases[] = {
-        {1, 10, 0, 50, 4, 50, 4},  // Minimum thumb must fit a short track.
-        {1, 10, 100, 50, 40, 82, 8},  // Stale list position is clamped.
-        {2, 10, 4, 50, 40, 66, 8},
-        {2, 10, 0, 40, 10, 44, 6},  // Clip the requested track to the body.
+        {1, 10, 0, 60, 4, 60, 4},  // Minimum thumb must fit a short track.
+        {1, 10, 100, 60, 40, 92, 8},  // Stale list position is clamped.
+        {2, 10, 4, 60, 40, 76, 8},
+        {2, 10, 0, 48, 10, 52, 6},  // Clip the requested track to the body.
         {1, 10, 0, INT_MAX, 40, 0, 0},
         {0, 10, 0, 50, 40, 0, 0},
         {10, 10, 0, 50, 40, 0, 0},
-        {SIZE_MAX / 2, SIZE_MAX, SIZE_MAX, 50, 40, 71, 19},
+        {SIZE_MAX / 2, SIZE_MAX, SIZE_MAX, 60, 40, 81, 19},
     };
     for (const auto orientation : {Orientation::Standard, Orientation::Portrait}) {
         Reset();
@@ -2511,7 +2591,7 @@ void TestPageShellScrollbars() {
             canvas.Clear();
             Canvas expected = canvas;
             if (test.expected_height) {
-                const int top = std::max(44, test.start);
+                const int top = std::max(52, test.start);
                 const int bottom = test.start + test.height;
                 const int x = canvas.width() - 9;
                 expected.Line(x, top, x, bottom - 1);
@@ -2579,6 +2659,13 @@ void TestPortraitScreens() {
     launcher.Handle(down);
     assert(ui.ShowLauncher(launcher, clock, reading, false) == ESP_OK);
     SavePreview(ui.canvas(), "home-portrait-focus", true);
+    assert(launcher.SetEntryState("reader", note4::app::LauncherEntryState::Opening));
+    assert(ui.ShowLauncher(launcher, clock, reading, false) == ESP_OK);
+    SavePreview(ui.canvas(), "home-portrait-opening", true);
+    assert(launcher.SetEntryState("reader", note4::app::LauncherEntryState::Unavailable));
+    assert(ui.ShowLauncher(launcher, clock, reading, false) == ESP_OK);
+    SavePreview(ui.canvas(), "home-portrait-unavailable", true);
+    assert(launcher.SetEntryState("reader", note4::app::LauncherEntryState::Ready));
     // A focus move after a full portrait frame stays on the compare/partial path.
     for (unsigned i = 0; i < 20 && launcher.scene() == LauncherScene::Home; ++i) {
         if (!launcher.overview_selected() && launcher.EntryAt(launcher.selected()).label_text == Text::Tools) {
@@ -2764,6 +2851,7 @@ int main() {
     TestRecoveryComposition();
     TestSleepCoverComposition();
     TestPageShellHeaders();
+    TestStableFocus();
     TestPageShellScrollbars();
     TestPortraitScreens();
     Reset();

@@ -12,6 +12,7 @@
 class Canvas {
 public:
     using TextStyle = note4::sdk::TextStyle;
+    enum class UiFace : uint8_t { Caption, Navigation, Selected, Heading, Compact, Label, Micro };
     using Clip = note4::ui::Rect;
     static constexpr int kWidth = 400;
     static constexpr int kHeight = 300;
@@ -47,6 +48,10 @@ public:
     int TextHeight(const char* text, int scale = 1, TextStyle style = TextStyle::Regular) const;
     void TextFitted(int x, int y, const char* text, int max_width,
                     bool inverted = false, TextStyle style = TextStyle::Regular);
+    int UiTextWidth(const char* text, UiFace face) const;
+    static int UiTextHeight(UiFace face);
+    void UiText(int x, int y, const char* text, int max_width, UiFace face,
+                bool inverted = false);
 
     uint8_t* data() { return pixels_.data(); }
     const uint8_t* data() const { return pixels_.data(); }

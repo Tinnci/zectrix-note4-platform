@@ -1,5 +1,13 @@
 # Display responsiveness and input concurrency
 
+Launcher confirmation renders one `Opening` acknowledgement before submitting
+the application command on the existing idle dispatch. Duplicate confirmations
+are ignored; Back cancels a prepared launch. Command rejection or application
+entry failure marks the row `Unavailable`; confirming it permits a manual retry.
+This adds one acknowledgement refresh per manual launch, not an animation timer.
+Reader and known-length book transfers render a bounded header meter from actual
+progress; unknown-length transfers omit it. BT/WI-FI labels use native 12px ASCII.
+
 E1.3 reduces obsolete foreground draws after a slow refresh while retaining
 one application/display owner. It applies the coalesced-update principle from
 CrossPoint's [ActivityManager](https://github.com/crosspoint-reader/crosspoint-reader/blob/develop/src/activities/ActivityManager.cpp)
@@ -41,6 +49,46 @@ shutdown/failsafe delegates. Nested runtime operations return `InvalidState`
 until the callback returns; only entering or active application callbacks can
 submit navigation or rendering. This closes a recursive-shutdown failure in
 the initial E1.3 implementation without adding a mutex or another task.
+
+## Focus and layout
+
+Home, Settings, menus and Reader use a light, left-aligned navigation header. Home keeps the
+date sidebar beside the reading summary, above a fixed six-slot grid; missing entries do not stretch
+the remaining cells. Portrait uses a single column, landscape two columns.
+All existing entries, pagination and button actions remain available. Library
+and reading-option selection use the same rail. Reading content retains its
+pagination geometry; its light title and progress badge no longer form a
+large black band above the text. Outlined badges identify informational transfer
+states; a filled badge identifies failure without inverting the whole title.
+Lock-calendar emphasis is unchanged.
+
+Editorial text uses native 14px regular captions, 18px regular/bold navigation,
+18px bold page titles, and 22px bold book names. Home reading prompts use the
+16px bold face. The title band ends at y=52; reading
+pages keep their compact native 16px header ending at y=44, so body pagination
+stays unchanged. Chinese navigation weight uses real
+bold glyphs rather than an underline. Home icons occupy a 22px slot beside
+18px labels; their position does not change on focus. Source and fallback
+coverage are documented in [system fonts](../components/ui/font/README.md).
+
+Selection changes a clipped 3-pixel focus rail and the label weight, never
+inverting a card. Labels keep their coordinates; icons and setting values do
+not change. A fixed, pixel-aligned dot strip beneath the reading summary stays
+unchanged across focus moves. The old and new selections are redrawn through the existing shared
+canvas and foreground render request; no animation timer, extra framebuffer
+or background display owner is introduced. A missing RTC or reading error
+keeps its explanatory text and recovery action.
+
+Radio slots use a dash (off), outlined square (ready), filled square (connected),
+square with paired arrows (activity), or exclamation (fault). Arrows indicate
+generic activity, not measured receive/transmit direction. Battery and charging
+semantics are unchanged. Decorations do not schedule refreshes or wakeups.
+
+The display service still compares the resulting frame and may promote a
+partial request to a full cleanup. Two distant rails can produce a wide
+bounding update window: fewer changed pixels do not imply proportional BUSY
+time or measured power savings. Compare telemetry and physical contrast and
+ghosting before claiming those improvements.
 
 ## Bounded input storage
 

@@ -3,6 +3,7 @@
 #include "note4_micro_app_controller.h"
 #include "micro_app_view.h"
 #include "unicode_text.h"
+#include "focus_indicator.h"
 #include "sdkconfig.h"
 
 #include <cstdio>
@@ -36,17 +37,16 @@ esp_err_t UiEngine::ShowMicroApps(const note4::app::MicroAppController& apps, bo
             for (std::size_t i = 0; i < apps.rows(); ++i) {
                 const int y = 70 + i * 27;
                 const bool selected = i == apps.selected();
-                canvas_.FillRect(12, y, 376, 24, selected);
-                if (!selected) canvas_.Rect(12, y, 376, 24);
+                ui::DrawFocusRail(canvas_, {12, y, 376, 24}, selected);
                 const auto* meta = i < apps.count() ? apps.metadata(i) : nullptr;
                 const char* label = meta ? meta->name.data() : i < apps.count() ? apps.entry(i).name.data() :
                     Tr(apps.previous() && i == apps.count() ? Text::AppsPrevious : Text::AppsNext);
                 if (meta) {
-                    ui::DrawMicroAppIcon(canvas_, *meta, 20, y + 4, 16, selected);
-                    ui::DrawUtf8Line(canvas_, 44, y + 4, label, 240, selected);
-                    ui::DrawUtf8Line(canvas_, 292, y + 4, meta->version.data(), 88, selected);
+                    ui::DrawMicroAppIcon(canvas_, *meta, 24, y + 4, 16);
+                    canvas_.UiText(48, y + 3, label, 236, ui::FocusTextFace(selected));
+                    ui::DrawUtf8Line(canvas_, 292, y + 4, meta->version.data(), 88);
                 } else {
-                    ui::DrawUtf8Line(canvas_, 20, y + 4, label, 360, selected);
+                    canvas_.UiText(24, y + 3, label, 356, ui::FocusTextFace(selected));
                 }
             }
         }

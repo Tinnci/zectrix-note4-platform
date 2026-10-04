@@ -7,6 +7,7 @@
 #include "ascii_font_8x16.h"
 #include "large_digits.h"
 #include "digit_codec.h"
+#include "editorial_font.h"
 #include "styled_glyph.h"
 #include "utf8.h"
 #include "sdkconfig.h"
@@ -105,6 +106,79 @@ void PaintRun(Canvas& canvas, int x, int y, const char* text, const char* end,
     }
 }
 }  // namespace
+
+namespace {
+struct EditorialFace {
+    const EditorialGlyph* first;
+    const EditorialGlyph* last;
+    const uint8_t* data;
+    int height;
+    int size;
+};
+EditorialFace Face(Canvas::UiFace face) {
+    switch (face) {
+        case Canvas::UiFace::Caption: return {std::begin(kEditorialCaptionGlyphs), std::end(kEditorialCaptionGlyphs), kEditorialCaptionData, kEditorialCaptionHeight, kEditorialCaptionSize};
+        case Canvas::UiFace::Navigation: return {std::begin(kEditorialNavigationGlyphs), std::end(kEditorialNavigationGlyphs), kEditorialNavigationData, kEditorialNavigationHeight, kEditorialNavigationSize};
+        case Canvas::UiFace::Selected: return {std::begin(kEditorialSelectedGlyphs), std::end(kEditorialSelectedGlyphs), kEditorialSelectedData, kEditorialSelectedHeight, kEditorialSelectedSize};
+        case Canvas::UiFace::Heading: return {std::begin(kEditorialHeadingGlyphs), std::end(kEditorialHeadingGlyphs), kEditorialHeadingData, kEditorialHeadingHeight, kEditorialHeadingSize};
+        case Canvas::UiFace::Compact: return {std::begin(kEditorialCompactGlyphs), std::end(kEditorialCompactGlyphs), kEditorialCompactData, kEditorialCompactHeight, kEditorialCompactSize};
+        case Canvas::UiFace::Label: return {std::begin(kEditorialLabelGlyphs), std::end(kEditorialLabelGlyphs), kEditorialLabelData, kEditorialLabelHeight, kEditorialLabelSize};
+        case Canvas::UiFace::Micro: return {std::begin(kEditorialMicroGlyphs), std::end(kEditorialMicroGlyphs), kEditorialMicroData, kEditorialMicroHeight, kEditorialMicroSize};
+    }
+    return Face(Canvas::UiFace::Navigation);
+}
+const EditorialGlyph* FindGlyph(const EditorialFace& face, uint32_t cp) {
+    const auto* found = std::lower_bound(face.first, face.last, cp,
+        [](const EditorialGlyph& glyph, uint32_t value) { return glyph.codepoint < value; });
+    return found != face.last && found->codepoint == cp ? found : nullptr;
+}
+int Advance(const EditorialFace& face, uint32_t cp) {
+    const auto* glyph = FindGlyph(face, cp);
+    return glyph ? glyph->width : UiGlyph(cp).width * face.size / 16;
+}
+}
+
+int Canvas::UiTextHeight(UiFace face) { return Face(face).height; }
+int Canvas::UiTextWidth(const char* text, UiFace name) const {
+    const auto face = Face(name);
+    int width = 0;
+    for (const char* p = text; p && *p;) {
+        const int advance = Advance(face, note4::ui::NextUtf8(p));
+        width += std::min(INT_MAX - width, advance);
+    }
+    return width;
+}
+void Canvas::UiText(int x, int y, const char* text, int max_width, UiFace name, bool inverted) {
+    if (!text || max_width <= 0) return;
+    const auto face = Face(name);
+    const bool truncate = UiTextWidth(text, name) > max_width;
+    const int ellipsis = truncate ? Advance(face, 0x2026) : 0;
+    if (ellipsis > max_width) return;
+    int64_t cursor = x;
+    const int64_t right = int64_t(x) + max_width;
+    const auto paint = [&](uint32_t cp) {
+        if (cursor > INT_MAX || cursor < INT_MIN) return;
+        const auto* glyph = FindGlyph(face, cp);
+        if (glyph) {
+            if (inverted) FillClipped(*this, cursor, y, glyph->width, face.height, true);
+            for (int row = 0; row < glyph->rows; ++row) for (int col = 0; col < glyph->width; ++col) {
+                const unsigned bit = row * glyph->width + col;
+                if (face.data[glyph->offset + bit / 8] & (0x80 >> (bit & 7)))
+                    FillClipped(*this, cursor + col, int64_t(y) + glyph->top + row, 1, 1, !inverted);
+            }
+        } else {
+            // Arbitrary document names retain Unicode coverage without a full CJK font.
+            PaintGlyph(*this, cursor, int64_t(y) + 2, cp, UiGlyph(cp), face.size, TextStyle::Regular, inverted);
+        }
+    };
+    for (const char* p = text; *p;) {
+        const auto cp = note4::ui::NextUtf8(p);
+        const int advance = Advance(face, cp);
+        if (cursor + advance + ellipsis > right) { paint(0x2026); return; }
+        paint(cp);
+        cursor += advance;
+    }
+}
 
 void Canvas::Clear(bool white) {
     if (clip_.x == 0 && clip_.y == 0 && clip_.width == width() &&

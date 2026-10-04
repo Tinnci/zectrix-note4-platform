@@ -11,6 +11,8 @@ class UiEngine;
 
 namespace note4::ui {
 
+enum class BadgeTone { Plain, Info, Warning };
+
 // Declarative page configuration with fluent builder.
 struct PageSpec {
     const char* title = "";
@@ -18,14 +20,28 @@ struct PageSpec {
     const char* badge = nullptr;
     bool center_title = false;
     bool portrait_capable = true;
+    bool quiet_title = true;
+    bool compact_title = false;
+    BadgeTone badge_tone = BadgeTone::Plain;
+    bool progress_valid = false;
+    uint16_t progress_per_mille = 0;
 
     constexpr PageSpec() = default;
 
     constexpr PageSpec& Title(const char* t) { title = t; return *this; }
     constexpr PageSpec& Footer(const char* f) { footer = f; return *this; }
-    constexpr PageSpec& Badge(const char* b) { badge = b; return *this; }
+    constexpr PageSpec& Badge(const char* b, BadgeTone tone = BadgeTone::Plain) {
+        badge = b; badge_tone = tone; return *this;
+    }
     constexpr PageSpec& CenterTitle(bool center = true) { center_title = center; return *this; }
     constexpr PageSpec& Portrait(bool capable = true) { portrait_capable = capable; return *this; }
+    // A light navigation header leaves visual emphasis to the page content.
+    constexpr PageSpec& QuietTitle(bool quiet = true) { quiet_title = quiet; return *this; }
+    // Reader reserves its existing page geometry below a compact native 16px title.
+    constexpr PageSpec& CompactTitle(bool compact = true) { compact_title = compact; return *this; }
+    constexpr PageSpec& Progress(unsigned value) {
+        progress_valid = true; progress_per_mille = static_cast<uint16_t>(std::min(value, 1000u)); return *this;
+    }
 };
 
 using PageConfig = PageSpec;
@@ -71,6 +87,9 @@ private:
     Canvas& canvas_;
     Rect body_{};
     bool committed_ = false;
+    bool quiet_title_ = false;
+    BadgeTone badge_tone_ = BadgeTone::Plain;
+    int header_height_ = 52;
 };
 
 }  // namespace note4::ui

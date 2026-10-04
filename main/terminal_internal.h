@@ -157,6 +157,8 @@ private:
     std::array<Note4TestState,
                static_cast<size_t>(Note4TestId::kCount)> test_states_;
     app::LauncherSelection launcher_selection_{};
+    sdk::ApplicationId launcher_open_target_{};
+    sdk::ApplicationId launcher_failed_target_{};
     bool launcher_back_requested_ = false;
 #if CONFIG_NOTE4_ENABLE_UTILITIES
     app::UtilitySession utilities_;

@@ -7,22 +7,12 @@ namespace note4::ui {
 namespace {
 
 // Original row masks, read from left to right. All icons share the same ink path.
-constexpr uint16_t kBluetooth[] = {
-    0b0001000, 0b0001100, 0b0001010, 0b1001001, 0b0101010, 0b0011100,
-    0b0001000, 0b0011100, 0b0101010, 0b1001001, 0b0001010, 0b0001100, 0b0001000,
-};
-constexpr uint16_t kWifi[] = {
-    0b0001111111000, 0b0110000000110, 0b1000000000001,
-    0b0000111110000, 0b0001000001000, 0b0010000000100,
-    0b0000000000000, 0b0000001000000, 0b0000011100000,
-};
-
 enum class Mark : uint8_t { None, Off, Ready, Connected, Active, Warning, Charging, Full, Plug, Unknown, Absent };
 // Radio badges have their own seven-pixel slot: separated stems and balanced heads.
 constexpr uint16_t kRadioMarks[][7] = {
-    {0, 0b0000010, 0b0000100, 0b0001000, 0b0010000, 0b0100000, 0},
-    {0, 0b0011100, 0b0100010, 0b0100010, 0b0100010, 0b0011100, 0},
-    {0, 0, 0b0011100, 0b0111110, 0b0011100, 0, 0},
+    {0, 0, 0, 0b0111110, 0, 0, 0},
+    {0, 0b0111110, 0b0100010, 0b0100010, 0b0100010, 0b0111110, 0},
+    {0, 0b0111110, 0b0111110, 0b0111110, 0b0111110, 0b0111110, 0},
     {0b0100000, 0b1110000, 0b0100010, 0b0100010, 0b0100010, 0b0000111, 0b0000010},
     {0b0001000, 0b0001000, 0b0001000, 0b0001000, 0, 0b0001000, 0},
 };
@@ -52,6 +42,12 @@ void Badge(Canvas& canvas, int x, int y, Mark mark, bool ink) {
 }
 
 void RadioBadge(Canvas& canvas, int x, int y, Mark mark, bool ink) {
+    if (mark == Mark::Active) {
+        canvas.FillRect(x + 2, y + 2, 3, 3, ink);
+        // Paired arrows denote activity, never measured TX/RX direction.
+        Icon(canvas, x + 8, y, 7, 7, kRadioMarks[3], ink);
+        return;
+    }
     Icon(canvas, x, y, 7, 7, kRadioMarks[static_cast<unsigned>(mark) - static_cast<unsigned>(Mark::Off)], ink);
 }
 
@@ -97,13 +93,13 @@ void DrawStatusBar(Canvas& canvas, const StatusBarState& state, bool inverted) {
     char text[12];
     if (state.time_valid) std::snprintf(text, sizeof(text), "%02u:%02u", state.hour, state.minute);
     else std::snprintf(text, sizeof(text), "--:--");
-    canvas.Text(8, 4, text, 1, inverted);
+    canvas.UiText(8, 0, text, 72, Canvas::UiFace::Navigation, inverted);
 
     // Fixed slots prevent radio and charge transitions from shifting neighbors.
-    Icon(canvas, 260 + dx, 5, 7, 13, kBluetooth, ink);
-    RadioBadge(canvas, 272 + dx, 8, RadioMark(state.ble), ink);
-    Icon(canvas, 288 + dx, 7, 13, 9, kWifi, ink);
-    RadioBadge(canvas, 304 + dx, 8, RadioMark(state.wifi), ink);
+    canvas.UiText(208 + dx, 4, "BT", 20, Canvas::UiFace::Micro, inverted);
+    RadioBadge(canvas, 228 + dx, 8, RadioMark(state.ble), ink);
+    canvas.UiText(256 + dx, 4, "WI-FI", 40, Canvas::UiFace::Micro, inverted);
+    RadioBadge(canvas, 300 + dx, 8, RadioMark(state.wifi), ink);
     Badge(canvas, 320 + dx, 8, PowerMark(state), ink);
 
     // A 20 x 10 silhouette leaves a one-pixel moat around five 2 x 6 cells.
@@ -123,7 +119,8 @@ void DrawStatusBar(Canvas& canvas, const StatusBarState& state, bool inverted) {
         Badge(canvas, x + 6, y + 2, state.battery_absent ? Mark::Absent : Mark::Unknown, ink);
         std::snprintf(text, sizeof(text), "--%%");
     }
-    canvas.Text(392 + dx - canvas.TextWidth(text), 4, text, 1, inverted);
+    const auto face = Canvas::UiFace::Caption;
+    canvas.UiText(392 + dx - canvas.UiTextWidth(text, face), 3, text, 40, face, inverted);
     canvas.Line(0, kStatusBarHeight - 1, canvas.width() - 1, kStatusBarHeight - 1, ink);
 }
 

@@ -1,9 +1,11 @@
 #include "note4_locale.h"
 #include "ui_engine.h"
 #include "layout.h"
+#include "focus_indicator.h"
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 
 #include "note4_launcher_controller.h"
 #include "note4_reading_overview.h"
@@ -13,6 +15,11 @@ using note4::i18n::Tr;
 using note4::i18n::Text;
 
 namespace {
+const char* EntryStatus(note4::app::LauncherEntryState state) {
+    using State = note4::app::LauncherEntryState;
+    return state == State::Opening ? Tr(Text::LauncherOpening) :
+        state == State::Unavailable ? Tr(Text::LauncherUnavailable) : nullptr;
+}
 
 using Icon = note4::app::ApplicationIcon;
 using IconGlyph = std::array<uint16_t, 16>;
@@ -60,140 +67,90 @@ const IconGlyph& GlyphForIcon(Icon icon) {
     return kAppIcon;
 }
 
-void DrawIcon(Canvas& canvas, note4::app::ApplicationIcon icon, int x, int y, bool black) {
+void DrawIcon(Canvas& canvas, note4::app::ApplicationIcon icon, int x, int y, int side, bool black) {
     const auto& glyph = GlyphForIcon(icon);
-    for (int row = 0; row < 16; ++row) {
-        for (int col = 0; col < 16; ++col) {
-            if (glyph[row] & (0x8000U >> col)) canvas.Pixel(x + col, y + row, black);
+    for (int row = 0; row < side; ++row) {
+        for (int col = 0; col < side; ++col) {
+            if (glyph[row * 16 / side] & (0x8000U >> (col * 16 / side)))
+                canvas.Pixel(x + col, y + row, black);
         }
     }
 }
 
-// Portrait: a date strip above a full-width reading card, 276 px wide.
-void DrawOverviewPortrait(Canvas& canvas, const note4::time::ClockSnapshot& clock,
-                          const note4::app::ReadingOverview& reading, bool active) {
-    canvas.Rect(12, 52, 276, 40);
-    if (clock.source != note4::time::ClockSource::Uptime && note4::time::IsValid(clock.value)) {
-        constexpr Text months[] = {Text::Jan, Text::Feb, Text::Mar, Text::Apr, Text::May, Text::Jun,
-            Text::Jul, Text::Aug, Text::Sep, Text::Oct, Text::Nov, Text::Dec};
-        constexpr Text weekdays[] = {Text::Sun, Text::Mon, Text::Tue, Text::Wed, Text::Thu, Text::Fri, Text::Sat};
-        const auto& date = clock.value;
-        const auto weekday = (note4::time::CalendarSeconds(date) / 86400 + 4) % 7;
-        char value[12];
-        std::snprintf(value, sizeof(value), "%02d", date.day);
-        canvas.Text(22, 56, value, 2);
-        canvas.Text(78, 58, Tr(weekdays[weekday]));
-        const char* month = Tr(months[date.month - 1]);
-        canvas.Text(78, 74, month);
-        std::snprintf(value, sizeof(value), "%04d", date.year);
-        canvas.Text(78 + canvas.TextWidth(month) + 8, 74, value, 1, false, Canvas::TextStyle::Dim);
-    } else {
-        canvas.Text(22, 57, Tr(Text::NotSet));
-        canvas.TextFitted(22, 73, Tr(Text::UseClock), 252);
-    }
-
-    canvas.Rect(12, 98, 276, 64);
-    if (active) canvas.FillRect(13, 99, 274, 62, true);
-    using State = note4::app::ReadingOverview::State;
-    switch (reading.state) {
-        case State::Saved: {
-            canvas.TextFitted(24, 104, Tr(Text::ContinueReading), 252, active, Canvas::TextStyle::Bold);
-            auto title = reading.book_id;
-            title.back() = '\0';
-            note4::ui::DrawUtf8Line(canvas, 24, 122, title.data(), 252, active);
-            const unsigned progress = std::min<unsigned>(reading.progress_per_mille, 1000);
-            char value[24];
-            std::snprintf(value, sizeof(value), "%u.%u%%", progress / 10, progress % 10);
-            const int label_x = 276 - canvas.TextWidth(value);
-            canvas.Text(label_x, 140, value, 1, active);
-            const int bar_width = label_x - 34;
-            canvas.Rect(24, 145, bar_width, 6, !active);
-            canvas.FillRect(26, 147, static_cast<int>((bar_width - 4) * progress / 1000), 2, !active);
-            break;
-        }
-        case State::Empty:
-            canvas.TextFitted(24, 104, Tr(Text::OpenLibrary), 252, active);
-            canvas.TextFitted(24, 124, Tr(Text::ChooseFirstBook), 252, active);
-            canvas.Text(24, 142, "TXT / EPUB", 1, active);
-            break;
-        case State::Error:
-            canvas.TextFitted(24, 104, Tr(Text::OpenLibrary), 252, active);
-            canvas.TextFitted(24, 124, Tr(Text::ProgressUnavailable), 252, active);
-            canvas.TextFitted(24, 142, Tr(Text::OkRetry), 252, active);
-            break;
-        case State::Unavailable:
-            canvas.TextFitted(24, 104, Tr(Text::PocketTerminal), 252);
-            canvas.TextFitted(24, 124, Tr(Text::ClockCoversTools), 252);
-            canvas.TextFitted(24, 142, Tr(Text::ChooseAppBelow), 252);
-            break;
-    }
-}
-
-// Adaptive overview responding to orientation and container geometry.
+// The same editorial geometry is used in both orientations. Only its width changes.
 void DrawOverview(Canvas& canvas, const note4::time::ClockSnapshot& clock,
                   const note4::app::ReadingOverview& reading, bool active) {
-    if (canvas.portrait()) {
-        DrawOverviewPortrait(canvas, clock, reading, active);
-        return;
-    }
+    constexpr int date_x = 16, divider_x = 84, reading_x = 96;
+    const int right = canvas.width() - 16;
+    const int text_width = right - reading_x - 8;
+    canvas.Line(divider_x, 54, divider_x, 122);
+    note4::ui::DrawFocusRail(canvas, {92, 52, right - 92, 74}, active);
 
-    canvas.Rect(12, 52, 376, 78);
-    canvas.Line(126, 60, 126, 121);
-    if (active) canvas.FillRect(127, 53, 260, 76, true);
     if (clock.source != note4::time::ClockSource::Uptime && note4::time::IsValid(clock.value)) {
         constexpr Text months[] = {Text::Jan, Text::Feb, Text::Mar, Text::Apr, Text::May, Text::Jun,
             Text::Jul, Text::Aug, Text::Sep, Text::Oct, Text::Nov, Text::Dec};
         constexpr Text weekdays[] = {Text::Sun, Text::Mon, Text::Tue, Text::Wed, Text::Thu, Text::Fri, Text::Sat};
         const auto& date = clock.value;
         const auto weekday = (note4::time::CalendarSeconds(date) / 86400 + 4) % 7;
-        canvas.Text(24, 58, Tr(weekdays[weekday]));
-        char value[12];
-        std::snprintf(value, sizeof(value), "%02d", date.day);
-        canvas.Text(24, 78, value, 2);
-        canvas.Text(78, 79, Tr(months[date.month - 1]));
+        char value[32];
+        std::snprintf(value, sizeof(value), Tr(Text::HomeDate), Tr(months[date.month - 1]), date.day);
+        canvas.UiText(date_x, 62, value, 64, Canvas::UiFace::Compact);
+        canvas.UiText(date_x, 84, Tr(weekdays[weekday]), 64, Canvas::UiFace::Caption);
         std::snprintf(value, sizeof(value), "%04d", date.year);
-        canvas.Text(78, 102, value, 1, false, Canvas::TextStyle::Dim);
+        canvas.UiText(date_x, 108, value, 64, Canvas::UiFace::Caption);
     } else {
-        canvas.Text(24, 63, Tr(Text::Date));
-        canvas.Text(24, 84, Tr(Text::NotSet));
-        canvas.Text(24, 106, Tr(Text::UseClock));
+        canvas.UiText(date_x, 60, Tr(Text::Date), 64, Canvas::UiFace::Selected);
+        canvas.UiText(date_x, 84, Tr(Text::NotSet), 64, Canvas::UiFace::Caption);
+        canvas.UiText(date_x, 108, Tr(Text::UseClock), 64, Canvas::UiFace::Caption);
     }
 
     using State = note4::app::ReadingOverview::State;
-    switch (reading.state) {
-        case State::Saved: {
-            canvas.TextFitted(140, 58, Tr(Text::ContinueReading), 236, active, Canvas::TextStyle::Bold);
-            auto title = reading.book_id;
-            title.back() = '\0';
-            note4::ui::DrawUtf8Line(canvas, 140, 80, title.data(), 236, active);
-            const unsigned progress = std::min<unsigned>(reading.progress_per_mille, 1000);
-            char value[24];
-            std::snprintf(value, sizeof(value), "%u.%u%%", progress / 10, progress % 10);
-            const int label_x = 376 - canvas.TextWidth(value);
-            canvas.Text(label_x, 103, value, 1, active);
-            const int bar_width = label_x - 150;
-            canvas.Rect(140, 109, bar_width, 6, !active);
-            canvas.FillRect(142, 111, static_cast<int>((bar_width - 4) * progress / 1000), 2, !active);
-            break;
+    const Text heading = reading.state == State::Saved ? Text::ContinueReading :
+        reading.state == State::Unavailable ? Text::PocketTerminal : Text::OpenLibrary;
+    canvas.UiText(reading_x, 54, Tr(heading), text_width, Canvas::UiFace::Label);
+    if (reading.state == State::Saved) {
+        auto title = reading.book_id;
+        title.back() = '\0';
+        // The extension drops to a regular 18px face on the shared baseline (design: ".epub").
+        const char* dot = std::strrchr(title.data(), '.');
+        const char* ext = dot && dot != title.data() && dot[1] ? dot : nullptr;
+        auto stem = title;
+        if (ext) {
+            std::memcpy(stem.data(), title.data(), static_cast<std::size_t>(ext - title.data()));
+            stem[ext - title.data()] = '\0';
         }
-        case State::Empty:
-            canvas.Text(140, 58, Tr(Text::OpenLibrary), 1, active);
-            canvas.Text(140, 83, Tr(Text::ChooseFirstBook), 1, active);
-            canvas.Text(140, 105, "TXT / EPUB", 1, active);
-            break;
-        case State::Error:
-            canvas.Text(140, 58, Tr(Text::OpenLibrary), 1, active);
-            canvas.Text(140, 83, Tr(Text::ProgressUnavailable), 1, active);
-            canvas.Text(140, 105, Tr(Text::OkRetry), 1, active);
-            break;
-        case State::Unavailable:
-            canvas.Text(140, 58, Tr(Text::PocketTerminal));
-            canvas.Text(140, 83, Tr(Text::ClockCoversTools));
-            canvas.Text(140, 105, Tr(Text::ChooseAppBelow));
-            break;
+        const int ext_width = ext ? canvas.UiTextWidth(ext, Canvas::UiFace::Navigation) : 0;
+        if (ext && canvas.UiTextWidth(stem.data(), Canvas::UiFace::Heading) + ext_width <= text_width) {
+            const int stem_width = canvas.UiTextWidth(stem.data(), Canvas::UiFace::Heading);
+            canvas.UiText(reading_x, 78, stem.data(), stem_width, Canvas::UiFace::Heading);
+            canvas.UiText(reading_x + stem_width, 82, ext, ext_width, Canvas::UiFace::Navigation);
+        } else {
+            canvas.UiText(reading_x, 78, title.data(), text_width, Canvas::UiFace::Heading);
+        }
+        const unsigned progress = std::min<unsigned>(reading.progress_per_mille, 1000);
+        char value[24];
+        std::snprintf(value, sizeof(value), "%u.%u%%", progress / 10, progress % 10);
+        const int label_x = right - 8 - canvas.UiTextWidth(value, Canvas::UiFace::Caption);
+        canvas.UiText(label_x, 108, value, right - label_x, Canvas::UiFace::Caption);
+        const int bar_width = std::max(0, label_x - reading_x - 12);
+        canvas.Line(reading_x, 114, reading_x + bar_width, 114);
+        canvas.FillRect(reading_x, 112, static_cast<int>(bar_width * progress / 1000), 3, true);
+    } else {
+        const Text detail = reading.state == State::Empty ? Text::ChooseFirstBook :
+            reading.state == State::Error ? Text::ProgressUnavailable : Text::ClockCoversTools;
+        const char* hint = reading.state == State::Empty ? "TXT / EPUB" :
+            Tr(reading.state == State::Error ? Text::OkRetry : Text::ChooseAppBelow);
+        canvas.UiText(reading_x, 84, Tr(detail), text_width, Canvas::UiFace::Caption);
+        canvas.UiText(reading_x, 108, hint, text_width, Canvas::UiFace::Caption);
     }
-}
 
+    // Ben-Day accent: bounded procedural ink, anchored to the logical screen.
+    // It never follows focus, sits behind no text, and needs no bitmap or timer.
+    // Staggered single-pixel stipple, denser than the earlier sparse rows (design: light band).
+    for (int row = 0, y = 130; y < 152; y += 3, ++row)
+        for (int x = 92 + (row & 1) * 2; x < right; x += 4)
+            canvas.Pixel(x, y, true);
+}
 }  // namespace
 
 esp_err_t UiEngine::ShowLauncher(const note4::app::LauncherController& launcher,
@@ -203,12 +160,14 @@ esp_err_t UiEngine::ShowLauncher(const note4::app::LauncherController& launcher,
     const auto count = launcher.count();
     if (launcher.scene() == Scene::Tools) {
         std::array<const char*, note4::app::ApplicationCatalog::kCapacity> labels{};
+        std::array<UiEngine::MenuRowState, note4::app::ApplicationCatalog::kCapacity> states{};
         for (std::size_t i = 0; i < count; ++i) {
             const auto entry = launcher.EntryAt(i);
             labels[i] = Tr(entry.label_text, entry.label);
+            states[i] = {EntryStatus(entry.state), entry.state != note4::app::LauncherEntryState::Unavailable};
         }
         return ShowMenu(Tr(Text::Tools), labels.data(), count, launcher.selected(),
-                        Tr(Text::NavOpenBack), full_refresh);
+                        Tr(Text::NavOpenBack), full_refresh, states.data());
     }
     if (launcher.scene() != Scene::Home) return ESP_ERR_INVALID_STATE;
 
@@ -230,7 +189,7 @@ esp_err_t UiEngine::ShowLauncher(const note4::app::LauncherController& launcher,
 
     auto shell = EnterPage(note4::ui::PageSpec()
         .Title(Tr(Text::Home))
-        .CenterTitle()
+        .QuietTitle()
         .Footer(footer)
         .Badge(pages_str[0] ? pages_str : nullptr));
 
@@ -243,27 +202,30 @@ esp_err_t UiEngine::ShowLauncher(const note4::app::LauncherController& launcher,
         const auto visible = std::min(per_page, count - first);
 
         // Responsive grid: 2 columns in landscape (width 376), 1 column in portrait (width 276).
-        const int top_y = shell.portrait() ? 170 : 138;
-        const int area_h = shell.portrait() ? (FooterTop() - 6 - top_y) : 126;
-        const int gap_y = shell.portrait() ? 4 : 6;
-        const note4::ui::Rect tiles_area(12, top_y, shell.width() - 24, area_h);
+        const int top_y = 156;
+        const int area_h = FooterTop() - 6 - top_y;
+        const int gap_y = shell.portrait() ? 0 : 6;
+        const note4::ui::Rect tiles_area(16, top_y, shell.width() - 32, area_h);
         const auto grid = note4::ui::UniformGrid::Fit(
-            tiles_area, static_cast<int>(visible), 160, 8, gap_y);
+            tiles_area, static_cast<int>(per_page), 160, 8, gap_y);
 
         for (std::size_t slot = 0; slot < visible; ++slot) {
             const auto index = first + slot;
             const auto entry = launcher.EntryAt(index);
             const auto cell = grid.Cell(static_cast<int>(slot));
-            const bool active = index == launcher.selected();
+            const bool active = index == launcher.selected() && entry.state != note4::app::LauncherEntryState::Unavailable;
+            const char* status = EntryStatus(entry.state);
+            const int status_width = std::min(canvas_.UiTextWidth(status, Canvas::UiFace::Caption), cell.width / 3);
 
-            canvas_.FillRect(cell.x, cell.y, cell.width, cell.height, active);
-            canvas_.Rect(cell.x, cell.y, cell.width, cell.height);
-            DrawIcon(canvas_, entry.icon, cell.x + 12, cell.y + (cell.height - 16) / 2, !active);
-            const int text_w = shell.portrait() ? (cell.width - 52) : (cell.width - 48);
-            DrawFittedText(canvas_, cell.x + 40, cell.y + (cell.height - 16) / 2,
-                           Tr(entry.label_text, entry.label), text_w, active);
+            note4::ui::DrawFocusRail(canvas_, cell, active);
+            DrawIcon(canvas_, entry.icon, cell.x + 12, cell.y + (cell.height - 22) / 2, 22, true);
+            canvas_.UiText(cell.x + 46, cell.y + (cell.height - 22) / 2,
+                           Tr(entry.label_text, entry.label), cell.width - 54 - (status_width ? status_width + 12 : 0),
+                           note4::ui::FocusTextFace(active));
+            if (status_width) canvas_.UiText(cell.right() - 8 - status_width,
+                cell.y + (cell.height - 18) / 2, status, status_width, Canvas::UiFace::Caption);
+            canvas_.Line(cell.x + 12, cell.bottom() - 1, cell.right() - 1, cell.bottom() - 1);
         }
     }
     return shell.Commit(full_refresh);
 }
-

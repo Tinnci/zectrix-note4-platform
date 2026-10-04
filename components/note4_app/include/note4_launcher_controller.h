@@ -7,6 +7,7 @@
 namespace note4::app {
 
 enum class LauncherScene : uint8_t { Home, Tools };
+enum class LauncherEntryState : uint8_t { Ready, Opening, Unavailable };
 enum class LauncherDecision : uint8_t {
     None, RenderFast, RenderQuality, OpenSelected, ContinueReading, Shutdown
 };
@@ -22,6 +23,7 @@ struct LauncherEntry {
     const char* label = nullptr;
     ApplicationIcon icon = ApplicationIcon::App;
     i18n::Text label_text = i18n::Text::None;
+    LauncherEntryState state = LauncherEntryState::Ready;
 };
 
 struct LauncherResult {
@@ -52,6 +54,9 @@ public:
     std::size_t tile_offset() const { return has_reading_overview() ? 1 : 0; }
     std::size_t tile_page() const { return TilePage(selected()); }
     LauncherEntry EntryAt(std::size_t index) const;
+    // Unavailable records the last failed attempt; confirming permits a retry.
+    bool SetEntryState(const char* id, LauncherEntryState state);
+    const char* opening_target() const { return opening_target_; }
     LauncherSelection selection() const { return {scenes_.state(0), scenes_.state(1), scene()}; }
 
 private:
@@ -64,6 +69,8 @@ private:
     inline static constexpr SceneHandler kHandlers[] = {{Enter, Event, nullptr}, {Enter, Event, nullptr}};
     const ApplicationCatalog& catalog_;
     const sdk::ApplicationDescriptor* reader_ = nullptr;
+    std::array<LauncherEntryState, ApplicationCatalog::kCapacity> entry_states_{};
+    const char* opening_target_ = nullptr;
     SceneManager scenes_{kHandlers, std::size(kHandlers), this};
     LauncherResult action_{};
     bool dirty_ = false;
