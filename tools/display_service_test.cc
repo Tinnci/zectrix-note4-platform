@@ -1102,6 +1102,15 @@ void SavePreview(const Canvas& canvas, const char* name, bool portrait = false) 
         }
     }
     assert(std::fclose(output) == 0);
+#if defined(NOTE4_FONT_TRACE) && NOTE4_FONT_TRACE
+    std::snprintf(path, sizeof(path), "%s/%s%s.text.json", directory,
+        note4::i18n::CurrentLanguage() == note4::i18n::Language::Chinese ? "zh-" : "", name);
+    output = std::fopen(path, "wb");
+    assert(output);
+    note4::ui::font_trace::Write(canvas, output,
+        note4::i18n::CurrentLanguage() == note4::i18n::Language::Chinese ? "zh" : "en", width, height);
+    assert(std::fclose(output) == 0);
+#endif
 }
 
 void SaveStatusIconPreviews() {

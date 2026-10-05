@@ -9,6 +9,21 @@
 #include "note4_digit_style.h"
 #include "layout.h"
 
+#if defined(NOTE4_FONT_TRACE) && NOTE4_FONT_TRACE
+#include <cstdio>
+class Canvas;
+namespace note4::ui::font_trace {
+// Host preview instrumentation only: fixed storage, no allocation in paint paths.
+unsigned BeginRun();
+void Glyph(const Canvas&, uint32_t cp, unsigned run, const char* role,
+           const char* source, int size, int64_t x, int64_t y, int width,
+           int height, bool inverted, const uint16_t* source_rows = nullptr,
+           int source_width = 0, unsigned style = 0);
+void Clear(const Canvas&);
+void Write(const Canvas&, FILE*, const char* language, int width, int height);
+}
+#endif
+
 class Canvas {
 public:
     using TextStyle = note4::sdk::TextStyle;

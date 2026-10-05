@@ -14,6 +14,15 @@ using namespace note4::reader;
 void DrawGlyph(Canvas& canvas, int x, int y, uint32_t cp, FontSize font,
                bool inverted, sdk::TextStyle style) {
     detail::PaintGlyph(canvas, x, y, cp, GlyphBitmap(cp), FontHeight(font), style, inverted);
+#if defined(NOTE4_FONT_TRACE) && NOTE4_FONT_TRACE
+    const auto bitmap = GlyphBitmap(cp);
+    uint16_t source_rows[16];
+    for (int row = 0; row < 16; ++row) source_rows[row] = bitmap.Row(row);
+    font_trace::Glyph(canvas, cp, 0, FontHeight(font) == 16 ? "Reader16" : "Reader24", "reader",
+        FontHeight(font), x, y, GlyphWidth(cp, font, style),
+        text::MeasureGlyph(cp, bitmap.width, FontHeight(font), style).height,
+        inverted, source_rows, bitmap.width, static_cast<unsigned>(style));
+#endif
 }
 #endif
 

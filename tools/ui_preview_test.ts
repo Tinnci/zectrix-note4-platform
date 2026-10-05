@@ -3,8 +3,8 @@ import { obsoletePreviewFiles, pbmToSvg } from "./ui-preview";
 
 test("retire only obsolete managed scenes, not user images or unsafe manifest paths", () => {
   const previous = [{name:"old-screen"}, {name:"current-screen"}, {name:"../private"}, null];
-  expect(obsoletePreviewFiles(["old-screen.pbm", "old-screen.svg", "current-screen.pbm", "current-screen.svg", "my-photo.png", "overview.png"],
-    new Set(["current-screen.pbm", "current-screen.svg"]), previous)).toEqual(["old-screen.pbm", "old-screen.svg", "overview.png"]);
+  expect(obsoletePreviewFiles(["old-screen.pbm", "old-screen.svg", "old-screen.text.json", "current-screen.pbm", "current-screen.svg", "current-screen.text.json", "my-photo.png", "overview.png"],
+    new Set(["current-screen.pbm", "current-screen.svg", "current-screen.text.json"]), previous)).toEqual(["old-screen.pbm", "old-screen.svg", "old-screen.text.json", "overview.png"]);
   expect(obsoletePreviewFiles(["my-photo.png"], new Set(), {})).toEqual([]);
 });
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # /// script
-# dependencies = ["pillow==11.3.0", "numpy>=2,<3", "scipy>=1.14,<2"]
+# dependencies = ["pillow==11.3.0", "numpy>=2,<3", "scipy>=1.14,<2", "freetype-py==2.5.1", "scikit-image>=0.25,<0.27"]
 # ///
 """Rasterize a bounded UI subset of Noto Sans CJK SC 2.004 at native sizes.
 
@@ -17,6 +17,9 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 from scipy import ndimage as ndi
+import freetype as ft
+from cjk_raster import render
+from cjk_font_optimizer import Reference, select, topology
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -25,12 +28,6 @@ def raster(font, cp, width, height, baseline, scale=1):
     ImageDraw.Draw(image).text((0, baseline * scale), chr(cp), font=font,
                               fill=255, anchor="ls")
     return np.asarray(image.resize((width, height), Image.Resampling.BOX), dtype=float) / 255
-
-def topology(mask):
-    # Four-connected strokes and eight-connected background avoid diagonal ambiguity.
-    foreground = ndi.label(mask)[1]
-    background = ndi.label(~np.pad(mask, 1), np.ones((3, 3)))[1] - 1
-    return foreground, background
 
 def quality(mask, coverage, reference):
     if not reference.any():
@@ -57,10 +54,28 @@ def pareto(rows):
         (q["bytes"] < r["bytes"] or q["distortion"] < r["distortion"])
         for q in rows)]
 
+def cjk_candidates(face, cp, width, height, baseline, pillow4):
+    """Only outline rasterizations, never free-form pixel painting or dilation."""
+    yield "native-gray", render(face, chr(cp), width, height, baseline, 1, ft.FT_LOAD_TARGET_NORMAL) >= 128/255
+    yield "pillow-4x", raster(pillow4, cp, width, height, baseline, 4) >= 128/255
+    yield "unhinted-2x", render(face, chr(cp), width, height, baseline, 2, ft.FT_LOAD_NO_HINTING) >= 128/255
+    # Independent 16x reference stays fixed. Bounded 8x phases redistribute
+    # fractional coverage without changing advance, baseline or the line box.
+    for dx in (-.25, -.125, 0., .125, .25):
+        for dy in (-.25, -.125, 0., .125, .25):
+            try:
+                coverage = render(face, chr(cp), width, height, baseline, 8, ft.FT_LOAD_NO_HINTING,
+                                  phase=(dx, dy), reject_clipped=True)
+            except ValueError:
+                continue
+            for threshold in (120, 128, 136):
+                yield f"unhinted-8x:{dx:+g},{dy:+g}:t{threshold}", coverage >= threshold/255
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--output", type=Path, default=ROOT / "components/ui/font/editorial_font.h")
     args = parser.parse_args()
     literals = re.findall(r'"(?:[^"\\]|\\.)*"',
                          (ROOT / "components/note4_app/include/note4_strings.inc").read_text())
@@ -74,7 +89,9 @@ def main():
               "struct EditorialGlyph { uint32_t codepoint, offset; uint8_t width, top, rows; };", ""]
     total = 0
     report = {"model": "uncalibrated geometric/coverage proxy; no physical power or readability claims",
-              "selection": "per-face Pareto frontier, minimum distortion then bytes; native fallback on topology regression",
+              "selection": "CJK: constrained continuous-coverage improvement with quantization-aware true-outline protection; ASCII unchanged; Micro Pillow 4x unchanged",
+              "source_directory": str(args.source.resolve()),
+              "freetype": list(ft.version()),
               "faces": []}
     for name, size, weight in [("Caption", 14, "Regular"), ("Navigation", 18, "Regular"),
                                ("Selected", 18, "Bold"), ("Heading", 22, "Bold"),
@@ -84,43 +101,76 @@ def main():
         data, records = [], []
         height = size + (6 if size == 22 else 4)
         baseline = size if size == 12 else size - 1
-        fonts = {scale: ImageFont.truetype(str(args.source / f"NotoSansCJKsc-{weight}.otf"), size * scale)
-                 for scale in (1, 2, 4)}
+        font4 = ImageFont.truetype(str(args.source / f"NotoSansCJKsc-{weight}.otf"), size*4)
+        face = ft.Face(str(args.source / f"NotoSansCJKsc-{weight}.otf"))
+        face.ui_size = size
         glyphs = []
-        candidates = {(scale, threshold): [] for scale in (1, 2, 4) for threshold in (112, 128, 144)}
+        method = "pillow-4x" if name == "Micro" else "coverage-balanced"
+        candidates = {"native-gray": [], method: []}
+        decisions = []
         original_bytes = 0
         for cp in (range(32, 127) if name == "Micro" else codepoints):
             width = max(1, math.ceil(font.getlength(chr(cp))))
             bounds = font.getbbox(chr(cp), anchor="ls")
             if baseline + bounds[1] < 0 or baseline + bounds[3] > height:
                 raise ValueError(f"Clipped glyph U+{cp:04X} in {name}")
-            coverage = {scale: raster(fonts[scale], cp, width, height, baseline, scale) for scale in fonts}
-            native = coverage[1] >= 128 / 255
-            reference = coverage[4] >= 128 / 255
+            native_coverage = raster(font, cp, width, height, baseline)
+            native = native_coverage >= 128 / 255
+            chosen_coverage = (raster(font4, cp, width, height, baseline, 4) if name == "Micro"
+                               else render(face, chr(cp), width, height, baseline, 4, ft.FT_LOAD_NO_HINTING))
+            if name == "Micro":
+                reference_coverage, outline = chosen_coverage, None
+            else:
+                reference_coverage, outline = render(face, chr(cp), width, height, baseline, 16,
+                                                     ft.FT_LOAD_NO_HINTING, include_outline=True)
+            reference = reference_coverage >= 128 / 255
             ref_topology = topology(reference)
             native_error = sum(abs(a - b) for a, b in zip(topology(native), ref_topology))
             glyphs.append((cp, width))
             original_bytes += (width * height + 7) // 8
-            for (scale, threshold), masks in candidates.items():
-                mask = coverage[scale] >= threshold / 255
-                error = sum(abs(a - b) for a, b in zip(topology(mask), ref_topology))
-                # Never introduce additional disconnected strokes/lost holes vs native.
-                fallback = error > native_error
-                if fallback: mask = native
+            previous = chosen_coverage >= 128/255
+            previous_error = sum(abs(a-b) for a, b in zip(topology(previous), ref_topology))
+            previous_fallback = previous_error > native_error
+            if previous_fallback:
+                previous = native
+            selected_mask = previous
+            if 0x4e00 <= cp <= 0x9fff:
+                reference_model = Reference(reference_coverage, outline)
+                selected, old, eligible = select(reference_model, previous, native,
+                    cjk_candidates(face, cp, width, height, baseline, font4))
+                selected_mask = selected.mask
+                decisions.append({"char": chr(cp), "width": width, "height": height,
+                    "tolerances": reference_model.tolerances,
+                    "method": selected.name, "eligible": eligible,
+                    "changed": not np.array_equal(previous, selected_mask),
+                    "previous_native_fallback": previous_fallback,
+                    "native_topology_error": native_error,
+                    "before_topology_error": old.topology_error,
+                    "after_topology_error": selected.topology_error,
+                    "before": old.metrics, "after": selected.metrics,
+                    "before_bits": np.packbits(previous).tobytes().hex(),
+                    "after_bits": np.packbits(selected_mask).tobytes().hex()})
+            for candidate, masks in candidates.items():
+                mask = native if candidate == "native-gray" else selected_mask
+                fallback = candidate != "native-gray" and previous_fallback and np.array_equal(mask, native)
                 packed, top, rows = pack(mask)
-                masks.append((packed, top, rows, quality(mask, coverage[4], reference), fallback))
-        scores = [{"scale": scale, "threshold": threshold,
+                masks.append((packed, top, rows, quality(mask, reference_coverage, reference), fallback))
+        scores = [{"method": candidate, "scale": (None if candidate == "coverage-balanced" else
+                                                   1 if candidate == "native-gray" else 4),
+                   "threshold": None if candidate == "coverage-balanced" else 128,
                    "bytes": sum(len(m[0]) for m in masks),
                    "distortion": sum(m[3] for m in masks) / len(masks),
                    "fallbacks": sum(m[4] for m in masks)}
-                  for (scale, threshold), masks in candidates.items()]
-        frontier = pareto(scores)
-        chosen = min(frontier, key=lambda r: (r["distortion"], r["bytes"], r["scale"], r["threshold"]))
-        for (cp, width), (packed, top, rows, _, _) in zip(glyphs, candidates[chosen["scale"], chosen["threshold"]]):
+                  for candidate, masks in candidates.items()]
+        chosen = next(r for r in scores if r["method"] == method)
+        for (cp, width), (packed, top, rows, _, _) in zip(glyphs, candidates[method]):
             records.append((cp, len(data), width, top, rows))
             data.extend(packed)
         report["faces"].append({"name": name, "original_bitmap_bytes": original_bytes,
-                                "selected": chosen, "pareto": frontier, "candidates": scores})
+                                "glyph_count": len(glyphs), "selected": chosen, "candidates": scores})
+        report["faces"][-1]["cjk_decisions"] = decisions
+        report["faces"][-1]["cjk_changed"] = sum(d["changed"] for d in decisions)
+        print(f"{name}: {len(decisions)} CJK glyphs, {report['faces'][-1]['cjk_changed']} improved", flush=True)
         output.append(f"constexpr int kEditorial{name}Height = {height};")
         output.append(f"constexpr int kEditorial{name}Size = {size};")
         output.append(f"constexpr EditorialGlyph kEditorial{name}Glyphs[] = {{")
@@ -131,7 +181,7 @@ def main():
                       for start in range(0, len(data), 32))
         output.extend(["};", ""])
         total += len(data) + len(records) * 12
-    (ROOT / "components/ui/font/editorial_font.h").write_text("\n".join(output))
+    args.output.write_text("\n".join(output))
     report["total_glyph_and_index_bytes"] = total
     destination = args.report or args.source / "editorial-optimization.json"
     destination.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")

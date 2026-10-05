@@ -85,6 +85,9 @@ void PaintRun(Canvas& canvas, int x, int y, const char* text, const char* end,
               const char* suffix, int scale, bool inverted, TextStyle style) {
     const auto metrics = MeasureRun(text, end, suffix, scale, style);
     if (!metrics.height) return;
+#if defined(NOTE4_FONT_TRACE) && NOTE4_FONT_TRACE
+    const auto trace_run = note4::ui::font_trace::BeginRun();
+#endif
     if (inverted) FillClipped(canvas, x, y, metrics.width, metrics.height, true);
     int64_t cursor = x, top = y;
     if (HasStyle(style, TextStyle::Keycap)) {
@@ -100,6 +103,13 @@ void PaintRun(Canvas& canvas, int x, int y, const char* text, const char* end,
             const auto cp = note4::ui::NextUtf8(p);
             const auto glyph = UiGlyph(cp);
             PaintGlyph(canvas, cursor, top, cp, glyph, 16 * scale, style, inverted);
+#if defined(NOTE4_FONT_TRACE) && NOTE4_FONT_TRACE
+            uint16_t source_rows[16];
+            for (int row = 0; row < 16; ++row) source_rows[row] = glyph.Row(row);
+            note4::ui::font_trace::Glyph(canvas, cp, trace_run, "Legacy", "legacy",
+                16 * scale, cursor, top, MeasureGlyph(cp, glyph.width, 16 * scale, style).advance,
+                MeasureGlyph(cp, glyph.width, 16 * scale, style).height, inverted, source_rows, glyph.width, static_cast<unsigned>(style));
+#endif
             cursor += MeasureGlyph(cp, glyph.width, 16 * scale, style).advance;
             if (cursor >= canvas.clip().x + canvas.clip().width) break;
         }
@@ -156,6 +166,10 @@ void Canvas::UiText(int x, int y, const char* text, int max_width, UiFace name, 
     if (ellipsis > max_width) return;
     int64_t cursor = x;
     const int64_t right = int64_t(x) + max_width;
+#if defined(NOTE4_FONT_TRACE) && NOTE4_FONT_TRACE
+    const auto trace_run = note4::ui::font_trace::BeginRun();
+    constexpr const char* roles[] = {"Caption", "Navigation", "Selected", "Heading", "Compact", "Label", "Micro"};
+#endif
     const auto paint = [&](uint32_t cp) {
         if (cursor > INT_MAX || cursor < INT_MIN) return;
         const auto* glyph = FindGlyph(face, cp);
@@ -170,6 +184,15 @@ void Canvas::UiText(int x, int y, const char* text, int max_width, UiFace name, 
             // Arbitrary document names retain Unicode coverage without a full CJK font.
             PaintGlyph(*this, cursor, int64_t(y) + 2, cp, UiGlyph(cp), face.size, TextStyle::Regular, inverted);
         }
+#if defined(NOTE4_FONT_TRACE) && NOTE4_FONT_TRACE
+        const unsigned role_index = static_cast<unsigned>(name);
+        uint16_t source_rows[16];
+        const auto fallback = UiGlyph(cp);
+        if (!glyph) for (int row = 0; row < 16; ++row) source_rows[row] = fallback.Row(row);
+        note4::ui::font_trace::Glyph(*this, cp, trace_run, roles[role_index < 7 ? role_index : 1],
+            glyph ? "editorial" : "unicode_fallback", face.size, cursor, y, Advance(face, cp), face.height, inverted,
+            glyph ? nullptr : source_rows, glyph ? 0 : fallback.width);
+#endif
     };
     for (const char* p = text; *p;) {
         const auto cp = note4::ui::NextUtf8(p);
@@ -181,6 +204,9 @@ void Canvas::UiText(int x, int y, const char* text, int max_width, UiFace name, 
 }
 
 void Canvas::Clear(bool white) {
+#if defined(NOTE4_FONT_TRACE) && NOTE4_FONT_TRACE
+    note4::ui::font_trace::Clear(*this);
+#endif
     if (clip_.x == 0 && clip_.y == 0 && clip_.width == width() &&
         clip_.height == height()) {
         pixels_.fill(white ? 0xff : 0x00);
