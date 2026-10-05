@@ -699,19 +699,14 @@ esp_err_t UiEngine::RefreshPending() {
     esp_err_t result;
     if (gray_frame_) {
         OverlayGrayStatus();
-        // Preserve the panel's white preclear before every 16-gray refresh.
-        // The gray content remains owned here during status-only updates.
+        // The driver owns the required OTP-white base; do not refresh it twice.
         canvas_.ResetClip();
         canvas_.Clear();
-        result = display_->Present1Bpp(note4::display::DisplayIntent::FullClean,
-                                      canvas_.data(), canvas_.size());
         canvas_.SetClip({0, 0, 400, kStatusHeight});
         note4::ui::DrawStatusBar(canvas_, status_);
         canvas_.SetClip({0, kStatusHeight, 400, 300 - kStatusHeight});
-        if (result == ESP_OK) {
-            result = display_->Present4Bpp(note4::display::DisplayIntent::Quality,
-                gray_frame_.get(), note4::display::DisplayService::kFrameBytes4Bpp);
-        }
+        result = display_->Present4Bpp(note4::display::DisplayIntent::Quality, gray_frame_.get(),
+                                       note4::display::DisplayService::kFrameBytes4Bpp);
     } else if (canvas_.portrait()) {
         result = display_->PresentPortrait1Bpp(update.quality
             ? note4::display::DisplayIntent::FullClean : note4::display::DisplayIntent::Auto,

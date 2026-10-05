@@ -12,6 +12,7 @@ fi
 "${CC:-cc}" -DNOTE4_BOOK_WEB_PATH="\"$connectivity/web/books.html\"" \
     -c "$connectivity/note4_book_web_data.S" -o "$work_dir/web.o"
 "${CXX:-c++}" -std=c++17 "${flags[@]}" \
+    -I"$root_dir/components/note4_log/include" \
     -I"$root_dir/tools/host_include" -I"$connectivity/include" \
     -I"$companion/include" -I"$root_dir/components/note4_storage/include" \
     "$connectivity/note4_radio_arbiter.cc" \

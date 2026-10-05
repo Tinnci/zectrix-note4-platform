@@ -1,0 +1,26 @@
+include(FetchContent)
+if(CONFIG_NOTE4_WASM_ENGINE_WASM3)
+    set(note4_wasm_engine wasm3)
+    set(note4_wasm_repo https://github.com/wasm3/wasm3.git)
+    set(note4_wasm_version v0.5.0)
+else()
+    set(note4_wasm_engine wamr)
+    set(note4_wasm_repo https://github.com/wasm-micro-runtime/wasm-micro-runtime.git)
+    set(note4_wasm_version WAMR-2.4.5)
+endif()
+set(NOTE4_WASM_SOURCE_DIR "" CACHE PATH "Unmodified upstream Wasm source checkout (optional)")
+if(NOT NOTE4_WASM_SOURCE_DIR)
+    FetchContent_Declare(note4_wasm_source GIT_REPOSITORY ${note4_wasm_repo}
+        GIT_TAG ${note4_wasm_version} GIT_SHALLOW TRUE SOURCE_SUBDIR .note4-no-auto-build)
+    FetchContent_MakeAvailable(note4_wasm_source)
+    set(NOTE4_WASM_SOURCE_DIR "${note4_wasm_source_SOURCE_DIR}")
+endif()
+# Patch only a build-owned copy, preserving the release checkout and licenses.
+set(note4_wasm_copy "${CMAKE_BINARY_DIR}/note4-wasm-engine")
+file(COPY "${NOTE4_WASM_SOURCE_DIR}/" DESTINATION "${note4_wasm_copy}" PATTERN ".git" EXCLUDE)
+execute_process(COMMAND git apply --unsafe-paths --directory "${note4_wasm_copy}"
+    "${CMAKE_CURRENT_LIST_DIR}/patches/${note4_wasm_engine}.patch"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" COMMAND_ERROR_IS_FATAL ANY)
+include("${CMAKE_CURRENT_LIST_DIR}/wasm.cmake")
+note4_add_wasm_engine(note4_wasm ${note4_wasm_engine} "${note4_wasm_copy}")
+target_link_libraries(${COMPONENT_LIB} PRIVATE note4_wasm)

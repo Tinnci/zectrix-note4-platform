@@ -4,8 +4,8 @@
 #include <cstdio>
 #include <cstring>
 
-#include "esp_log.h"
 #include "note4_first_party_app_controllers.h"
+#include "note4_log_event.h"
 
 #include "note4_connectivity_service.h"
 #if CONFIG_NOTE4_ENABLE_READER
@@ -204,7 +204,7 @@ private:
                 if (bookmarks.Load() != note4::reader::Result::Ok ||
                     bookmarks.ResetPeer() != note4::reader::Result::Ok) {
                     status_ = Tr(Text::PhoneResetReaderError);
-                    ESP_LOGW(kTag, "reader phone cursor reset failed");
+                    NOTE4_LOGW(kTag, "reader_cursor_reset_failed", "");
                 }
             }
 #endif

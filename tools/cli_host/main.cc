@@ -73,7 +73,7 @@ int Run(note4::cli::host::SimulationOptions options) {
     LogBuffer logs;
     host::SimulatedPlatform platform(logs, options);
     PlatformControlDispatcher dispatcher(platform);
-    DiagnosticExecutor executor(dispatcher, logs);
+    DiagnosticExecutor executor(dispatcher, logs, nullptr, SteadyMilliseconds, &platform);
     CliSession session(transport, executor);
     platform.Start(dispatcher);
     constexpr char banner[] =

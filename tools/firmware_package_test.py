@@ -75,6 +75,8 @@ class FirmwarePackageTest(unittest.TestCase):
                     self.assertEqual(archive.read(name), (directory / name).read_bytes())
                 self.assertNotIn("books.bin", archive.namelist())
                 self.assertIn("licenses/TRMNL_FONT_LICENSE.txt", archive.namelist())
+                self.assertIn("licenses/WAMR_LICENSE.txt", archive.namelist())
+                self.assertIn("licenses/WASM3_LICENSE.txt", archive.namelist())
             self.assertEqual((self.output / f"{prefix}-app.bin").read_bytes(),
                              (directory / "application.bin").read_bytes())
         for line in (self.output / "SHA256SUMS").read_text().splitlines():
@@ -91,6 +93,17 @@ class FirmwarePackageTest(unittest.TestCase):
             self.run_package()
         self.assertFalse(self.output.exists())
         self.assertEqual(list(self.root.glob(".firmware-package-*")), [])
+
+    def test_sdk6_response_file_uses_matching_esptool_cli(self):
+        for directory in (self.full, self.minimal):
+            flash = json.loads((directory / "flasher_args.json").read_text())
+            flash["write_flash_args"] = [arg.replace("_", "-") for arg in flash["write_flash_args"]]
+            self.write(directory, "flasher_args.json", flash)
+        self.run_package()
+        with zipfile.ZipFile(self.output / "note4-v1.2.0-preview.1-full.zip") as archive:
+            text = archive.read("README.txt").decode()
+            self.assertIn("esptool==5.3.0 esptool", text)
+            self.assertIn('write-flash "@flash_args"', text)
 
     def test_reject_shifted_segment_and_escaped_path(self):
         flash = json.loads((self.full / "flasher_args.json").read_text())

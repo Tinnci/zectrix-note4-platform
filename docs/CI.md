@@ -15,6 +15,11 @@ are listed below; physical qualification is separate.
 - `ESP32-S3 firmware` builds with the official ESP-IDF v5.5.2 container, runs
   the size report and captures build provenance. The container installs `uv`
   for the same Python artifact reporters used by local builds.
+- `ESP-IDF 6.0.3 build compatibility` builds Full and Minimal in SDK-specific
+  directories and captures the corresponding dependency lock/provenance.
+- `Bounded runtime qualification` executes Lua, WAMR and Wasm3 with ASan/UBSan,
+  loop budgets, constructor rejection, heap limits and repeated cleanup. It is
+  separate from the ordinary host suite so unit tests do not fetch three engines.
 
 Host runs retain per-target logs and a JSON timing report, including on failure.
 Successful runs retain the debug APK, firmware images, ELF, map, size report
@@ -47,12 +52,12 @@ tools/capture-build-provenance.sh
 ## Host test groups and execution
 
 The original 46 host script targets are retained. The scheduler self-test adds
-one target, for 47 total. Architecture checks run once before the selected
+one target, and Wasm admission adds another, for 48 total. Architecture checks run once before the selected
 targets. Individual `tools/test-*.sh` scripts remain independently runnable.
 
 | Group | Targets | Coverage |
 | --- | ---: | --- |
-| `foundation` | 12 | Scheduler, app contract/runtime, controllers, scenes, SDK boundary, service registry, Lua runtime, module configurations, localization, input and layout |
+| `foundation` | 13 | Scheduler, app contract/runtime, controllers, scenes, SDK boundary, service registry, Lua runtime, module configurations, localization, input, layout and Wasm admission |
 | `connectivity` | 13 | Companion identity/protocol, settings/policy, NFC enrollment, pairing, radio arbitration, resource client/gateway, sync, Wi-Fi and edge page transfer |
 | `ui` | 7 | Display service/state, digit quality/codecs, reader/font, sleep cover and utilities |
 | `platform` | 8 | Firmware budget/packaging, health, platform profiles, power, storage, system, time and update |
@@ -79,7 +84,7 @@ that test, while HA still tests its authenticated page/telemetry integration.
 Reader fixtures are generated once, then copied into independent directories
 for connectivity-on and connectivity-off tests. Both configurations still run.
 
-This is a mixed unit, simulation and integration suite, not 47 unit tests.
+This is a mixed unit, simulation and integration suite, not 48 unit tests.
 Isolation, fault injection, configuration variants and sanitizer switches are
 existing strengths. Repeated compilation across script targets remains a cost;
 use the timing report before migrating shared compilation into CMake/CTest or

@@ -1,6 +1,6 @@
 #include "terminal_internal.h"
 
-#include "esp_log.h"
+#include "note4_log_event.h"
 
 #include "note4_book_transfer_controller.h"
 #include "note4_connectivity_service.h"
@@ -33,7 +33,7 @@ public:
         controller_.Stop();
         const auto stopped = owner_.connectivity_->StopBookTransfer();
         if (stopped != note4::connectivity::ConnectivityResult::kOk)
-            ESP_LOGW(kTag, "book transfer stop is retrying on the connectivity owner");
+            NOTE4_LOGW(kTag, "book_transfer_stop_retry", "owner=connectivity");
         return sdk::Status::Ok;
     }
 private:

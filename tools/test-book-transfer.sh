@@ -14,6 +14,7 @@ fi
 for runtime in 1 0; do
     "${CXX:-c++}" -std=c++17 "${flags[@]}" \
         -DCONFIG_NOTE4_ENABLE_RUNTIME="$runtime" \
+        -I"$root_dir/components/note4_log/include" \
         -I"$root_dir/tools/host_include" -I"$connectivity/include" \
         -I"$root_dir/components/note4_storage/include" \
         -I"$root_dir/components/note4_companion/include" \
@@ -26,6 +27,7 @@ for runtime in 1 0; do
     "$work_dir/test" "$work_dir/runtime-$runtime" "$work_dir/Calculator.zapp"
 done
 "${CXX:-c++}" -std=c++17 "${flags[@]}" \
+    -I"$root_dir/components/note4_log/include" \
     -I"$root_dir/tools/host_include" -I"$connectivity/include" \
     -I"$root_dir/components/note4_storage/include" -I"$root_dir/components/note4_companion/include" \
     "$connectivity/note4_book_web.cc" "$connectivity/note4_book_web_esp.cc" \
@@ -33,6 +35,7 @@ done
     "$root_dir/tools/book_web_esp_test.cc" "$work_dir/web.o" -o "$work_dir/esp-test"
 "$work_dir/esp-test" "$work_dir"
 "${CXX:-c++}" -std=c++17 "${flags[@]}" \
+    -I"$root_dir/components/note4_log/include" \
     -I"$root_dir/tools/host_include" -I"$connectivity/include" \
     -I"$root_dir/components/note4_storage/include" -I"$root_dir/components/note4_companion/include" \
     "$connectivity/note4_book_web.cc" "$connectivity/note4_book_transfer.cc" "$connectivity/note4_wifi_backend.cc" \

@@ -1,7 +1,7 @@
-#include "terminal_internal.h"
+#include "note4_log_event.h"
 #include "note4_micro_app_controller.h"
 #include "note4_storage_service.h"
-#include "esp_log.h"
+#include "terminal_internal.h"
 #include <cstdio>
 
 namespace note4::terminal {
@@ -63,9 +63,11 @@ private:
         ObserveGuest();
         owner_.micro_app_busy_ = controller_.busy();
         if (controller_.scene() == app::MicroAppScene::Error && last_scene_ != app::MicroAppScene::Error) {
-            ESP_LOGW(kTag, "app %s stopped: storage=%s runtime=%s peak=%u",
-                controller_.name(), esp_err_to_name(controller_.storage_result()), controller_.engine().detail(),
-                static_cast<unsigned>(controller_.engine().heap().peak));
+            NOTE4_LOGW(kTag, "micro_app_stopped", "app=%s storage=%s runtime=%s peak_bytes=%u",
+                       note4::log::Token(controller_.name()).c_str(),
+                       note4::log::Token(esp_err_to_name(controller_.storage_result())).c_str(),
+                       note4::log::Token(controller_.engine().detail()).c_str(),
+                       static_cast<unsigned>(controller_.engine().heap().peak));
         }
         last_scene_ = controller_.scene();
         switch (decision) {

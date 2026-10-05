@@ -6,14 +6,14 @@ if { [ -n "${BASH_VERSION:-}" ] && [ "${BASH_SOURCE[0]:-}" = "$0" ]; } ||
     exit 2
 fi
 
-note4_idf_root="${NOTE4_IDF_PATH:-$HOME/esp/esp-idf-v5.5.2}"
+note4_idf_root="${NOTE4_IDF_PATH:-$HOME/esp/esp-idf-v${NOTE4_IDF_VERSION:-5.5.2}}"
 note4_cmake_bin="${NOTE4_CMAKE_BIN_DIR:-$HOME/.local/venvs/note4-cmake-3.30.5/bin}"
 # Existing installations are external to the repository; do not rename a user's venv.
 if [ -z "${NOTE4_CMAKE_BIN_DIR:-}" ] && [ ! -x "$note4_cmake_bin/cmake" ]; then
     note4_cmake_bin="$HOME/.local/venvs/zectrix-cmake-3.30.5/bin"
 fi
 note4_host_os="$(uname -s)"
-note4_idf_python_env="${NOTE4_IDF_PYTHON_ENV_PATH:-${IDF_PYTHON_ENV_PATH:-}}"
+note4_idf_python_env="${NOTE4_IDF_PYTHON_ENV_PATH:-}"
 
 case "$note4_host_os" in
     Darwin) note4_android_default="$HOME/Library/Android/sdk" ;;
@@ -45,17 +45,20 @@ if [ ! -x "$note4_cmake_bin/cmake" ]; then
 fi
 
 # ESP-IDF names its Python environment after the Python minor version. Reuse a
-# single installed v5.5 environment so activation is independent of the host
+# single installed matching environment so activation is independent of the host
 # shell's initial Python PATH. Require an override if more than one exists.
+note4_idf_major="$(sed -n 's/^set(IDF_VERSION_MAJOR \([0-9]*\)).*/\1/p' "$note4_idf_root/tools/cmake/version.cmake")"
+note4_idf_minor="$(sed -n 's/^set(IDF_VERSION_MINOR \([0-9]*\)).*/\1/p' "$note4_idf_root/tools/cmake/version.cmake")"
+note4_idf_series="$note4_idf_major.$note4_idf_minor"
 if [ -z "$note4_idf_python_env" ] && [ -d "$HOME/.espressif/python_env" ]; then
     note4_idf_python_candidates="$(find "$HOME/.espressif/python_env" -maxdepth 1 \
-        -type d -name 'idf5.5_py*_env' -print 2>/dev/null | LC_ALL=C sort)"
+        -type d -name "idf${note4_idf_series}_py*_env" -print 2>/dev/null | LC_ALL=C sort)"
     note4_idf_python_count="$(printf '%s\n' "$note4_idf_python_candidates" |
         awk 'NF { count++ } END { print count + 0 }')"
     if [ "$note4_idf_python_count" -eq 1 ]; then
         note4_idf_python_env="$note4_idf_python_candidates"
     elif [ "$note4_idf_python_count" -gt 1 ]; then
-        printf 'Multiple ESP-IDF v5.5 Python environments found; set NOTE4_IDF_PYTHON_ENV_PATH.\n' >&2
+        printf 'Multiple ESP-IDF v%s Python environments found; set NOTE4_IDF_PYTHON_ENV_PATH.\n' "$note4_idf_series" >&2
         return 1
     fi
 fi
@@ -135,4 +138,5 @@ printf 'Use tools/build-firmware.sh so target and ccache settings stay explicit.
 
 unset note4_android_default note4_cmake_bin note4_host_bin note4_host_os note4_idf_root
 unset note4_idf_python_candidates note4_idf_python_count note4_idf_python_env
+unset note4_idf_major note4_idf_minor note4_idf_series
 unset note4_java_candidate note4_java_home note4_jenv note4_jenv_candidate

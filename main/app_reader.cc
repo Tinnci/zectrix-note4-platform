@@ -1,6 +1,6 @@
 #include "terminal_internal.h"
 
-#include "esp_log.h"
+#include "note4_log_event.h"
 
 #include "note4_reader_controller.h"
 #include "note4_reader_platform.h"
@@ -42,7 +42,9 @@ public:
         owner_->reader_busy_ = false;
         controller_.Stop();
         if (controller_.save_result() != note4::reader::Result::Ok)
-            ESP_LOGW(kTag, "reader progress save failed: %s", note4::reader::ResultName(controller_.save_result()));
+            NOTE4_LOGW(
+                kTag, "reader_progress_save_failed", "error=%s",
+                note4::log::Token(note4::reader::ResultName(controller_.save_result())).c_str());
         return sdk::Status::Ok;
     }
 

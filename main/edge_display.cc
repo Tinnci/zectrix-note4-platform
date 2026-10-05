@@ -1,12 +1,12 @@
-#include "terminal_internal.h"
-#include <memory>
-#include "esp_log.h"
+#include "note4_boot_guard.h"
 #include "note4_connectivity_service.h"
 #include "note4_connectivity_settings.h"
 #include "note4_edge_page.h"
-#include "note4_storage_service.h"
 #include "note4_input_service.h"
-#include "note4_boot_guard.h"
+#include "note4_log_event.h"
+#include "note4_storage_service.h"
+#include "terminal_internal.h"
+#include <memory>
 #if CONFIG_NOTE4_ENABLE_WIFI_HTTP && CONFIG_NOTE4_ENABLE_BOOK_STORAGE
 #include "note4_edge_download.h"
 #endif
@@ -120,14 +120,15 @@ bool TerminalApp::RefreshEdgeOnWake() {
                 }
                 if (accepted) suggestion = page.next_sync_at;
             }
-            ESP_LOGI(kTag, "event=edge_sync result=%u cache_saved=%u", static_cast<unsigned>(result), accepted);
+            NOTE4_LOGI(kTag, "edge_sync", "result=%u cache_saved=%u", static_cast<unsigned>(result),
+                       accepted);
         }
     }
     edge_next_sync_at_ = connectivity::NextEdgeSync(edge_settings_, time_->UnixSeconds(), suggestion, !accepted);
     if (storage_->SetUInt32(kNextKey, static_cast<uint32_t>(edge_next_sync_at_)) != ESP_OK) {
         edge_configuration_valid_ = false;  // Never enter a one-second wake loop on persistence failure.
         edge_schedule_failure_ = true;
-        ESP_LOGW(kTag, "event=edge_schedule_save_failed");
+        NOTE4_LOGW(kTag, "edge_schedule_save_failed", "");
     }
     return interactive;
 #else

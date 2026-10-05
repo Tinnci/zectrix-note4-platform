@@ -1,6 +1,6 @@
 #include "audio_codec.h"
 
-#include <esp_log.h>
+#include "note4_log_event.h"
 #include <cstring>
 #include <driver/i2s_common.h>
 
@@ -15,11 +15,13 @@ AudioCodec::~AudioCodec() {
         if (channel == nullptr) continue;
         const esp_err_t stopped = i2s_channel_disable(channel);
         if (stopped != ESP_OK && stopped != ESP_ERR_INVALID_STATE) {
-            ESP_LOGW(TAG, "I2S channel stop failed: %s", esp_err_to_name(stopped));
+            NOTE4_LOGW(TAG, "i2s_stop_failed", "error=%s",
+                       note4::log::Token(esp_err_to_name(stopped)).c_str());
         }
         const esp_err_t released = i2s_del_channel(channel);
         if (released != ESP_OK) {
-            ESP_LOGW(TAG, "I2S channel release failed: %s", esp_err_to_name(released));
+            NOTE4_LOGW(TAG, "i2s_release_failed", "error=%s",
+                       note4::log::Token(esp_err_to_name(released)).c_str());
         }
     }
 }
@@ -47,17 +49,17 @@ void AudioCodec::Start() {
 
     EnableInput(true);
     EnableOutput(true);
-    ESP_LOGI(TAG, "Audio codec started");
+    NOTE4_LOGI(TAG, "codec_started", "");
 }
 
 void AudioCodec::SetOutputVolume(int volume) {
     output_volume_ = volume;
-    ESP_LOGI(TAG, "Set output volume to %d", output_volume_);
+    NOTE4_LOGI(TAG, "volume_set", "volume=%d", output_volume_);
 }
 
 void AudioCodec::SetInputGain(float gain) {
     input_gain_ = gain;
-    ESP_LOGI(TAG, "Set input gain to %.1f", input_gain_);
+    NOTE4_LOGI(TAG, "gain_set", "gain=%.1f", input_gain_);
 }
 
 void AudioCodec::EnableInput(bool enable) {
@@ -65,7 +67,8 @@ void AudioCodec::EnableInput(bool enable) {
         return;
     }
     input_enabled_ = enable;
-    ESP_LOGI(TAG, "Set input enable to %s", enable ? "true" : "false");
+    NOTE4_LOGI(TAG, "input_set", "enabled=%s",
+               note4::log::Token(enable ? "true" : "false").c_str());
 }
 
 void AudioCodec::EnableOutput(bool enable) {
@@ -73,5 +76,6 @@ void AudioCodec::EnableOutput(bool enable) {
         return;
     }
     output_enabled_ = enable;
-    ESP_LOGI(TAG, "Set output enable to %s", enable ? "true" : "false");
+    NOTE4_LOGI(TAG, "output_set", "enabled=%s",
+               note4::log::Token(enable ? "true" : "false").c_str());
 }

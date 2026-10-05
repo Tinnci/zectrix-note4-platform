@@ -6,6 +6,7 @@ test_binary="$(mktemp)"
 trap 'rm -f "$test_binary"' EXIT
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -I"$repo_root/components/note4_log/include" \
     -I"$repo_root/tools/host_include" \
     -I"$repo_root/components/note4_app/include" -I"$repo_root/components/note4_text/include" \
     -I"$repo_root/components/note4_time/include" \

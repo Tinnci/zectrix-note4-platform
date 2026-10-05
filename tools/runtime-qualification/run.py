@@ -2,7 +2,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["wasmtime>=36"]
 # ///
-"""Optional E2.1 experiments; upstream engines never enter the normal build."""
+"""Bounded runtime qualification; execute and measure maintained engine adapters."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from pathlib import Path
 import platform
 import shutil
 import subprocess
+import sys
 
 from wasmtime import wat2wasm
 
@@ -49,15 +50,12 @@ def loop_probe(engine: str, binary: Path, case: str) -> str:
         if isinstance(errors, bytes):
             errors = errors.decode("utf-8", errors="replace")
         log.write_text(captured + errors + "Host process stopped after 2 seconds.\n")
-        expected = engine == "wasm3" or (engine == "wamr" and case != "spin")
-        if not expected or f'{{"event":"{marker}-start"}}' not in captured:
-            raise RuntimeError(f"Unexpected {engine} {case} timeout; see {log}") from error
-        return "host_process_timeout_2s"
+        raise RuntimeError(f"Unbounded {engine} {case}; see {log}") from error
     log.write_text(result.stdout + result.stderr)
     done = "spin-trapped" if case == "spin" else "init-stopped"
     if result.returncode or f'{{"event":"{done}"}}' not in result.stdout:
         raise RuntimeError(f"{engine} {case} probe failed; see {log}")
-    return "instruction_limit" if engine == "wamr" else "count_hook_yield"
+    return "admission_rejected" if engine != "lua" and case != "spin" else "instruction_limit"
 
 
 def host_probe(engine: str, sources: Path, output: Path, sanitize: bool) -> dict:
@@ -66,8 +64,8 @@ def host_probe(engine: str, sources: Path, output: Path, sanitize: bool) -> dict
     flags = ("-fsanitize=address,undefined -fno-sanitize-recover=all "
              "-fno-omit-frame-pointer") if sanitize else ""
     run(["cmake", "-S", str(HERE), "-B", str(build),
-         f"-DRESEARCH_ENGINE={engine}", f"-DRESEARCH_SOURCES={sources}",
-         f"-DRESEARCH_GENERATED_DIR={output}", "-DCMAKE_BUILD_TYPE=Release",
+         f"-DQUALIFY_ENGINE={engine}", f"-DQUALIFY_SOURCES={sources}",
+         f"-DQUALIFY_GENERATED_DIR={output}", "-DCMAKE_BUILD_TYPE=Release",
          f"-DCMAKE_C_FLAGS={flags}", f"-DCMAKE_EXE_LINKER_FLAGS={flags}"],
         build / "configure.log")
     run(["cmake", "--build", str(build), "--parallel", "4"],
@@ -76,6 +74,7 @@ def host_probe(engine: str, sources: Path, output: Path, sanitize: bool) -> dict
     result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=30)
     (build / "run.log").write_text(result.stdout + result.stderr)
     if result.returncode:
+        print(result.stdout + result.stderr, file=sys.stderr, end="")
         raise RuntimeError(f"{engine} probe failed; see {build / 'run.log'}")
     records = [json.loads(line) for line in result.stdout.splitlines()
                if line.startswith('{"engine":')]
@@ -89,26 +88,39 @@ def host_probe(engine: str, sources: Path, output: Path, sanitize: bool) -> dict
     return record
 
 
-def firmware_link(engine: str, sources: Path, output: Path) -> dict:
+def firmware_link(engine: str, sources: Path, output: Path, release: Path) -> dict:
     idf_env = os.environ.get("IDF_PYTHON_ENV_PATH")
     idf_script = shutil.which("idf.py")
     if not idf_env or not idf_script:
         raise RuntimeError("Activate tools/activate-dev-env.sh before --idf")
     python = str(Path(idf_env) / "bin/python")
+    # Match the normal ESP32-S3 build: let actual component dependencies drive
+    # preparation, rather than fetching SDK submodules for unrelated chips.
+    os.environ.setdefault("IDF_SKIP_CHECK_SUBMODULES", "1")
     build = output / f"{engine}-full"
     build.mkdir(parents=True, exist_ok=True)
     idf = [python, idf_script, "--ccache", "-B", str(build)]
+    defaults = [str(ROOT / "sdkconfig.defaults"), str(ROOT / "tools/profiles/full.defaults")]
+    if engine != "lua":
+        # Qualify the production component, not a second interpreter copy.
+        config = build / "wasm.defaults"
+        config.write_text("CONFIG_NOTE4_ENABLE_WASM=y\n" +
+                          f"CONFIG_NOTE4_WASM_ENGINE_{engine.upper()}=y\n")
+        defaults.append(str(config))
+    (build / "sdkconfig").unlink(missing_ok=True)
     run(idf + [f"-DSDKCONFIG={build / 'sdkconfig'}",
-               f"-DSDKCONFIG_DEFAULTS={ROOT / 'sdkconfig.defaults'};{ROOT / 'tools/profiles/full.defaults'}",
+               f"-DSDKCONFIG_DEFAULTS={';'.join(defaults)}",
                "-DCOMPONENTS=main;runtime_probe",
                f"-DEXTRA_COMPONENT_DIRS={HERE / 'runtime_probe'}",
-               f"-DRESEARCH_ENGINE={engine}", f"-DRESEARCH_SOURCES={sources}",
-               f"-DRESEARCH_GENERATED_DIR={output}", "reconfigure"],
+               f"-DQUALIFY_ENGINE={engine}", f"-DQUALIFY_SOURCES={sources}",
+               f"-DNOTE4_WASM_SOURCE_DIR={release}",
+               f"-DQUALIFY_GENERATED_DIR={output}", "reconfigure"],
         build / "configure.log")
-    # Link and generate the research image without flashing or altering slots.
+    # Link and generate the qualification image without flashing or altering slots.
     run(["cmake", "--build", str(build), "--target", "gen_project_binary", "--parallel", "4"],
         build / "link.log", timeout=1200)
-    run([python, "-m", "esp_idf_size", "--format", "json", "--output-file",
+    size_format = "json2" if os.environ.get("ESP_IDF_VERSION", "").startswith("6.") else "json"
+    run([python, "-m", "esp_idf_size", "--format", size_format, "--output-file",
          str(build / "size.json"), str(build / "note4_platform.map")],
         build / "size.log")
     size = (build / "note4_platform.bin").stat().st_size
@@ -119,20 +131,25 @@ def firmware_link(engine: str, sources: Path, output: Path) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=ROOT / "build-runtime-research")
+    parser.add_argument("--output", type=Path, default=ROOT / "build-runtime-qualification")
     parser.add_argument("--sources", type=Path)
     parser.add_argument("--fetch", action="store_true", help="Clone missing upstream release sources")
     parser.add_argument("--engines", nargs="+", choices=list(RELEASES), default=list(RELEASES))
     parser.add_argument("--sanitize", action="store_true")
     parser.add_argument("--idf", action="store_true", help="Also link each probe into an isolated Full image")
     args = parser.parse_args()
+    if args.sanitize:
+        # Exercise real/fake-stack separation in low-level native stack checks.
+        # Preserve other caller-selected ASan options, but never disable UAR.
+        options = os.environ.get("ASAN_OPTIONS", "")
+        os.environ["ASAN_OPTIONS"] = options + ":detect_stack_use_after_return=1"
     output = args.output.resolve()
     sources = (args.sources or output / "references").resolve()
     output.mkdir(parents=True, exist_ok=True)
     sources.mkdir(parents=True, exist_ok=True)
     generated = ["#pragma once\n#include <stdint.h>\n"]
     guest_sizes = {}
-    for name in ("guest", "guest_start", "guest_post"):
+    for name in ("guest", "guest_start", "guest_post", "guest_minimal"):
         guest = wat2wasm((HERE / f"{name}.wat").read_text())
         (output / f"{name}.wasm").write_bytes(guest)
         generated.append(f"static const uint8_t {name}_bytes[] = {{\n" +
@@ -152,13 +169,21 @@ def main() -> None:
                  "--branch", tag, repo, str(source)], output / f"{engine}-fetch.log")
         if not source.is_dir():
             raise RuntimeError(f"Missing {source}; use --fetch or --sources")
-        print(f"Running {engine} ({tag}) Host experiments", flush=True)
-        record = host_probe(engine, sources, output, args.sanitize)
+        # Keep release checkouts untouched; build copies receive reviewed fixes.
+        patched = output / ("engines-sanitized" if args.sanitize else "engines")
+        patched.mkdir(exist_ok=True)
+        local = patched / engine
+        shutil.copytree(source, local, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".git"))
+        patch = ROOT / "components/note4_runtime/patches" / f"{engine}.patch"
+        if patch.exists():
+            subprocess.run(["git", "apply", "--unsafe-paths", "--directory", str(local), str(patch)], cwd=ROOT, check=True)
+        print(f"Running {engine} ({tag}) qualification", flush=True)
+        record = host_probe(engine, patched, output, args.sanitize)
         record["source_version"] = subprocess.check_output(
             ["git", "-C", str(source), "describe", "--tags", "--always", "--dirty"], text=True).strip()
         if args.idf:
             print(f"Linking {engine} into an isolated Full image", flush=True)
-            record["full_link"] = firmware_link(engine, sources, output)
+            record["full_link"] = firmware_link(engine, patched, output, source)
         report["engines"].append(record)
         destination.write_text(json.dumps(report, indent=2) + "\n")
         print(json.dumps(record, ensure_ascii=False), flush=True)

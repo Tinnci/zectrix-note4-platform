@@ -4,13 +4,13 @@
 #include <new>
 #include <utility>
 
-#include "esp_log.h"
 #include "esp_system.h"
-#include <cstdlib>
-#include "sdkconfig.h"
 #include "note4_board.h"
 #include "note4_boot_esp.h"
 #include "note4_health_esp.h"
+#include "note4_log_event.h"
+#include "sdkconfig.h"
+#include <cstdlib>
 #if CONFIG_NOTE4_ENABLE_USB_HOST
 #include "note4_host_protocol.h"
 #endif
@@ -22,6 +22,7 @@
 #include "note4_connectivity_service.h"
 #include "note4_nfc_service.h"
 #endif
+#include "note4_display_calibration_store.h"
 #include "note4_display_service.h"
 #include "note4_input_service.h"
 #include "note4_power_service.h"
@@ -117,17 +118,20 @@ struct Platform::Impl {
         *this, boot_facade, [](Impl& self) {
             const auto result = self.boot_facade->BeginBoot();
             if (result != update::Result::kOk) {
-                ESP_LOGE("update", "boot protection failed: %s", update::ResultName(result));
+                NOTE4_LOGE("update", "boot_protection_failed", "error=%s",
+                           note4::log::Token(update::ResultName(result)).c_str());
                 return ESP_FAIL;
             }
             const auto boot = self.boot_facade->ReadBootStatus();
-            ESP_LOGI("update", "running=0x%08lx selected=0x%08lx update=0x%08lx state=%u layout=%s",
-                     static_cast<unsigned long>(boot.running.address),
-                     static_cast<unsigned long>(boot.boot.address),
-                     static_cast<unsigned long>(boot.next_update.address),
-                     static_cast<unsigned>(boot.image_state), update::ResultName(boot.layout_result));
+            NOTE4_LOGI("update", "boot_layout",
+                       "running=0x%08lx selected=0x%08lx update=0x%08lx state=%u layout=%s",
+                       static_cast<unsigned long>(boot.running.address),
+                       static_cast<unsigned long>(boot.boot.address),
+                       static_cast<unsigned long>(boot.next_update.address),
+                       static_cast<unsigned>(boot.image_state),
+                       note4::log::Token(update::ResultName(boot.layout_result)).c_str());
             if (boot.confirmation_pending && !boot.rollback_available)
-                ESP_LOGW("update", "trial boot has no verified fallback image");
+                NOTE4_LOGW("update", "boot_fallback_unavailable", "");
             return boot.confirmation_pending ? ESP_OK : self.health.Start();
         }, nullptr, KeepForPowerTransition};
 #if CONFIG_NOTE4_ENABLE_UPDATE
@@ -156,9 +160,11 @@ struct Platform::Impl {
         *this, time, [](Impl& self) { return time::TimeService::Attach(self.board, &self.time); },
         [](Impl& self) {
             const esp_err_t restored = self.time->Initialize(*self.storage);
-            if (restored == ESP_OK) ESP_LOGI("time", "wall clock restored from RTC");
-            else ESP_LOGW("time", "RTC restoration unavailable: %s; clock setup remains available",
-                          esp_err_to_name(restored));
+            if (restored == ESP_OK)
+                NOTE4_LOGI("time", "clock_restored", "source=rtc");
+            else
+                NOTE4_LOGW("time", "clock_restore_failed", "error=%s setup=available",
+                           note4::log::Token(esp_err_to_name(restored)).c_str());
             return ESP_OK;
         }};
     ServiceBinding<storage::StorageService, Impl> storage_binding{
@@ -166,8 +172,10 @@ struct Platform::Impl {
         [](Impl& self) {
             const auto result = self.storage->Initialize();
             self.health.SetStorageError(result);
-            if (result != ESP_OK) ESP_LOGE("platform", "settings unavailable: %s; preserving NVS, radios disabled",
-                                          esp_err_to_name(result));
+            if (result != ESP_OK)
+                NOTE4_LOGE("platform", "settings_load_failed",
+                           "error=%s stored_record=preserved radios=disabled",
+                           note4::log::Token(esp_err_to_name(result)).c_str());
             return ESP_OK;
         }};
     ServiceBinding<system::SystemService, Impl> system_binding{
@@ -178,7 +186,33 @@ struct Platform::Impl {
             return ESP_OK;
         }};
     ServiceBinding<display::DisplayService, Impl> display_binding{
-        *this, display, [](Impl& self) { return display::DisplayService::Create(&self.display); }};
+        *this, display, [](Impl& self) { return display::DisplayService::Create(&self.display); },
+        [](Impl& self) {
+            display::PhysicsParameters model;
+            bool model_saved = false;
+            const auto model_error = display::LoadModel(*self.storage, &model, &model_saved);
+            if (model_error != ESP_OK)
+                NOTE4_LOGW("display", "model_fallback", "error=%d stored_record=preserved",
+                           model_error);
+            if (!self.display->SetPhysicsParameters(model))
+                return ESP_ERR_INVALID_ARG;
+            NOTE4_LOGI("display", "model_loaded", "source=%s revision=%lu",
+                       note4::log::Token(model_saved ? "nvs" : "builtin").c_str(),
+                       static_cast<unsigned long>(model.revision));
+            note4_epd_calibration_t calibration{};
+            bool saved = false;
+            const auto loaded = display::LoadCalibration(*self.storage, &calibration, &saved);
+            if (loaded != ESP_OK)
+                NOTE4_LOGW("display", "calibration_fallback", "error=%s stored_record=preserved",
+                           note4::log::Token(esp_err_to_name(loaded)).c_str());
+            const auto applied = self.display->SetCalibration(calibration);
+            if (applied == ESP_OK)
+                NOTE4_LOGI(
+                    "display", "calibration_loaded", "source=%s revision=%lu measured=0x%04x",
+                    note4::log::Token(saved ? "nvs" : "builtin").c_str(),
+                    static_cast<unsigned long>(calibration.revision), calibration.measured_levels);
+            return applied;
+        }};
     ServiceBinding<Note4SelfTest, Impl> diagnostics_binding{
         *this, diagnostics, [](Impl& self) {
             self.diagnostics = new (std::nothrow) Note4SelfTest(
@@ -199,7 +233,7 @@ struct Platform::Impl {
             const bool calendar_wake = self.power->IsScheduledWake() &&
                 !self.boot_facade->ReadBootStatus().confirmation_pending;
             if (health.storage_error != ESP_OK || health.recovery_boot || calendar_wake) {
-                ESP_LOGW("platform", "recovery boot: keeping connectivity stopped");
+                NOTE4_LOGW("platform", "recovery_boot", "radios=disabled");
                 return ESP_OK;
             }
             return self.connectivity->Initialize() == connectivity::ConnectivityResult::kOk ? ESP_OK : ESP_FAIL;
@@ -377,7 +411,8 @@ esp_err_t Platform::ResetUserData(bool factory) {
 void Platform::ReleaseServices() {
     if (impl_ == nullptr) return;
     const auto stopped = services_.StopAll();
-    if (stopped != ESP_OK) ESP_LOGW("platform", "service stop failed: %d", stopped);
+    if (stopped != ESP_OK)
+        NOTE4_LOGW("platform", "service_stop_failed", "error=%d", stopped);
 #if CONFIG_NOTE4_ENABLE_CONNECTIVITY
     // Board initialization can attach NFC before the connectivity provider runs.
     delete std::exchange(impl_->nfc_service, nullptr);

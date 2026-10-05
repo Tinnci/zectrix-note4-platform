@@ -5,8 +5,9 @@
 #include <memory>
 
 #include "esp_err.h"
-#include "note4_display_state.h"
 #include "note4_display_inspection.h"
+#include "note4_display_state.h"
+#include "note4_epd_calibration.h"
 
 // Keep GPIO/SPI declarations out of the service boundary without erasing handle types.
 struct note4_epd_t;
@@ -32,6 +33,7 @@ public:
     static constexpr int kPanelWidth = 400;
     static constexpr int kPanelHeight = 300;
     static constexpr std::size_t kFrameBytes1Bpp = 15000;
+    static constexpr std::size_t kFrameBytes2Bpp = 30000;
     static constexpr std::size_t kFrameBytes4Bpp = 60000;
 
     // Creates a service with the board's default EPD configuration.
@@ -66,6 +68,8 @@ public:
                           std::size_t partial_size = 0);
     esp_err_t Present4Bpp(DisplayIntent intent, const uint8_t* framebuffer,
                           std::size_t size);
+    // Tightly packed logical canvas: 400x300 landscape or 300x400 portrait.
+    esp_err_t Present2Bpp(DisplayIntent intent, const uint8_t* framebuffer, std::size_t size);
     // Native 300x400 lock-screen canvas, tightly packed, clockwise to the panel.
     // Does not change the application orientation preference.
     esp_err_t PresentPortrait1Bpp(const uint8_t* frame, std::size_t size);
@@ -84,11 +88,16 @@ public:
     }
     bool SetPhysicsParameters(const PhysicsParameters& parameters) { return physics_.SetParameters(parameters); }
     const PhysicsParameters& physics_parameters() const { return physics_.parameters(); }
+    esp_err_t ReadCalibration(note4_epd_calibration_t* calibration) const;
+    // Owner-task only, outside a batch with the rail off. Startup uses this
+    // before the first frame; CLI saves for next boot instead of mid-frame.
+    esp_err_t SetCalibration(const note4_epd_calibration_t& calibration);
 
 private:
     esp_err_t PresentPhysical1Bpp(DisplayIntent intent, const uint8_t* frame,
         std::size_t size, const Rect& region, const uint8_t* patch, std::size_t patch_size);
-    esp_err_t PresentPhysical4Bpp(DisplayIntent intent, const uint8_t* frame, std::size_t size);
+    esp_err_t PresentPhysicalGray(DisplayIntent intent, const uint8_t* frame, std::size_t size,
+                                  unsigned bits);
     esp_err_t PresentPortraitFrame(DisplayIntent intent, const uint8_t* frame,
                                   std::size_t size, bool flipped);
     DisplayOrientation orientation_ = DisplayOrientation::Standard;

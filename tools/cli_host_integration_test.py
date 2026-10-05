@@ -113,6 +113,29 @@ class Terminal:
 
 
 class HostIntegrationTest(unittest.TestCase):
+    def test_calibration_confirmed_save_and_reset(self):
+        with Terminal("--log-interval-ms", "0") as terminal:
+            terminal.until(PROMPT)
+            initial = terminal.command(b"display calibration\r")
+            self.assertIn(b"active_revision=1 saved_revision=1", initial)
+            self.assertIn(b"level=15", initial)
+            prompt = terminal.command(b"display calibration-set 6 3 4 4 400 1\r")
+            token = re.search(rb"Type confirm (\d+)", prompt).group(1)
+            self.assertIn(b"active_revision=1 saved_revision=1", terminal.command(b"display calibration\r"))
+            self.assertIn(b"confirmation denied", terminal.command(b"confirm " + token + b"\r"))
+            prompt = terminal.command(b"display calibration-set 6 3 4 4 400 1\r")
+            token = re.search(rb"Type confirm (\d+)", prompt).group(1)
+            saved = terminal.command(b"confirm " + token + b"\r")
+            self.assertIn(b"active_revision=1 saved_revision=2", saved)
+            self.assertIn(b"level=6 active=3,4,4,394 saved=3,4,4,400", saved)
+            self.assertIn(b"measured_saved=0x0040", saved)
+            prompt = terminal.command(b"display calibration-reset\r")
+            token = re.search(rb"Type confirm (\d+)", prompt).group(1)
+            reset = terminal.command(b"confirm " + token + b"\r")
+            self.assertIn(b"active_revision=1 saved_revision=1", reset)
+            self.assertIn(b"source=builtin", reset)
+            self.assertIn(b"screen_default=portrait", terminal.command(b"display settings\r"))
+
     def test_commands_editing_and_parser_recovery(self):
         with Terminal("--log-interval-ms", "0") as terminal:
             self.assertIn(b"hardware snapshots are synthetic", terminal.until(PROMPT))
@@ -218,10 +241,10 @@ class HostIntegrationTest(unittest.TestCase):
             self.assertIn(b"queued=32/32", stats)
             self.assertGreater(int(re.search(rb"dropped=(\d+)", stats)[1]), 0)
             terminal.send(b"log-stream warn\r")
-            stream = terminal.until(b"event=80")
+            stream = terminal.until(b"tick=80")
             self.assertIn(b"log: dropped=", stream)
-            self.assertIn(b"W host:", stream)
-            self.assertNotIn(b"I host:", stream)
+            self.assertRegex(stream, rb"W \(\d+\) host:")
+            self.assertNotRegex(stream, rb"I \(\d+\) host:")
             self.assertIn(b"^C", terminal.command(b"\x03"))
             self.assertIn(b"queued=0/32", terminal.command(b"log stats\r"))
 

@@ -8,6 +8,7 @@ if [ "${NOTE4_UTILITIES_SANITIZE:-0}" = 1 ]; then
     flags+=("-fsanitize=address,undefined" -fno-omit-frame-pointer -g)
 fi
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror "${flags[@]}" \
+    -I"$repo_root/components/note4_log/include" \
     -I"$repo_root/tools/host_include" \
     -I"$repo_root/components/note4_app/include" -I"$repo_root/components/note4_text/include" \
     -I"$repo_root/components/note4_time/include" \

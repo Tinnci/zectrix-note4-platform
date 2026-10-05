@@ -1,8 +1,8 @@
 #include "note4_nfc.h"
 
+#include "note4_log_event.h"
 #include <driver/gpio.h>
 #include <esp_check.h>
-#include <esp_log.h>
 #include <esp_rom_sys.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -16,7 +16,7 @@ extern "C" void __attribute__((weak)) BoardI2cForcePowerOn() {}
 
 namespace {
 
-constexpr char kTag[] = "Note4Nfc";
+constexpr char kTag[] = "nfc";
 constexpr int kI2cTimeoutMs = 100;
 constexpr uint32_t kPowerOnDelayUs = 1000;
 constexpr uint32_t kReadDelayUs = 10000;
@@ -141,8 +141,8 @@ Note4Nfc::~Note4Nfc() {
 
 bool Note4Nfc::Init() {
     if (initialization_status() != ESP_OK) {
-        ESP_LOGE(kTag, "I2C device initialization failed: %s",
-                 esp_err_to_name(initialization_status()));
+        NOTE4_LOGE(kTag, "i2c_device_init_failed", "error=%s",
+                   note4::log::Token(esp_err_to_name(initialization_status())).c_str());
         return false;
     }
     bool expected = false;
@@ -157,7 +157,7 @@ bool Note4Nfc::Init() {
     power_cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
     power_cfg.intr_type = GPIO_INTR_DISABLE;
     if (gpio_config(&power_cfg) != ESP_OK) {
-        ESP_LOGE(kTag, "failed to config NFC power gpio=%d", power_gpio_);
+        NOTE4_LOGE(kTag, "power_gpio_config_failed", "gpio=%d", power_gpio_);
         initialized_.store(false, std::memory_order_release);
         return false;
     }
@@ -170,7 +170,7 @@ bool Note4Nfc::Init() {
     fd_cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
     fd_cfg.intr_type = GPIO_INTR_ANYEDGE;
     if (gpio_config(&fd_cfg) != ESP_OK) {
-        ESP_LOGE(kTag, "failed to config NFC FD gpio=%d", fd_gpio_);
+        NOTE4_LOGE(kTag, "field_gpio_config_failed", "gpio=%d", fd_gpio_);
         initialized_.store(false, std::memory_order_release);
         return false;
     }
@@ -182,7 +182,7 @@ bool Note4Nfc::Init() {
 
     field_task_done_ = xSemaphoreCreateBinary();
     if (field_task_done_ == nullptr) {
-        ESP_LOGE(kTag, "failed to create NFC field task completion semaphore");
+        NOTE4_LOGE(kTag, "field_task_init_failed", "resource=semaphore");
         initialized_.store(false, std::memory_order_release);
         return false;
     }
@@ -190,7 +190,7 @@ bool Note4Nfc::Init() {
     BaseType_t task_ok =
         xTaskCreate(&Note4Nfc::FieldTaskEntry, "note4_nfc_fd", 3 * 1024, this, 3, &field_task_);
     if (task_ok != pdPASS || field_task_ == nullptr) {
-        ESP_LOGE(kTag, "failed to create NFC field task");
+        NOTE4_LOGE(kTag, "field_task_init_failed", "resource=task");
         vSemaphoreDelete(field_task_done_);
         field_task_done_ = nullptr;
         initialized_.store(false, std::memory_order_release);
@@ -199,14 +199,15 @@ bool Note4Nfc::Init() {
 
     esp_err_t isr_ret = gpio_isr_handler_add(fd_gpio_, &Note4Nfc::FieldIsrHandler, this);
     if (isr_ret != ESP_OK) {
-        ESP_LOGE(kTag, "failed to install NFC FD ISR: %s", esp_err_to_name(isr_ret));
+        NOTE4_LOGE(kTag, "field_isr_install_failed", "error=%s",
+                   note4::log::Token(esp_err_to_name(isr_ret)).c_str());
         StopFieldTask();
         initialized_.store(false, std::memory_order_release);
         return false;
     }
 
     if (!PowerOn()) {
-        ESP_LOGE(kTag, "failed to power NFC device");
+        NOTE4_LOGE(kTag, "power_on_failed", "");
         StopFieldTask();
         initialized_.store(false, std::memory_order_release);
         return false;
@@ -216,23 +217,19 @@ bool Note4Nfc::Init() {
     const esp_err_t uid_ret = ReadUid(&uid);
     UpdateFieldState(IsFieldLevelActive(), false);
 
-    ESP_LOGI(kTag,
-             "NFC init: addr=0x%02X power_gpio=%d fd_gpio=%d fd_active=%d capacity=%u field=%d uid_ret=%s uid=%02X:%02X:%02X:%02X:%02X:%02X:%02X",
-             static_cast<unsigned>(device_address_),
-             power_gpio_,
-             fd_gpio_,
-             fd_active_level_,
-             static_cast<unsigned>(kUserDataCapacity),
-             HasField() ? 1 : 0,
-             esp_err_to_name(uid_ret),
-             uid[0], uid[1], uid[2], uid[3], uid[4], uid[5], uid[6]);
+    NOTE4_LOGI(kTag, "nfc_ready",
+               "addr=0x%02X power_gpio=%d fd_gpio=%d fd_active=%d capacity=%u field=%d uid_ret=%s",
+               static_cast<unsigned>(device_address_), power_gpio_, fd_gpio_, fd_active_level_,
+               static_cast<unsigned>(kUserDataCapacity), HasField() ? 1 : 0,
+               note4::log::Token(esp_err_to_name(uid_ret)).c_str());
     return true;
 }
 
 bool Note4Nfc::PowerOn() {
     ScopedI2cBusLock bus_lock("Note4Nfc::PowerOn");
     if (!bus_lock.locked()) {
-        ESP_LOGW(kTag, "NFC power on bus lock failed: %s", esp_err_to_name(bus_lock.status()));
+        NOTE4_LOGW(kTag, "power_on_failed", "resource=i2c_lock error=%s",
+                   note4::log::Token(esp_err_to_name(bus_lock.status())).c_str());
         powered_.store(false, std::memory_order_release);
         return false;
     }
@@ -243,7 +240,8 @@ bool Note4Nfc::PowerOn() {
     BoardI2cForcePowerOn();
     const esp_err_t ret = Probe();
     if (ret != ESP_OK) {
-        ESP_LOGW(kTag, "NFC probe failed after power on: %s", esp_err_to_name(ret));
+        NOTE4_LOGW(kTag, "probe_failed", "phase=power_on error=%s",
+                   note4::log::Token(esp_err_to_name(ret)).c_str());
         powered_.store(false, std::memory_order_release);
         return false;
     }
@@ -669,9 +667,9 @@ esp_err_t Note4Nfc::BeginTransferSessionLocked(const char* reason) {
         // An active RF session can temporarily own arbitration. Return the
         // error so the caller retries after field exit instead of resetting
         // the device and corrupting the phone-side operation.
-        ESP_LOGW(kTag, "transfer session probe failed: reason=%s ret=%s",
-                 reason ? reason : "unknown",
-                 esp_err_to_name(ret));
+        NOTE4_LOGW(kTag, "session_probe_failed", "reason=%s error=%s",
+                   note4::log::Token(reason ? reason : "unknown").c_str(),
+                   note4::log::Token(esp_err_to_name(ret)).c_str());
         i2c_session_lock_.reset();
     }
     return ret;
@@ -687,9 +685,9 @@ esp_err_t Note4Nfc::ExecuteTransferLocked(const char* reason,
                                             const std::function<esp_err_t()>& op) {
     esp_err_t ret = op();
     if (ret == ESP_ERR_INVALID_STATE || ret == ESP_ERR_TIMEOUT) {
-        ESP_LOGW(kTag, "i2c transfer retry: reason=%s ret=%s",
-                 reason ? reason : "unknown",
-                 esp_err_to_name(ret));
+        NOTE4_LOGW(kTag, "i2c_transfer_retry", "reason=%s error=%s",
+                   note4::log::Token(reason ? reason : "unknown").c_str(),
+                   note4::log::Token(esp_err_to_name(ret)).c_str());
         if (ResetBus(reason) == ESP_OK) {
             BoardI2cForcePowerOn();
             ret = op();
@@ -832,7 +830,7 @@ void Note4Nfc::StopFieldTask() {
         // logs, but never free a semaphore that the task can still signal.
         while (xSemaphoreTake(field_task_done_, pdMS_TO_TICKS(1000)) !=
                pdTRUE) {
-            ESP_LOGE(kTag, "field task stop is taking longer than expected");
+            NOTE4_LOGE(kTag, "field_task_stop_pending", "");
         }
         vSemaphoreDelete(field_task_done_);
         field_task_done_ = nullptr;

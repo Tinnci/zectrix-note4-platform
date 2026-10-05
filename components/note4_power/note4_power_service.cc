@@ -3,13 +3,13 @@
 #include <cstdlib>
 #include <new>
 
-#include "esp_sleep.h"
 #include "esp_attr.h"
+#include "esp_sleep.h"
 #include "esp_timer.h"
-#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "note4_board.h"
+#include "note4_log_event.h"
 
 namespace note4::power {
 namespace { RTC_DATA_ATTR bool scheduled_sleep = false; }
@@ -66,13 +66,17 @@ bool PowerService::IsScheduledWake() const {
         vTaskDelay(pdMS_TO_TICKS(100));
         const auto wake = board_->PreparePowerButtonWake();
         button_ready = wake == ESP_OK;
-        if (wake != ESP_OK) ESP_LOGW("note4_power", "power-button wake unavailable: %s", esp_err_to_name(wake));
+        if (wake != ESP_OK)
+            NOTE4_LOGW("power", "button_wake_failed", "error=%s",
+                       note4::log::Token(esp_err_to_name(wake)).c_str());
     }
     if (ready != nullptr) ready(context);
     if (wake_after_us != 0 && button_ready) {
         const auto timer = esp_sleep_enable_timer_wakeup(wake_after_us);
         scheduled_sleep = timer == ESP_OK;
-        if (!scheduled_sleep) ESP_LOGW("note4_power", "scheduled wake unavailable: %s", esp_err_to_name(timer));
+        if (!scheduled_sleep)
+            NOTE4_LOGW("power", "timer_wake_failed", "error=%s",
+                       note4::log::Token(esp_err_to_name(timer)).c_str());
     }
     if (board_ != nullptr && !scheduled_sleep) {
         board_->CutBatteryPower();

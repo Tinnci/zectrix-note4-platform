@@ -11,8 +11,10 @@ const CommandDescriptor* DiagnosticCommands(std::size_t* count);
 class DiagnosticExecutor final : public CliExecutor {
 public:
     DiagnosticExecutor(PlatformControlDispatcher& dispatcher, LogBuffer& logs,
-                       CliBinarySession* binary = nullptr, MonotonicMilliseconds clock = SteadyMilliseconds)
-        : dispatcher_(dispatcher), logs_(logs), binary_(binary), clock_(clock) {}
+                       CliBinarySession* binary = nullptr,
+                       MonotonicMilliseconds clock = SteadyMilliseconds,
+                       log::LevelControl* levels = nullptr)
+        : dispatcher_(dispatcher), logs_(logs), binary_(binary), clock_(clock), levels_(levels) {}
 
     ExecuteStatus Execute(const Invocation&, BoundedOutput*) override;
     ExecuteStatus Poll(BoundedOutput*) override;
@@ -32,11 +34,13 @@ private:
     LogBuffer& logs_;
     CliBinarySession* binary_;
     MonotonicMilliseconds clock_;
+    log::LevelControl* levels_;
     CancellationToken cancellation_;
     ControlTicket ticket_;
     ControlResult result_;
     Handler active_ = Handler::kNone;
     LogLevel log_level_ = LogLevel::kInfo;
+    std::array<char, log::kLogTagBytes + 1> log_tag_{};
     uint32_t reported_drops_ = 0;
     std::size_t page_ = 0;
     bool result_ready_ = false;

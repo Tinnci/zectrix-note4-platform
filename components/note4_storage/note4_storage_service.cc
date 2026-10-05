@@ -3,6 +3,7 @@
 #include <new>
 #include <memory>
 
+#include "note4_log_event.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "sdkconfig.h"
@@ -22,6 +23,8 @@ bool InvalidKey(const char* key) {
 }
 
 esp_err_t PublicResult(esp_err_t result) {
+    if (result != ESP_OK && result != ESP_ERR_NVS_NOT_FOUND && result != ESP_ERR_NOT_FOUND)
+        NOTE4_LOGW("storage", "nvs_error", "error=%ld", static_cast<long>(result));
     return result == ESP_ERR_NVS_NOT_FOUND ? ESP_ERR_NOT_FOUND : result;
 }
 
@@ -62,7 +65,8 @@ esp_err_t StorageService::Initialize() {
     esp_err_t err = nvs_flash_init();
     // Preserve settings, bonds and bookmarks for recovery or a compatible image.
     // Only the explicit factory-reset path may erase the NVS partition.
-    if (err != ESP_OK) return err;
+    if (err != ESP_OK)
+        return PublicResult(err);
     err = nvs_open(kNamespace, NVS_READWRITE, &impl_->handle);
     if (err == ESP_OK) impl_->initialized = true;
     return PublicResult(err);
@@ -143,12 +147,13 @@ esp_err_t StorageService::GetBlob(const char* key, void* value,
 esp_err_t StorageService::Erase(const char* key) {
     if (!IsInitialized()) return ESP_ERR_INVALID_STATE;
     if (InvalidKey(key)) return ESP_ERR_INVALID_ARG;
-    return PublicResult(Commit(nvs_erase_key(impl_->handle, key)));
+    return Commit(nvs_erase_key(impl_->handle, key));
 }
 
 esp_err_t StorageService::Commit(esp_err_t operation_result) {
-    if (operation_result != ESP_OK) return operation_result;
-    return nvs_commit(impl_->handle);
+    if (operation_result != ESP_OK)
+        return PublicResult(operation_result);
+    return PublicResult(nvs_commit(impl_->handle));
 }
 
 esp_err_t StorageService::WipeUserFiles() {

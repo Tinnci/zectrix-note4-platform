@@ -1,7 +1,7 @@
 #include "terminal_internal.h"
 
-#include "esp_log.h"
 #include "note4_first_party_app_controllers.h"
+#include "note4_log_event.h"
 #include "note4_storage_service.h"
 
 namespace note4::terminal {
@@ -28,8 +28,8 @@ public:
                     note4::app::kAutoShowcaseSettingKey,
                     note4::app::kAutoShowcaseDefault);
                 if (repair != ESP_OK) {
-                    ESP_LOGW(kTag, "default setting save failed: %s",
-                             esp_err_to_name(repair));
+                    NOTE4_LOGW(kTag, "default_save_failed", "error=%s",
+                               note4::log::Token(esp_err_to_name(repair)).c_str());
                 }
             }
         }

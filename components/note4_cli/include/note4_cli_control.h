@@ -4,18 +4,42 @@
 #include <cstdint>
 #include <mutex>
 
-#include "note4_display_inspection.h"
-#include "note4_system_snapshot.h"
 #include "note4_cli_core.h"
 #include "note4_cli_reflection.h"
+#include "note4_display_inspection.h"
+#include "note4_epd_calibration.h"
+#include "note4_system_snapshot.h"
 
 namespace note4::cli {
 
 enum class ControlOperation : uint8_t {
-    kSystemInfo, kHeap, kTasks, kUptime, kDisplay, kPower, kTime, kConnectivity,
-    kApps, kScenes, kInput, kDisplayTelemetry, kDisplayModel, kHealth,
+    kSystemInfo,
+    kHeap,
+    kTasks,
+    kUptime,
+    kDisplay,
+    kPower,
+    kTime,
+    kConnectivity,
+    kApps,
+    kScenes,
+    kInput,
+    kDisplayTelemetry,
+    kDisplayModel,
+    kHealth,
     kDisplaySettings,
-    kTimeSync, kConnectivityConfigure, kDisplayConfigure, kReboot, kSleep, kStorageWipe, kFactoryReset,
+    kDisplayCalibration,
+    kTimeSync,
+    kConnectivityConfigure,
+    kDisplayConfigure,
+    kDisplayCalibrationSet,
+    kDisplayCalibrationReset,
+    kReboot,
+    kSleep,
+    kStorageWipe,
+    kFactoryReset,
+    kDisplayModelSet,
+    kDisplayModelReset,
 };
 constexpr bool IsMutation(ControlOperation operation) { return operation >= ControlOperation::kTimeSync; }
 enum class ControlStatus : uint8_t {
@@ -33,7 +57,7 @@ struct ControlRequest {
     uint64_t cursor = 0;
     Config config = Config::Policy;
     std::array<char, 65> text1{}, text2{};
-    std::array<uint32_t, 6> values{};
+    std::array<uint32_t, 8> values{};
 };
 
 struct ControlTicket {
@@ -48,6 +72,11 @@ inline void ClearRequestSecrets(ControlRequest* request) {
 }
 
 struct ControlResult {
+    struct Calibration {
+        note4_epd_calibration_t active{}, configured{};
+        int32_t storage_error = 0;
+        bool saved = false;
+    } calibration;
     struct DisplaySettings {
         uint8_t active = 2, configured = 2;
         bool sleep_portrait = true;
@@ -59,6 +88,9 @@ struct ControlResult {
     display::DisplayInspection display;
     display::TelemetryBatch display_telemetry;
     display::PhysicsParameters display_model;
+    display::PhysicsParameters saved_model;
+    int32_t model_storage_error = 0;
+    bool model_saved = false;
     uint64_t uptime_us = 0;
     PowerInspection power;
     TimeInspection time;

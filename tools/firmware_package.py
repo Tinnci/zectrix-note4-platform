@@ -18,7 +18,7 @@ from firmware_budget import inspect_budget
 ROOT = Path(__file__).resolve().parent.parent
 ROLES = ("bootloader", "partition-table", "app", "otadata")
 NOTICES = ("LICENSE", "THIRD_PARTY_NOTICES.md", "licenses/TRMNL_FONT_LICENSE.txt",
-           "licenses/LUA_LICENSE.txt", "components/note4_epd/LICENSE",
+           "licenses/LUA_LICENSE.txt", "licenses/WAMR_LICENSE.txt", "licenses/WASM3_LICENSE.txt", "components/note4_epd/LICENSE",
            "components/note4_reader/font/README.md", "components/note4_reader/font/OFL-1.1.txt",
            "components/note4_reader/third_party/miniz/LICENSE")
 PROFILE_NAMES = ("full", "minimal", "reader")
@@ -106,6 +106,11 @@ def package_profile(directory, profile, version, output):
                                   if key.startswith("NOTE4_ENABLE_") and enabled),
     }
     prefix = f"note4-{version}-{profile}"
+    # IDF 6 emits hyphenated esptool 5 arguments. The legacy CLI cannot consume
+    # that response file; keep the qualified 4.x command for 5.5 bundles.
+    flash_command = ('uvx --from esptool==5.3.0 esptool --chip esp32s3 --port PORT write-flash "@flash_args"'
+                     if "--flash-mode" in flash["write_flash_args"] else
+                     'uvx --from esptool==4.11.0 esptool.py --chip esp32s3 --port PORT write_flash "@flash_args"')
     shutil.copyfile(directory / description["app_bin"], output / f"{prefix}-app.bin")
     # Keep separate flash segments: filling their gaps would overwrite NVS/books.
     arguments = shlex.join(flash["write_flash_args"]) + "\n"
@@ -122,7 +127,7 @@ def package_profile(directory, profile, version, output):
             f"Firmware descriptor: {metadata['firmware_version']}\n\n"
             "Initial/recovery install: extract the complete archive, enter its directory,\n"
             "install uv (https://docs.astral.sh/uv/), then run:\n"
-            '  uvx --from esptool==4.11.0 esptool.py --chip esp32s3 --port PORT write_flash "@flash_args"\n\n'
+            f'  {flash_command}\n\n'
             "Use a data cable and replace PORT with the device's serial port.\n"
             "This rewrites the factory image, bootloader, partition table and OTA selection.\n"
             "It preserves NVS and books only on the same installed partition layout.\n"

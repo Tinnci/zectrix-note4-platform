@@ -6,16 +6,16 @@
 #include <new>
 
 #include "esp_heap_caps.h"
-#include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "note4_log_event.h"
 #include "ssd2683_waveform.h"
 
 namespace {
 
-constexpr char kTag[] = "note4_epd";
+constexpr char kTag[] = "epd";
 constexpr int kWidth = NOTE4_EPD_PANEL_WIDTH;
 constexpr int kHeight = NOTE4_EPD_PANEL_HEIGHT;
 constexpr int kBwStride = kWidth / 8;
@@ -75,6 +75,7 @@ esp_err_t ValidatePatch(const note4_epd_rect_t* rect, const uint8_t* pixels,
 struct note4_epd_t {
     explicit note4_epd_t(const note4_epd_config_t& value) : config(value) {
         metrics.temperature_sampled_us = -1;
+        note4_epd_calibration_default(&calibration);
     }
 
     note4_epd_config_t config = {};
@@ -90,6 +91,7 @@ struct note4_epd_t {
     bool internal_power_on = false;
     bool shadow_valid = false;
     note4_epd_metrics_t metrics{};
+    note4_epd_calibration_t calibration{};
 
     note4_epd_diff_t Analyze(const note4_epd_rect_t& rect,
                               const uint8_t* pixels, bool count_transitions = true) const {
@@ -287,7 +289,8 @@ struct note4_epd_t {
         esp_err_t result = ESP_OK;
         while (gpio_get_level(config.pin_busy) == 0) {
             if (esp_timer_get_time() - start >= timeout_us) {
-                ESP_LOGE(kTag, "BUSY timeout during %s", operation);
+                NOTE4_LOGE(kTag, "busy_timeout", "operation=%s",
+                           note4::log::Token(operation).c_str());
                 result = ESP_ERR_TIMEOUT;
                 break;
             }
@@ -553,26 +556,29 @@ struct note4_epd_t {
         return err;
     }
 
-    esp_err_t WriteGrayPass(int pass, const uint8_t* framebuffer) {
+    esp_err_t WriteGrayPass(int pass, const uint8_t* framebuffer, unsigned bits) {
+        std::array<uint8_t, 256> packed{};
+        if (bits == 2) {
+            uint8_t codes[4];
+            for (unsigned tone = 0; tone < 4; ++tone)
+                codes[tone] = ssd2683_waveform::CodeForLevel(
+                    pass, note4_epd_calibration_quantize(&calibration, (tone * 1000 + 1) / 3));
+            for (unsigned byte = 0; byte < packed.size(); ++byte)
+                packed[byte] =
+                    static_cast<uint8_t>((codes[byte >> 6] << 6) | (codes[(byte >> 4) & 3] << 4) |
+                                         (codes[(byte >> 2) & 3] << 2) | codes[byte & 3]);
+        }
         esp_err_t err = SendCommand(0x10);
         if (err == ESP_OK) err = WaitBusy("4bpp RAM write");
         std::array<uint8_t, kNativeStride> line = {};
         for (int y = 0; err == ESP_OK && y < kHeight; ++y) {
             for (int byte_x = 0; byte_x < kNativeStride; ++byte_x) {
-                uint8_t packed = 0;
-                for (int index = 0; index < 4; ++index) {
-                    const int x = byte_x * 4 + index;
-                    const size_t pixel = static_cast<size_t>(y) * kWidth + x;
-                    const uint8_t pair = framebuffer[pixel / 2];
-                    const uint8_t level = (pixel & 1U) ? pair & 0x0F : pair >> 4;
-                    const uint8_t code =
-                        ssd2683_waveform::VendorGray16RenderPassOfLevel(level) ==
-                                static_cast<size_t>(pass)
-                            ? ssd2683_waveform::VendorGray16RenderCodeOfLevel(level)
-                            : 0;
-                    packed |= static_cast<uint8_t>(code << (6 - index * 2));
-                }
-                line[byte_x] = packed;
+                const size_t source =
+                    static_cast<size_t>(y) * kWidth * bits / 8 + byte_x * (bits / 2);
+                const auto& codes = ssd2683_waveform::kPackedCodes[pass];
+                line[byte_x] = bits == 2 ? packed[framebuffer[source]]
+                                         : static_cast<uint8_t>((codes[framebuffer[source]] << 4) |
+                                                                codes[framebuffer[source + 1]]);
             }
             err = SendBytes(line.data(), line.size(), true);
         }
@@ -895,11 +901,35 @@ extern "C" esp_err_t note4_epd_refresh_partial_1bpp(
     return err;
 }
 
-extern "C" esp_err_t note4_epd_refresh_full_4bpp(note4_epd_handle_t handle,
-                                                    const uint8_t* framebuffer,
-                                                    size_t framebuffer_size) {
+extern "C" esp_err_t note4_epd_read_calibration(note4_epd_handle_t handle,
+                                                note4_epd_calibration_t* out) {
+    if (!handle || !out)
+        return ESP_ERR_INVALID_ARG;
+    MutexGuard guard(handle->mutex);
+    if (!guard.locked())
+        return ESP_ERR_TIMEOUT;
+    *out = handle->calibration;
+    return ESP_OK;
+}
+
+extern "C" esp_err_t note4_epd_set_calibration(note4_epd_handle_t handle,
+                                               const note4_epd_calibration_t* calibration) {
+    if (!handle || !note4_epd_calibration_validate(calibration))
+        return ESP_ERR_INVALID_ARG;
+    MutexGuard guard(handle->mutex);
+    if (!guard.locked())
+        return ESP_ERR_TIMEOUT;
+    if (handle->powered)
+        return ESP_ERR_INVALID_STATE;
+    handle->calibration = *calibration;
+    handle->shadow_valid = false;
+    return ESP_OK;
+}
+
+static esp_err_t RefreshGray(note4_epd_handle_t handle, const uint8_t* framebuffer,
+                             size_t framebuffer_size, unsigned bits) {
     if (handle == nullptr || framebuffer == nullptr ||
-        framebuffer_size != NOTE4_EPD_4BPP_FRAME_BYTES) {
+        framebuffer_size != static_cast<size_t>(kWidth * kHeight * bits / 8)) {
         return ESP_ERR_INVALID_ARG;
     }
     MutexGuard guard(handle->mutex);
@@ -914,14 +944,15 @@ extern "C" esp_err_t note4_epd_refresh_full_4bpp(note4_epd_handle_t handle,
     for (size_t pass = 0;
          err == ESP_OK && pass < ssd2683_waveform::kVendorGray16RenderPassCount;
          ++pass) {
-        const auto& waveform = ssd2683_waveform::kVendorGray16RenderWaveforms[pass];
+        const auto waveform = ssd2683_waveform::MakeGray16Waveform(handle->calibration, pass);
         if (!session_open) {
             err = handle->InitExternalWaveform(waveform.data(), waveform.size());
             session_open = err == ESP_OK;
         } else {
             err = handle->LoadExternalWaveform(waveform.data(), waveform.size());
         }
-        if (err == ESP_OK) err = handle->WriteGrayPass(static_cast<int>(pass), framebuffer);
+        if (err == ESP_OK)
+            err = handle->WriteGrayPass(static_cast<int>(pass), framebuffer, bits);
         if (err == ESP_OK) err = handle->TriggerExternalBatch(pass == 0);
     }
     if (err == ESP_OK && session_open && handle->internal_power_on) {
@@ -939,4 +970,12 @@ extern "C" esp_err_t note4_epd_refresh_full_4bpp(note4_epd_handle_t handle,
     }
     handle->shadow_valid = false;
     return err;
+}
+extern "C" esp_err_t note4_epd_refresh_full_4bpp(note4_epd_handle_t handle,
+                                                 const uint8_t* framebuffer, size_t size) {
+    return RefreshGray(handle, framebuffer, size, 4);
+}
+extern "C" esp_err_t note4_epd_refresh_full_2bpp(note4_epd_handle_t handle,
+                                                 const uint8_t* framebuffer, size_t size) {
+    return RefreshGray(handle, framebuffer, size, 2);
 }

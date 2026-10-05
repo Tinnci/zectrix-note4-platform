@@ -9,17 +9,17 @@
 #include "driver/rtc_io.h"
 #include "es8311_audio_codec.h"
 #include "esp_adc/adc_cali_scheme.h"
-#include "esp_log.h"
 #include "esp_sleep.h"
 #include "esp_timer.h"
 #include "freertos/task.h"
-#include "rtc_pcf8563.h"
 #include "note4_board_config.h"
+#include "note4_log_event.h"
 #include "note4_nfc.h"
+#include "rtc_pcf8563.h"
 
 namespace {
 
-constexpr char kTag[] = "note4_board";
+constexpr char kTag[] = "board";
 constexpr TickType_t kButtonPoll = pdMS_TO_TICKS(20);
 constexpr TickType_t kButtonDebounce = pdMS_TO_TICKS(40);
 constexpr TickType_t kOkLongPress = pdMS_TO_TICKS(1500);
@@ -119,7 +119,8 @@ esp_err_t Note4Board::ShutdownPeripherals() {
     button_wait_wake_pending_.store(false);
     button_events_ = {};
     if (result != ESP_OK) {
-        ESP_LOGW(kTag, "peripheral shutdown incomplete: %s", esp_err_to_name(result));
+        NOTE4_LOGW(kTag, "peripheral_stop_failed", "error=%s",
+                   note4::log::Token(esp_err_to_name(result)).c_str());
     }
     return result;
 }
@@ -179,7 +180,7 @@ void Note4Board::InitBatteryAdc() {
     unit_config.unit_id = ADC_UNIT_1;
     if (adc_oneshot_new_unit(&unit_config, &adc_handle_) != ESP_OK) {
         adc_handle_ = nullptr;
-        ESP_LOGW(kTag, "battery ADC unit initialization failed");
+        NOTE4_LOGW(kTag, "battery_init_failed", "resource=adc_unit");
         return;
     }
 
@@ -188,7 +189,7 @@ void Note4Board::InitBatteryAdc() {
     channel_config.bitwidth = ADC_BITWIDTH_12;
     if (adc_oneshot_config_channel(adc_handle_, kBatteryAdcChannel,
                                    &channel_config) != ESP_OK) {
-        ESP_LOGW(kTag, "battery ADC channel configuration failed");
+        NOTE4_LOGW(kTag, "battery_init_failed", "resource=adc_channel");
         return;
     }
 
@@ -199,7 +200,7 @@ void Note4Board::InitBatteryAdc() {
     if (adc_cali_create_scheme_curve_fitting(&calibration_config,
                                               &adc_cali_) != ESP_OK) {
         adc_cali_ = nullptr;
-        ESP_LOGW(kTag, "battery ADC calibration is unavailable");
+        NOTE4_LOGW(kTag, "battery_calibration_unavailable", "");
     }
 }
 
@@ -230,14 +231,15 @@ esp_err_t Note4Board::Init() {
 
     err = InitI2c();
     if (err != ESP_OK) {
-        ESP_LOGE(kTag, "I2C initialization failed: %s", esp_err_to_name(err));
+        NOTE4_LOGE(kTag, "i2c_init_failed", "error=%s",
+                   note4::log::Token(esp_err_to_name(err)).c_str());
         return err;
     }
 
     rtc_.reset(new (std::nothrow) RtcPcf8563(i2c_bus_, NOTE4_RTC_ADDR));
     if (rtc_ == nullptr || !rtc_->Init(NOTE4_RTC_INT) ||
         i2c_master_probe(i2c_bus_, NOTE4_RTC_ADDR, 200) != ESP_OK) {
-        ESP_LOGW(kTag, "RTC is unavailable");
+        NOTE4_LOGW(kTag, "rtc_unavailable", "");
         rtc_.reset();
     }
 
@@ -245,12 +247,11 @@ esp_err_t Note4Board::Init() {
         i2c_bus_, NOTE4_NFC_ADDR, NOTE4_NFC_POWER,
         NOTE4_NFC_FD, NOTE4_NFC_FD_ACTIVE_LEVEL));
     if (nfc_ == nullptr || !nfc_->Init()) {
-        ESP_LOGW(kTag, "NFC is unavailable");
+        NOTE4_LOGW(kTag, "nfc_unavailable", "");
         nfc_.reset();
     }
 
-    ESP_LOGI(kTag, "board initialized rtc=%d nfc=%d",
-             rtc_ != nullptr, nfc_ != nullptr);
+    NOTE4_LOGI(kTag, "board_ready", "rtc=%d nfc=%d", rtc_ != nullptr, nfc_ != nullptr);
     return ESP_OK;
 }
 

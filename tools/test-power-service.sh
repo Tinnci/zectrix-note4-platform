@@ -4,6 +4,7 @@ root_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 test_binary=$(mktemp)
 trap 'rm -f "$test_binary"' EXIT
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+  -I"$root_dir/components/note4_log/include" \
   -I"$root_dir/tools/host_include" \
   -I"$root_dir/components/note4_power/include" \
   "$root_dir/components/note4_power/note4_power_service.cc" \
@@ -14,6 +15,7 @@ trap 'rm -f "$test_binary"' EXIT
   -I"$root_dir/tools/board_host_include" \
   -I"$root_dir/components/note4_board/include" \
   -I"$root_dir/components/note4_board" \
+  -I"$root_dir/components/note4_log/include" \
   -I"$root_dir/tools/host_include" \
   -I"$root_dir/components/note4_power/include" \
   -I"$root_dir/components/note4_nfc_service/include" \

@@ -7,6 +7,7 @@ idf_component_register(
     SRCS "note4_self_test.cc" "acoustic_selftest.cc"
     INCLUDE_DIRS "." "include"
     REQUIRES
+        note4_log
         note4_board
         note4_input
         note4_power

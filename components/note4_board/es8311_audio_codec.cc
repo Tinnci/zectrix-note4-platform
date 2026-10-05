@@ -1,6 +1,6 @@
 #include "es8311_audio_codec.h"
 
-#include <esp_log.h>
+#include "note4_log_event.h"
 
 #include "i2c_bus_lock.h"
 
@@ -55,9 +55,9 @@ Es8311AudioCodec::Es8311AudioCodec(void* i2c_master_handle, i2c_port_t i2c_port,
     codec_if_ = es8311_codec_new(&es8311_cfg);
 
     if (codec_if_ == nullptr) {
-        ESP_LOGE(TAG, "Failed to create Es8311AudioCodec");
+        NOTE4_LOGE(TAG, "codec_init_failed", "");
     } else {
-        ESP_LOGI(TAG, "Es8311AudioCodec initialized");
+        NOTE4_LOGI(TAG, "codec_ready", "");
     }
 }
 
@@ -101,7 +101,8 @@ void Es8311AudioCodec::UpdateDeviceState() {
     } else if (!input_enabled_ && !output_enabled_ && dev_ != nullptr) {
         esp_err_t err = esp_codec_dev_close(dev_);
         if (err != ESP_OK) {
-            ESP_LOGW(TAG, "Failed to close codec device: %s", esp_err_to_name(err));
+            NOTE4_LOGW(TAG, "codec_close_failed", "error=%s",
+                       note4::log::Token(esp_err_to_name(err)).c_str());
         }
         esp_codec_dev_delete(dev_);
         dev_ = nullptr;
@@ -147,7 +148,7 @@ void Es8311AudioCodec::CreateDuplexChannels(gpio_num_t mclk, gpio_num_t bclk, gp
 
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_handle_, &std_cfg));
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(rx_handle_, &std_cfg));
-    ESP_LOGI(TAG, "Duplex channels created");
+    NOTE4_LOGI(TAG, "duplex_ready", "");
 }
 
 void Es8311AudioCodec::SetOutputVolume(int volume) {
@@ -163,7 +164,8 @@ void Es8311AudioCodec::SetOutputVolume(int volume) {
         ESP_ERROR_CHECK(bus_lock.status());
         esp_err_t err = esp_codec_dev_set_out_vol(dev_, volume);
         if (err != ESP_OK) {
-            ESP_LOGW(TAG, "Failed to set output volume to %d: %s", volume, esp_err_to_name(err));
+            NOTE4_LOGW(TAG, "volume_set_failed", "volume=%d error=%s", volume,
+                       note4::log::Token(esp_err_to_name(err)).c_str());
         }
     }
 }

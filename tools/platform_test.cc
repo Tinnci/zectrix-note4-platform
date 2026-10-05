@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "note4_display_calibration_store.h"
 #include "note4_display_service.h"
 #if CONFIG_NOTE4_ENABLE_USB_CLI
 #include "note4_cli_usb.h"
@@ -218,6 +219,11 @@ esp_err_t StorageService::Create(StorageService** output) {
     return result;
 }
 esp_err_t StorageService::Initialize() { return Result("storage-init"); }
+esp_err_t StorageService::GetBlob(const char*, void*, size_t*) const {
+    return fail_at == "storage-init" ? ESP_ERR_INVALID_STATE : ESP_ERR_NOT_FOUND;
+}
+esp_err_t StorageService::SetBlob(const char*, const void*, size_t) { return ESP_OK; }
+esp_err_t StorageService::Erase(const char*) { return ESP_OK; }
 esp_err_t StorageService::WipeUserFiles() { events.emplace_back("wipe:files"); return fail_at == "wipe" ? ESP_FAIL : ESP_OK; }
 esp_err_t StorageService::ResetSettings() { events.emplace_back("wipe:settings"); return ESP_OK; }
 StorageService::~StorageService() {
@@ -267,6 +273,14 @@ esp_err_t DisplayService::Create(DisplayService** output) {
     return result;
 }
 DisplayService::~DisplayService() { AssertWithdrawn<DisplayService>(); events.emplace_back("delete:display"); }
+esp_err_t DisplayService::SetCalibration(const note4_epd_calibration_t& calibration) {
+    assert(note4_epd_calibration_validate(&calibration));
+    return ESP_OK;
+}
+esp_err_t DisplayService::ReadCalibration(note4_epd_calibration_t* calibration) const {
+    note4_epd_calibration_default(calibration);
+    return ESP_OK;
+}
 esp_err_t DisplayService::ReadInspection(DisplayInspection* result) const {
     ++inspections;
     *result = {};
@@ -334,6 +348,17 @@ ConnectivityService::~ConnectivityService() {
 #endif
 
 #if CONFIG_NOTE4_ENABLE_USB_CLI
+namespace note4::log {
+LevelControl& EspLevelControl() {
+    class Levels final : public LevelControl {
+    public:
+        LogLevel Get() const override { return LogLevel::kInfo; }
+        bool Set(LogLevel) override { return true; }
+    };
+    static Levels levels;
+    return levels;
+}
+} // namespace note4::log
 namespace note4::cli {
 CliUsbService::CliUsbService() = default;
 CliUsbService::~CliUsbService() { AssertWithdrawn<CliUsbService>(); events.emplace_back("delete:cli"); }
@@ -551,6 +576,8 @@ int main() {
         assert(query("power status").find("mv=3888") != std::string::npos);
         assert(query("display telemetry").find("frames=0") != std::string::npos);
         assert(query("display model").find("weights_q8") != std::string::npos);
+        assert(query("display calibration").find("active_revision=1 saved_revision=1") !=
+               std::string::npos);
         assert(query("time status").find("unix_seconds=1709179200") != std::string::npos);
         assert(query("connectivity status").find("ssid=bad?ssid") != std::string::npos);
         fail_at = "snapshot-busy";

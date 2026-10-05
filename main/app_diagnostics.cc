@@ -3,9 +3,8 @@
 
 #include <iterator>
 
-#include "esp_log.h"
 #include "note4_first_party_app_controllers.h"
-
+#include "note4_log_event.h"
 
 using note4::i18n::Tr;
 using note4::i18n::Text;
@@ -85,8 +84,8 @@ private:
                 const esp_err_t draw = owner_->ui_.ShowTestUpdate(
                     update, owner_->test_states_);
                 if (draw != ESP_OK) {
-                    ESP_LOGE(kTag, "diagnostic update failed: %s",
-                             esp_err_to_name(draw));
+                    NOTE4_LOGE(kTag, "diagnostic_update_failed", "error=%s",
+                               note4::log::Token(esp_err_to_name(draw)).c_str());
                 }
             });
         // Each interactive item has its own bounded deadline. Polling inside an

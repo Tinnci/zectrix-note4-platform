@@ -36,6 +36,8 @@ before flashing; do not erase NVS or initialize books for a naming migration.
 - [Refresh scheduling](DISPLAY_RESPONSIVENESS.md) · [display physics](DISPLAY_PHYSICS.md)
 - [Connectivity protocol](CONNECTIVITY_CONTRACT.md) · [radio arbitration](RADIO_ARBITER.md)
 - [Maintenance CLI](MAINTENANCE_CLI_CONTRACT.md) · [application lifecycle](M3_APPLICATION_CONTRACT.md)
+- [Component logging](LOGGING.md) · [bounded Wasm backends](../components/note4_runtime/README.md)
+- [Runtime qualification](../tools/runtime-qualification/README.md) · [display calibration tools](../tools/display-calibration/README.md)
 - [Reliability](RELIABILITY.md) · [firmware capacity](FIRMWARE_BUDGET.md)
 - [Platform migration principles](PLATFORM_MIGRATION_PRINCIPLES.md)
 - Architecture decisions: [runtime / SDK](adr/0003-freertos-runtime-sdk-boundary.md),
@@ -57,6 +59,7 @@ Old test counts, measurements and completion marks apply to the recorded source
 and hardware, not every later commit.
 
 - [Test criteria](TEST_CRITERIA.md) · [qualification reports](qualification/)
+- [Driver, logging and runtime verification (2026-10)](qualification/DRIVER-RUNTIME-TOOLCHAIN-2026-10.md)
 - [Original baseline manifest](U0_BASELINE_MANIFEST.md)
 - M2 records: [contract](M2_PLATFORM_CONTRACT.md), [composition](M2_PLATFORM_COMPOSITION.md),
   [storage](M2_STORAGE_BASELINE.md), [system](M2_SYSTEM_BASELINE.md), [time](M2_TIME_BASELINE.md)

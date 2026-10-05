@@ -8,14 +8,21 @@ trap 'rm -rf "$tmp_dir"' EXIT
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
   -I"$repo_root/components/note4_board/include" \
   -I"$repo_root/components/note4_time/include" \
+  -I"$repo_root/components/note4_log/include" \
   -I"$repo_root/components/note4_cli/include" \
   -I"$repo_root/components/note4_system/include" \
   -I"$repo_root/components/note4_display/include" \
+  -I"$repo_root/components/note4_epd/include" \
+  -I"$repo_root/components/note4_epd/private_include" \
+  "$repo_root/components/note4_display/note4_display_model.cc" \
+  "$repo_root/components/note4_display/note4_display_physics.cc" \
+  "$repo_root/components/note4_epd/note4_epd_calibration.cc" \
   "$repo_root/components/note4_cli/note4_cli_core.cc" \
   "$repo_root/components/note4_cli/note4_cli_session.cc" \
   "$repo_root/components/note4_cli/note4_cli_control.cc" \
   "$repo_root/components/note4_time/note4_time_sync.cc" \
   "$repo_root/components/note4_cli/note4_cli_diagnostics.cc" \
+  "$repo_root/components/note4_log/note4_log.cc" \
   "$repo_root/components/note4_cli/note4_cli_log.cc" \
   "$repo_root/tools/cli_diagnostics_test.cc" \
   -o "$tmp_dir/cli_diagnostics_test"
@@ -24,9 +31,13 @@ trap 'rm -rf "$tmp_dir"' EXIT
 uv run --no-project "$repo_root/tools/display_telemetry_test.py"
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
+  -I"$repo_root/components/note4_log/include" \
   -I"$repo_root/tools/host_include" \
+  -I"$repo_root/components/note4_log/include" \
   -I"$repo_root/components/note4_cli/include" \
+  "$repo_root/components/note4_log/note4_log.cc" \
   "$repo_root/components/note4_cli/note4_cli_log.cc" \
+  "$repo_root/components/note4_log/note4_log_esp.cc" \
   "$repo_root/components/note4_cli/note4_cli_log_esp.cc" \
   "$repo_root/tools/cli_log_esp_test.cc" \
   -o "$tmp_dir/cli_log_esp_test"
@@ -34,6 +45,7 @@ uv run --no-project "$repo_root/tools/display_telemetry_test.py"
 "$tmp_dir/cli_log_esp_test"
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
+  -I"$repo_root/components/note4_log/include" \
   -I"$repo_root/components/note4_cli/include" \
   -I"$repo_root/tools/cli_usb_host_include" \
   -I"$repo_root/tools/epd_host_include" \

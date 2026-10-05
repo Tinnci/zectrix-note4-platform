@@ -1,0 +1,112 @@
+diff --git a/source/m3_code.c b/source/m3_code.c
+--- a/source/m3_code.c
++++ b/source/m3_code.c
+@@ -86,6 +86,6 @@
+ void  EmitWord32  (IM3CodePage i_page, const u32 i_word)
+ {                                                                       d_m3Assert (i_page->info.lineIndex+1 <= i_page->info.numLines);
+-    * ((u32 *) & i_page->code [i_page->info.lineIndex++]) = i_word;
++    memcpy (& i_page->code [i_page->info.lineIndex++], & i_word, sizeof (i_word));
+ }
+
+ void  EmitWord64  (IM3CodePage i_page, const u64 i_word)
+@@ -93,9 +93,9 @@
+ #if M3_SIZEOF_PTR == 4
+                                                                         d_m3Assert (i_page->info.lineIndex+2 <= i_page->info.numLines);
+-    * ((u64 *) & i_page->code [i_page->info.lineIndex]) = i_word;
++    memcpy (& i_page->code [i_page->info.lineIndex], & i_word, sizeof (i_word));
+     i_page->info.lineIndex += 2;
+ #else
+                                                                         d_m3Assert (i_page->info.lineIndex+1 <= i_page->info.numLines);
+-    * ((u64 *) & i_page->code [i_page->info.lineIndex]) = i_word;
++    memcpy (& i_page->code [i_page->info.lineIndex], & i_word, sizeof (i_word));
+     i_page->info.lineIndex += 1;
+ #endif
+diff --git a/source/m3_compile.c b/source/m3_compile.c
+--- a/source/m3_compile.c
++++ b/source/m3_compile.c
+@@ -586,3 +586,4 @@
+             {
+-                u64 constant = * (u64 *) & o->constants [slot - o->slotFirstConstIndex];
++                u64 constant;
++                memcpy (& constant, & o->constants [slot - o->slotFirstConstIndex], sizeof (constant));
+
+@@ -607,5 +608,7 @@
+                 if (is64BitType) {
+-                    constant = * (u64 *) & o->constants [i];
++                    memcpy (& constant, & o->constants [i], sizeof (constant));
+                 } else {
+-                    constant = * (u32 *) & o->constants [i];
++                    u32 low;
++                    memcpy (& low, & o->constants [i], sizeof (low));
++                    constant = low;
+                 }
+@@ -648,4 +651,3 @@
+             {
+-                u64 * constant = (u64 *) & o->constants [constTableIndex];
+-                * constant = i_word;
++                memcpy (& o->constants [constTableIndex], & i_word, sizeof (i_word));
+             }
+@@ -653,4 +655,4 @@
+             {
+-                u32 * constant = (u32 *) & o->constants [constTableIndex];
+-                * constant = (u32) i_word;
++                const u32 constant = (u32) i_word;
++                memcpy (& o->constants [constTableIndex], & constant, sizeof (constant));
+             }
+diff --git a/source/m3_env.c b/source/m3_env.c
+--- a/source/m3_env.c
++++ b/source/m3_env.c
+@@ -676,8 +676,9 @@
+ }
+
+
+-void *  v_FindFunction  (IM3Module i_module, const char * const i_name)
+-{
++void *  v_FindFunction  (IM3Module i_module, void * i_info)
++{
++    const char * const i_name = (const char *) i_info;
+     for (u32 i = 0; i < i_module->numFunctions; ++i)
+     {
+         IM3Function f = & i_module->functions [i];
+@@ -708,7 +709,7 @@
+         _throw ("no modules loaded");
+     }
+
+-    function = (IM3Function) ForEachModule (i_runtime, (ModuleVisitor) v_FindFunction, (void *) i_functionName);
++    function = (IM3Function) ForEachModule (i_runtime, v_FindFunction, (void *) i_functionName);
+
+     if (function)
+     {
+diff --git a/source/m3_env.h b/source/m3_env.h
+--- a/source/m3_env.h
++++ b/source/m3_env.h
+@@ -195,7 +195,7 @@
+ typedef void *              (* ModuleVisitor)           (IM3Module i_module, void * i_info);
+ void *                      ForEachModule               (IM3Runtime i_runtime, ModuleVisitor i_visitor, void * i_info);
+
+-void *                      v_FindFunction              (IM3Module i_module, const char * const i_name);
++void *                      v_FindFunction              (IM3Module i_module, void * i_info);
+
+ IM3CodePage                 AcquireCodePage             (IM3Runtime io_runtime);
+ IM3CodePage                 AcquireCodePageWithCapacity (IM3Runtime io_runtime, u32 i_lineCount);
+diff --git a/source/m3_exec_defs.h b/source/m3_exec_defs.h
+--- a/source/m3_exec_defs.h
++++ b/source/m3_exec_defs.h
+@@ -47,8 +47,15 @@
+ #define d_m3RetSig                  static inline m3ret_t vectorcall
+ #define d_m3Op(NAME)                M3_NO_UBSAN op_section d_m3RetSig op_##NAME (d_m3OpSig)
+
+-#define nextOpImpl()                ((IM3Operation)(* _pc))(_pc + 1, d_m3OpArgs)
+-#define jumpOpImpl(PC)              ((IM3Operation)(*  PC))( PC + 1, d_m3OpArgs)
++// All dispatch paths, including loop bodies and branches, consume budget.
++d_m3RetSig MeteredDispatch (d_m3OpSig)
++{
++    m3ret_t trap = m3_Yield ();
++    if (UNLIKELY(trap)) return trap;
++    return ((IM3Operation)(* _pc))(_pc + 1, d_m3OpArgs);
++}
++#define nextOpImpl()                MeteredDispatch(_pc, d_m3OpArgs)
++#define jumpOpImpl(PC)              MeteredDispatch((pc_t)(PC), d_m3OpArgs)
+
+ #define nextOpDirect()              return nextOpImpl()
+ #define jumpOpDirect(PC)            return jumpOpImpl((pc_t)(PC))

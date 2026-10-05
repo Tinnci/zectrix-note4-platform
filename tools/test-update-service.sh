@@ -7,6 +7,7 @@ trap 'rm -rf "$tmp_dir"' EXIT
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -I"$repo_root/tools/update_host_include" \
+    -I"$repo_root/components/note4_log/include" \
     -I"$repo_root/tools/host_include" \
     -I"$repo_root/components/note4_update/include" \
     -I"$repo_root/components/note4_system/include" \
