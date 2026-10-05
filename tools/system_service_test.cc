@@ -89,6 +89,9 @@ int main() {
     reset_reason = ESP_RST_TASK_WDT;
     assert(service->ReadSnapshot(&snapshot) == ESP_OK);
     assert(snapshot.reset_reason == note4::system::ResetReason::Watchdog);
+    reset_reason = ESP_RST_USB;
+    assert(service->ReadSnapshot(&snapshot) == ESP_OK);
+    assert(snapshot.reset_reason == note4::system::ResetReason::Usb);
     flash_result = ESP_FAIL;
     assert(service->ReadSnapshot(&snapshot) == ESP_FAIL);
     flash_result = ESP_OK;

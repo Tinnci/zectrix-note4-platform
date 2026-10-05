@@ -26,7 +26,7 @@ export function obsoletePreviewFiles(existing: string[], fresh: Set<string>, pre
   const managed = new Set(["overview.png", "status-icons.pbm", "zh-status-icons.pbm"]);
   if (Array.isArray(previous)) for (const entry of previous) {
     if (entry && typeof entry.name === "string" && /^[a-z0-9-]+$/.test(entry.name)) {
-      managed.add(`${entry.name}.pbm`); managed.add(`${entry.name}.svg`);
+      managed.add(`${entry.name}.pbm`); managed.add(`${entry.name}.svg`); managed.add(`${entry.name}.text.json`);
     }
   }
   return existing.filter(file => managed.has(file) && !fresh.has(file));
@@ -64,7 +64,8 @@ if (import.meta.main) {
     await Bun.write(`${source}/${svgFile}`, bitmap.svg);
     entries.push({ name, file: svgFile, width: bitmap.width, height: bitmap.height,
       orientation: bitmap.width === 300 ? "portrait" : "landscape", language: name.startsWith("zh-") ? "zh" : "en",
-      source: name.replace(/^zh-/, "").startsWith("ha-") ? "server" : "firmware" });
+      source: name.replace(/^zh-/, "").startsWith("ha-") ? "server" : "firmware",
+      textTrace: await Bun.file(`${source}/${name}.text.json`).exists() ? `${name}.text.json` : null });
   }
   if (source !== output) {
     const fresh = new Set(await readdir(source));

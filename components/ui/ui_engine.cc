@@ -1,5 +1,6 @@
 #include "note4_locale.h"
 #include "ui_engine.h"
+#include "focus_indicator.h"
 #include "note4_first_party_app_controllers.h"
 #include "utf8.h"
 #include "sdkconfig.h"
@@ -15,7 +16,7 @@ using note4::i18n::Text;
 
 namespace {
 
-constexpr int kHeaderHeight = 44;
+constexpr int kHeaderHeight = 52;
 constexpr size_t kContentViewPort = 0;
 constexpr size_t kStatusViewPort = 1;
 constexpr int kStatusHeight = note4::ui::kStatusBarHeight;
@@ -109,10 +110,36 @@ void UiEngine::UpdateStatus(const note4::ui::StatusBarState& state) {
 void UiEngine::DrawFrame(const char* title, const char* footer, bool portrait_capable) {
     BeginContent(portrait_capable);
     const int width = canvas_.width();
-    canvas_.FillRect(0, kStatusHeight, width, kHeaderHeight - kStatusHeight, true);
-    canvas_.TextFitted(10, kStatusHeight + 2, title, width - 20, true, Canvas::TextStyle::Bold);
+    canvas_.UiText(16, kStatusHeight + 2, title, width - 32, Canvas::UiFace::Selected);
+    canvas_.Line(16, kHeaderHeight - 1, width - 17, kHeaderHeight - 1);
     const int top = FooterTop();
     canvas_.Line(0, top, width - 1, top);
+    // Design: hint groups (separated by two spaces) in the caption face on one line.
+    // Leading groups stay left; the final group is pinned to the right edge.
+    {
+        constexpr auto kFace = Canvas::UiFace::Caption;
+        const char* last = nullptr;
+        for (const char* p = std::strstr(footer, "  "); p; p = std::strstr(p + 2, "  ")) last = p;
+        char head[96] = {};
+        const char* tail = nullptr;
+        if (last) {
+            const size_t length = static_cast<size_t>(last - footer);
+            if (length < sizeof(head)) {
+                std::memcpy(head, footer, length);
+                tail = last;
+                while (*tail == ' ') ++tail;
+            }
+        }
+        const char* left = tail ? head : footer;
+        const int left_width = canvas_.UiTextWidth(left, kFace);
+        const int right_width = tail ? canvas_.UiTextWidth(tail, kFace) : 0;
+        if (left_width + right_width + (tail ? 6 : 0) <= width - 16) {
+            const int y = top + (canvas_.height() - top - Canvas::UiTextHeight(kFace)) / 2;
+            canvas_.UiText(8, y, left, width - 16, kFace);
+            if (tail) canvas_.UiText(width - 8 - right_width, y, tail, right_width, kFace);
+            return;
+        }
+    }
     if (!canvas_.portrait() || canvas_.TextWidth(footer) <= width - 16) {
         canvas_.TextFitted(8, top + 8, footer, width - 16);
         return;
@@ -152,17 +179,34 @@ note4::ui::Rect UiEngine::BeginPage(const char* title, const char* footer, bool 
 namespace note4::ui {
 
 PageShell::PageShell(UiEngine& engine, Canvas& canvas, Rect body, const PageSpec& spec)
-    : engine_(&engine), canvas_(canvas), body_(body), committed_(false) {
-    const auto saved_clip = canvas_.clip();
+    : engine_(&engine), canvas_(canvas), body_(body), committed_(false), quiet_title_(spec.quiet_title),
+      badge_tone_(spec.badge_tone), header_height_(spec.compact_title ? 44 : kHeaderHeight) {
+    body_ = {body.x, header_height_, body.width, body.bottom() - header_height_};
+    const auto saved_clip = body_;
     canvas_.SetClip({0, kStatusHeight, canvas_.width(), kHeaderHeight - kStatusHeight});
+    canvas_.FillRect(0, kStatusHeight, canvas_.width(), kHeaderHeight - kStatusHeight, !quiet_title_);
+    if (quiet_title_) {
+        canvas_.Line(16, header_height_ - 1, canvas_.width() - 17, header_height_ - 1);
+    }
+    const int padding = badge_tone_ == BadgeTone::Plain ? 0 : 8;
+    const auto badge_face = badge_tone_ == BadgeTone::Plain ? Canvas::UiFace::Label : Canvas::UiFace::Caption;
     const int badge_width = spec.badge && spec.badge[0]
-        ? std::min(canvas_.TextWidth(spec.badge), canvas_.width() / 3) : 0;
-    const int title_width = canvas_.width() - 20 - (badge_width ? badge_width + 12 : 0);
+        ? std::min(canvas_.UiTextWidth(spec.badge, badge_face) + padding, canvas_.width() / 3) : 0;
+    const int margin = quiet_title_ ? 16 : 10;
+    const int meter_width = spec.progress_valid ? (canvas_.portrait() ? 52 : 80) : 0;
+    const int title_width = canvas_.width() - margin * 2 - (badge_width ? badge_width + 12 : 0) -
+        (meter_width ? meter_width + 12 : 0);
     if (spec.title && spec.title[0]) {
-        const auto style = Canvas::TextStyle::Bold;
-        const int ink_width = std::min(canvas_.TextWidth(spec.title, 1, style), title_width);
-        const int x = 10 + (spec.center_title ? (title_width - ink_width) / 2 : 0);
-        canvas_.TextFitted(x, 26, spec.title, title_width, true, style);
+        const auto face = spec.compact_title ? Canvas::UiFace::Compact : Canvas::UiFace::Selected;
+        const int ink_width = std::min(canvas_.UiTextWidth(spec.title, face), title_width);
+        const int x = margin + (spec.center_title ? (title_width - ink_width) / 2 : 0);
+        canvas_.UiText(x, spec.compact_title ? 24 : 26, spec.title, title_width, face, !quiet_title_);
+    }
+    if (meter_width) {
+        const int x = margin + title_width + 12;
+        const int y = kStatusHeight + (header_height_ - kStatusHeight) / 2;
+        canvas_.Line(x, y, x + meter_width - 1, y, quiet_title_);
+        canvas_.FillRect(x, y - 1, meter_width * spec.progress_per_mille / 1000, 3, quiet_title_);
     }
     canvas_.SetClip(saved_clip);
     if (spec.badge != nullptr && spec.badge[0] != '\0') {
@@ -172,7 +216,8 @@ PageShell::PageShell(UiEngine& engine, Canvas& canvas, Rect body, const PageSpec
 
 PageShell::PageShell(PageShell&& other) noexcept
     : engine_(other.engine_), canvas_(other.canvas_),
-      body_(other.body_), committed_(other.committed_) {
+      body_(other.body_), committed_(other.committed_), quiet_title_(other.quiet_title_),
+      badge_tone_(other.badge_tone_), header_height_(other.header_height_) {
     other.committed_ = true;
 }
 
@@ -191,10 +236,24 @@ int PageShell::center_y(int landscape_y) const { return landscape_y + dy(); }
 void PageShell::DrawBadge(const char* text) {
     if (text == nullptr || text[0] == '\0') return;
     const auto saved_clip = canvas_.clip();
-    canvas_.SetClip({0, kStatusHeight, canvas_.width(), kHeaderHeight - kStatusHeight});
+    canvas_.SetClip({0, kStatusHeight, canvas_.width(), header_height_ - kStatusHeight});
     const int max_width = canvas_.width() / 3;
-    const int text_w = std::min(canvas_.TextWidth(text), max_width);
-    canvas_.TextFitted(canvas_.width() - 12 - text_w, 26, text, max_width, true);
+    const int padding = badge_tone_ == BadgeTone::Plain ? 0 : 8;
+    // Plain counters ("1/2") use the 16px regular label; outlined/solid badges stay 14px.
+    const bool plain = badge_tone_ == BadgeTone::Plain;
+    const auto face = plain ? Canvas::UiFace::Label : Canvas::UiFace::Caption;
+    const int text_w = std::min(canvas_.UiTextWidth(text, face), max_width - padding);
+    const int x = canvas_.width() - (quiet_title_ ? 16 : 12) - text_w - padding;
+    const bool warning = badge_tone_ == BadgeTone::Warning;
+    const int badge_y = header_height_ == 44 ? 25 : 29;
+    const int badge_height = header_height_ == 44 ? 18 : 20;
+    if (badge_tone_ != BadgeTone::Plain) {
+        canvas_.FillRect(x, badge_y, text_w + padding, badge_height, warning);
+        canvas_.Rect(x, badge_y, text_w + padding, badge_height, true);
+    }
+    // Label and Selected/Compact titles share a baseline: Label sits 2px above Caption.
+    const int text_y = badge_y + (plain ? -1 : 1);
+    canvas_.UiText(x + padding / 2, text_y, text, text_w, face, plain ? !quiet_title_ : warning);
     canvas_.SetClip(saved_clip);
 }
 
@@ -305,11 +364,11 @@ esp_err_t UiEngine::ShowRecovery() {
 esp_err_t UiEngine::ShowMenu(const char* title,
                                   const char* const* items, size_t count,
                                   size_t selected, const char* footer,
-                                  bool full_refresh) {
+                                  bool full_refresh, const MenuRowState* states) {
     if (items == nullptr || count == 0 || selected >= count) {
         return ESP_ERR_INVALID_ARG;
     }
-    auto page = EnterPage(note4::ui::PageSpec().Title(title).Footer(footer));
+    auto page = EnterPage(note4::ui::PageSpec().Title(title).QuietTitle().Footer(footer));
     const int width = page.width();
     const int kListHeight = page.height() - (page.portrait() ? 100 : 92);  // 208 px in landscape
     const size_t visible = std::min<size_t>(count, page.portrait() ? 11 : 8);
@@ -320,13 +379,14 @@ esp_err_t UiEngine::ShowMenu(const char* title,
     for (size_t row = 0; row < visible; ++row) {
         const size_t i = first + row;
         const int y = start_y + static_cast<int>(row) * row_height;
-        const bool active = i == selected;
-        if (active) {
-            canvas_.FillRect(16, y, width - 32, box_height, true);
-            canvas_.TextFitted(28, y + (box_height - 16) / 2, items[i], width - 56, true);
-        } else {
-            canvas_.TextFitted(28, y + (box_height - 16) / 2, items[i], width - 56);
-        }
+        const bool active = i == selected && (!states || states[i].available);
+        note4::ui::DrawFocusRail(canvas_, {16, y, width - 32, box_height}, active);
+        const char* status = states ? states[i].status : nullptr;
+        const int status_width = canvas_.UiTextWidth(status, Canvas::UiFace::Caption);
+        canvas_.UiText(28, y + (box_height - 22) / 2, items[i], width - 56 - (status_width ? status_width + 12 : 0),
+                       note4::ui::FocusTextFace(active));
+        if (status_width) canvas_.UiText(width - 28 - status_width, y + (box_height - 18) / 2,
+                                       status, status_width, Canvas::UiFace::Caption);
     }
     page.DrawScrollbar(visible, count, first, start_y, kListHeight);
     return page.Commit(full_refresh);
@@ -358,6 +418,7 @@ esp_err_t UiEngine::ShowSettings(const note4::app::SettingsController& settings,
         settings.selected() == settings.option_count() - 2);
     auto page = EnterPage(note4::ui::PageSpec()
         .Title(Tr(languages ? Text::Language : Text::Settings))
+        .QuietTitle()
         .Footer(Tr(languages ? Text::NavApplyBack : rotating ? Text::NavRotateBack : Text::NavChangeBack)));
     const int width = page.width(), height = page.height();
     const bool portrait = page.portrait();
@@ -367,8 +428,8 @@ esp_err_t UiEngine::ShowSettings(const note4::app::SettingsController& settings,
         const int pitch = portrait ? (count > 4 ? 46 : 54) : (count > 4 ? 34 : 42);
         const int y = 54 + static_cast<int>(i) * pitch;
         const bool selected = settings.selected() == i;
-        canvas_.FillRect(16, y, width - 32, pitch - 2, selected);
-        canvas_.Rect(16, y, width - 32, pitch - 2);
+        note4::ui::DrawFocusRail(canvas_, {16, y, width - 32, pitch - 2}, selected);
+        canvas_.Line(28, y + pitch - 2, width - 17, y + pitch - 2);
         const bool language_option = !languages && note4::i18n::LanguageCount() > 1 && i == 0;
         const bool digit_option = !languages && i == count - 1;
         const bool sleep_orientation_option = !languages && i == count - 2;
@@ -383,10 +444,11 @@ esp_err_t UiEngine::ShowSettings(const note4::app::SettingsController& settings,
             orientation_option ? ScreenDirectionName(display_->orientation()) :
             Tr(settings.auto_showcase() ? Text::On : Text::Off);
         // Reserve the measured value width so translated labels never collide in portrait.
-        const int text_y = y + (pitch - 16) / 2;
-        const int value_x = width - 28 - canvas_.TextWidth(value);
-        canvas_.TextFitted(28, text_y, label, std::max(0, value_x - 28 - 12), selected);
-        canvas_.Text(value_x, text_y, value, 1, selected);
+        const int text_y = y + (pitch - 18) / 2;
+        const int value_x = width - 28 - canvas_.UiTextWidth(value, Canvas::UiFace::Caption);
+        canvas_.UiText(28, text_y, label, std::max(0, value_x - 28 - 12),
+                       note4::ui::FocusTextFace(selected));
+        canvas_.UiText(value_x, text_y + 2, value, width - 28 - value_x, Canvas::UiFace::Caption);
     }
     if (count < 4) WrapText(16, portrait ? height - 118 : 220, Tr(languages ||
         (note4::i18n::LanguageCount() > 1 && settings.selected() == 0) ?
@@ -415,8 +477,8 @@ esp_err_t UiEngine::ShowConnectivity(const char* state,
     for (size_t i = 0; i < std::size(kActions); ++i) {
         const int y = 140 + static_cast<int>(i) * 26;
         const bool focused = i == selected;
-        canvas_.FillRect(20, y, 360, 24, focused);
-        canvas_.TextFitted(30, y + 4, kActions[i], 340, focused);
+        note4::ui::DrawFocusRail(canvas_, {20, y, 360, 24}, focused);
+        canvas_.UiText(32, y + 3, kActions[i], 336, note4::ui::FocusTextFace(focused));
     }
     DrawFittedText(canvas_, 24, 248, status == nullptr ? "" : status, 352);
     return full_refresh ? RefreshFull()

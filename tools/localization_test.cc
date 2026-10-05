@@ -249,26 +249,26 @@ void TestStatusIcons() {
     state.minute = 34;
     Canvas normal, inverse, clipped;
     const auto before = allocations;
-    // Radio-off badges are centered five-pixel diagonals with no hooked ends.
+    // Off is a centered horizontal dash; activity is a square and paired arrows.
     DrawStatusBar(normal, state);
     DrawStatusBar(inverse, state, true);
-    for (const int left : {272, 304})
+    for (const int left : {228, 300})
         for (int y = 8; y < 15; ++y)
             for (int x = left; x < left + 7; ++x) {
-                const bool slash = y >= 9 && y <= 13 && x - left == 14 - y;
-                assert(Ink(normal, x, y) == slash);
-                assert(Ink(inverse, x, y) != slash);
+                const bool dash = y == 11 && x > left && x < left + 6;
+                assert(Ink(normal, x, y) == dash);
+                assert(Ink(inverse, x, y) != dash);
             }
     state.ble = state.wifi = RadioIndicator::Active;
     DrawStatusBar(normal, state);
     // Independently specified endpoints and straight stems; arrows cannot touch.
     const int arrows[][2] = {{1,0},{0,1},{1,1},{2,1},{1,2},{5,2},{1,3},{5,3},
         {1,4},{5,4},{4,5},{5,5},{6,5},{5,6}};
-    for (const int left : {272, 304})
+    for (const int left : {228, 300})
         for (int y = 0; y < 7; ++y)
-            for (int x = 0; x < 7; ++x) {
-                bool arrow = false;
-                for (const auto& pixel : arrows) arrow |= pixel[0] == x && pixel[1] == y;
+            for (int x = 0; x < 15; ++x) {
+                bool arrow = x >= 2 && x <= 4 && y >= 2 && y <= 4;
+                for (const auto& pixel : arrows) arrow |= pixel[0] + 8 == x && pixel[1] == y;
                 assert(Ink(normal, left + x, 8 + y) == arrow);
             }
     unsigned previous_fill = 0;
@@ -311,9 +311,9 @@ void TestStatusIcons() {
         auto changed = state;
         changed.ble = changed.wifi = other;
         DrawStatusBar(inverse, changed);
-        for (int left : {256, 288}) {
+        for (int left : {228, 300}) {
             unsigned different = 0;
-            for (int y = 0; y < 23; ++y) for (int x = left; x < left + 24; ++x)
+            for (int y = 0; y < 23; ++y) for (int x = left; x < left + 15; ++x)
                 different += Ink(normal, x, y) != Ink(inverse, x, y);
             assert((different == 0) == (radio == other));
         }
@@ -508,7 +508,43 @@ void TestLanguageScenes() {
     assert(settings.Handle(ok).decision == SettingsDecision::None);
 }
 
+void TestEditorialTypography() {
+    const auto before = allocations;
+    for (auto face : {Canvas::UiFace::Caption, Canvas::UiFace::Navigation,
+                      Canvas::UiFace::Selected, Canvas::UiFace::Heading, Canvas::UiFace::Compact,
+                      Canvas::UiFace::Label, Canvas::UiFace::Micro}) {
+        Canvas normal, inverse, clipped;
+        normal.Clear();
+        inverse.Clear(false);
+        const char* text = "主页 Book 10月4日 / 风从海上来.epub 😀";
+        assert(normal.UiTextWidth(text, face) > 90);
+        normal.UiText(10, 20, text, 90, face);
+        inverse.UiText(10, 20, text, 90, face, true);
+        for (std::size_t i = 0; i < normal.size(); ++i)
+            assert(normal.data()[i] == static_cast<uint8_t>(~inverse.data()[i]));
+        for (int y = 0; y < normal.height(); ++y) for (int x = 0; x < normal.width(); ++x)
+            if (Ink(normal, x, y))
+                assert(x >= 10 && x < 100 && y >= 20 && y < 20 + Canvas::UiTextHeight(face));
+        clipped.Clear();
+        clipped.SetClip({13, 22, 5, 7});
+        clipped.UiText(10, 20, text, 90, face);
+        assert(clipped.clip().x == 13 && clipped.clip().height == 7);
+        for (int y = 0; y < clipped.height(); ++y) for (int x = 0; x < clipped.width(); ++x)
+            assert(Ink(clipped, x, y) == (x >= 13 && x < 18 && y >= 22 && y < 29 && Ink(normal, x, y)));
+        clipped.UiText(INT_MAX, INT_MAX, text, 90, face);
+        clipped.UiText(INT_MIN, INT_MIN, text, 90, face);
+        clipped.UiText(10, 20, nullptr, 90, face);
+    }
+    Canvas regular, bold;
+    regular.Clear(); bold.Clear();
+    regular.UiText(10, 10, "主页", 60, Canvas::UiFace::Navigation);
+    bold.UiText(10, 10, "主页", 60, Canvas::UiFace::Selected);
+    assert(std::memcmp(regular.data(), bold.data(), bold.size()) != 0);
+    assert(allocations == before);
+}
+
 int main() {
+    TestEditorialTypography();
     TestCatalogAndGlyphs();
     TestTypography();
     TestLargeNumbers();

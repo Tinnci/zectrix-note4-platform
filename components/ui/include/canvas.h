@@ -9,9 +9,25 @@
 #include "note4_digit_style.h"
 #include "layout.h"
 
+#if defined(NOTE4_FONT_TRACE) && NOTE4_FONT_TRACE
+#include <cstdio>
+class Canvas;
+namespace note4::ui::font_trace {
+// Host preview instrumentation only: fixed storage, no allocation in paint paths.
+unsigned BeginRun();
+void Glyph(const Canvas&, uint32_t cp, unsigned run, const char* role,
+           const char* source, int size, int64_t x, int64_t y, int width,
+           int height, bool inverted, const uint16_t* source_rows = nullptr,
+           int source_width = 0, unsigned style = 0);
+void Clear(const Canvas&);
+void Write(const Canvas&, FILE*, const char* language, int width, int height);
+}
+#endif
+
 class Canvas {
 public:
     using TextStyle = note4::sdk::TextStyle;
+    enum class UiFace : uint8_t { Caption, Navigation, Selected, Heading, Compact, Label, Micro };
     using Clip = note4::ui::Rect;
     static constexpr int kWidth = 400;
     static constexpr int kHeight = 300;
@@ -47,6 +63,10 @@ public:
     int TextHeight(const char* text, int scale = 1, TextStyle style = TextStyle::Regular) const;
     void TextFitted(int x, int y, const char* text, int max_width,
                     bool inverted = false, TextStyle style = TextStyle::Regular);
+    int UiTextWidth(const char* text, UiFace face) const;
+    static int UiTextHeight(UiFace face);
+    void UiText(int x, int y, const char* text, int max_width, UiFace face,
+                bool inverted = false);
 
     uint8_t* data() { return pixels_.data(); }
     const uint8_t* data() const { return pixels_.data(); }

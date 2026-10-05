@@ -164,6 +164,12 @@ void TerminalApp::RunApplicationShell() {
     auto& health = platform_.Health();
     bool boot_ready = false;
     const auto complete = [&](sdk::Status result) {
+        if (!launcher_open_target_.empty()) {
+            if (runtime.state() == sdk::LifecycleState::Active &&
+                std::strcmp(runtime.foreground_id().c_str(), "launcher") == 0)
+                launcher_failed_target_ = launcher_open_target_;
+            launcher_open_target_ = {};
+        }
         // Entry fallback can succeed while retaining the original SDK error.
         if (!sdk::IsOk(runtime.last_error())) health.SuppressAutomaticApps();
         if (sdk::IsOk(result) && runtime.state() == sdk::LifecycleState::Active)

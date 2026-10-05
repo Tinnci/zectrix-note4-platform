@@ -50,9 +50,10 @@ public:
     esp_err_t ShowLauncher(const note4::app::LauncherController& launcher,
                            const note4::time::ClockSnapshot& clock,
                            const note4::app::ReadingOverview& reading, bool full_refresh);
+    struct MenuRowState { const char* status = nullptr; bool available = true; };
     esp_err_t ShowMenu(const char* title, const char* const* items,
                        size_t count, size_t selected, const char* footer,
-                       bool full_refresh);
+                       bool full_refresh, const MenuRowState* states = nullptr);
     esp_err_t ShowSceneInfo(const char* title, const char* mode,
                             const char* format, size_t bytes,
                             int64_t elapsed_ms, esp_err_t result,

@@ -7,7 +7,7 @@
 namespace note4::system {
 
 enum class ResetReason : uint8_t {
-    Unknown, PowerOn, Software, Panic, Watchdog, DeepSleep, Brownout, External,
+    Unknown, PowerOn, Software, Panic, Watchdog, DeepSleep, Brownout, External, Usb,
 };
 
 // A diagnostic item may wait for physical input for up to 60 seconds.

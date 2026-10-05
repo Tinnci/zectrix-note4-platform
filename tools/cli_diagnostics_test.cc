@@ -165,6 +165,8 @@ void TestCommands() {
     const auto info = Run(executor, dispatcher, "system info");
     assert(info.find("reset=watchdog") != std::string::npos);
     assert(info.find("02:11:22:33:44:55") != std::string::npos);
+    owner.sample.system.reset_reason = note4::system::ResetReason::Usb;
+    assert(Run(executor, dispatcher, "system info").find("reset=usb") != std::string::npos);
     for (const char* command : {"heap", "system heap"}) {
         const auto text = Run(executor, dispatcher, command);
         assert(text.find("minimum_free=6000") != std::string::npos);

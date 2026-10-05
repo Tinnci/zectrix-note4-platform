@@ -2,6 +2,7 @@
 #include "ui_engine.h"
 #include "note4_book_transfer.h"
 #include "unicode_text.h"
+#include "focus_indicator.h"
 #include "sdkconfig.h"
 
 #include <cstdio>
@@ -24,9 +25,8 @@ esp_err_t UiEngine::ShowBookTransfer(const note4::connectivity::BookTransferSnap
         for (unsigned i = 0; i < 2; ++i) {
             const int y = 70 + i * (portrait ? 100 : 76);
             const bool selected = i == (station_selected ? 1u : 0u);
-            canvas_.FillRect(16, y, column, 36, selected);
-            canvas_.Rect(16, y, column, 36);
-            canvas_.TextFitted(28, y + 10, choices[i], column - 24, selected);
+            note4::ui::DrawFocusRail(canvas_, {16, y, column, 36}, selected);
+            canvas_.UiText(28, y + 9, choices[i], column - 24, note4::ui::FocusTextFace(selected));
             WrapText(16, y + 42, details[i], column, 18, portrait ? 2 : 1);
         }
         if (portrait) {
@@ -56,6 +56,8 @@ esp_err_t UiEngine::ShowBookTransfer(const note4::connectivity::BookTransferSnap
     } else if (status.state == BookTransferState::Failed || status.state == BookTransferState::Stopping) {
         auto page = EnterPage(note4::ui::PageSpec()
             .Title(Tr(Text::BookTransfer))
+            .Badge(Tr(status.state == BookTransferState::Stopping ? Text::Wait : Text::Fail),
+                   status.state == BookTransferState::Stopping ? note4::ui::BadgeTone::Info : note4::ui::BadgeTone::Warning)
             .Footer(status.state == BookTransferState::Stopping ? Tr(Text::NavRetryStop) : Tr(Text::NavTransferBack)));
         const bool portrait = page.portrait();
         const int dy = page.dy();
@@ -78,9 +80,13 @@ esp_err_t UiEngine::ShowBookTransfer(const note4::connectivity::BookTransferSnap
         WrapText(16, 158 + dy + (portrait ? (lines - 1) * 18 : 0), detail, column, 18, 3, true);
         return page.Commit(full_refresh);
     } else {
-        auto page = EnterPage(note4::ui::PageSpec()
+        auto spec = note4::ui::PageSpec()
             .Title(status.state == BookTransferState::Starting ? Tr(Text::StartingWifi) : Tr(Text::SendBooks))
-            .Footer(Tr(Text::NavFinishCancel)));
+            .Badge(Tr(status.state == BookTransferState::Starting ? Text::Wait : Text::Run), note4::ui::BadgeTone::Info)
+            .Footer(Tr(Text::NavFinishCancel));
+        if (status.expected && status.state != BookTransferState::Starting)
+            spec.Progress(static_cast<unsigned>(std::min<uint64_t>(1000, uint64_t(status.received) * 1000 / status.expected)));
+        auto page = EnterPage(spec);
         const bool portrait = page.portrait();
         const int column = page.width() - 32;
         if (portrait) {

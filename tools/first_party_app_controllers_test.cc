@@ -57,12 +57,14 @@ void TestLauncher() {
             assert(launcher.overview_selected() && launcher.tile_page() == 0);
             const auto result = launcher.Handle(ok);
             assert(result.decision == LauncherDecision::ContinueReading && std::strcmp(result.target, "reader") == 0);
+            assert(launcher.SetEntryState("reader", LauncherEntryState::Ready));
             assert(launcher.Handle(down).decision == LauncherDecision::RenderFast);
         }
         for (const auto* id : home) {
             assert(!launcher.overview_selected() && launcher.tile_page() == 0);
             const auto result = launcher.Handle(ok);
             assert(result.decision == LauncherDecision::OpenSelected && std::strcmp(result.target, id) == 0);
+            assert(launcher.SetEntryState(id, LauncherEntryState::Ready));
             const auto previous_page = launcher.tile_page();
             const auto moved = launcher.Handle(down).decision;
             assert(moved == (previous_page == launcher.tile_page() ? LauncherDecision::RenderFast : LauncherDecision::RenderQuality));
@@ -75,6 +77,7 @@ void TestLauncher() {
         for (const auto* id : tools) {
             const auto result = launcher.Handle(ok);
             assert(result.decision == LauncherDecision::OpenSelected && std::strcmp(result.target, id) == 0);
+            assert(launcher.SetEntryState(id, LauncherEntryState::Ready));
             assert(launcher.Handle(down).decision == LauncherDecision::RenderFast);
         }
         launcher.Handle(up);
@@ -135,6 +138,16 @@ void TestLauncher() {
     assert(one_app.Handle(down).decision == LauncherDecision::None);
     assert(one_app.Handle(up).decision == LauncherDecision::None);
     assert(one_app.Handle(back).decision == LauncherDecision::None);
+    assert(!one_app.SetEntryState("missing", LauncherEntryState::Unavailable));
+    assert(one_app.Handle(ok).decision == LauncherDecision::OpenSelected);
+    assert(one_app.EntryAt(0).state == LauncherEntryState::Opening);
+    assert(one_app.Handle(ok).decision != LauncherDecision::OpenSelected);
+    assert(one_app.Handle(back).decision == LauncherDecision::RenderFast);
+    assert(!one_app.opening_target() && one_app.EntryAt(0).state == LauncherEntryState::Ready);
+    assert(one_app.SetEntryState("clock", LauncherEntryState::Unavailable));
+    assert(one_app.EntryAt(0).state == LauncherEntryState::Unavailable);
+    assert(one_app.Handle(ok).decision == LauncherDecision::OpenSelected);
+    assert(one_app.EntryAt(0).state == LauncherEntryState::Opening);
     assert(one_app.Handle(off).decision == LauncherDecision::Shutdown);
 
     ApplicationCatalog many;
@@ -153,6 +166,7 @@ void TestLauncher() {
     for (std::size_t i = 0; i < names.size(); ++i) {
         const auto result = pages.Handle(ok);
         assert(std::strcmp(result.target, names[pages.selected()].data()) == 0);
+        assert(pages.SetEntryState(result.target, LauncherEntryState::Ready));
         pages.Handle(down);
     }
     assert(pages.selected() == 5);

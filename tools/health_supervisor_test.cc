@@ -72,11 +72,12 @@ void TestForegroundAndDegradation() {
     assert(health.Snapshot().recoveries == 1 && health.Snapshot().consecutive_failures == 0);
     assert(!health.CompleteForeground(0, 3));
     assert(health.Snapshot().last_error == 5 && health.Snapshot().failures == 6);
-    for (auto reason : {ResetReason::Panic, ResetReason::Watchdog, ResetReason::PowerOn}) {
+    for (auto reason : {ResetReason::Panic, ResetReason::Watchdog, ResetReason::PowerOn, ResetReason::Usb}) {
         HealthSupervisor boot(driver);
         boot.SetResetReason(reason);
-        assert(boot.Snapshot().recovery_boot == (reason != ResetReason::PowerOn));
-        assert(boot.AutomaticAppsAllowed() == (reason == ResetReason::PowerOn));
+        const bool crashed = reason == ResetReason::Panic || reason == ResetReason::Watchdog;
+        assert(boot.Snapshot().recovery_boot == crashed);
+        assert(boot.AutomaticAppsAllowed() == !crashed);
         boot.SetStorageError(ESP_ERR_NVS_NO_FREE_PAGES);
         assert(!boot.AutomaticAppsAllowed() && boot.Snapshot().storage_error == ESP_ERR_NVS_NO_FREE_PAGES);
     }

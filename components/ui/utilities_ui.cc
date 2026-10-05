@@ -1,4 +1,5 @@
 #include "ui_engine.h"
+#include "focus_indicator.h"
 #include "layout.h"
 #include "note4_locale.h"
 #include "note4_utilities.h"
@@ -46,9 +47,8 @@ esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_
             for (std::size_t i = 0; i < std::size(names); ++i) {
                 const int y = 54 + static_cast<int>(i) * (portrait ? 84 : 62);
                 const bool chosen = i == utilities.selected();
-                canvas_.FillRect(16, y, width - 32, 30, chosen);
-                canvas_.Rect(16, y, width - 32, 30);
-                canvas_.TextFitted(28, y + 7, Tr(names[i]), width - 56, chosen);
+                note4::ui::DrawFocusRail(canvas_, {16, y, width - 32, 30}, chosen);
+                canvas_.UiText(28, y + 6, Tr(names[i]), width - 56, note4::ui::FocusTextFace(chosen));
                 if (i == 0) std::snprintf(line, sizeof(line), Tr(Text::FocusSummary),
                     Tr(phase), utilities.timer_minutes(), Tr(TimerState(timer)));
                 else if (i == 1) std::snprintf(line, sizeof(line), "%s", Tr(Text::CalendarRange));
@@ -121,11 +121,10 @@ esp_err_t UiEngine::ShowUtilities(const UtilityController& utilities, bool full_
             for (unsigned i = 0; i < 2; ++i) {
                 const int y = 99 + static_cast<int>(i) * 52;
                 const bool chosen = utilities.selected() == i;
-                canvas_.FillRect(24, y, width - 48, 36, chosen);
-                canvas_.Rect(24, y, width - 48, 36);
+                note4::ui::DrawFocusRail(canvas_, {24, y, width - 48, 36}, chosen);
                 std::snprintf(line, sizeof(line), Tr(i == 0 ? Text::YearValue : Text::MonthValue),
                     i == 0 ? utilities.draft().year() : utilities.draft().month());
-                canvas_.Text(40, y + 10, line, 1, chosen);
+                canvas_.UiText(40, y + 9, line, width - 64, note4::ui::FocusTextFace(chosen));
             }
             WrapText(16, 220, Tr(Text::CalendarKeepsClock), width - 32, 18, 2, true);
             return page.Commit(full_refresh);

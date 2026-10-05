@@ -2,6 +2,7 @@
 #include "ui_engine.h"
 #include "note4_reader_controller.h"
 #include "unicode_text.h"
+#include "focus_indicator.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -34,7 +35,7 @@ esp_err_t UiEngine::ShowReader(const note4::app::ReaderController& reader, bool 
     const auto& engine = reader.engine();
 
     if (reader.scene() == ReaderScene::Library) {
-        auto page = EnterPage(note4::ui::PageSpec().Title(Tr(Text::BookLibrary)).Footer(Tr(Text::NavOpenBack)));
+        auto page = EnterPage(note4::ui::PageSpec().Title(Tr(Text::BookLibrary)).QuietTitle().Footer(Tr(Text::NavOpenBack)));
         const bool portrait = page.portrait();
         const int width = page.width(), height = page.height();
         const int dy = page.dy();  // centers short messages
@@ -51,9 +52,9 @@ esp_err_t UiEngine::ShowReader(const note4::app::ReaderController& reader, bool 
                 const int y = 52 + row * 32;
                 const auto book = library.Get(first + row);
                 const bool selected = first + row == reader.selected();
-                canvas_.FillRect(8, y, width - 16, 28, selected);
-                if (!selected) canvas_.Rect(8, y, width - 16, 28);
-                DrawUtf8Line(canvas_, 16, y + 6, book.id.data(), width - 32, selected);
+                note4::ui::DrawFocusRail(canvas_, {16, y, width - 32, 28}, selected);
+                canvas_.UiText(28, y + 5, book.id.data(), width - 56,
+                               note4::ui::FocusTextFace(selected));
             }
             char count[64];
             std::snprintf(count, sizeof(count), Tr(Text::BookCount),
@@ -72,7 +73,7 @@ esp_err_t UiEngine::ShowReader(const note4::app::ReaderController& reader, bool 
         if (notice) WrapText(16, height - (portrait ? 78 : 52), notice, width - 32, 18, portrait ? 2 : 1);
         return page.Commit(full_refresh);
     } else if (reader.scene() == ReaderScene::Options) {
-        auto page = EnterPage(note4::ui::PageSpec().Title(Tr(Text::ReadingOptions)).Footer(Tr(Text::NavReadingOptions)));
+        auto page = EnterPage(note4::ui::PageSpec().Title(Tr(Text::ReadingOptions)).QuietTitle().Footer(Tr(Text::NavReadingOptions)));
         const bool portrait = page.portrait();
         const int width = page.width(), height = page.height();
         DrawUtf8Line(canvas_, 16, 54, reader.book().id.data(), width - 32);
@@ -84,9 +85,8 @@ esp_err_t UiEngine::ShowReader(const note4::app::ReaderController& reader, bool 
         for (std::size_t i = 0; i < std::size(options); ++i) {
             const int y = 84 + i * (portrait ? 48 : 40);
             const bool active = reader.option() == i;
-            canvas_.FillRect(16, y, width - 32, 32, active);
-            canvas_.Rect(16, y, width - 32, 32);
-            canvas_.TextFitted(28, y + 8, options[i], width - 56, active);
+            note4::ui::DrawFocusRail(canvas_, {16, y, width - 32, 32}, active);
+            canvas_.UiText(28, y + 7, options[i], width - 56, note4::ui::FocusTextFace(active));
         }
         canvas_.TextFitted(16, height - (portrait ? 60 : 52), reader.save_result() == Result::Ok ? Tr(Text::ProgressAutoSaved) : Tr(Text::ProgressSaveFailed), width - 32);
         return page.Commit(full_refresh);
@@ -102,8 +102,9 @@ esp_err_t UiEngine::ShowReader(const note4::app::ReaderController& reader, bool 
             const auto value = engine.page().progress_per_mille;
             std::snprintf(progress, sizeof(progress), "%u.%u%%", value / 10, value % 10);
         }
-        auto page = EnterPage(note4::ui::PageSpec()
-            .Title(reader.book().id.data()).Footer(footer).Badge(progress));
+        auto spec = note4::ui::PageSpec().Title(reader.book().id.data()).QuietTitle().CompactTitle().Footer(footer).Badge(progress);
+        if (progress[0]) spec.Progress(engine.page().progress_per_mille);
+        auto page = EnterPage(spec);
         const int width = page.width();
         const int dy = page.dy();
         if (engine.has_page() && (reader.result() == Result::Ok || reader.result() == Result::Pending)) {

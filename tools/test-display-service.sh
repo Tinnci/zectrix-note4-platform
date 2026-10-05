@@ -5,6 +5,9 @@ work_dir=$(mktemp -d)
 test_binary="$work_dir/display_service_test"
 trap 'rm -rf "$work_dir"' EXIT
 flags=(-std=c++17 -Wall -Wextra -Werror)
+if [ -n "${NOTE4_UI_PREVIEW_DIR:-}" ]; then
+  flags+=(-DNOTE4_FONT_TRACE=1)
+fi
 if [ "${NOTE4_DISPLAY_SANITIZE:-0}" = 1 ]; then
   flags+=(-O1 -g "-fsanitize=address,undefined" -fno-omit-frame-pointer)
 fi
@@ -40,6 +43,7 @@ uv run --no-project "$root_dir/tools/generate-reader-fixtures.py" "$work_dir/fix
   "$root_dir/components/note4_display/note4_display_service.cc" \
   "$root_dir/components/note4_epd/note4_epd.cc" \
   "$root_dir/components/ui/canvas.cc" \
+  "$root_dir/tools/font_trace.cc" \
   "$root_dir/components/ui/ui_engine.cc" \
   "$root_dir/components/ui/launcher_ui.cc" \
   "$root_dir/components/ui/view_port.cc" \

@@ -2,6 +2,7 @@
 #include "ui_engine.h"
 #include "note4_sleep_cover.h"
 #include "unicode_text.h"
+#include "focus_indicator.h"
 #include "sdkconfig.h"
 
 #include <algorithm>
@@ -118,10 +119,9 @@ esp_err_t UiEngine::ShowSleepCoverMenu(SleepCoverStyle selected, SleepCoverStyle
     for (unsigned i = 0; i < kSleepCoverStyleCount; ++i) {
         const bool chosen = i == static_cast<unsigned>(selected);
         const int y = kSleepCoverStyleCount == 4 ? 54 + i * (portrait ? 68 : 47) : 54 + i * (portrait ? 84 : 62);
-        canvas_.FillRect(16, y, width - 32, 26, chosen);
-        canvas_.Rect(16, y, width - 32, 26);
-        canvas_.TextFitted(28, y + 5, styles[i], width - 64, chosen);
-        if (i == static_cast<unsigned>(active)) canvas_.Text(width - 46, y + 5, "*", 1, chosen);
+        note4::ui::DrawFocusRail(canvas_, {16, y, width - 32, 26}, chosen);
+        canvas_.UiText(28, y + 4, styles[i], width - 80, note4::ui::FocusTextFace(chosen));
+        if (i == static_cast<unsigned>(active)) canvas_.Text(width - 46, y + 5, "*");
         WrapText(16, y + 28, details[i], width - 32, 18, portrait ? 2 : 1);
     }
     WrapText(16, height - (portrait ? 62 : 54), status ? status : Tr(Text::SetCoverHint), width - 32, 18, 1);

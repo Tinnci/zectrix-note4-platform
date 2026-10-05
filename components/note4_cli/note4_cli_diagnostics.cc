@@ -143,6 +143,7 @@ const char* ResetName(system::ResetReason reason) {
         case system::ResetReason::DeepSleep: return "deep-sleep";
         case system::ResetReason::Brownout: return "brownout";
         case system::ResetReason::External: return "external";
+        case system::ResetReason::Usb: return "usb";
         default: return "unknown";
     }
 }
