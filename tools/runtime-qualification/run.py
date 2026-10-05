@@ -14,6 +14,7 @@ from pathlib import Path
 import platform
 import shutil
 import subprocess
+import sys
 
 from wasmtime import wat2wasm
 
@@ -73,6 +74,7 @@ def host_probe(engine: str, sources: Path, output: Path, sanitize: bool) -> dict
     result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=30)
     (build / "run.log").write_text(result.stdout + result.stderr)
     if result.returncode:
+        print(result.stdout + result.stderr, file=sys.stderr, end="")
         raise RuntimeError(f"{engine} probe failed; see {build / 'run.log'}")
     records = [json.loads(line) for line in result.stdout.splitlines()
                if line.startswith('{"engine":')]

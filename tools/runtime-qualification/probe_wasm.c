@@ -49,7 +49,11 @@ int note4_runtime_qualify(ProbeMode mode) {
         puts("{\"event\":\"spin-trapped\"}");
         return 0;
     }
-    PROBE_REQUIRE(note4_wasm_call("step", &result) && result == 2080);
+    const int step_ok = note4_wasm_call("step", &result);
+    if (!step_ok || result != 2080)
+        fprintf(stderr, "First step: engine=%s success=%d result=%d error=%s\n",
+                note4_wasm_engine(), step_ok, (int)result, note4_wasm_error());
+    PROBE_REQUIRE(step_ok && result == 2080);
     // Code-page immediates must preserve 32/64-bit integer and float bits.
     PROBE_REQUIRE(note4_wasm_call("constant32", &result) && result == 0x12345678);
     PROBE_REQUIRE(note4_wasm_call("constant64", &result) && result == 1);
