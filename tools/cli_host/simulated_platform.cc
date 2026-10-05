@@ -1,4 +1,5 @@
 #include "simulated_platform.h"
+#include "note4_display_model.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -12,6 +13,8 @@ thread_local const SimulatedPlatform* current_owner = nullptr;
 
 SimulatedPlatform::SimulatedPlatform(LogBuffer& logs, SimulationOptions options)
     : logs_(logs), options_(options) {
+    note4_epd_calibration_default(&snapshot_.calibration.active);
+    snapshot_.calibration.configured = snapshot_.calibration.active;
     auto& system = snapshot_.system;
     std::snprintf(system.firmware.project_name.data(), system.firmware.project_name.size(), "note4-host-sim");
     std::snprintf(system.firmware.version.data(), system.firmware.version.size(), "D1.4-host");
@@ -95,6 +98,28 @@ ControlStatus SimulatedPlatform::Inspect(const ControlRequest& request, ControlR
                 return ControlStatus::kInvalidArgument;
             if (request.values[1]) snapshot_.display_settings.sleep_portrait = request.values[0] == 1;
             else snapshot_.display_settings.configured = static_cast<uint8_t>(request.values[0]);
+        } else if (request.operation == ControlOperation::kDisplayModelReset) {
+            snapshot_.saved_model = {};
+            snapshot_.model_saved = false;
+        } else if (request.operation == ControlOperation::kDisplayModelSet) {
+            if (!display::UpdateModel(&snapshot_.saved_model, request.text1.data(),
+                                      request.values.data(), request.cursor))
+                return ControlStatus::kInvalidArgument;
+            snapshot_.model_saved = true;
+        } else if (request.operation == ControlOperation::kDisplayCalibrationReset) {
+            note4_epd_calibration_default(&snapshot_.calibration.configured);
+            snapshot_.calibration.saved = false;
+        } else if (request.operation == ControlOperation::kDisplayCalibrationSet) {
+            const auto& v = request.values;
+            if (v[0] >= 16 || v[1] > 5 || v[2] > 5 || v[3] > 127 || v[4] > 1000 || v[5] > 1)
+                return ControlStatus::kInvalidArgument;
+            const note4_epd_gray_level_t level{
+                static_cast<uint8_t>(v[1]), static_cast<uint8_t>(v[2]), static_cast<uint8_t>(v[3]),
+                static_cast<uint16_t>(v[4])};
+            if (!note4_epd_calibration_update(&snapshot_.calibration.configured, v[0], &level,
+                                              v[5]))
+                return ControlStatus::kInvalidArgument;
+            snapshot_.calibration.saved = true;
         } else {
             logs_.Push(LogLevel::kInfo, "I host: maintenance action simulated; host files and power are unchanged");
         }
@@ -165,11 +190,16 @@ void SimulatedPlatform::Refresh() {
 void SimulatedPlatform::EmitLog() {
     ++log_sequence_;
     const auto level = log_sequence_ % 5 == 0 ? LogLevel::kWarn : LogLevel::kInfo;
+    if (level > Get())
+        return;
     char text[128];
-    std::snprintf(text, sizeof(text), "%c host: simulated event=%lu refresh=%lu",
-                  level == LogLevel::kWarn ? 'W' : 'I',
-                  static_cast<unsigned long>(log_sequence_),
-                  static_cast<unsigned long>(snapshot_.display.refresh_count));
+    std::snprintf(
+        text, sizeof(text), "%c (%llu) host: event=simulated tick=%lu refresh=%lu",
+        level == LogLevel::kWarn ? 'W' : 'I',
+        static_cast<unsigned long long>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - started_).count()),
+        static_cast<unsigned long>(log_sequence_),
+        static_cast<unsigned long>(snapshot_.display.refresh_count));
     logs_.Push(level, text);
 }
 

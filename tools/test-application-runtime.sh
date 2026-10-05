@@ -8,6 +8,7 @@ if [ "${NOTE4_APP_SANITIZE:-0}" = 1 ]; then
     flags+=(-g "-fsanitize=address,undefined" -fno-omit-frame-pointer)
 fi
 "${CXX:-c++}" -std=c++17 "${flags[@]}" \
+  -I"$root_dir/components/note4_log/include" \
   -I"$root_dir/tools/host_include" \
   -I"$root_dir/components/note4_app/include" -I"$root_dir/components/note4_text/include" \
   "$root_dir/components/note4_app/note4_app_contract.cc" \

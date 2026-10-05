@@ -7,7 +7,7 @@ set(sources "note4_app_contract.cc" "note4_application_runtime.cc"
          "note4_gallery_controller.cc"
          "note4_locale.cc" "note4_language_setting.cc"
          "note4_sleep_cover.cc")
-set(requires note4_power note4_time note4_storage note4_text)
+set(requires note4_log note4_power note4_time note4_storage note4_text)
 if(CONFIG_NOTE4_ENABLE_UTILITIES)
     list(APPEND sources "note4_utilities.cc")
 endif()

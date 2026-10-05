@@ -37,8 +37,9 @@ class ModuleConfigTest(unittest.TestCase):
     def test_fresh_full_build(self):
         options = self.resolve()
         self.assertEqual(set(options), {"CONNECTIVITY", "WIFI", "WIFI_HTTP", "BOOK_TRANSFER",
-                                        "READER", "BOOK_STORAGE", "USB_CLI", "USB_HOST", "UPDATE", "UI_CHINESE", "RUNTIME", "UTILITIES"})
-        self.assertTrue(all(options.values()))
+                                        "READER", "BOOK_STORAGE", "USB_CLI", "USB_HOST", "UPDATE", "UI_CHINESE", "RUNTIME", "UTILITIES", "WASM"})
+        self.assertTrue(all(value for name, value in options.items() if name != "WASM"))
+        self.assertFalse(options["WASM"])
         self.assertFalse(self.config.exists())
 
     def test_committed_full_and_minimal_profiles(self):
@@ -47,7 +48,8 @@ class ModuleConfigTest(unittest.TestCase):
             with self.subTest(profile=profile):
                 overlay = (ROOT / f"tools/profiles/{profile}.defaults").read_text()
                 options = self.resolve(defaults=(base, overlay))
-                self.assertTrue(all(value == enabled for value in options.values()))
+                self.assertTrue(all(value == enabled for name, value in options.items() if name != "WASM"))
+                self.assertFalse(options["WASM"])
 
     def test_profile_clean_does_not_follow_a_symlink(self):
         scripts = self.root / "tools"
@@ -131,7 +133,14 @@ class ModuleConfigTest(unittest.TestCase):
             settings = "".join(f"CONFIG_NOTE4_ENABLE_{name}={value}\n"
                                for name in ("CONNECTIVITY", "READER", "USB_CLI", "UPDATE", "UI_CHINESE", "RUNTIME", "UTILITIES"))
             options = self.resolve(settings)
-            self.assertTrue(all(value == enabled for value in options.values()))
+            self.assertTrue(all(value == enabled for name, value in options.items() if name != "WASM"))
+            self.assertFalse(options["WASM"])
+
+    def test_wasm_is_optional_and_requires_runtime(self):
+        options = self.resolve("CONFIG_NOTE4_ENABLE_RUNTIME=y\nCONFIG_NOTE4_ENABLE_WASM=y\n")
+        self.assertTrue(options["WASM"] and options["RUNTIME"])
+        options = self.resolve("CONFIG_NOTE4_ENABLE_RUNTIME=n\nCONFIG_NOTE4_ENABLE_WASM=y\n")
+        self.assertFalse(options["WASM"] or options["RUNTIME"])
 
     def test_chinese_ui_does_not_require_the_reader(self):
         options = self.resolve("CONFIG_NOTE4_ENABLE_READER=n\nCONFIG_NOTE4_ENABLE_UI_CHINESE=y\n")

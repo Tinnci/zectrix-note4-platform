@@ -24,14 +24,14 @@
 #include "services/gatt/ble_svc_gatt.h"
 #include "note4_companion_protocol.h"
 
-#include "esp_log.h"
+#include "note4_log_event.h"
 
 extern "C" void ble_store_config_init(void);
 
 namespace note4::connectivity {
 namespace {
 
-constexpr char kTag[] = "note4_ble";
+constexpr char kTag[] = "ble";
 constexpr char kDeviceName[] = "Note4";
 RTC_DATA_ATTR uint8_t kTelemetryPacket = 0;
 constexpr int32_t kDefaultPairingWindowMs = 120000;
@@ -194,14 +194,14 @@ struct BleLink::Impl {
 
         if (skip_reason != nullptr) {
             if (intent != AdvertiseIntent::kNone) {
-                ESP_LOGI(kTag, "event=advertising_skipped reason=%s",
-                         skip_reason);
+                NOTE4_LOGI(kTag, "advertising_skipped", "reason=%s",
+                           note4::log::Token(skip_reason).c_str());
             }
             return;
         }
         if (intent == AdvertiseIntent::kNone) return;
         if (ble_gap_adv_active()) {
-            ESP_LOGI(kTag, "event=advertising_skipped reason=already_active");
+            NOTE4_LOGI(kTag, "advertising_skipped", "reason=already_active");
             return;
         }
         Advertise(intent == AdvertiseIntent::kPairing, window_ms);
@@ -276,7 +276,7 @@ struct BleLink::Impl {
         instance->state = BleState::kFault;
         xSemaphoreGive(instance->lock);
         xSemaphoreGive(instance->session_event);
-        ESP_LOGE(kTag, "event=host_reset state=fault");
+        NOTE4_LOGE(kTag, "host_reset", "state=fault");
     }
 
     static void OnSync() {
@@ -303,8 +303,7 @@ struct BleLink::Impl {
         switch (event->type) {
             case BLE_GAP_EVENT_CONNECT: {
                 if (event->connect.status != 0) {
-                    ESP_LOGW(kTag, "gap: connect failed: %d",
-                             event->connect.status);
+                    NOTE4_LOGW(kTag, "connection_failed", "error=%d", event->connect.status);
                     bool pairing = false;
                     xSemaphoreTake(instance->lock, portMAX_DELAY);
                     pairing = instance->pairing_requested;
@@ -325,19 +324,17 @@ struct BleLink::Impl {
                 instance->pairing_requested = false;
                 xSemaphoreGive(instance->lock);
                 xSemaphoreGive(instance->session_event);
-                ESP_LOGI(kTag, "event=connected session=%lu",
-                         static_cast<unsigned long>(session));
+                NOTE4_LOGI(kTag, "connected", "session=%lu", static_cast<unsigned long>(session));
                 if (!pairing_authorized &&
                     !IsBondedPeer(event->connect.conn_handle)) {
-                    ESP_LOGW(kTag,
-                             "event=connection_rejected session=%lu reason=untrusted_peer",
-                             static_cast<unsigned long>(session));
+                    NOTE4_LOGW(kTag, "connection_rejected", "session=%lu reason=untrusted_peer",
+                               static_cast<unsigned long>(session));
                     ble_gap_terminate(event->connect.conn_handle,
                                       BLE_ERR_AUTH_FAIL);
                     return 0;
                 }
-                ESP_LOGI(kTag, "event=security_started session=%lu",
-                         static_cast<unsigned long>(session));
+                NOTE4_LOGI(kTag, "security_started", "session=%lu",
+                           static_cast<unsigned long>(session));
                 ble_gap_security_initiate(event->connect.conn_handle);
                 return 0;
             }
@@ -361,10 +358,9 @@ struct BleLink::Impl {
                 instance->bonded = false;
                 xSemaphoreGive(instance->lock);
                 xSemaphoreGive(instance->session_event);
-                ESP_LOGI(kTag,
-                         "event=disconnected session=%lu reason=%d",
-                         static_cast<unsigned long>(disconnected_session),
-                         event->disconnect.reason);
+                NOTE4_LOGI(kTag, "disconnected", "session=%lu reason=%d",
+                           static_cast<unsigned long>(disconnected_session),
+                           event->disconnect.reason);
                 instance->RequestAdvertise(false, kDefaultPairingWindowMs);
                 return 0;
             }
@@ -380,7 +376,7 @@ struct BleLink::Impl {
                 }
                 xSemaphoreGive(instance->lock);
                 if (pairing_expired) {
-                    ESP_LOGI(kTag, "event=pairing_window_closed reason=expired");
+                    NOTE4_LOGI(kTag, "pairing_window_closed", "reason=expired");
                 }
                 if (!instance->telemetry_only) instance->RequestAdvertise(false, kDefaultPairingWindowMs);
                 return 0;
@@ -408,10 +404,9 @@ struct BleLink::Impl {
                 instance->pairing_authorized = false;
                 xSemaphoreGive(instance->lock);
                 xSemaphoreGive(instance->session_event);
-                ESP_LOGI(kTag,
-                         "event=security_complete session=%lu status=%d secure=%d",
-                         static_cast<unsigned long>(secure_session),
-                         event->enc_change.status, secure ? 1 : 0);
+                NOTE4_LOGI(kTag, "security_complete", "session=%lu status=%d secure=%d",
+                           static_cast<unsigned long>(secure_session), event->enc_change.status,
+                           secure ? 1 : 0);
                 if (!secure) {
                     ble_gap_terminate(event->enc_change.conn_handle,
                                       BLE_ERR_AUTH_FAIL);
@@ -440,11 +435,10 @@ struct BleLink::Impl {
                     }
                     xSemaphoreGive(instance->lock);
                     xSemaphoreGive(instance->session_event);
-                    ESP_LOGI(kTag,
-                             "event=notification_subscription session=%lu enabled=%d secure=%d",
-                             static_cast<unsigned long>(subscribe_session),
-                             event->subscribe.cur_notify != 0 ? 1 : 0,
-                             secure ? 1 : 0);
+                    NOTE4_LOGI(kTag, "notification_subscription",
+                               "session=%lu enabled=%d secure=%d",
+                               static_cast<unsigned long>(subscribe_session),
+                               event->subscribe.cur_notify != 0 ? 1 : 0, secure ? 1 : 0);
                 }
                 return 0;
             }
@@ -480,9 +474,8 @@ struct BleLink::Impl {
                             event->passkey.conn_handle;
                     xSemaphoreGive(instance->lock);
                     if (!authorized) return BLE_HS_EAUTHEN;
-                    ESP_LOGI(kTag,
-                             "event=pairing_challenge session=%lu method=display_only",
-                             static_cast<unsigned long>(instance->session_id));
+                    NOTE4_LOGI(kTag, "pairing_challenge", "session=%lu method=display_only",
+                               static_cast<unsigned long>(instance->session_id));
                     ble_sm_io io{};
                     io.action = BLE_SM_IOACT_DISP;
                     // Uniform 000000-999999 passkey: reject the tail above
@@ -530,7 +523,7 @@ struct BleLink::Impl {
             }
             result = ble_gap_adv_set_fields(&fields);
             if (result != 0) {
-                ESP_LOGW(kTag, "advertise: set fields failed: %d", result);
+                NOTE4_LOGW(kTag, "advertising_failed", "step=fields error=%d", result);
                 break;
             }
             ble_hs_adv_fields response{};
@@ -539,8 +532,7 @@ struct BleLink::Impl {
             response.uuids128_is_complete = 1;
             result = ble_gap_adv_rsp_set_fields(&response);
             if (result != 0) {
-                ESP_LOGW(kTag, "advertise: set scan response failed: %d",
-                         result);
+                NOTE4_LOGW(kTag, "advertising_failed", "step=scan_response error=%d", result);
                 break;
             }
             // Reconnect advertising is intentionally non-pairable general
@@ -563,12 +555,14 @@ struct BleLink::Impl {
                 xSemaphoreTake(lock, portMAX_DELAY);
                 state = pairing ? BleState::kPairing : BleState::kAdvertising;
                 xSemaphoreGive(lock);
-                ESP_LOGI(kTag,
-                         "event=advertising_started mode=%s duration_ms=%ld",
-                         telemetry_only ? "bthome" : pairing ? "pairing" : "reconnect",
-                         static_cast<long>(duration));
+                NOTE4_LOGI(kTag, "advertising_started", "mode=%s duration_ms=%ld",
+                           note4::log::Token(telemetry_only ? "bthome"
+                                             : pairing      ? "pairing"
+                                                            : "reconnect")
+                               .c_str(),
+                           static_cast<long>(duration));
             } else {
-                ESP_LOGW(kTag, "advertise: start failed: %d", result);
+                NOTE4_LOGW(kTag, "advertising_failed", "step=start error=%d", result);
             }
         } while (false);
         xSemaphoreGive(advertise_mutex);
@@ -713,13 +707,13 @@ companion::LinkResult BleLink::Initialize() {
     Impl::instance = impl_;
     const esp_err_t result = nimble_port_init();
     if (result != ESP_OK) {
-        ESP_LOGE(kTag, "initialize: nimble_port_init failed: %s",
-                 esp_err_to_name(result));
+        NOTE4_LOGE(kTag, "ble_init_failed", "step=port error=%s",
+                   note4::log::Token(esp_err_to_name(result)).c_str());
         Impl::instance = nullptr;
         release_primitives();
         return companion::LinkResult::kTransportError;
     }
-    ESP_LOGD(kTag, "initialize: nimble_port_init ok");
+    NOTE4_LOGD(kTag, "ble_init", "step=port");
     ble_hs_cfg.reset_cb = Impl::OnReset;
     ble_hs_cfg.sync_cb = Impl::OnSync;
     ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
@@ -739,7 +733,7 @@ companion::LinkResult BleLink::Initialize() {
     ble_svc_gatt_init();
     const int name_result = ble_svc_gap_device_name_set(kDeviceName);
     if (name_result != 0) {
-        ESP_LOGE(kTag, "initialize: device name set failed: %d", name_result);
+        NOTE4_LOGE(kTag, "ble_init_failed", "step=name error=%d", name_result);
         nimble_port_deinit();
         Impl::instance = nullptr;
         release_primitives();
@@ -749,7 +743,7 @@ companion::LinkResult BleLink::Initialize() {
     kCharacteristics[1].val_handle = &impl_->notify_value_handle;
     const int count_result = ble_gatts_count_cfg(kServices);
     if (count_result != 0) {
-        ESP_LOGE(kTag, "initialize: gatts count failed: %d", count_result);
+        NOTE4_LOGE(kTag, "ble_init_failed", "step=gatts_count error=%d", count_result);
         nimble_port_deinit();
         Impl::instance = nullptr;
         release_primitives();
@@ -757,19 +751,19 @@ companion::LinkResult BleLink::Initialize() {
     }
     const int add_result = ble_gatts_add_svcs(kServices);
     if (add_result != 0) {
-        ESP_LOGE(kTag, "initialize: gatts add failed: %d", add_result);
+        NOTE4_LOGE(kTag, "ble_init_failed", "step=gatts_add error=%d", add_result);
         nimble_port_deinit();
         Impl::instance = nullptr;
         release_primitives();
         return companion::LinkResult::kTransportError;
     }
-    ESP_LOGD(kTag, "initialize: gatts configured");
+    NOTE4_LOGD(kTag, "ble_init", "step=gatts");
     ble_store_config_init();
     }
     impl_->initialized = true;
     impl_->state = BleState::kIdle;
     nimble_port_freertos_init(Impl::HostTask);
-    ESP_LOGD(kTag, "initialize: host task started");
+    NOTE4_LOGD(kTag, "ble_init", "step=host");
     return companion::LinkResult::kOk;
 }
 
@@ -801,8 +795,8 @@ companion::LinkResult BleLink::Start(uint32_t pairing_window_ms) {
     impl_->pairing_requested = true;
     const bool synchronized = impl_->synchronized;
     xSemaphoreGive(impl_->lock);
-    ESP_LOGI(kTag, "event=pairing_window_opened duration_ms=%lu",
-             static_cast<unsigned long>(pairing_window_ms));
+    NOTE4_LOGI(kTag, "pairing_window_opened", "duration_ms=%lu",
+               static_cast<unsigned long>(pairing_window_ms));
     if (!synchronized) return companion::LinkResult::kOk;
     if (ble_gap_adv_active()) {
         if (ble_gap_adv_stop() != 0) {
@@ -1005,7 +999,7 @@ companion::LinkResult BleLink::ClearBonds() {
         return companion::LinkResult::kBusy;
     }
     const int result = ble_store_clear();
-    ESP_LOGI(kTag, "event=bonds_cleared result=%d", result);
+    NOTE4_LOGI(kTag, "bonds_cleared", "result=%d", result);
     return result == 0 ? companion::LinkResult::kOk
                        : companion::LinkResult::kTransportError;
 }

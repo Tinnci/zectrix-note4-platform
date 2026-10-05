@@ -10,6 +10,7 @@ idf_component_register(
         "es8311_audio_codec.cc"
     INCLUDE_DIRS "." "include"
     REQUIRES
+        note4_log
         esp_adc
         esp_codec_dev
         esp_driver_gpio

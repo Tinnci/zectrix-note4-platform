@@ -8,7 +8,7 @@ endif()
 idf_component_register(
     SRCS ${sources}
     INCLUDE_DIRS "include"
-    REQUIRES nvs_flash
+    REQUIRES nvs_flash note4_log
     PRIV_REQUIRES ${private_requires}
 )
 

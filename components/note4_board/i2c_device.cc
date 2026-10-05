@@ -1,6 +1,6 @@
 #include "i2c_device.h"
 
-#include <esp_log.h>
+#include "note4_log_event.h"
 
 #include <cstring>
 
@@ -48,11 +48,11 @@ esp_err_t I2cDevice::ResetBus(const char* reason) {
     if (!bus_lock.locked()) {
         return bus_lock.status();
     }
-    ESP_LOGW(TAG, "i2c bus reset: reason=%s addr=0x%02X",
-             reason ? reason : "unknown",
-             static_cast<unsigned>(device_address_));
+    NOTE4_LOGW(TAG, "i2c_reset_start", "reason=%s address=0x%02X",
+               note4::log::Token(reason ? reason : "unknown").c_str(),
+               static_cast<unsigned>(device_address_));
     esp_err_t ret = i2c_master_bus_reset(i2c_bus_);
-    ESP_LOGW(TAG, "i2c bus reset done: ret=%s", esp_err_to_name(ret));
+    NOTE4_LOGW(TAG, "i2c_reset_done", "result=%s", note4::log::Token(esp_err_to_name(ret)).c_str());
     return ret;
 }
 
@@ -83,22 +83,17 @@ esp_err_t I2cDevice::WriteRegsChecked(uint8_t reg, const uint8_t* values,
     esp_err_t ret = i2c_master_transmit(i2c_device_, buffer, length + 1,
                                         kI2cTimeoutMs);
     if (ret == ESP_ERR_INVALID_STATE || ret == ESP_ERR_TIMEOUT) {
-        ESP_LOGW(TAG,
-                 "i2c write failed: addr=0x%02X reg=0x%02X len=%u ret=%s",
-                 static_cast<unsigned>(device_address_),
-                 static_cast<unsigned>(reg),
-                 static_cast<unsigned>(length),
-                 esp_err_to_name(ret));
+        NOTE4_LOGW(TAG, "i2c_write_failed", "addr=0x%02X reg=0x%02X len=%u ret=%s",
+                   static_cast<unsigned>(device_address_), static_cast<unsigned>(reg),
+                   static_cast<unsigned>(length), note4::log::Token(esp_err_to_name(ret)).c_str());
         if (ResetBus("write_retry") == ESP_OK) {
             BoardI2cForcePowerOn();
             ret = i2c_master_transmit(i2c_device_, buffer, length + 1,
                                       kI2cTimeoutMs);
-            ESP_LOGW(TAG,
-                     "i2c write retry result: addr=0x%02X reg=0x%02X len=%u ret=%s",
-                     static_cast<unsigned>(device_address_),
-                     static_cast<unsigned>(reg),
-                     static_cast<unsigned>(length),
-                     esp_err_to_name(ret));
+            NOTE4_LOGW(TAG, "i2c_write_retry_result", "addr=0x%02X reg=0x%02X len=%u ret=%s",
+                       static_cast<unsigned>(device_address_), static_cast<unsigned>(reg),
+                       static_cast<unsigned>(length),
+                       note4::log::Token(esp_err_to_name(ret)).c_str());
         }
     }
     return ret;
@@ -136,21 +131,16 @@ esp_err_t I2cDevice::ReadRegsChecked(uint8_t reg, uint8_t* buffer, size_t length
     BoardI2cForcePowerOn();
     esp_err_t ret = i2c_master_transmit_receive(i2c_device_, &reg, 1, buffer, length, 100);
     if (ret == ESP_ERR_INVALID_STATE) {
-        ESP_LOGW(TAG,
-                 "i2c read invalid_state: addr=0x%02X reg=0x%02X len=%u ret=%s",
-                 static_cast<unsigned>(device_address_),
-                 static_cast<unsigned>(reg),
-                 static_cast<unsigned>(length),
-                 esp_err_to_name(ret));
+        NOTE4_LOGW(TAG, "i2c_read_invalid_state", "addr=0x%02X reg=0x%02X len=%u ret=%s",
+                   static_cast<unsigned>(device_address_), static_cast<unsigned>(reg),
+                   static_cast<unsigned>(length), note4::log::Token(esp_err_to_name(ret)).c_str());
         if (ResetBus("read_invalid_state") == ESP_OK) {
             BoardI2cForcePowerOn();
             ret = i2c_master_transmit_receive(i2c_device_, &reg, 1, buffer, length, 100);
-            ESP_LOGW(TAG,
-                     "i2c read retry result: addr=0x%02X reg=0x%02X len=%u ret=%s",
-                     static_cast<unsigned>(device_address_),
-                     static_cast<unsigned>(reg),
-                     static_cast<unsigned>(length),
-                     esp_err_to_name(ret));
+            NOTE4_LOGW(TAG, "i2c_read_retry_result", "addr=0x%02X reg=0x%02X len=%u ret=%s",
+                       static_cast<unsigned>(device_address_), static_cast<unsigned>(reg),
+                       static_cast<unsigned>(length),
+                       note4::log::Token(esp_err_to_name(ret)).c_str());
         }
     }
     return ret;

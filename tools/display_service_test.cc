@@ -703,6 +703,92 @@ void TestFailuresRecoverWithFullFrame() {
     }
 }
 
+void TestCalibrationOwnership() {
+    Reset();
+    auto service = CreateService();
+    note4_epd_calibration_t calibration{};
+    assert(service->ReadCalibration(&calibration) == ESP_OK && calibration.revision == 1);
+    Frame frame;
+    frame.fill(0xff);
+    Present(*service, frame);
+    assert(service->CanUsePartial());
+    auto level = calibration.levels[6];
+    level.reflectance_permille = 400;
+    assert(note4_epd_calibration_update(&calibration, 6, &level, true));
+    assert(service->BeginBatch() == ESP_OK);
+    ClearTraffic();
+    assert(service->SetCalibration(calibration) == ESP_ERR_INVALID_STATE && packets.empty() &&
+           gpio_writes == 0);
+    assert(service->EndBatch() == ESP_OK);
+    ClearTraffic();
+    const auto allocations = heap_allocations;
+    assert(service->SetCalibration(calibration) == ESP_OK && !service->CanUsePartial());
+    assert(packets.empty() && gpio_writes == 0 && allocations == heap_allocations);
+    note4_epd_calibration_t current{};
+    assert(service->ReadCalibration(&current) == ESP_OK && current.revision == 2 &&
+           current.levels[6].reflectance_permille == 400);
+    calibration.levels[14].base_table = 255;
+    assert(service->SetCalibration(calibration) == ESP_ERR_INVALID_ARG);
+    assert(service->ReadCalibration(&current) == ESP_OK && current.revision == 2);
+    Present(*service, frame);
+    CheckFull(frame);
+}
+
+FrameTelemetry Latest(const DisplayService& service);
+void TestGray2() {
+    for (unsigned direction = 0; direction < 4; ++direction) {
+        Reset();
+        auto service = CreateService();
+        assert(service->SetOrientation(static_cast<DisplayOrientation>(direction)) == ESP_OK);
+        std::vector<uint8_t> gray(30000), expanded(60000, 0);
+        for (std::size_t i = 0; i < gray.size(); ++i)
+            gray[i] = static_cast<uint8_t>(i * 37 + 11);
+        const auto original = gray;
+        assert(service->Present2Bpp(DisplayIntent::Fast, gray.data(), gray.size()) ==
+               ESP_ERR_NOT_SUPPORTED);
+        assert(service->Present2Bpp(DisplayIntent::Quality, gray.data(), 1) ==
+                   ESP_ERR_INVALID_ARG &&
+               packets.empty());
+        assert(service->Present2Bpp(DisplayIntent::Quality, gray.data(), gray.size()) == ESP_OK &&
+               gray == original);
+        const auto inspection = Inspect(*service);
+        assert(inspection.bits_per_pixel == 2 && inspection.framebuffer_bytes == 30000 &&
+               !service->CanUsePartial());
+        const auto sample = Latest(*service);
+        assert(sample.kind == RefreshKind::kFull2Bpp && sample.waveform_triggers == 6 &&
+               sample.ram_bytes == 180000);
+        std::vector<std::vector<uint8_t>> before;
+        for (const auto& packet : packets)
+            if (packet.command == 0x10)
+                before.push_back(packet.data);
+        note4_epd_calibration_t profile;
+        assert(service->ReadCalibration(&profile) == ESP_OK);
+        const int width = direction >= 2 ? 300 : 400, height = direction >= 2 ? 400 : 300;
+        for (int y = 0; y < height; ++y)
+            for (int x = 0; x < width; ++x) {
+                const auto from = static_cast<std::size_t>(y) * width + x;
+                const unsigned tone = (gray[from / 4] >> (6 - 2 * (from % 4))) & 3;
+                int dx = direction >= 2 ? 399 - y : x, dy = direction >= 2 ? x : y;
+                if (direction & 1) {
+                    dx = 399 - dx;
+                    dy = 299 - dy;
+                }
+                const auto to = static_cast<std::size_t>(dy) * 400 + dx;
+                const auto level = note4_epd_calibration_quantize(&profile, (tone * 1000 + 1) / 3);
+                expanded[to / 2] |= level << ((to % 2) ? 0 : 4);
+            }
+        ClearTraffic();
+        assert(service->SetOrientation(DisplayOrientation::Standard) == ESP_OK);
+        assert(service->Present4Bpp(DisplayIntent::Quality, expanded.data(), expanded.size()) ==
+               ESP_OK);
+        std::size_t index = 0;
+        for (const auto& packet : packets)
+            if (packet.command == 0x10)
+                assert(index < before.size() && packet.data == before[index++]);
+        assert(index == before.size() && index == 6);
+    }
+}
+
 void TestBatchAndGray() {
     Reset();
     auto service = CreateService();
@@ -859,31 +945,41 @@ void TestPhysicsTelemetry() {
 }
 
 void TestGrayTimeoutRecovery() {
-    for (bool batch : {false, true}) {
-        // Refresh 1 is the required white preclear; later ones are gray passes.
-        for (unsigned phase = 1; phase <= 1 + ssd2683_waveform::kVendorGray16RenderPassCount; ++phase) {
-            Reset();
-            auto service = CreateService();
-            if (batch) assert(service->BeginBatch() == ESP_OK);
-            std::array<uint8_t, DisplayService::kFrameBytes4Bpp> gray{};
-            stuck_refresh = phase;
-            const auto started = now_us;
-            assert(service->Present4Bpp(DisplayIntent::Quality, gray.data(), gray.size()) == ESP_ERR_TIMEOUT);
-            assert(refresh_triggers == phase && packets.back().command == 0x12);
-            const auto elapsed = now_us - started;
-            assert(elapsed >= (phase == 1 ? 2000000 : 5000000));
-            assert(elapsed < (phase == 1 ? 2500000 : 5500000));
-            assert(!service->CanUsePartial() && !Inspect(*service).framebuffer_valid);
-            if (batch) assert(service->EndBatch() == ESP_OK);
-            assert(!busy_stuck && !service->IsPowered() && pins[GPIO_NUM_6] == 0);
-            assert(packets.back().command == 0x12);
-            stuck_refresh = 0;
-            ClearTraffic();
-            Frame frame;
-            frame.fill(0xff);
-            Present(*service, frame);
-            CheckFull(frame);
-            assert(service->CanUsePartial());
+    for (bool two_bit : {false, true}) {
+        for (bool batch : {false, true}) {
+            // Refresh 1 is the required white preclear; later ones are gray passes.
+            for (unsigned phase = 1; phase <= 1 + ssd2683_waveform::kVendorGray16RenderPassCount;
+                 ++phase) {
+                Reset();
+                auto service = CreateService();
+                if (batch)
+                    assert(service->BeginBatch() == ESP_OK);
+                std::array<uint8_t, DisplayService::kFrameBytes4Bpp> gray{};
+                stuck_refresh = phase;
+                const auto started = now_us;
+                const auto error =
+                    two_bit
+                        ? service->Present2Bpp(DisplayIntent::Quality, gray.data(),
+                                               DisplayService::kFrameBytes2Bpp)
+                        : service->Present4Bpp(DisplayIntent::Quality, gray.data(), gray.size());
+                assert(error == ESP_ERR_TIMEOUT);
+                assert(refresh_triggers == phase && packets.back().command == 0x12);
+                const auto elapsed = now_us - started;
+                assert(elapsed >= (phase == 1 ? 2000000 : 5000000));
+                assert(elapsed < (phase == 1 ? 2500000 : 5500000));
+                assert(!service->CanUsePartial() && !Inspect(*service).framebuffer_valid);
+                if (batch)
+                    assert(service->EndBatch() == ESP_OK);
+                assert(!busy_stuck && !service->IsPowered() && pins[GPIO_NUM_6] == 0);
+                assert(packets.back().command == 0x12);
+                stuck_refresh = 0;
+                ClearTraffic();
+                Frame frame;
+                frame.fill(0xff);
+                Present(*service, frame);
+                CheckFull(frame);
+                assert(service->CanUsePartial());
+            }
         }
     }
 }
@@ -2839,6 +2935,8 @@ int main() {
     TestDriverDiffAndWindow();
     TestFailuresRecoverWithFullFrame();
     TestBatchAndGray();
+    TestGray2();
+    TestCalibrationOwnership();
     TestGrayTimeoutRecovery();
     TestPhysicsTelemetry();
     TestForegroundDisplayScheduling();

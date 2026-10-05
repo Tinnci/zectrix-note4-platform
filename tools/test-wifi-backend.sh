@@ -15,6 +15,7 @@ trap 'rm -f "$test_binary"' EXIT
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pedantic -pthread \
   -I"$root_dir/tools/wifi_driver_host_include" \
+  -I"$root_dir/components/note4_log/include" \
   -I"$root_dir/tools/host_include" \
   -I"$root_dir/components/note4_companion/include" \
   -I"$root_dir/components/note4_time/include" \

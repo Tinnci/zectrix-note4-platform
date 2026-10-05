@@ -74,7 +74,7 @@ static void close_guest(void) {
     PROBE_REQUIRE(probe_heap.live == 0);
 }
 
-int research_probe(ProbeMode mode) {
+int note4_runtime_qualify(ProbeMode mode) {
     probe_heap.limit = 64 * 1024;
     if (mode == PROBE_START) {
         puts("{\"event\":\"init-start\"}");

@@ -1,6 +1,6 @@
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/note4_features.cmake")
-set(sources "note4_platform.cc" "note4_service_registry.cc")
-set(requires note4_board note4_display note4_input note4_power
+set(sources "note4_platform.cc" "note4_service_registry.cc" "note4_display_calibration_store.cc")
+set(requires note4_log note4_board note4_display note4_epd note4_input note4_power
     note4_self_test note4_storage note4_system note4_time)
 if(CONFIG_NOTE4_ENABLE_CONNECTIVITY)
     list(APPEND requires note4_connectivity note4_nfc_service)

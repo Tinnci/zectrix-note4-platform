@@ -18,6 +18,7 @@ uv run --no-project "$root_dir/tools/generate-reader-fixtures.py" "$work_dir/fix
 "${CC:-cc}" -DNOTE4_READER_FONT_PATH="\"$reader_dir/font/reader_font.bin\"" \
   -c "$reader_dir/note4_reader_font_data.S" -o "$work_dir/font.o"
 "${CXX:-c++}" "${flags[@]}" \
+  -I"$root_dir/components/note4_log/include" \
   -I"$root_dir/tools/epd_host_include" \
   -I"$root_dir/tools/host_include" \
   -I"$root_dir/components/note4_display/include" \
@@ -42,6 +43,7 @@ uv run --no-project "$root_dir/tools/generate-reader-fixtures.py" "$work_dir/fix
   "$root_dir/components/note4_display/note4_display_physics.cc" \
   "$root_dir/components/note4_display/note4_display_service.cc" \
   "$root_dir/components/note4_epd/note4_epd.cc" \
+  "$root_dir/components/note4_epd/note4_epd_calibration.cc" \
   "$root_dir/components/ui/canvas.cc" \
   "$root_dir/tools/font_trace.cc" \
   "$root_dir/components/ui/ui_engine.cc" \

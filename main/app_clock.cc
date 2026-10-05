@@ -3,9 +3,9 @@
 
 #include <cstdio>
 
-#include "esp_log.h"
 #include "note4_clock_editor.h"
 #include "note4_first_party_app_controllers.h"
+#include "note4_log_event.h"
 #include "note4_scene_manager.h"
 
 using note4::i18n::Tr;
@@ -113,9 +113,11 @@ private:
                 } else {
                     self.save_failed_ = true;
                 }
-                if (saved != ESP_OK) ESP_LOGW(kTag, "clock save incomplete: %s", esp_err_to_name(saved));
+                if (saved != ESP_OK)
+                    NOTE4_LOGW(kTag, "clock_save_failed", "error=%s",
+                               note4::log::Token(esp_err_to_name(saved)).c_str());
                 else if (self.owner_->time_->Status().persistence_pending)
-                    ESP_LOGW(kTag, "clock set; RTC persistence will retry");
+                    NOTE4_LOGW(kTag, "clock_save_retry", "");
             } else {
                 self.editor_.Next();
             }

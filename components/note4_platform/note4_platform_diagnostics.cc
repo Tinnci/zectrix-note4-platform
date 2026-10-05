@@ -1,4 +1,5 @@
 #include "note4_platform_diagnostics.h"
+#include "note4_display_calibration_store.h"
 
 #include "note4_display_service.h"
 #include "note4_input_service.h"
@@ -18,15 +19,16 @@
 
 namespace note4 {
 
-PlatformDiagnostics::PlatformDiagnostics(const ServiceRegistry& services, system::SystemService& system,
+PlatformDiagnostics::PlatformDiagnostics(const ServiceRegistry& services,
+                                         system::SystemService& system,
                                          display::DisplayService& display,
-                                         input::InputService& input,
-                                         time::TimeService& time,
+                                         input::InputService& input, time::TimeService& time,
                                          system::HealthSupervisor& health,
                                          cli::CliBinarySession* binary)
-    : services_(services), system_(system), display_(display), input_(input), time_(time), health_(health),
-      owner_task_(xTaskGetCurrentTaskHandle()), dispatcher_(*this),
-      executor_(dispatcher_, cli::MaintenanceLogs(), binary) {
+    : services_(services), system_(system), display_(display), input_(input), time_(time),
+      health_(health), owner_task_(xTaskGetCurrentTaskHandle()), dispatcher_(*this),
+      executor_(dispatcher_, cli::MaintenanceLogs(), binary, cli::SteadyMilliseconds,
+                &log::EspLevelControl()) {
     input_.SetWaitHook(OnWait, this);
 }
 
@@ -102,9 +104,73 @@ cli::ControlStatus PlatformDiagnostics::Inspect(const cli::ControlRequest& reque
             err = ESP_OK;
             break;
         case cli::ControlOperation::kDisplayModel:
+        case cli::ControlOperation::kDisplayModelSet:
+        case cli::ControlOperation::kDisplayModelReset: {
+            auto* storage = services_.Get<storage::StorageService>();
+            if (!storage)
+                return cli::ControlStatus::kUnavailable;
             result->display_model = display_.physics_parameters();
+            if (request.operation == cli::ControlOperation::kDisplayModelReset) {
+                err = display::ResetModel(*storage);
+                if (err != ESP_OK)
+                    break;
+            }
+            result->model_storage_error =
+                display::LoadModel(*storage, &result->saved_model, &result->model_saved);
+            if (request.operation == cli::ControlOperation::kDisplayModelSet) {
+                if (result->model_storage_error != ESP_OK) {
+                    err = result->model_storage_error;
+                    break;
+                }
+                if (!display::UpdateModel(&result->saved_model, request.text1.data(),
+                                          request.values.data(), request.cursor))
+                    return cli::ControlStatus::kInvalidArgument;
+                err = display::SaveModel(*storage, result->saved_model);
+                if (err != ESP_OK)
+                    break;
+                result->model_saved = true;
+            }
             err = ESP_OK;
             break;
+        }
+        case cli::ControlOperation::kDisplayCalibration:
+        case cli::ControlOperation::kDisplayCalibrationSet:
+        case cli::ControlOperation::kDisplayCalibrationReset: {
+            auto* storage = services_.Get<storage::StorageService>();
+            if (!storage)
+                return cli::ControlStatus::kUnavailable;
+            auto& c = result->calibration;
+            err = display_.ReadCalibration(&c.active);
+            if (err != ESP_OK)
+                break;
+            if (request.operation == cli::ControlOperation::kDisplayCalibrationReset) {
+                err = display::ResetCalibration(*storage);
+                if (err != ESP_OK)
+                    break;
+            }
+            c.storage_error = display::LoadCalibration(*storage, &c.configured, &c.saved);
+            if (request.operation == cli::ControlOperation::kDisplayCalibrationSet) {
+                // Read errors must not silently replace preserved calibration.
+                if (c.storage_error != ESP_OK) {
+                    err = c.storage_error;
+                    break;
+                }
+                const auto& v = request.values;
+                if (v[0] >= 16 || v[1] > 5 || v[2] > 5 || v[3] > 127 || v[4] > 1000 || v[5] > 1)
+                    return cli::ControlStatus::kInvalidArgument;
+                const note4_epd_gray_level_t level{
+                    static_cast<uint8_t>(v[1]), static_cast<uint8_t>(v[2]),
+                    static_cast<uint8_t>(v[3]), static_cast<uint16_t>(v[4])};
+                if (!note4_epd_calibration_update(&c.configured, v[0], &level, v[5]))
+                    return cli::ControlStatus::kInvalidArgument;
+                err = display::SaveCalibration(*storage, c.configured);
+                if (err != ESP_OK)
+                    break;
+                c.saved = true;
+            }
+            err = ESP_OK; // Read-only reports fallback AND the storage error.
+            break;
+        }
         case cli::ControlOperation::kPower: {
             auto* power = services_.Get<power::PowerService>();
             power::PowerSnapshot p;

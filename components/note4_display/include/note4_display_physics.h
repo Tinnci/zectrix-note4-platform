@@ -13,7 +13,7 @@ inline constexpr std::size_t kPhysicsTiles = kPhysicsColumns * kPhysicsRows;
 inline constexpr uint32_t kTilePixels = 80 * 75;
 inline constexpr uint32_t kDebtOne = 65536;
 
-enum class RefreshKind : uint8_t { kNone, kFull1Bpp, kPartial1Bpp, kFull4Bpp };
+enum class RefreshKind : uint8_t { kNone, kFull1Bpp, kPartial1Bpp, kFull4Bpp, kFull2Bpp };
 enum class RefreshReason : uint8_t {
     Partial, Recovery, Quality, FullClean, HighContrast, GlobalDebt, LocalDebt, Gray, DriverError,
 };

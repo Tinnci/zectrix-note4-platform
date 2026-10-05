@@ -8,6 +8,7 @@
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "esp_err.h"
+#include "note4_epd_calibration.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -16,6 +17,7 @@ extern "C" {
 #define NOTE4_EPD_PANEL_WIDTH 400
 #define NOTE4_EPD_PANEL_HEIGHT 300
 #define NOTE4_EPD_1BPP_FRAME_BYTES 15000
+#define NOTE4_EPD_2BPP_FRAME_BYTES 30000
 #define NOTE4_EPD_4BPP_FRAME_BYTES 60000
 #define NOTE4_EPD_TILE_COLUMNS 5
 #define NOTE4_EPD_TILE_ROWS 4
@@ -86,6 +88,15 @@ esp_err_t note4_epd_power_off(note4_epd_handle_t handle);
 /** True after power_on and before power_off. */
 bool note4_epd_is_powered(note4_epd_handle_t handle);
 
+/** Copy active calibration without panel I/O. */
+esp_err_t note4_epd_read_calibration(note4_epd_handle_t handle,
+                                     note4_epd_calibration_t* calibration);
+/** Replace validated calibration only while the external rail is off.
+ * No persistence here; the platform owns saving and boot-time restoration.
+ */
+esp_err_t note4_epd_set_calibration(note4_epd_handle_t handle,
+                                    const note4_epd_calibration_t* calibration);
+
 /** Copy counters under the existing driver mutex without accessing the panel. */
 esp_err_t note4_epd_read_metrics(note4_epd_handle_t handle, note4_epd_metrics_t* metrics);
 
@@ -144,7 +155,8 @@ esp_err_t note4_epd_refresh_partial_1bpp(note4_epd_handle_t handle,
                                            size_t pixels_size);
 
 /**
- * Full-screen 16-gray refresh using the calibrated SSD2683 waveform sequence.
+ * Full-screen 16-code gray refresh using the SSD2683 vendor-record sequence.
+ * Actual optical separation requires panel-specific measurement/calibration.
  *
  * Format: 400x300, row-major, two pixels per byte, left pixel in the high
  * nibble, 0=black and 15=white. Partial refresh is intentionally unsupported
@@ -153,6 +165,13 @@ esp_err_t note4_epd_refresh_partial_1bpp(note4_epd_handle_t handle,
 esp_err_t note4_epd_refresh_full_4bpp(note4_epd_handle_t handle,
                                         const uint8_t* framebuffer,
                                         size_t framebuffer_size);
+/** Full-screen four-tone input, four MSB-first pixels per byte, 0=black,
+ * 3=white. Interior tones use the active optical profile at 333/667 permille.
+ * Uses the same OTP-white + five-pass transaction, not a faster waveform.
+ * No full 4bpp expansion buffer and no grayscale partial refresh.
+ */
+esp_err_t note4_epd_refresh_full_2bpp(note4_epd_handle_t handle, const uint8_t* framebuffer,
+                                      size_t framebuffer_size);
 
 #ifdef __cplusplus
 }

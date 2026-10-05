@@ -1,4 +1,5 @@
 #include "note4_cli_diagnostics.h"
+#include "note4_display_model.h"
 
 #include <algorithm>
 #include <cstdarg>
@@ -25,19 +26,45 @@ constexpr CommandDescriptor kSystem[] = {
     Leaf("health", "Foreground watchdog, recovery and storage health", "system health", Handler::kHealth),
 };
 constexpr CommandDescriptor kDisplay[] = {
-    Leaf("status", "Refresh state and framebuffer preview", "display status", Handler::kDisplayInspect),
-    Leaf("settings", "Active, saved and default display directions", "display settings", Handler::kDisplaySettings),
-    Leaf("orientation", "Save screen direction for next boot", "display orientation [landscape|portrait|landscape-inverted|portrait-inverted]", Handler::kDisplayOrientation, Execution::kOwnerRequest, Access::kConfirm),
-    Leaf("lock-orientation", "Save independent lock-screen direction for next boot", "display lock-orientation [landscape|portrait]", Handler::kSleepOrientation, Execution::kOwnerRequest, Access::kConfirm),
+    Leaf("status", "Refresh state and framebuffer preview", "display status",
+         Handler::kDisplayInspect),
+    Leaf("settings", "Active, saved and default display directions", "display settings",
+         Handler::kDisplaySettings),
+    Leaf("orientation", "Save screen direction for next boot",
+         "display orientation [landscape|portrait|landscape-inverted|portrait-inverted]",
+         Handler::kDisplayOrientation, Execution::kOwnerRequest, Access::kConfirm),
+    Leaf("lock-orientation", "Save independent lock-screen direction for next boot",
+         "display lock-orientation [landscape|portrait]", Handler::kSleepOrientation,
+         Execution::kOwnerRequest, Access::kConfirm),
     Leaf("telemetry", "Copy up to four frame observations as typed CSV rows",
          "display telemetry [after-sequence]", Handler::kDisplayTelemetry),
-    Leaf("model", "Inspect fixed-point coefficients and calibration", "display model", Handler::kDisplayModel),
+    Leaf("model", "Inspect fixed-point coefficients and calibration", "display model",
+         Handler::kDisplayModel),
+    Leaf("model-set", "Save model coefficients for next boot; see display model",
+         "display model-set <sample-age|weights|limits|decay|temperature|battery|energy> "
+         "<values...>",
+         Handler::kDisplayModelSet, Execution::kOwnerRequest, Access::kLocalConfirm),
+    Leaf("model-reset", "Restore builtin model on next boot; keep optical profile",
+         "display model-reset", Handler::kDisplayModelReset, Execution::kOwnerRequest,
+         Access::kLocalConfirm),
+    Leaf("calibration", "Active and saved SSD2683 gray profile", "display calibration",
+         Handler::kDisplayCalibration),
+    Leaf("calibration-set",
+         "Save one gray level for next boot; changing recipes invalidates optical measurements",
+         "display calibration-set <level> <base> <alternate> <mask-decimal> <reflectance-0..1000> "
+         "<measured-0|1>",
+         Handler::kDisplayCalibrationSet, Execution::kOwnerRequest, Access::kLocalConfirm),
+    Leaf("calibration-reset", "Restore builtin gray profile on next boot; retain other settings",
+         "display calibration-reset", Handler::kDisplayCalibrationReset, Execution::kOwnerRequest,
+         Access::kLocalConfirm),
 };
 constexpr CommandDescriptor kLog[] = {
-    Leaf("follow", "Observe logs until Ctrl+C", "log follow [error|warn|info|debug]",
-         Handler::kLogFollow, Execution::kStream),
-    Leaf("stats", "Log queue, drop and truncation counts", "log stats",
-         Handler::kLogStats, Execution::kImmediate),
+    Leaf("follow", "Filter captured logs; does not change producer level",
+         "log follow [error|warn|info|debug] [tag]", Handler::kLogFollow, Execution::kStream),
+    Leaf("stats", "Log queue, drop and truncation counts", "log stats", Handler::kLogStats,
+         Execution::kImmediate),
+    Leaf("level", "Inspect or change project producer level in RAM; SDK tags unchanged",
+         "log level [error|warn|info|debug]", Handler::kLogLevel, Execution::kImmediate),
 };
 constexpr CommandDescriptor kHost[] = {
     Leaf("start", "Enter USB management; open USB MANAGER on the device first",
@@ -71,24 +98,34 @@ constexpr CommandDescriptor kStorage[] = {Leaf("wipe", "Delete all books and mic
 constexpr CommandDescriptor kFactory[] = {Leaf("reset", "Erase user files, settings and bonds, then reboot; keep firmware", "factory reset", Handler::kFactoryReset, Execution::kOwnerRequest, Access::kConfirm)};
 #define GROUP(name, children) {name, "Use help for a subcommand", name, Access::kReadOnly, Execution::kImmediate, false, children, std::size(children)}
 constexpr CommandDescriptor kCommands[] = {
-    Leaf("help", "List commands or show command usage", "help [command]",
-         Handler::kHelp, Execution::kImmediate),
-    Leaf("version", "CLI protocol version", "version",
-         Handler::kVersion, Execution::kImmediate),
-    {"system", "System diagnostics", "system <info|heap|tasks|uptime|health>",
-     Access::kReadOnly, Execution::kImmediate, false, kSystem, std::size(kSystem)},
-    {"display", "Display diagnostics and settings", "display <status|settings|orientation|lock-orientation|telemetry|model>", Access::kReadOnly,
-     Execution::kImmediate, false, kDisplay, std::size(kDisplay)},
-    {"log", "Log observation", "log <follow|stats>", Access::kReadOnly,
-     Execution::kImmediate, false, kLog, std::size(kLog)},
+    Leaf("help", "List commands or show command usage", "help [command]", Handler::kHelp,
+         Execution::kImmediate),
+    Leaf("version", "CLI protocol version", "version", Handler::kVersion, Execution::kImmediate),
+    {"system", "System diagnostics", "system <info|heap|tasks|uptime|health>", Access::kReadOnly,
+     Execution::kImmediate, false, kSystem, std::size(kSystem)},
+    {"display", "Display diagnostics and settings",
+     "display "
+     "<status|settings|orientation|lock-orientation|telemetry|model|calibration|calibration-set|"
+     "calibration-reset>",
+     Access::kReadOnly, Execution::kImmediate, false, kDisplay, std::size(kDisplay)},
+    {"log", "Log observation", "log <follow|stats|level>", Access::kReadOnly, Execution::kImmediate,
+     false, kLog, std::size(kLog)},
     {"host", "USB book and settings session", "host start 1", Access::kReadOnly,
      Execution::kImmediate, false, kHost, std::size(kHost)},
-    GROUP("power", kPower), GROUP("time", kTime), GROUP("connectivity", kConnectivity),
-    GROUP("app", kApps), GROUP("scene", kScene), GROUP("input", kInput),
-    GROUP("storage", kStorage), GROUP("factory", kFactory),
-    Leaf("reboot", "Exit the foreground and restart firmware", "reboot", Handler::kReboot, Execution::kOwnerRequest, Access::kConfirm),
-    Leaf("sleep", "Exit the foreground, show its sleep cover and power down", "sleep", Handler::kSleep, Execution::kOwnerRequest, Access::kConfirm),
-    Leaf("confirm", "Confirm the exact pending USB operation within 15 seconds", "confirm <token>", Handler::kConfirm, Execution::kImmediate),
+    GROUP("power", kPower),
+    GROUP("time", kTime),
+    GROUP("connectivity", kConnectivity),
+    GROUP("app", kApps),
+    GROUP("scene", kScene),
+    GROUP("input", kInput),
+    GROUP("storage", kStorage),
+    GROUP("factory", kFactory),
+    Leaf("reboot", "Exit the foreground and restart firmware", "reboot", Handler::kReboot,
+         Execution::kOwnerRequest, Access::kConfirm),
+    Leaf("sleep", "Exit the foreground, show its sleep cover and power down", "sleep",
+         Handler::kSleep, Execution::kOwnerRequest, Access::kConfirm),
+    Leaf("confirm", "Confirm the exact pending USB operation within 15 seconds", "confirm <token>",
+         Handler::kConfirm, Execution::kImmediate),
     Leaf("sysinfo", "Alias for system info", "sysinfo", Handler::kSystemInfo),
     Leaf("heap", "Alias for system heap", "heap", Handler::kHeap),
     Leaf("tasks", "Alias for system tasks", "tasks", Handler::kTasks),
@@ -164,6 +201,8 @@ const char* RefreshName(display::RefreshKind kind) {
         case display::RefreshKind::kFull1Bpp: return "full-1bpp";
         case display::RefreshKind::kPartial1Bpp: return "partial-1bpp";
         case display::RefreshKind::kFull4Bpp: return "full-4bpp";
+        case display::RefreshKind::kFull2Bpp:
+            return "full-2bpp";
         default: return "none";
     }
 }
@@ -234,9 +273,13 @@ ExecuteStatus DiagnosticExecutor::Execute(const Invocation& invocation,
                                                           : ExecuteStatus::kUnavailable;
     }
     const bool configuration = command.handler >= Handler::kConnectivityConfigure && command.handler <= Handler::kEdgeDisplay;
-    if (!configuration && command.handler != Handler::kLogFollow && command.handler != Handler::kTimeSync &&
-        command.handler != Handler::kDisplayTelemetry && command.handler != Handler::kDisplayOrientation &&
-        command.handler != Handler::kSleepOrientation && arguments != 0) {
+    if (!configuration && command.handler != Handler::kLogFollow &&
+        command.handler != Handler::kLogLevel && command.handler != Handler::kTimeSync &&
+        command.handler != Handler::kDisplayTelemetry &&
+        command.handler != Handler::kDisplayOrientation &&
+        command.handler != Handler::kSleepOrientation &&
+        command.handler != Handler::kDisplayCalibrationSet &&
+        command.handler != Handler::kDisplayModelSet && arguments != 0) {
         return ExecuteStatus::kInvalidArguments;
     }
     if (command.handler == Handler::kVersion) {
@@ -245,22 +288,41 @@ ExecuteStatus DiagnosticExecutor::Execute(const Invocation& invocation,
     }
     if (command.handler == Handler::kLogStats) {
         const auto stats = logs_.Stats();
-        Format(output, "logs queued=%lu/%zu dropped=%lu truncated=%lu",
+        Format(output, "logs queued=%lu/%zu dropped=%lu truncated=%lu latest=%llu producer=%s",
                static_cast<unsigned long>(stats.queued), kLogRecords,
                static_cast<unsigned long>(stats.dropped),
-               static_cast<unsigned long>(stats.truncated));
+               static_cast<unsigned long>(stats.truncated),
+               static_cast<unsigned long long>(stats.latest),
+               levels_ ? log::LevelName(levels_->Get()) : "unavailable");
+        return ExecuteStatus::kOk;
+    }
+    if (command.handler == Handler::kLogLevel) {
+        if (arguments > 1) return ExecuteStatus::kInvalidArguments;
+        LogLevel level;
+        if (arguments && !log::ParseLevel(invocation[resolution.argument_index], &level))
+            return ExecuteStatus::kInvalidArguments;
+        if (!levels_)
+            return ExecuteStatus::kUnavailable;
+        if (arguments && !levels_->Set(level))
+            return ExecuteStatus::kUnavailable;
+        Format(output, "producer=%s scope=project persistence=ram", log::LevelName(levels_->Get()));
         return ExecuteStatus::kOk;
     }
     if (command.handler == Handler::kLogFollow) {
-        if (arguments > 1) return ExecuteStatus::kInvalidArguments;
+        if (arguments > 2)
+            return ExecuteStatus::kInvalidArguments;
         log_level_ = LogLevel::kInfo;
-        if (arguments == 1) {
-            const char* level = invocation[resolution.argument_index];
-            if (std::strcmp(level, "error") == 0) log_level_ = LogLevel::kError;
-            else if (std::strcmp(level, "warn") == 0) log_level_ = LogLevel::kWarn;
-            else if (std::strcmp(level, "info") == 0) log_level_ = LogLevel::kInfo;
-            else if (std::strcmp(level, "debug") == 0) log_level_ = LogLevel::kDebug;
-            else return ExecuteStatus::kInvalidArguments;
+        log_tag_.fill(0);
+        if (arguments && !log::ParseLevel(invocation[resolution.argument_index], &log_level_))
+            return ExecuteStatus::kInvalidArguments;
+        if (arguments == 2) {
+            const auto* tag = invocation[resolution.argument_index + 1];
+            if (!*tag || std::strlen(tag) > log::kLogTagBytes)
+                return ExecuteStatus::kInvalidArguments;
+            for (const auto* c = tag; *c; ++c)
+                if (!((*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') || *c == '_'))
+                    return ExecuteStatus::kInvalidArguments;
+            std::strcpy(log_tag_.data(), tag);
         }
         active_ = Handler::kLogFollow;
         cancellation_.Reset();
@@ -284,6 +346,43 @@ ExecuteStatus DiagnosticExecutor::Execute(const Invocation& invocation,
             request.operation = ControlOperation::kDisplayTelemetry;
             break;
         case Handler::kDisplayModel: request.operation = ControlOperation::kDisplayModel; break;
+        case Handler::kDisplayModelReset:
+            request.operation = ControlOperation::kDisplayModelReset;
+            break;
+        case Handler::kDisplayModelSet: {
+            if (arguments < 2 || arguments > 8)
+                return ExecuteStatus::kInvalidArguments;
+            std::snprintf(request.text1.data(), request.text1.size(), "%s",
+                          invocation[resolution.argument_index]);
+            request.cursor = arguments - 1;
+            for (std::size_t i = 0; i < request.cursor; ++i)
+                if (!Number(invocation[resolution.argument_index + 1 + i], &request.values[i]))
+                    return ExecuteStatus::kInvalidArguments;
+            display::PhysicsParameters check;
+            if (!display::UpdateModel(&check, request.text1.data(), request.values.data(),
+                                      request.cursor))
+                return ExecuteStatus::kInvalidArguments;
+            request.operation = ControlOperation::kDisplayModelSet;
+            break;
+        }
+        case Handler::kDisplayCalibration:
+            request.operation = ControlOperation::kDisplayCalibration;
+            break;
+        case Handler::kDisplayCalibrationReset:
+            request.operation = ControlOperation::kDisplayCalibrationReset;
+            break;
+        case Handler::kDisplayCalibrationSet:
+            if (arguments != 6)
+                return ExecuteStatus::kInvalidArguments;
+            for (size_t i = 0; i < arguments; ++i)
+                if (!Number(invocation[resolution.argument_index + i], &request.values[i]))
+                    return ExecuteStatus::kInvalidArguments;
+            if (request.values[0] >= 16 || request.values[1] < 1 || request.values[1] > 5 ||
+                request.values[2] < 1 || request.values[2] > 5 || request.values[3] > 127 ||
+                request.values[4] > 1000 || request.values[5] > 1)
+                return ExecuteStatus::kInvalidArguments;
+            request.operation = ControlOperation::kDisplayCalibrationSet;
+            break;
         case Handler::kDisplaySettings: request.operation = ControlOperation::kDisplaySettings; break;
         case Handler::kDisplayOrientation: case Handler::kSleepOrientation: {
             if (arguments == 0) { request.operation = ControlOperation::kDisplaySettings; break; }
@@ -433,11 +532,17 @@ ExecuteStatus DiagnosticExecutor::FormatResult(BoundedOutput* output) {
     bool more = false;
     if (active_ == Handler::kHelp) {
         constexpr const char* pages[] = {
-            "help [command], version\r\nsystem <info|heap|tasks|uptime|health>, display status\r\npower status, connectivity status\r\ntime <get|status|sync [unix-ms offset-seconds]>",
-            "app <list|current>, scene dump, input watch\r\nlog follow [error|warn|info|debug], log stats\r\nreboot, sleep, storage wipe, factory reset, confirm <token>",
-            "display <status|settings|telemetry|model>\r\ndisplay orientation [landscape|portrait|landscape-inverted|portrait-inverted]\r\ndisplay lock-orientation [landscape|portrait]\r\nDirection writes require confirmation and apply after reboot.",
-            "Aliases: sysinfo, heap, tasks, uptime, epd-inspect, log-stream\r\nCtrl+C cancels; host start 1 enters USB management.\r\nPairing and bond removal use the device's Connectivity screen."
-        };
+            "help [command], version\r\nsystem <info|heap|tasks|uptime|health>, display "
+            "status\r\npower status, connectivity status\r\ntime <get|status|sync [unix-ms "
+            "offset-seconds]>",
+            "app <list|current>, scene dump, input watch\r\nlog follow [level] [tag], log stats, "
+            "log level [level]\r\nreboot, sleep, storage wipe, factory reset, confirm <token>",
+            "display <status|settings|telemetry|model>\r\ndisplay orientation "
+            "[landscape|portrait|landscape-inverted|portrait-inverted]\r\ndisplay lock-orientation "
+            "[landscape|portrait]\r\nDirection writes require confirmation and apply after reboot.",
+            "Aliases: sysinfo, heap, tasks, uptime, epd-inspect, log-stream\r\nCtrl+C cancels; "
+            "host start 1 enters USB management.\r\nPairing and bond removal use the device's "
+            "Connectivity screen."};
         output->Append(pages[page_]);
         more = page_ + 1 < std::size(pages);
     } else if (active_ == Handler::kSystemInfo) {
@@ -513,6 +618,30 @@ ExecuteStatus DiagnosticExecutor::FormatResult(BoundedOutput* output) {
         Format(output, "screen_active=%s screen_saved=%s screen_default=portrait\r\n"
             "lock_saved=%s lock_default=portrait apply_on=reboot",
             OrientationName(d.active), OrientationName(d.configured), d.sleep_portrait ? "portrait" : "landscape");
+    } else if (active_ == Handler::kDisplayCalibration ||
+               active_ == Handler::kDisplayCalibrationSet ||
+               active_ == Handler::kDisplayCalibrationReset) {
+        const auto& c = result_.calibration;
+        if (page_ == 0) {
+            Format(output,
+                   "ssd2683 family=vendor-gray16-v1 active_revision=%lu saved_revision=%lu\r\n"
+                   "source=%s storage_error=%ld measured_active=0x%04x measured_saved=0x%04x "
+                   "apply_on=reboot",
+                   static_cast<unsigned long>(c.active.revision),
+                   static_cast<unsigned long>(c.configured.revision), c.saved ? "nvs" : "builtin",
+                   static_cast<long>(c.storage_error), c.active.measured_levels,
+                   c.configured.measured_levels);
+        } else {
+            const auto index = page_ - 1;
+            const auto& a = c.active.levels[index];
+            const auto& s = c.configured.levels[index];
+            Format(output,
+                   "level=%zu active=%u,%u,%u,%u saved=%u,%u,%u,%u "
+                   "(base,alternate,mask,reflectance_permille)",
+                   index, a.base_table, a.alternate_table, a.alternate_mask, a.reflectance_permille,
+                   s.base_table, s.alternate_table, s.alternate_mask, s.reflectance_permille);
+        }
+        more = page_ < NOTE4_EPD_GRAY_LEVELS;
     } else if (active_ == Handler::kDisplayInspect) {
         const auto& d = result_.display;
         if (page_ == 0) {
@@ -582,30 +711,48 @@ ExecuteStatus DiagnosticExecutor::FormatResult(BoundedOutput* output) {
             }
         }
         more = page_ < count * 3;
+    } else if (active_ == Handler::kDisplayModelSet || active_ == Handler::kDisplayModelReset) {
+        Format(output, "saved_revision=%lu saved=%u active_revision=%lu apply_on=reboot",
+               static_cast<unsigned long>(result_.saved_model.revision), result_.model_saved,
+               static_cast<unsigned long>(result_.display_model.revision));
     } else if (active_ == Handler::kDisplayModel) {
-        const auto& p = result_.display_model;
-        if (page_ == 0) Format(output, "revision=%lu tiles=5x4 tile_pixels=6000 debt_one=65536\r\n"
-            "weights_q8: window=%u flip=%u concentration=%u memory=%u",
-            static_cast<unsigned long>(p.revision), p.window_weight_q8, p.flip_weight_q8,
-            p.concentration_weight_q8, p.memory_weight_q8);
-        else if (page_ == 1) Format(output, "limits_q16: global=%lu local=%lu\r\n"
-            "memory_tau_ms=%lu debt_tau_ms=%lu sample_max_age_ms=%lu (tau=0 disables decay)",
-            static_cast<unsigned long>(p.global_limit_q16), static_cast<unsigned long>(p.local_limit_q16),
-            static_cast<unsigned long>(p.memory_tau_ms), static_cast<unsigned long>(p.debt_tau_ms),
-            static_cast<unsigned long>(p.sample_max_age_ms));
-        else if (page_ == 2) Format(output, "temperature_gain_q8 at C=-10,0,10,25,40: %u,%u,%u,%u,%u\r\n"
-            "unknown_temperature_gain_q8=%u low_battery_mv=%u low_battery_gain_q8=%u",
-            p.temperature_gain_q8[0], p.temperature_gain_q8[1], p.temperature_gain_q8[2],
-            p.temperature_gain_q8[3], p.temperature_gain_q8[4], p.unknown_temperature_gain_q8,
-            p.low_battery_mv, p.low_battery_gain_q8);
+        const auto& p = page_ < 6 ? result_.display_model : result_.saved_model;
+        const auto model_page = page_ % 6;
+        if (model_page == 0)
+            Format(output,
+                   "scope=%s revision=%lu saved=%u storage_error=%ld\r\n"
+                   "tiles=5x4 tile_pixels=6000 debt_one=65536\r\n"
+                   "weights_q8: window=%u flip=%u concentration=%u memory=%u",
+                   page_ < 6 ? "active" : "next-boot", static_cast<unsigned long>(p.revision),
+                   result_.model_saved, static_cast<long>(result_.model_storage_error),
+                   p.window_weight_q8, p.flip_weight_q8, p.concentration_weight_q8,
+                   p.memory_weight_q8);
+        else if (model_page == 1)
+            Format(output,
+                   "limits_q16: global=%lu local=%lu\r\n"
+                   "memory_tau_ms=%lu debt_tau_ms=%lu sample_max_age_ms=%lu (tau=0 disables decay)",
+                   static_cast<unsigned long>(p.global_limit_q16),
+                   static_cast<unsigned long>(p.local_limit_q16),
+                   static_cast<unsigned long>(p.memory_tau_ms),
+                   static_cast<unsigned long>(p.debt_tau_ms),
+                   static_cast<unsigned long>(p.sample_max_age_ms));
+        else if (model_page == 2)
+            Format(output,
+                   "temperature_gain_q8 at C=-10,0,10,25,40: %u,%u,%u,%u,%u\r\n"
+                   "unknown_temperature_gain_q8=%u low_battery_mv=%u low_battery_gain_q8=%u",
+                   p.temperature_gain_q8[0], p.temperature_gain_q8[1], p.temperature_gain_q8[2],
+                   p.temperature_gain_q8[3], p.temperature_gain_q8[4],
+                   p.unknown_temperature_gain_q8, p.low_battery_mv, p.low_battery_gain_q8);
         else {
-            const auto& e = p.energy[page_ - 2];
-            Format(output, "energy mode=%zu calibrated=%u fixed_uj=%lu busy_power_uw=%lu\r\n"
-                "spi_nj_per_byte=%u black_to_white_nj=%u white_to_black_nj=%u", page_ - 2, e.calibrated,
-                static_cast<unsigned long>(e.fixed_uj), static_cast<unsigned long>(e.busy_power_uw),
-                e.spi_nj_per_byte, e.black_to_white_nj, e.white_to_black_nj);
+            const auto& e = p.energy[model_page - 2];
+            Format(output,
+                   "energy mode=%zu calibrated=%u fixed_uj=%lu busy_power_uw=%lu\r\n"
+                   "spi_nj_per_byte=%u black_to_white_nj=%u white_to_black_nj=%u",
+                   model_page - 2, e.calibrated, static_cast<unsigned long>(e.fixed_uj),
+                   static_cast<unsigned long>(e.busy_power_uw), e.spi_nj_per_byte,
+                   e.black_to_white_nj, e.white_to_black_nj);
         }
-        more = page_ < 5;
+        more = page_ < 11;
     }
     if (active_ == Handler::kPower) {
         const auto& p = result_.power;
@@ -683,11 +830,14 @@ ExecuteStatus DiagnosticExecutor::PollLog(BoundedOutput* output) {
     // Limit filtering work as well as output to keep Ctrl+C responsive.
     LogRecord record;
     for (std::size_t count = 0; count < 4 && logs_.Pop(&record); ++count) {
-        if (record.level > log_level_) continue;
+        if (record.level > log_level_ ||
+            (log_tag_[0] && std::strcmp(log_tag_.data(), record.tag.data()) != 0))
+            continue;
         std::size_t size = std::strlen(record.text.data());
         while (size != 0 && (record.text[size - 1] == '\r' || record.text[size - 1] == '\n')) --size;
         record.text[size] = '\0';
-        output->Append(record.text.data());
+        Format(output, "seq=%llu %s", static_cast<unsigned long long>(record.sequence),
+               record.text.data());
         break;
     }
     return ExecuteStatus::kPending;

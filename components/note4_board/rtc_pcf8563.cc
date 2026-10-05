@@ -1,7 +1,7 @@
 #include "rtc_pcf8563.h"
 
+#include "note4_log_event.h"
 #include <driver/gpio.h>
-#include <esp_log.h>
 
 #include <cstdio>
 
@@ -37,7 +37,7 @@ constexpr uint8_t kCtrl1Test = (1 << 7) | (1 << 3);
 
 static constexpr uint8_t kCtrl2WritableMask = 0x1F; // bits[4:0]
 
-constexpr char kTag[] = "RtcPcf8563";
+constexpr char kTag[] = "rtc";
 
 bool IsValidBcd(uint8_t value, int maximum) {
     return (value & 0x0F) <= 9 && ((value >> 4) & 0x0F) <= 9 &&
@@ -50,8 +50,8 @@ RtcPcf8563::RtcPcf8563(i2c_master_bus_handle_t i2c_bus, uint8_t addr)
 
 bool RtcPcf8563::Init(gpio_num_t int_gpio) {
     if (initialization_status() != ESP_OK) {
-        ESP_LOGE(kTag, "I2C device initialization failed: %s",
-                 esp_err_to_name(initialization_status()));
+        NOTE4_LOGE(kTag, "i2c_device_init_failed", "error=%s",
+                   note4::log::Token(esp_err_to_name(initialization_status())).c_str());
         return false;
     }
     int_gpio_ = int_gpio;
@@ -64,7 +64,7 @@ bool RtcPcf8563::Init(gpio_num_t int_gpio) {
         cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
         cfg.intr_type = GPIO_INTR_DISABLE;
         if (gpio_config(&cfg) != ESP_OK) {
-            ESP_LOGE(kTag, "Failed to config RTC INT GPIO");
+            NOTE4_LOGE(kTag, "interrupt_config_failed", "");
             return false;
         }
     }
@@ -111,17 +111,18 @@ bool RtcPcf8563::GetTime(tm& out_local_tm) {
     // One read latches the entire calendar, including its validity state.
     const esp_err_t ret = ReadRegsChecked(kRegCtrl1, registers, sizeof(registers));
     if (ret != ESP_OK) {
-        ESP_LOGW(kTag, "GetTime failed: %s", esp_err_to_name(ret));
+        NOTE4_LOGW(kTag, "time_read_failed", "error=%s",
+                   note4::log::Token(esp_err_to_name(ret)).c_str());
         return false;
     }
     if ((registers[kRegCtrl1] & (kCtrl1Stop | kCtrl1Test)) != 0 ||
         (registers[kRegMonths] & 0x80) != 0) {
-        ESP_LOGW(kTag, "GetTime failed: stopped/test clock or unsupported century");
+        NOTE4_LOGW(kTag, "time_read_failed", "reason=unsupported_clock");
         return false;
     }
     const uint8_t* buf = registers + kRegSeconds;
     if ((buf[0] & 0x80) != 0) {
-        ESP_LOGW(kTag, "GetTime failed: voltage-low flag set");
+        NOTE4_LOGW(kTag, "time_read_failed", "reason=voltage_low");
         return false;
     }
     if (!IsValidBcd(buf[0] & 0x7F, 59) ||
@@ -132,7 +133,7 @@ bool RtcPcf8563::GetTime(tm& out_local_tm) {
         !IsValidBcd(buf[5] & 0x1F, 12) ||
         !IsValidBcd(buf[6], 99) || (buf[3] & 0x3F) == 0 ||
         (buf[5] & 0x1F) == 0) {
-        ESP_LOGW(kTag, "GetTime failed: invalid BCD date/time");
+        NOTE4_LOGW(kTag, "time_read_failed", "reason=invalid_bcd");
         return false;
     }
 
@@ -155,43 +156,49 @@ bool RtcPcf8563::SetAlarm(const tm& target_local_tm) {
 
     esp_err_t ret = WriteRegChecked(kRegAlarmMinute, ToBcd(target_local_tm.tm_min) & 0x7F);
     if (ret != ESP_OK) {
-        ESP_LOGW(kTag, "SetAlarm failed step=minute target=%s err=%s",
-                 target_buf, esp_err_to_name(ret));
+        NOTE4_LOGW(kTag, "alarm_set_failed", "step=minute target=%s err=%s",
+                   note4::log::Token(target_buf).c_str(),
+                   note4::log::Token(esp_err_to_name(ret)).c_str());
         return false;
     }
 
     ret = WriteRegChecked(kRegAlarmHour, ToBcd(target_local_tm.tm_hour) & 0x3F);
     if (ret != ESP_OK) {
-        ESP_LOGW(kTag, "SetAlarm failed step=hour target=%s err=%s",
-                 target_buf, esp_err_to_name(ret));
+        NOTE4_LOGW(kTag, "alarm_set_failed", "step=hour target=%s err=%s",
+                   note4::log::Token(target_buf).c_str(),
+                   note4::log::Token(esp_err_to_name(ret)).c_str());
         return false;
     }
 
     ret = WriteRegChecked(kRegAlarmDay, ToBcd(target_local_tm.tm_mday) & 0x3F);
     if (ret != ESP_OK) {
-        ESP_LOGW(kTag, "SetAlarm failed step=day target=%s err=%s",
-                 target_buf, esp_err_to_name(ret));
+        NOTE4_LOGW(kTag, "alarm_set_failed", "step=day target=%s err=%s",
+                   note4::log::Token(target_buf).c_str(),
+                   note4::log::Token(esp_err_to_name(ret)).c_str());
         return false;
     }
 
     ret = WriteRegChecked(kRegAlarmWeekday, kAlarmDisableBit);
     if (ret != ESP_OK) {
-        ESP_LOGW(kTag, "SetAlarm failed step=weekday target=%s err=%s",
-                 target_buf, esp_err_to_name(ret));
+        NOTE4_LOGW(kTag, "alarm_set_failed", "step=weekday target=%s err=%s",
+                   note4::log::Token(target_buf).c_str(),
+                   note4::log::Token(esp_err_to_name(ret)).c_str());
         return false;
     }
 
     if (!ClearAlarmFlag()) {
-        ESP_LOGW(kTag, "SetAlarm failed step=clear_alarm_flag target=%s", target_buf);
+        NOTE4_LOGW(kTag, "alarm_set_failed", "step=clear_alarm_flag target=%s",
+                   note4::log::Token(target_buf).c_str());
         return false;
     }
 
     if (!EnableInterrupt(true)) {
-        ESP_LOGW(kTag, "SetAlarm failed step=enable_interrupt target=%s", target_buf);
+        NOTE4_LOGW(kTag, "alarm_set_failed", "step=enable_interrupt target=%s",
+                   note4::log::Token(target_buf).c_str());
         return false;
     }
 
-    ESP_LOGD(kTag, "SetAlarm ok target=%s", target_buf);
+    NOTE4_LOGD(kTag, "alarm_set", "target=%s", note4::log::Token(target_buf).c_str());
     return true;
 }
 
@@ -207,15 +214,16 @@ bool RtcPcf8563::ClearAlarmFlag() {
     uint8_t ctrl2 = 0;
     esp_err_t ret = ReadRegChecked(kRegCtrl2, &ctrl2);
     if (ret != ESP_OK) {
-        ESP_LOGW(kTag, "ClearAlarmFlag read ctrl2 failed: %s", esp_err_to_name(ret));
+        NOTE4_LOGW(kTag, "alarm_clear_failed", "step=read error=%s",
+                   note4::log::Token(esp_err_to_name(ret)).c_str());
         return false;
     }
     ctrl2 &= kCtrl2WritableMask;
     ctrl2 &= ~kCtrl2AlarmFlag; // clear AF(bit3)
     ret = WriteRegChecked(kRegCtrl2, ctrl2);
     if (ret != ESP_OK) {
-        ESP_LOGW(kTag, "ClearAlarmFlag write ctrl2=0x%02x failed: %s",
-                 ctrl2, esp_err_to_name(ret));
+        NOTE4_LOGW(kTag, "alarm_clear_failed", "step=write ctrl2=0x%02x error=%s", ctrl2,
+                   note4::log::Token(esp_err_to_name(ret)).c_str());
         return false;
     }
     return true;
@@ -225,8 +233,8 @@ bool RtcPcf8563::EnableInterrupt(bool enable) {
     uint8_t ctrl2 = 0;
     esp_err_t ret = ReadRegChecked(kRegCtrl2, &ctrl2);
     if (ret != ESP_OK) {
-        ESP_LOGW(kTag, "EnableInterrupt read ctrl2 failed enable=%d err=%s",
-                 enable ? 1 : 0, esp_err_to_name(ret));
+        NOTE4_LOGW(kTag, "interrupt_set_failed", "step=read enabled=%d error=%s", enable ? 1 : 0,
+                   note4::log::Token(esp_err_to_name(ret)).c_str());
         return false;
     }
     ctrl2 &= kCtrl2WritableMask;
@@ -237,8 +245,8 @@ bool RtcPcf8563::EnableInterrupt(bool enable) {
     }
     ret = WriteRegChecked(kRegCtrl2, ctrl2);
     if (ret != ESP_OK) {
-        ESP_LOGW(kTag, "EnableInterrupt write ctrl2=0x%02x failed enable=%d err=%s",
-                 ctrl2, enable ? 1 : 0, esp_err_to_name(ret));
+        NOTE4_LOGW(kTag, "interrupt_set_failed", "step=write ctrl2=0x%02x enabled=%d error=%s",
+                   ctrl2, enable ? 1 : 0, note4::log::Token(esp_err_to_name(ret)).c_str());
         return false;
     }
     return true;
@@ -303,9 +311,9 @@ esp_err_t RtcPcf8563::ReadTimerFlag(bool* fired) {
 
 bool RtcPcf8563::ResetI2cBus(const char* reason) {
     esp_err_t ret = ResetBus(reason);
-    ESP_LOGW(kTag, "ResetI2cBus reason=%s ret=%s",
-             reason ? reason : "unknown",
-             esp_err_to_name(ret));
+    NOTE4_LOGW(kTag, "i2c_reset", "reason=%s result=%s",
+               note4::log::Token(reason ? reason : "unknown").c_str(),
+               note4::log::Token(esp_err_to_name(ret)).c_str());
     return ret == ESP_OK;
 }
 

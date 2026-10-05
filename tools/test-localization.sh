@@ -23,6 +23,7 @@ for profile in full chinese-only english-only; do
     "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror "${flags[@]}" \
       -DCONFIG_NOTE4_ENABLE_READER="$reader" -DCONFIG_NOTE4_ENABLE_UI_CHINESE="$chinese" \
       -DCONFIG_NOTE4_UI_DEFAULT_CHINESE=1 \
+      -I"$root_dir/components/note4_log/include" \
       -I"$root_dir/tools/host_include" \
       -I"$root_dir/components/note4_app/include" -I"$root_dir/components/note4_text/include" \
       -I"$root_dir/components/note4_time/include" \

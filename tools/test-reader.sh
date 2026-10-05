@@ -15,6 +15,7 @@ fi
 common=(
     -I"$reader_dir/include" -I"$reader_dir/private" -I"$reader_dir/third_party/miniz"
     -I"$root_dir/components/note4_app/include" -I"$root_dir/components/note4_text/include"
+    -I"$root_dir/components/note4_log/include" \
     -I"$root_dir/tools/host_include"
     -I"$root_dir/components/note4_storage/include"
     "$reader_dir/note4_reader.cc" "$reader_dir/note4_reader_zip.cc"

@@ -148,11 +148,17 @@ display orientation [landscape|portrait|landscape-inverted|portrait-inverted]
 display lock-orientation [landscape|portrait]
 display telemetry [after-sequence]
 display model
+display model-set <sample-age|weights|limits|decay|temperature|battery|energy> <values...>
+display model-reset
+display calibration
+display calibration-set <level> <base> <alternate> <mask-decimal> <reflectance-0..1000> <measured-0|1>
+display calibration-reset
 app list
 app current
 scene dump
-log follow [error|warn|info|debug]
+log follow [error|warn|info|debug] [tag]
 log stats
+log level [error|warn|info|debug]
 input watch
 reboot
 sleep
@@ -176,6 +182,13 @@ reports `screen_active`, `screen_saved`, `screen_default`, `lock_saved` and
 take precedence. Direction commands without arguments are read-only. Writes use
 the existing USB confirmation flow and report `apply_on=reboot`; they do not
 interrupt the foreground renderer or change the other direction preference.
+
+`display calibration` reports active and saved gray profiles separately, including
+measurement flags and storage errors. `calibration-set` edits one level after
+USB-local confirmation; `calibration-reset` erases only the gray profile. Both
+apply on reboot. Read failures prevent silent replacement of retained data.
+Fixed vendor voltage/timing records, paint order and OTP white base are not
+uploadable. See [EPD_API](EPD_API.md#calibration) for fields and validation.
 
 Confirmed USB writes configure resource routing, Wi-Fi, HTTPS page source/token,
 background refresh and remote covers. They cannot change BLE pairing or bonds.
@@ -229,7 +242,7 @@ partial frame count, accumulated changed pixels, spatial debt/budgets and the
 single-update contrast threshold. Frame/pixel totals no longer set refresh
 deadlines. `partial_pixels` counts transitions across successful partial
 refreshes; repeated changes to the same pixels count again. Its hex dump is the
-first 64 bytes of the last successful 1bpp or 4bpp frame. Partial updates copy
+first 64 bytes of the last successful 1bpp, 2bpp or 4bpp frame. Partial updates copy
 the existing driver shadow; full updates copy the submitted frame before its
 caller releases it. Errors invalidate the preview. This command neither
 retains caller buffers nor allocates an additional full framebuffer, and it
@@ -239,7 +252,7 @@ R1.4 adds `display telemetry [after-sequence]` and `display model`. The owner
 copies at most four of the latest sixteen physical-attempt records into the
 existing dispatcher result. The CLI formats that immutable copy as three typed
 CSV rows per frame, with an exclusive continuation cursor and an overwritten
-record count. `display model` reports the active coefficient dictionary and
+record count. `display model` reports active and next-boot coefficient dictionaries and
 energy calibration flags. Neither command refreshes, samples hardware or changes
 model state. Records include failed attempts, actual SPI/BUSY observations and
 sample ages; missing samples and uncalibrated energy remain explicit. See
@@ -256,6 +269,30 @@ disconnect, transport failure and shutdown cancel observation. USB TX is
 nonblocking with a bounded 2 KiB pending buffer; exhaustion resets the session.
 The log storage outlives the USB service, and shutdown restores the previous
 sink. Early-boot and panic output retain their direct paths.
+
+`note4_log` owns the producer and ring independently of the CLI.
+`log level` changes only project tag verbosity in RAM; DEBUG is compiled into
+project consumers without enabling SDK Wi-Fi/BLE DEBUG. `log follow` is a filter,
+optionally by exact lowercase tag, not producer control. See [logging](LOGGING.md).
+
+Model updates require the existing USB-local confirmation and apply on reboot.
+`model-reset` removes only the model blob; optical calibration remains intact.
+`display model` reports storage errors without erasing incompatible records;
+editing such a record requires an explicit reset first.
+
+| `model-set` group | Values, in order |
+| --- | --- |
+| `sample-age` | max sample age in ms (1..UINT32_MAX−1) |
+| `weights` | window, flip, concentration, memory (Q8, uint16; flip > 0) |
+| `limits` | global, local debt (Q16, validated model range, both > 0) |
+| `decay` | memory tau, debt tau (ms, uint32; 0 disables decay) |
+| `temperature` | gains at −10,0,10,25,40°C (Q8, uint16, all > 0) |
+| `battery` | low-voltage mV, low-voltage gain, unknown-temperature gain (uint16; gains > 0) |
+| `energy` | mode (1 full mono, 2 partial mono, 3 grayscale), fixed µJ, BUSY µW, SPI nJ/byte, B→W nJ, W→B nJ, measured 0/1 |
+
+2bpp and 4bpp use the same grayscale energy coefficients because their physical
+sequence is identical. Unmeasured energy is reported as unknown, not inferred
+from persistence or nominal coefficients.
 
 ## D1.3 host implementation
 

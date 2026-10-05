@@ -29,6 +29,7 @@ idf_component_register(
     SRCS ${sources}
     INCLUDE_DIRS "include"
     REQUIRES
+        note4_log
         bt
         esp_system
         esp_timer

@@ -142,7 +142,9 @@ bool PhysicsModel::EstimateEnergy(RefreshKind kind, uint32_t busy_us, uint32_t s
                                   uint32_t white_to_black, uint32_t* energy_uj) const {
     if (!energy_uj) return false;
     *energy_uj = 0;
-    const auto mode = static_cast<std::size_t>(kind);
+    // 2bpp input uses the same physical waveform sequence as 4bpp.
+    const auto mode =
+        static_cast<std::size_t>(kind == RefreshKind::kFull2Bpp ? RefreshKind::kFull4Bpp : kind);
     if (mode == 0 || mode >= parameters_.energy.size()) return false;
     const auto& e = parameters_.energy[mode];
     if (!e.calibrated || (!transitions_valid && (e.black_to_white_nj || e.white_to_black_nj))) return false;

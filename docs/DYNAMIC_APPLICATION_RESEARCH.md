@@ -3,9 +3,11 @@
 E2.1, source review and experiments: **2026-09-11**.
 
 Current implementation: [E2.2 micro-apps](MICRO_APPS.md) selects restricted Lua
-5.4.9 for a working Apps/USB pilot. The recommendations and measurements below
-record the earlier research snapshot, including the reasons WAMR needs further
-execution-boundary work.
+5.4.9 for Apps/USB. Maintained optional WAMR/Wasm3 backends now provide bounded
+execution, fixed metering/alignment and pre-instantiation admission; see
+[runtime API](../components/note4_runtime/README.md). The recommendations,
+timeouts and measurements below are the historical 2026-09-11 snapshot, not
+current defects or current setup instructions.
 
 The preferred next experiment is **WAMR's metered classic interpreter**, with a
 small, explicitly supported Wasm module subset. It provides a portable binary
@@ -74,7 +76,13 @@ executable-memory concerns without a measured Note4 need.
 
 ## Executed experiments
 
-[`tools/runtime-research`](../tools/runtime-research) builds the actual upstream
+The measurements below describe the pre-promotion revision, including its known
+failures. Current maintained adapters, fixed metering/alignment, admission and
+qualification commands are in [note4_runtime](../components/note4_runtime/README.md)
+and [runtime qualification](../tools/runtime-qualification/README.md). Do not
+interpret old timeouts or heap accounting as current results.
+
+[`tools/runtime-qualification`](../tools/runtime-qualification) builds the actual upstream
 engines. The normal Wasm input is 311 bytes, compiled from WAT by wasmtime
 48.0.0; wasmtime is a fixture compiler, not the execution engine being measured.
 The Lua source performs the same small workload: sum 1–64, call a bounded host
@@ -345,21 +353,16 @@ checks, not a store service or a new firmware release gate.
 From the repository root:
 
 ```bash
-# Fetch the named releases only when they are missing; execute Host experiments.
-uv run --script tools/runtime-research/run.py --fetch
+# Current maintained adapters (old measurements above remain historical).
+uv run --script tools/runtime-qualification/run.py --fetch
 
 # Add isolated Full-image links. No probe runs on the board and nothing is flashed.
 source tools/activate-dev-env.sh
-uv run --script tools/runtime-research/run.py --idf
+uv run --script tools/runtime-qualification/run.py --idf
 bash tools/build-firmware.sh --profile full
 
-# Restricted Lua passes; the exact Wasm releases reproduce the findings above.
-uv run --script tools/runtime-research/run.py --engines lua --sanitize \
-    --sources build-runtime-research/references --output build-runtime-lua-asan
-uv run --script tools/runtime-research/run.py --engines wamr --sanitize \
-    --sources build-runtime-research/references --output build-runtime-wamr-asan
-uv run --script tools/runtime-research/run.py --engines wasm3 --sanitize \
-    --sources build-runtime-research/references --output build-runtime-wasm3-asan
+# All maintained adapters must pass; upstream fixes are tracked in runtime patches.
+uv run --script tools/runtime-qualification/run.py --sanitize
 
 # Existing production regression, independent of downloaded research engines.
 bash tools/test-host.sh

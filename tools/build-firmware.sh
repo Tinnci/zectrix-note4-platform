@@ -3,6 +3,14 @@ set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build_dir="$repo_dir/build"
+build_prefix=build
+size_format=json
+if [[ "${ESP_IDF_VERSION:-5.5}" == 6.* ]]; then
+    # Different SDK majors never share CMake cache or generated sdkconfig.
+    build_prefix=build-idf6
+    build_dir="$repo_dir/$build_prefix"
+    size_format=json2
+fi
 clean_build=0
 profile=""
 
@@ -20,7 +28,7 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 if [ -n "$profile" ]; then
-    build_dir="$repo_dir/build-$profile"
+    build_dir="$repo_dir/$build_prefix-$profile"
     if [ -L "$build_dir" ]; then
         printf 'Refusing to reset config in symlinked profile directory: %s\n' "$build_dir" >&2
         exit 1
@@ -53,7 +61,7 @@ if [ -n "$profile" ]; then
     rm -f "$build_dir/sdkconfig" "$build_dir/sdkconfig.old"
     idf_args+=(-D "SDKCONFIG=$build_dir/sdkconfig"
         -D "SDKCONFIG_DEFAULTS=$repo_dir/sdkconfig.defaults;$repo_dir/tools/profiles/$profile.defaults")
-    idf.py "${idf_args[@]}" reconfigure build size --format json --output-file "$build_dir/size.json"
+    idf.py "${idf_args[@]}" reconfigure build size --format "$size_format" --output-file "$build_dir/size.json"
 else
     idf.py "${idf_args[@]}" build
 fi

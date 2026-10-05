@@ -1,6 +1,7 @@
 # Note4 EPD component API
 
-Copy `components/note4_epd` into an ESP-IDF v5.5.2 project and add
+Copy `components/note4_epd` and its `note4_log` dependency into an ESP-IDF 5.5.2
+or 6.0.3 project and add
 `note4_epd` to the consuming component's `REQUIRES` list. The public API is
 the C header `note4_epd.h`. C and C++ applications can call this API.
 
@@ -133,8 +134,81 @@ The image is 400 x 300 with two pixels per byte. The high nibble is the left
 pixel. Values range from `0` black to `15` white. The buffer must be exactly
 60,000 bytes.
 
-To reduce ghosting, do a white full 1bpp refresh before 4bpp.
+The driver establishes an OTP white base before the five gray passes; standalone
+callers and the UI do not add another white 1bpp refresh. Gray codes are optical
+targets, not alpha coverage.
 After 4bpp, establish another full 1bpp base before you use partial refresh.
+
+## Full 2bpp refresh
+
+`note4_epd_refresh_full_2bpp()` accepts exactly 30,000 bytes, 400×300 row-major,
+four MSB-first pixels per byte. Values 0..3 map to optical targets 0,333,667,1000
+permille through the active profile, directly to controller RAM without a
+60,000-byte expansion. It uses the same six-trigger sequence and failure cleanup
+as 4bpp; it does not create extra spatial resolution, partial grayscale or
+measured energy savings. `DisplayService::Present2Bpp(Quality,...)` handles all
+four orientations.
+
+## Calibration
+
+`note4_epd_calibration.h` has no GPIO/SPI/ESP-IDF dependency. A profile contains
+version/panel family, revision, per-level vendor-record selectors, normalized
+reflectance in 0..1000, and measured flags. `note4_epd_calibration_default()`
+supplies the existing gray sequence with historical optical estimates. No
+default level is certified as measured on the current panel/sequence.
+
+`note4_epd_calibration_validate()` rejects unsupported versions/panels, zero
+revision, out-of-range selectors, non-increasing reflectance, equivalent driven
+recipes, modified black/white endpoints and terminator edits. Only complete
+vendor records can be selected; arbitrary timing/voltage bytes and phase
+reordering cannot be uploaded. Valid recipes still require optical validation.
+
+`note4_epd_calibration_encode/decode()` use exactly 92 little-endian bytes,
+independent of compiler padding. Failed decoding leaves its output untouched.
+`note4_epd_calibration_update()` validates a complete prospective profile,
+increments revision, and clears optical evidence after a recipe change.
+`note4_epd_calibration_quantize()` selects the nearest reflectance, ties toward
+white; validate the profile once before processing pixels. It does not perform
+automatic font gamma correction or change already encoded 4bpp level numbers.
+
+```c
+note4_epd_calibration_t calibration;
+note4_epd_calibration_default(&calibration);
+// Load and validate your saved profile here, with the panel rail off.
+ESP_ERROR_CHECK(note4_epd_set_calibration(epd, &calibration));
+```
+
+`note4_epd_read_calibration()` copies the active profile without panel I/O.
+`note4_epd_set_calibration()` copies a validated profile under the driver mutex,
+rejects a powered panel, and invalidates the previous 1bpp baseline. Platform
+consumers use `DisplayService::ReadCalibration/SetCalibration` instead; setters
+also reject an active power batch.
+
+The Note4 platform restores `epd.cal.v1` from the existing settings namespace
+before its first frame. Missing records use defaults; damaged, incompatible or
+unreadable records use defaults and retain the original data. Saving a profile
+does not erase books, connectivity settings or firmware, and needs no firmware
+rebuild. A full factory reset erases it; user-file wipe retains it.
+
+USB commands:
+
+```text
+display calibration
+display calibration-set 6 3 4 4 400 1
+confirm <token>
+display calibration-reset
+confirm <token>
+```
+
+The example sets level 6's existing recipe to normalized reflectance 400 and
+marks it measured; use a value actually measured on your panel, not this example
+as a calibration recommendation. Arguments are decimal: level, base table,
+alternate table, record mask, reflectance, measured (0/1). The black and white
+endpoint recipes are fixed. Commands report active and saved values separately;
+saved changes apply on the next reboot, never in the middle of a refresh.
+Read failures block editing rather than overwriting retained data. Save errors
+are reported and leave active rendering unchanged; inspect saved state before
+retrying because a failed NVS commit is not proof that nothing reached flash.
 
 ## Error handling
 

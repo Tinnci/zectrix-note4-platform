@@ -2,6 +2,10 @@
 # Build the same download set locally and in the GitHub release matrix.
 set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+build_prefix=build
+if [[ "${ESP_IDF_VERSION:-5.5}" == 6.* ]]; then
+    build_prefix="build-idf6"
+fi
 version="v$(cat "$repo_dir/version.txt")"
 profiles=(full minimal reader)
 output=""
@@ -38,9 +42,9 @@ args=(--version "$version" --output "$output")
 for profile in "${profiles[@]}"; do
     if [ "$build" -eq 1 ]; then
         bash "$repo_dir/tools/build-firmware.sh" --profile "$profile"
-        bash "$repo_dir/tools/capture-build-provenance.sh" "$repo_dir/build-$profile"
+        bash "$repo_dir/tools/capture-build-provenance.sh" "$repo_dir/$build_prefix-$profile"
     fi
-    args+=(--profile "$profile=$repo_dir/build-$profile")
+    args+=(--profile "$profile=$repo_dir/$build_prefix-$profile")
     if [ "$profile" = full ]; then
         mkdir -p "$work_dir/extras"
         uv run --script "$repo_dir/tools/export-handbook.py" --version "$version" --output "$work_dir/extras"

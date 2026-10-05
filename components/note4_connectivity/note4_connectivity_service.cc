@@ -8,14 +8,14 @@
 #include <memory>
 #include <new>
 
-#include "esp_log.h"
-#include "sdkconfig.h"
 #include "esp_mac.h"
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "note4_log_event.h"
+#include "sdkconfig.h"
 
 #include "note4_ble_link.h"
 #include "note4_connectivity_settings.h"
@@ -108,8 +108,8 @@ bool ConstantTimeEqual(const uint8_t* first, const uint8_t* second,
 }
 
 void LogEnrollmentRejection(const char* reason, uint32_t session_id) {
-    ESP_LOGW(kTag, "event=enrollment_proof_rejected session=%lu reason=%s",
-             static_cast<unsigned long>(session_id), reason);
+    NOTE4_LOGW(kTag, "enrollment_proof_rejected", "session=%lu reason=%s",
+               static_cast<unsigned long>(session_id), note4::log::Token(reason).c_str());
 }
 
 #if CONFIG_NOTE4_ENABLE_BOOK_TRANSFER
@@ -274,8 +274,8 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
                 }
                 if (erased != ESP_OK && erased != ESP_ERR_NOT_FOUND) {
                     result = ConnectivityResult::kTransportError;
-                    ESP_LOGW(kTag, "event=companion_reset_failed reason=%s",
-                             esp_err_to_name(erased));
+                    NOTE4_LOGW(kTag, "companion_reset_failed", "reason=%s",
+                               note4::log::Token(esp_err_to_name(erased)).c_str());
                 } else {
                     stored_companion_id_valid = false;
                     stored_companion_id.fill(0);
@@ -303,12 +303,12 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
         const esp_err_t err = nfc_service->PrepareEnrollmentNdef(
             material.generation, material.token, info);
         if (err != ESP_OK) {
-            ESP_LOGW(kTag, "event=nfc_enrollment_prepare_failed reason=%s",
-                     esp_err_to_name(err));
+            NOTE4_LOGW(kTag, "nfc_enrollment_prepare_failed", "reason=%s",
+                       note4::log::Token(esp_err_to_name(err)).c_str());
             return false;
         }
-        ESP_LOGI(kTag, "event=nfc_enrollment_prepared generation=%lu",
-                 static_cast<unsigned long>(material.generation));
+        NOTE4_LOGI(kTag, "nfc_enrollment_prepared", "generation=%lu",
+                   static_cast<unsigned long>(material.generation));
         return true;
     }
 
@@ -328,14 +328,12 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
         if (event != nfc::NfcFieldEvent::kRising) return true;
         const companion::BootstrapStatus status = enrollment_publisher.OpenPairingWindow(*bootstrap);
         if (status != companion::BootstrapStatus::kOk) {
-            ESP_LOGW(kTag, "event=nfc_pairing_window_rejected reason=%d",
-                     static_cast<int>(status));
+            NOTE4_LOGW(kTag, "nfc_pairing_window_rejected", "reason=%d", static_cast<int>(status));
             return true;
         }
         const companion::LinkResult start =
             ble.Start(bootstrap->pairing_window_ms());
-        ESP_LOGI(kTag, "event=nfc_pairing_window_opened start_result=%d",
-                 static_cast<int>(start));
+        NOTE4_LOGI(kTag, "nfc_pairing_window_opened", "start_result=%d", static_cast<int>(start));
         return true;
     }
 
@@ -448,8 +446,8 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
             return decision;
         }
         if (!has_proof && !has_identity) {
-            ESP_LOGI(kTag, "event=hello_received session=%lu proof=absent",
-                     static_cast<unsigned long>(session_id));
+            NOTE4_LOGI(kTag, "hello_received", "session=%lu proof=absent",
+                       static_cast<unsigned long>(session_id));
             decision.status = companion::kHelloAckStatusRejected;
             decision.error_reason = kEnrollmentErrorNoStoredIdentity;
             return decision;
@@ -498,9 +496,9 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
                     decision.status = companion::kHelloAckStatusRejected;
                     decision.error_reason = kEnrollmentErrorInvalidProof;
                 } else {
-                    ESP_LOGI(kTag, "event=companion_enrolled session=%lu generation=%lu",
-                             static_cast<unsigned long>(session_id),
-                             static_cast<unsigned long>(proof_generation));
+                    NOTE4_LOGI(kTag, "companion_enrolled", "session=%lu generation=%lu",
+                               static_cast<unsigned long>(session_id),
+                               static_cast<unsigned long>(proof_generation));
                 }
             }
         }
@@ -538,7 +536,8 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
                 decision.peer_authorized = false;
                 decision.error_reason = status == companion::SyncStatus::kStoreError ||
                     status == companion::SyncStatus::kNotInitialized ? kEnrollmentErrorStore : kEnrollmentErrorSyncCursors;
-                ESP_LOGW(kTag, "event=sync_reconcile_failed status=%u", static_cast<unsigned>(status));
+                NOTE4_LOGW(kTag, "sync_reconcile_failed", "status=%u",
+                           static_cast<unsigned>(status));
             }
         }
         if (decision.status != companion::kHelloAckStatusOk) peer_authorized.store(false);
@@ -548,7 +547,7 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
     bool PersistCompanionIdentity(const uint8_t companion_id[16],
                                   uint32_t generation) {
         if (storage_service == nullptr || !storage_service->IsInitialized()) {
-            ESP_LOGW(kTag, "event=companion_identity_persist_skipped");
+            NOTE4_LOGW(kTag, "companion_identity_persist_skipped", "");
             return false;
         }
         companion::CompanionIdentityRecord record{};
@@ -562,15 +561,15 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
         const esp_err_t err = storage_service->SetBlob(
             kCompanionIdentityKey, encoded.data(), encoded.size());
         if (err != ESP_OK) {
-            ESP_LOGW(kTag, "event=companion_identity_persist_failed reason=%s",
-                     esp_err_to_name(err));
+            NOTE4_LOGW(kTag, "companion_identity_persist_failed", "reason=%s",
+                       note4::log::Token(esp_err_to_name(err)).c_str());
             return false;
         }
         std::memcpy(stored_companion_id.data(), companion_id,
                     stored_companion_id.size());
         stored_companion_id_valid = true;
-        ESP_LOGI(kTag, "event=companion_identity_persisted generation=%lu",
-                 static_cast<unsigned long>(generation));
+        NOTE4_LOGI(kTag, "companion_identity_persisted", "generation=%lu",
+                   static_cast<unsigned long>(generation));
         return true;
     }
 
@@ -590,14 +589,14 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
             record.version != kCompanionIdentityVersion ||
             record.reserved != 0 ||
             IsAllZero(record.companion_id, sizeof(record.companion_id))) {
-            ESP_LOGW(kTag, "event=companion_identity_invalid");
+            NOTE4_LOGW(kTag, "companion_identity_invalid", "");
             return;
         }
         std::memcpy(stored_companion_id.data(), record.companion_id,
                     stored_companion_id.size());
         stored_companion_id_valid = true;
-        ESP_LOGI(kTag, "event=companion_identity_loaded generation=%lu",
-                 static_cast<unsigned long>(record.enrollment_generation));
+        NOTE4_LOGI(kTag, "companion_identity_loaded", "generation=%lu",
+                   static_cast<unsigned long>(record.enrollment_generation));
     }
 
     static uint32_t MonotonicMilliseconds() {
@@ -665,8 +664,9 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
             const auto status = sync_session.Status();
             if (status != companion::SyncSessionStatus::kActive &&
                 status != companion::SyncSessionStatus::kDisconnected) {
-                ESP_LOGW(kTag, "event=sync_session_failed session=%lu status=%u",
-                         static_cast<unsigned long>(link.session_id), static_cast<unsigned>(status));
+                NOTE4_LOGW(kTag, "sync_session_failed", "session=%lu status=%u",
+                           static_cast<unsigned long>(link.session_id),
+                           static_cast<unsigned>(status));
                 peer_authorized.store(false);
                 ble.DisconnectSession(link.session_id);
             }
@@ -797,10 +797,9 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
                 if (received_session_id != link.session_id ||
                     link.state != BleState::kTransportReady) {
                     self->ble.ReleaseReceivedFrame();
-                    ESP_LOGW(kTag,
-                             "event=stale_frame_discarded session=%lu frame_session=%lu",
-                             static_cast<unsigned long>(link.session_id),
-                             static_cast<unsigned long>(received_session_id));
+                    NOTE4_LOGW(kTag, "stale_frame_discarded", "session=%lu frame_session=%lu",
+                               static_cast<unsigned long>(link.session_id),
+                               static_cast<unsigned long>(received_session_id));
                     continue;
                 }
                 companion::FrameView frame{};
@@ -815,9 +814,9 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
                      self->ProcessResourceResponse(received_session_id, frame));
                 self->ble.ReleaseReceivedFrame();
                 if (!consumed) {
-                    ESP_LOGW(kTag,
-                             "event=protocol_frame_rejected session=%lu reason=unexpected_message",
-                             static_cast<unsigned long>(link.session_id));
+                    NOTE4_LOGW(kTag, "protocol_frame_rejected",
+                               "session=%lu reason=unexpected_message",
+                               static_cast<unsigned long>(link.session_id));
                 }
                 continue;
             }
@@ -834,10 +833,9 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
             if (received_session_id != link.session_id ||
                 link.state != BleState::kTransportReady) {
                 self->ble.ReleaseReceivedFrame();
-                ESP_LOGW(kTag,
-                         "event=stale_frame_discarded session=%lu frame_session=%lu",
-                         static_cast<unsigned long>(link.session_id),
-                         static_cast<unsigned long>(received_session_id));
+                NOTE4_LOGW(kTag, "stale_frame_discarded", "session=%lu frame_session=%lu",
+                           static_cast<unsigned long>(link.session_id),
+                           static_cast<unsigned long>(received_session_id));
                 continue;
             }
             companion::FrameView frame{};
@@ -853,9 +851,8 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
                 frame.header.sequence == 1;
             if (!hello) {
                 self->ble.ReleaseReceivedFrame();
-                ESP_LOGW(kTag,
-                         "event=protocol_frame_rejected session=%lu reason=expected_hello",
-                         static_cast<unsigned long>(link.session_id));
+                NOTE4_LOGW(kTag, "protocol_frame_rejected", "session=%lu reason=expected_hello",
+                           static_cast<unsigned long>(link.session_id));
                 continue;
             }
             const uint32_t request_id = frame.header.request_id;
@@ -914,14 +911,13 @@ struct ConnectivityService::Impl : PhoneResourceSender, companion::SyncStore,
                     });
                     xSemaphoreGive(self->resource_mutex);
                 }
-                ESP_LOGI(kTag,
-                         "event=protocol_negotiated_local session=%lu request=%lu authorized=%d",
-                         static_cast<unsigned long>(link.session_id),
-                         static_cast<unsigned long>(request_id),
-                         decision.peer_authorized ? 1 : 0);
+                NOTE4_LOGI(
+                    kTag, "protocol_negotiated_local", "session=%lu request=%lu authorized=%d",
+                    static_cast<unsigned long>(link.session_id),
+                    static_cast<unsigned long>(request_id), decision.peer_authorized ? 1 : 0);
             } else {
-                ESP_LOGW(kTag, "event=hello_ack_failed session=%lu",
-                         static_cast<unsigned long>(link.session_id));
+                NOTE4_LOGW(kTag, "hello_ack_failed", "session=%lu",
+                           static_cast<unsigned long>(link.session_id));
             }
         }
         if (self->resource_client != nullptr) {
@@ -1060,8 +1056,8 @@ ConnectivityResult ConnectivityService::Initialize() {
     const esp_err_t policy_result = StoredConnectivitySettings(impl_->storage_service)
         .LoadPolicy(&impl_->resource_conditions.user_policy);
     if (policy_result != ESP_OK) {
-        ESP_LOGW(kTag, "event=connectivity_settings_load result=%s policy=offline",
-                 esp_err_to_name(policy_result));
+        NOTE4_LOGW(kTag, "connectivity_settings_load", "result=%s policy=offline",
+                   note4::log::Token(esp_err_to_name(policy_result)).c_str());
     }
 
     const ConnectivityResult result = Map(impl_->ble.Initialize());
@@ -1070,7 +1066,7 @@ ConnectivityResult ConnectivityService::Initialize() {
     impl_->LoadCompanionIdentity();
     const auto sync_status = impl_->sync_engine.Initialize(*impl_);
     if (sync_status != companion::SyncStatus::kOk) {
-        ESP_LOGW(kTag, "event=sync_store_load status=%u", static_cast<unsigned>(sync_status));
+        NOTE4_LOGW(kTag, "sync_store_load", "status=%u", static_cast<unsigned>(sync_status));
     }
 
     if (impl_->nfc_service != nullptr) {
@@ -1082,7 +1078,7 @@ ConnectivityResult ConnectivityService::Initialize() {
                 [impl = impl_]() { impl->ble.WakeSessionWaiter(); });
             impl_->MaybeRefreshNfcEnrollment();
         } else {
-            ESP_LOGW(kTag, "event=bootstrap_allocation_failed");
+            NOTE4_LOGW(kTag, "bootstrap_allocation_failed", "");
         }
     }
 

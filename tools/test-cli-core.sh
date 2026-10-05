@@ -6,6 +6,7 @@ tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+  -I"$repo_root/components/note4_log/include" \
   -I"$repo_root/components/note4_cli/include" \
   "$repo_root/components/note4_cli/note4_cli_core.cc" \
   "$repo_root/components/note4_cli/note4_cli_session.cc" \

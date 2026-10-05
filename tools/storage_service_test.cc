@@ -1,6 +1,9 @@
+#include "display-calibration/ssd2683_waveform_catalog.h"
+#include "note4_display_calibration_store.h"
 #include "note4_storage_service.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "ssd2683_waveform.h"
 
 #include <cassert>
 #include <csignal>
@@ -244,6 +247,189 @@ void TestNvsFailures() {
     delete service;
 }
 
+void TestModel() {
+    using namespace note4::display;
+    using note4::storage::StorageService;
+    PhysicsParameters profile, restored;
+    std::array<uint8_t, kModelBytes> bytes{};
+    assert(EncodeModel(profile, bytes.data(), bytes.size()));
+    const auto original = bytes;
+    assert(DecodeModel(bytes.data(), bytes.size(), &restored));
+    assert(EncodeModel(restored, bytes.data(), bytes.size()) && bytes == original);
+    const uint32_t energy[] = {3, 100, 50000, 6, 0, 0, 1};
+    assert(UpdateModel(&profile, "energy", energy, 7) && profile.revision == 1 &&
+           profile.energy[3].calibrated);
+    for (std::size_t i = 0; i < bytes.size(); ++i)
+        for (unsigned value : {0u, 1u, 127u, 255u}) {
+            auto changed = original;
+            changed[i] = value;
+            restored = profile;
+            if (!DecodeModel(changed.data(), changed.size(), &restored))
+                assert(restored.revision == profile.revision && restored.energy[3].calibrated);
+        }
+    const uint32_t bad[] = {65536, 1, 1, 1};
+    assert(!UpdateModel(&profile, "weights", bad, 4) && profile.revision == 1);
+    StorageService* storage = nullptr;
+    assert(StorageService::Create(&storage) == ESP_OK && storage->Initialize() == ESP_OK);
+    bool saved = true;
+    assert(LoadModel(*storage, &restored, &saved) == ESP_OK && !saved);
+    const auto before = commit_count;
+    assert(SaveModel(*storage, profile) == ESP_OK && commit_count == before + 1);
+    delete storage;
+    assert(StorageService::Create(&storage) == ESP_OK && storage->Initialize() == ESP_OK);
+    assert(LoadModel(*storage, &restored, &saved) == ESP_OK && saved &&
+           restored.energy[3].fixed_uj == 100);
+    auto corrupt = original;
+    corrupt[0] = 2;
+    assert(storage->SetBlob(kModelSettingKey, corrupt.data(), corrupt.size()) == ESP_OK);
+    assert(LoadModel(*storage, &restored, &saved) == ESP_ERR_INVALID_ARG && !saved &&
+           restored.revision == 0);
+    std::size_t size = bytes.size();
+    assert(storage->GetBlob(kModelSettingKey, bytes.data(), &size) == ESP_OK && bytes == corrupt);
+    commit_result = ESP_FAIL;
+    assert(SaveModel(*storage, profile) == ESP_FAIL);
+    commit_result = ESP_OK;
+    assert(ResetModel(*storage) == ESP_OK && ResetModel(*storage) == ESP_OK);
+    delete storage;
+}
+
+void TestCalibration() {
+    using namespace note4::display;
+    note4_epd_calibration_t profile{};
+    note4_epd_calibration_default(&profile);
+    assert(note4_epd_calibration_validate(&profile) && !profile.measured_levels);
+    for (size_t pass = 0; pass < 5; ++pass) {
+        assert(ssd2683_waveform::MakeGray16Waveform(profile, pass) ==
+               ssd2683_waveform_catalog::kVendorGray16RenderWaveforms[pass]);
+        for (unsigned pair = 0; pair < 256; ++pair) {
+            unsigned expected = 0;
+            for (unsigned pixel = 0; pixel < 2; ++pixel) {
+                const uint8_t level = pixel ? pair & 15 : pair >> 4;
+                const auto code =
+                    ssd2683_waveform_catalog::VendorGray16RenderPassOfLevel(level) == pass
+                        ? ssd2683_waveform_catalog::VendorGray16RenderCodeOfLevel(level)
+                        : 0;
+                expected |= code << (pixel ? 0 : 2);
+            }
+            assert(ssd2683_waveform::kPackedCodes[pass][pair] == expected);
+        }
+    }
+    std::array<uint8_t, NOTE4_EPD_CALIBRATION_BYTES> bytes{};
+    assert(note4_epd_calibration_encode(&profile, bytes.data(), bytes.size()));
+    const auto original = bytes;
+    note4_epd_calibration_t restored{};
+    assert(note4_epd_calibration_decode(bytes.data(), bytes.size(), &restored));
+    assert(note4_epd_calibration_encode(&restored, bytes.data(), bytes.size()) &&
+           bytes == original);
+    assert(bytes[0] == 1 && bytes[2] == (2683 & 255) && bytes[4] == 1 && bytes[10] == 0);
+    for (size_t index = 0; index < bytes.size(); ++index) {
+        for (unsigned value : {0u, 1u, 127u, 255u}) {
+            auto corrupt = original;
+            corrupt[index] = value;
+            restored = profile;
+            const bool valid =
+                note4_epd_calibration_decode(corrupt.data(), corrupt.size(), &restored);
+            if (valid)
+                assert(note4_epd_calibration_validate(&restored));
+            else {
+                assert(note4_epd_calibration_encode(&restored, bytes.data(), bytes.size()));
+                assert(bytes == original); // Failed decoding is transactional.
+            }
+        }
+    }
+    assert(note4_epd_calibration_quantize(&profile, 0) == 0);
+    assert(note4_epd_calibration_quantize(&profile, 1000) == 15);
+    assert(note4_epd_calibration_quantize(&profile, 28) == 1);
+    for (unsigned sample = 0; sample <= 1000; ++sample) {
+        unsigned best = 0, distance = 1001;
+        for (unsigned level = 0; level < 16; ++level) {
+            const unsigned brightness = profile.levels[level].reflectance_permille;
+            const unsigned delta = brightness > sample ? brightness - sample : sample - brightness;
+            if (delta <= distance) {
+                best = level;
+                distance = delta;
+            }
+        }
+        assert(note4_epd_calibration_quantize(&profile, sample) == best);
+    }
+    auto value = profile.levels[6];
+    value.reflectance_permille = 400;
+    assert(note4_epd_calibration_update(&profile, 6, &value, true));
+    assert(profile.revision == 2 && profile.measured_levels == (1u << 6));
+    auto invalid = profile;
+    invalid.levels[14].base_table = 255;
+    assert(!note4_epd_calibration_validate(&invalid));
+    invalid = profile;
+    invalid.levels[2] = profile.levels[1];
+    invalid.levels[2].reflectance_permille = 134;
+    assert(!note4_epd_calibration_validate(&invalid));
+    value = profile.levels[6];
+    value.base_table = 255;
+    assert(!note4_epd_calibration_update(&profile, 6, &value, true) && profile.revision == 2);
+    value = profile.levels[6];
+    value.alternate_mask = 6;
+    assert(note4_epd_calibration_update(&profile, 6, &value, false) && !profile.measured_levels);
+    for (size_t pass = 0; pass < 5; ++pass) {
+        const auto waveform = ssd2683_waveform::MakeGray16Waveform(profile, pass);
+        // A non-default profile still preserves analog, VCOM/common, border,
+        // code-0 hold, and the entire selected eleven-byte vendor records.
+        for (size_t i = 0; i < 7 + 88; ++i)
+            assert(waveform[i] == ssd2683_waveform::kVendorGray4Waveform[i]);
+        for (size_t i = 7 + 5 * 88; i < waveform.size(); ++i)
+            assert(waveform[i] == ssd2683_waveform::kVendorGray4Waveform[i]);
+        for (size_t code = 0; code < 4; ++code) {
+            const note4_epd_gray_level_t hold{5, 5, 0, 1000};
+            const auto& target = code ? profile.levels[pass * 3 + code - 1] : hold;
+            for (size_t record = 0; record < 8; ++record) {
+                const auto table = target.alternate_mask & (1u << record) ? target.alternate_table
+                                                                          : target.base_table;
+                for (size_t byte = 0; byte < 11; ++byte)
+                    assert(waveform[7 + (code + 1) * 88 + record * 11 + byte] ==
+                           ssd2683_waveform::kVendorGray4Waveform[7 + table * 88 + record * 11 +
+                                                                  byte]);
+            }
+        }
+    }
+    invalid = profile;
+    invalid.revision = UINT32_MAX;
+    assert(!note4_epd_calibration_update(&invalid, 6, &value, false));
+
+    note4::storage::StorageService* storage = nullptr;
+    assert(note4::storage::StorageService::Create(&storage) == ESP_OK &&
+           storage->Initialize() == ESP_OK);
+    assert(ResetCalibration(*storage) == ESP_OK);
+    bool saved = true;
+    assert(LoadCalibration(*storage, &restored, &saved) == ESP_OK && !saved &&
+           restored.revision == 1);
+    const auto commits = commit_count;
+    assert(SaveCalibration(*storage, profile) == ESP_OK && commit_count == commits + 1);
+    delete storage;
+    assert(note4::storage::StorageService::Create(&storage) == ESP_OK &&
+           storage->Initialize() == ESP_OK);
+    assert(LoadCalibration(*storage, &restored, &saved) == ESP_OK && saved &&
+           restored.revision == 3);
+    assert(restored.levels[6].reflectance_permille == 400);
+    auto bad = original;
+    bad[0] = 99;
+    assert(storage->SetBlob(kCalibrationSettingKey, bad.data(), bad.size()) == ESP_OK);
+    assert(LoadCalibration(*storage, &restored, &saved) == ESP_ERR_INVALID_ARG && !saved &&
+           restored.revision == 1);
+    size_t length = bytes.size();
+    assert(storage->GetBlob(kCalibrationSettingKey, bytes.data(), &length) == ESP_OK &&
+           bytes == bad);
+    assert(storage->SetBlob(kCalibrationSettingKey, bad.data(), 2) == ESP_OK);
+    assert(LoadCalibration(*storage, &restored) == ESP_ERR_INVALID_SIZE && restored.revision == 1);
+    read_result = ESP_FAIL;
+    assert(LoadCalibration(*storage, &restored) == ESP_FAIL && restored.revision == 1);
+    read_result = ESP_OK;
+    commit_result = ESP_FAIL;
+    assert(SaveCalibration(*storage, profile) == ESP_FAIL);
+    commit_result = ESP_OK;
+    assert(ResetCalibration(*storage) == ESP_OK);
+    assert(LoadCalibration(*storage, &restored, &saved) == ESP_OK && !saved);
+    delete storage;
+}
+
 int main() {
     using note4::storage::StorageService;
     StorageService* service = nullptr;
@@ -295,5 +481,7 @@ int main() {
     TestFileWipe();
     TestNvsFailures();
     TestInterruptedUploads();
+    TestCalibration();
+    TestModel();
     assert(nvs_handles == 0);
 }

@@ -20,7 +20,7 @@ bool PlatformControlDispatcher::Matches(ControlTicket ticket) const {
 
 ControlStatus PlatformControlDispatcher::Submit(const ControlRequest& request,
                                                ControlTicket* ticket) {
-    if (ticket == nullptr || request.operation > ControlOperation::kFactoryReset) {
+    if (ticket == nullptr || request.operation > ControlOperation::kDisplayModelReset) {
         return ControlStatus::kInvalidArgument;
     }
     if (IsMutation(request.operation) && (!request.confirmed || request.origin != Origin::kUsbLocal))

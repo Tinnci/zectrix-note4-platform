@@ -8,11 +8,14 @@ if [ "${NOTE4_PLATFORM_SANITIZE:-0}" = 1 ]; then
     flags+=(-g "-fsanitize=address,undefined" -fno-omit-frame-pointer)
 fi
 common=(
+  -I"$root_dir/components/note4_log/include" \
   -I"$root_dir/tools/host_include" \
   -I"$root_dir/components/note4_app/include" -I"$root_dir/components/note4_text/include" \
   -I"$root_dir/components/note4_board/include" \
   -I"$root_dir/components/note4_platform/include" \
   -I"$root_dir/components/note4_display/include" \
+  -I"$root_dir/components/note4_epd/include" \
+  -I"$root_dir/components/note4_epd/private_include" \
   -I"$root_dir/components/note4_input/include" \
   -I"$root_dir/components/note4_power/include" \
   -I"$root_dir/components/note4_storage/include" \
@@ -21,6 +24,10 @@ common=(
   -I"$root_dir/components/note4_time/include" \
   "$root_dir/components/note4_platform/note4_platform.cc" \
   "$root_dir/components/note4_platform/note4_service_registry.cc" \
+  "$root_dir/components/note4_platform/note4_display_calibration_store.cc" \
+  "$root_dir/components/note4_display/note4_display_model.cc" \
+  "$root_dir/components/note4_display/note4_display_physics.cc" \
+  "$root_dir/components/note4_epd/note4_epd_calibration.cc" \
   "$root_dir/components/note4_system/note4_boot_guard.cc" \
   "$root_dir/components/note4_system/note4_health_supervisor.cc" \
   "$root_dir/tools/platform_test.cc"
@@ -47,6 +54,7 @@ for profile in full minimal connectivity cli usb-host update; do
             "$root_dir/components/note4_cli/note4_cli_control.cc"
             "$root_dir/components/note4_time/note4_time_sync.cc"
             "$root_dir/components/note4_cli/note4_cli_diagnostics.cc"
+            "$root_dir/components/note4_log/note4_log.cc"
             "$root_dir/components/note4_cli/note4_cli_log.cc")
     fi
     if [ "$update" = 1 ]; then

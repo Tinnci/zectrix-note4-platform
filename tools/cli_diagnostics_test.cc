@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cassert>
 #include <condition_variable>
+#include <cstdio>
 #include <cstring>
 #include <deque>
 #include <functional>
@@ -69,8 +70,48 @@ std::string Run(DiagnosticExecutor& executor, PlatformControlDispatcher& dispatc
         assert(!chunk.truncated());
         if (chunk.size() != 0) text += std::string(chunk.data()) + '\n';
     }
+    if (status != ExecuteStatus::kOk)
+        std::fprintf(stderr, "Command failed: %s status=%u\n", command,
+                     static_cast<unsigned>(status));
     assert(status == ExecuteStatus::kOk);
     return text;
+}
+
+void TestCalibrationCommands() {
+    Owner owner;
+    note4_epd_calibration_default(&owner.sample.calibration.active);
+    owner.sample.calibration.configured = owner.sample.calibration.active;
+    PlatformControlDispatcher dispatcher(owner, Clock);
+    LogBuffer logs;
+    DiagnosticExecutor executor(dispatcher, logs);
+    const auto report = Run(executor, dispatcher, "display calibration");
+    assert(report.find("active_revision=1") != std::string::npos &&
+           report.find("level=15") != std::string::npos);
+    BoundedOutput output;
+    assert(executor.Execute(Parse("display calibration-set 6 3 4 4 400 1"), &output) ==
+           ExecuteStatus::kOk);
+    assert(output.data() && std::strstr(output.data(), "confirm 1") && !dispatcher.Dispatch());
+    assert(Run(executor, dispatcher, "confirm 1").find("apply_on=reboot") != std::string::npos);
+    assert(owner.last_operation == ControlOperation::kDisplayCalibrationSet &&
+           owner.last_request.confirmed);
+    assert(owner.last_request.values == (std::array<uint32_t, 8>{6, 3, 4, 4, 400, 1, 0, 0}));
+    output.Clear();
+    assert(executor.Execute(Parse("display calibration-set 6 255 4 4 400 1"), &output) ==
+           ExecuteStatus::kInvalidArguments);
+    output.Clear();
+    assert(executor.Execute(Parse("display calibration-set 6 3 4 4 400"), &output) ==
+           ExecuteStatus::kInvalidArguments);
+    assert(Run(executor, dispatcher, "display calibration-reset").find("confirm 2") !=
+           std::string::npos);
+    Run(executor, dispatcher, "confirm 2");
+    assert(owner.last_operation == ControlOperation::kDisplayCalibrationReset);
+    ControlTicket ticket;
+    ControlRequest request;
+    request.operation = ControlOperation::kDisplayCalibrationSet;
+    assert(dispatcher.Submit(request, &ticket) == ControlStatus::kDenied);
+    request.confirmed = true;
+    request.origin = Origin::kAuthorizedCompanion;
+    assert(dispatcher.Submit(request, &ticket) == ControlStatus::kDenied);
 }
 
 void TestDisplayTelemetryCommands() {
@@ -117,6 +158,44 @@ void TestDisplayTelemetryCommands() {
     assert(executor.Poll(&output) == ExecuteStatus::kPending);
     assert(std::string(output.data()).find("latest=20") != std::string::npos);
     executor.Cancel();
+}
+
+void TestModelCommands() {
+    Owner owner;
+    owner.sample.saved_model.revision = 42;
+    owner.sample.model_saved = true;
+    PlatformControlDispatcher dispatcher(owner, Clock);
+    LogBuffer logs;
+    DiagnosticExecutor executor(dispatcher, logs);
+    const auto report = Run(executor, dispatcher, "display model");
+    assert(report.find("scope=active") != std::string::npos);
+    assert(report.find("scope=next-boot revision=42 saved=1") != std::string::npos);
+    assert(Run(executor, dispatcher, "display model-set weights 16 128 64 192").find("confirm 1") !=
+           std::string::npos);
+    assert(!dispatcher.Dispatch());
+    Run(executor, dispatcher, "confirm 1");
+    assert(owner.last_operation == ControlOperation::kDisplayModelSet &&
+           owner.last_request.confirmed);
+    assert(std::strcmp(owner.last_request.text1.data(), "weights") == 0 &&
+           owner.last_request.cursor == 4);
+    assert(owner.last_request.values == (std::array<uint32_t, 8>{16, 128, 64, 192, 0, 0, 0, 0}));
+    for (const char* command :
+         {"display model-set weights 65536 0 0 0", "display model-set weights 1 2",
+          "display model-set energy 4 1 2 3 4 5 0", "display model-set limits -1 2",
+          "display model-set unknown 1", "display model-reset extra"}) {
+        BoundedOutput output;
+        assert(executor.Execute(Parse(command), &output) == ExecuteStatus::kInvalidArguments);
+    }
+    assert(Run(executor, dispatcher, "display model-reset").find("confirm 2") != std::string::npos);
+    Run(executor, dispatcher, "confirm 2");
+    assert(owner.last_operation == ControlOperation::kDisplayModelReset);
+    ControlTicket ticket;
+    ControlRequest request;
+    request.operation = ControlOperation::kDisplayModelSet;
+    assert(dispatcher.Submit(request, &ticket) == ControlStatus::kDenied);
+    request.confirmed = true;
+    request.origin = Origin::kAuthorizedCompanion;
+    assert(dispatcher.Submit(request, &ticket) == ControlStatus::kDenied);
 }
 
 void TestCommands() {
@@ -208,9 +287,10 @@ void TestCommands() {
     assert(Run(executor, dispatcher, "log stats").find("queued=0/32") != std::string::npos);
     assert(owner.calls == calls);
 
-    for (const char* command : {"sysinfo extra", "system", "heap x", "tasks 1",
-                                 "uptime now", "epd-inspect 0", "log-stream nope",
-                                 "log follow info extra", "version extra"}) {
+    for (const char* command :
+         {"sysinfo extra", "system", "heap x", "tasks 1", "uptime now", "epd-inspect 0",
+          "log-stream nope", "log follow info bad-tag", "log follow info epd extra",
+          "log level verbose", "version extra"}) {
         output.Clear();
         assert(executor.Execute(Parse(command), &output) == ExecuteStatus::kInvalidArguments);
     }
@@ -536,10 +616,21 @@ void TestInputStream() {
 }
 
 void TestLogs() {
+    class Levels final : public note4::log::LevelControl {
+    public:
+        LogLevel Get() const override { return value; }
+        bool Set(LogLevel level) override {
+            value = level;
+            return true;
+        }
+        LogLevel value = LogLevel::kInfo;
+    } levels;
     Owner owner;
     PlatformControlDispatcher dispatcher(owner, Clock);
     LogBuffer logs;
-    DiagnosticExecutor executor(dispatcher, logs);
+    DiagnosticExecutor executor(dispatcher, logs, nullptr, Clock, &levels);
+    assert(Run(executor, dispatcher, "log level debug").find("producer=debug") !=
+           std::string::npos);
     for (unsigned index = 0; index < 40; ++index) {
         logs.Push(LogLevel::kInfo, ("I log " + std::to_string(index)).c_str());
     }
@@ -567,11 +658,23 @@ void TestLogs() {
     logs.Push(LogLevel::kWarn, "warning visible\n");
     output.Clear();
     assert(executor.Poll(&output) == ExecuteStatus::kPending);
-    assert(std::string(output.data()) == "warning visible");
+    assert(std::string(output.data()).find("warning visible") != std::string::npos);
     executor.Cancel();
     output.Clear();
     assert(executor.Poll(&output) == ExecuteStatus::kOk && output.size() == 0);
     assert(executor.Execute(Parse("log follow error"), &output) == ExecuteStatus::kPending);
+    executor.Cancel();
+    assert(levels.Get() == LogLevel::kDebug);
+    logs.Push(LogLevel::kInfo, "I (1) ble: event=hidden");
+    logs.Push(LogLevel::kInfo, "I (2) epd: event=shown");
+    output.Clear();
+    assert(executor.Execute(Parse("log follow debug epd"), &output) == ExecuteStatus::kPending);
+    output.Clear();
+    assert(executor.Poll(&output) == ExecuteStatus::kPending); // drop report
+    output.Clear();
+    assert(executor.Poll(&output) == ExecuteStatus::kPending);
+    assert(std::strstr(output.data(), "event=shown") &&
+           !std::strstr(output.data(), "event=hidden"));
     executor.Cancel();
 
     LogBuffer concurrent;
@@ -691,6 +794,8 @@ int main() {
     TestCommands();
     TestHealthCommand();
     TestDisplayTelemetryCommands();
+    TestCalibrationCommands();
+    TestModelCommands();
     TestDispatcherLifetime();
     TestNonblockingOwnerRetry();
     TestExecutingCancellationAndShutdown(false, false);

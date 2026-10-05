@@ -2,10 +2,10 @@
 
 #include "audio_codec.h"
 
-#include <esp_log.h>
+#include "note4_log_event.h"
 #include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
 #include <freertos/semphr.h>
+#include <freertos/task.h>
 
 #include <algorithm>
 #include <array>
@@ -19,7 +19,7 @@
 
 namespace {
 
-const char* const TAG = "AcousticSelftest";
+const char* const TAG = "audio_test";
 
 constexpr int kSampleRate = 16000;
 constexpr int kBitDurationMs = 12;
@@ -310,7 +310,7 @@ AcousticSelftestRoundResult RunRound(AudioCodec* codec,
     const bool playback_joined =
         xSemaphoreTake(playback_done, kPlaybackJoinTimeoutTicks) == pdTRUE;
     if (!playback_joined) {
-        ESP_LOGW(TAG, "playback exceeded its deadline; waiting for codec release");
+        NOTE4_LOGW(TAG, "playback_timeout", "cleanup=pending");
         xSemaphoreTake(playback_done, portMAX_DELAY);
     }
     vSemaphoreDelete(playback_done);
@@ -339,15 +339,15 @@ AcousticSelftestSummary AcousticSelftest::Run(AudioCodec* codec, const std::arra
         codec->output_channels() != 1 || codec->input_sample_rate() != kSampleRate ||
         codec->output_sample_rate() != kSampleRate) {
         summary.reason = AcousticSelftestFailureReason::kUnsupportedCodec;
-        ESP_LOGW(TAG, "factory_test type=audio_path result=FAIL reason=%s",
-                 FailureReasonToString(summary.reason));
+        NOTE4_LOGW(TAG, "audio_path_test", "type=audio_path result=FAIL reason=%s",
+                   note4::log::Token(FailureReasonToString(summary.reason)).c_str());
         return summary;
     }
 
     if (!WarmupCodec(codec)) {
         summary.reason = AcousticSelftestFailureReason::kCaptureTimeout;
-        ESP_LOGW(TAG, "factory_test type=audio_path warmup result=FAIL reason=%s",
-                 FailureReasonToString(summary.reason));
+        NOTE4_LOGW(TAG, "audio_path_test", "type=audio_path phase=warmup result=FAIL reason=%s",
+                   note4::log::Token(FailureReasonToString(summary.reason)).c_str());
         return summary;
     }
 
@@ -363,8 +363,10 @@ AcousticSelftestSummary AcousticSelftest::Run(AudioCodec* codec, const std::arra
             summary.reason = AcousticSelftestFailureReason::kNone;
             summary.payload = round_result.payload;
             summary.has_payload = round_result.has_payload;
-            ESP_LOGI(TAG, "factory_test type=audio_path round=%d fc=%d result=PASS payload=%s",
-                     summary.round, summary.fc, PayloadToHex(summary.payload).c_str());
+            NOTE4_LOGI(TAG, "audio_path_test",
+                       "type=audio_path round=%d fc=%d result=PASS payload=%s", summary.round,
+                       summary.fc,
+                       note4::log::Token(PayloadToHex(summary.payload).c_str()).c_str());
             return summary;
         }
 
@@ -372,13 +374,18 @@ AcousticSelftestSummary AcousticSelftest::Run(AudioCodec* codec, const std::arra
         summary.payload = round_result.payload;
         summary.has_payload = round_result.has_payload;
         if (round_result.has_payload) {
-            ESP_LOGW(TAG,
-                     "factory_test type=audio_path round=%d fc=%d result=FAIL reason=%s payload=%s expected=%s",
-                     round_result.round + 1, round_result.fc, FailureReasonToString(round_result.reason),
-                     PayloadToHex(round_result.payload).c_str(), PayloadToHex(expected_payload).c_str());
+            NOTE4_LOGW(
+                TAG, "audio_path_test",
+                "type=audio_path round=%d fc=%d result=FAIL reason=%s payload=%s expected=%s",
+                round_result.round + 1, round_result.fc,
+                note4::log::Token(FailureReasonToString(round_result.reason)).c_str(),
+                note4::log::Token(PayloadToHex(round_result.payload).c_str()).c_str(),
+                note4::log::Token(PayloadToHex(expected_payload).c_str()).c_str());
         } else {
-            ESP_LOGW(TAG, "factory_test type=audio_path round=%d fc=%d result=FAIL reason=%s",
-                     round_result.round + 1, round_result.fc, FailureReasonToString(round_result.reason));
+            NOTE4_LOGW(TAG, "audio_path_test",
+                       "type=audio_path round=%d fc=%d result=FAIL reason=%s",
+                       round_result.round + 1, round_result.fc,
+                       note4::log::Token(FailureReasonToString(round_result.reason)).c_str());
         }
     }
 

@@ -5,6 +5,22 @@
 #include <cstring>
 
 namespace note4::display::detail {
+inline void RotateGray2(const uint8_t* source, uint8_t* destination, bool portrait, bool inverted) {
+    std::memset(destination, 0, 30000);
+    const int width = portrait ? 300 : 400, height = portrait ? 400 : 300;
+    for (int y = 0; y < height; ++y)
+        for (int x = 0; x < width; ++x) {
+            const auto from = static_cast<std::size_t>(y) * width + x;
+            const auto pixel = (source[from / 4] >> (6 - 2 * (from % 4))) & 3;
+            int dx = portrait ? 399 - y : x, dy = portrait ? x : y;
+            if (inverted) {
+                dx = 399 - dx;
+                dy = 299 - dy;
+            }
+            const auto to = static_cast<std::size_t>(dy) * 400 + dx;
+            destination[to / 4] |= static_cast<uint8_t>(pixel << (6 - 2 * (to % 4)));
+        }
+}
 
 // Pixel transforms only: no controller, power, waveform, SPI or allocation policy.
 // Source and destination must not overlap. Callers validate size and geometry.

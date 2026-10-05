@@ -5,10 +5,24 @@
 #include <cstring>
 
 #include "esp_timer.h"
-#include "note4_epd.h"
 #include "frame_transform.h"
+#include "note4_epd.h"
+#include "note4_log_event.h"
 
 namespace note4::display {
+esp_err_t DisplayService::ReadCalibration(note4_epd_calibration_t* calibration) const {
+    return note4_epd_read_calibration(driver_handle_, calibration);
+}
+
+esp_err_t DisplayService::SetCalibration(const note4_epd_calibration_t& calibration) {
+    if (batch_active_)
+        return ESP_ERR_INVALID_STATE;
+    const auto error = note4_epd_set_calibration(driver_handle_, &calibration);
+    if (error == ESP_OK)
+        OnError(); // Invalidate previous partial baseline.
+    return error;
+}
+
 namespace {
 
 uint32_t Bounded(uint64_t value) { return std::min<uint64_t>(value, UINT32_MAX); }
@@ -173,8 +187,31 @@ esp_err_t DisplayService::Present4Bpp(DisplayIntent intent, const uint8_t* frame
         detail::RotateHalfTurn(frame, rotated_.get(), size, true);
         frame = rotated_.get();
     }
-    const auto result = PresentPhysical4Bpp(intent, frame, size);
+    const auto result = PresentPhysicalGray(intent, frame, size, 4);
     if (result == ESP_OK) orientation_changed_ = portrait_presented_ = false;
+    return result;
+}
+
+esp_err_t DisplayService::Present2Bpp(DisplayIntent intent, const uint8_t* frame,
+                                      std::size_t size) {
+    if (!frame || size != kFrameBytes2Bpp)
+        return ESP_ERR_INVALID_ARG;
+    if (intent != DisplayIntent::Quality)
+        return ESP_ERR_NOT_SUPPORTED;
+    const bool inverted = orientation_ == DisplayOrientation::Inverted ||
+                          orientation_ == DisplayOrientation::PortraitInverted;
+    if (portrait() || inverted) {
+        const auto err = EnsureRotationBuffer(size);
+        if (err != ESP_OK)
+            return err;
+        detail::RotateGray2(frame, rotated_.get(), portrait(), inverted);
+        frame = rotated_.get();
+    }
+    const auto result = PresentPhysicalGray(intent, frame, size, 2);
+    if (result == ESP_OK) {
+        orientation_changed_ = false;
+        portrait_presented_ = portrait();
+    }
     return result;
 }
 
@@ -277,18 +314,22 @@ esp_err_t DisplayService::PresentPhysical1Bpp(
     return RecordRefresh(observation, err, full ? full_framebuffer : nullptr);
 }
 
-esp_err_t DisplayService::PresentPhysical4Bpp(DisplayIntent intent, const uint8_t* framebuffer, std::size_t size) {
+esp_err_t DisplayService::PresentPhysicalGray(DisplayIntent intent, const uint8_t* framebuffer,
+                                              std::size_t size, unsigned bits) {
     if (intent != DisplayIntent::Quality) return ESP_ERR_NOT_SUPPORTED;
-    if (framebuffer == nullptr || size != kFrameBytes4Bpp) return ESP_ERR_INVALID_ARG;
+    if (framebuffer == nullptr ||
+        size != static_cast<size_t>(kPanelWidth * kPanelHeight * bits / 8))
+        return ESP_ERR_INVALID_ARG;
     auto observation = StartObservation();
-    observation.frame.kind = RefreshKind::kFull4Bpp;
+    observation.frame.kind = bits == 2 ? RefreshKind::kFull2Bpp : RefreshKind::kFull4Bpp;
     observation.frame.reason = RefreshReason::Gray;
     observation.frame.window = {0, 0, kPanelWidth, kPanelHeight};
     StartMetrics(&observation);
     bool owns_power = false;
     esp_err_t err = BeginRefresh(&owns_power);
     if (err == ESP_OK) {
-        err = note4_epd_refresh_full_4bpp(driver_handle_, framebuffer, size);
+        err = bits == 2 ? note4_epd_refresh_full_2bpp(driver_handle_, framebuffer, size)
+                        : note4_epd_refresh_full_4bpp(driver_handle_, framebuffer, size);
         err = EndRefresh(owns_power, err);
     }
     if (err == ESP_OK) {
@@ -347,6 +388,17 @@ esp_err_t DisplayService::RecordRefresh(Observation& observation, esp_err_t resu
         }
     }
     telemetry_.Record(frame);
+    if (result != ESP_OK)
+        NOTE4_LOGW("display", "refresh_failed",
+                   "kind=%u reason=%u error=%d duration_us=%lu triggers=%u",
+                   static_cast<unsigned>(frame.kind), static_cast<unsigned>(frame.reason), result,
+                   static_cast<unsigned long>(frame.duration_us), frame.waveform_triggers);
+    else
+        NOTE4_LOGD("display", "refresh_done",
+                   "kind=%u duration_us=%lu ram_bytes=%lu busy_us=%lu triggers=%u",
+                   static_cast<unsigned>(frame.kind), static_cast<unsigned long>(frame.duration_us),
+                   static_cast<unsigned long>(frame.ram_bytes),
+                   static_cast<unsigned long>(frame.busy_us), frame.waveform_triggers);
     inspection_.last_refresh = frame.kind;
     inspection_.last_reason = frame.reason;
     inspection_.last_error = result;
@@ -357,8 +409,10 @@ esp_err_t DisplayService::RecordRefresh(Observation& observation, esp_err_t resu
         inspection_.framebuffer_valid = false;
         return result;
     }
-    inspection_.bits_per_pixel = frame.kind == RefreshKind::kFull4Bpp ? 4 : 1;
-    inspection_.framebuffer_bytes = inspection_.bits_per_pixel == 4 ? kFrameBytes4Bpp : kFrameBytes1Bpp;
+    inspection_.bits_per_pixel = frame.kind == RefreshKind::kFull4Bpp   ? 4
+                                 : frame.kind == RefreshKind::kFull2Bpp ? 2
+                                                                        : 1;
+    inspection_.framebuffer_bytes = kFrameBytes1Bpp * inspection_.bits_per_pixel;
     if (pixels != nullptr) {
         std::memcpy(inspection_.preview.data(), pixels, inspection_.preview.size());
         inspection_.framebuffer_valid = true;

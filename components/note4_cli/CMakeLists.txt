@@ -8,7 +8,7 @@ idf_component_register(
         "note4_cli_log.cc"
         "note4_cli_log_esp.cc"
     INCLUDE_DIRS "include"
-    REQUIRES esp_driver_usb_serial_jtag note4_display note4_system note4_board note4_time
+    REQUIRES note4_log esp_driver_usb_serial_jtag note4_display note4_epd note4_system note4_board note4_time
     KCONFIG_PROJBUILD "${CMAKE_CURRENT_LIST_DIR}/../../cmake/Kconfig.empty"
 )
 

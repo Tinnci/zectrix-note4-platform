@@ -3,7 +3,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../cmake/note4_features.cmake")
 set(sources "app_main.cc" "terminal.cc" "application_modules.cc"
     "app_launcher.cc" "app_clock.cc" "app_settings.cc" "app_sleep_cover.cc"
     "app_diagnostics.cc" "app_gallery.cc" "app_device_info.cc")
-set(requires ui note4_app note4_display note4_input
+set(requires note4_log ui note4_app note4_display note4_input
     note4_power note4_platform note4_self_test note4_storage
     note4_system note4_time esp_psram)
 if(CONFIG_NOTE4_ENABLE_UTILITIES)

@@ -16,7 +16,7 @@ struct SimulationOptions {
     uint32_t log_burst = 0;
 };
 
-class SimulatedPlatform final : public ControlOwner {
+class SimulatedPlatform final : public ControlOwner, public log::LevelControl {
 public:
     SimulatedPlatform(LogBuffer& logs, SimulationOptions options);
     ~SimulatedPlatform() { Stop(); }
@@ -26,6 +26,13 @@ public:
     bool IsCurrentTaskOwner() const override;
     void Wake() override;
     ControlStatus Inspect(const ControlRequest&, ControlResult*) override;
+    LogLevel Get() const override { return producer_.load(); }
+    bool Set(LogLevel level) override {
+        if (level < LogLevel::kError || level > LogLevel::kDebug)
+            return false;
+        producer_.store(level);
+        return true;
+    }
 
 private:
     using Clock = std::chrono::steady_clock;
@@ -43,6 +50,7 @@ private:
     display::TelemetryRecorder display_telemetry_;
     Clock::time_point started_ = Clock::now();
     uint32_t log_sequence_ = 0;
+    std::atomic<LogLevel> producer_{LogLevel::kInfo};
     std::mutex mutex_;
     std::condition_variable changed_;
     std::thread thread_;

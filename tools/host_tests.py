@@ -17,7 +17,7 @@ SUITES = {
     "foundation": (
         "host-runner", "app-contract", "application-runtime", "first-party-app-controllers",
         "scene-manager", "sdk-v2", "service-registry", "runtime", "module-config",
-        "localization", "input-event", "layout",
+        "localization", "input-event", "layout", "wasm-admission",
     ),
     "connectivity": (
         "companion-identity", "companion-protocol", "connectivity-policy", "connectivity-settings",

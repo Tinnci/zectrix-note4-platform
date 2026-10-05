@@ -4,6 +4,10 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "$0")/.." && pwd)"
 build_dir="${1:-$repo_dir/build}"
 output_file="${2:-$build_dir/build-provenance.txt}"
+dependency_lock="$repo_dir/dependencies.lock"
+if [ -f "$build_dir/dependencies.lock" ]; then
+    dependency_lock="$build_dir/dependencies.lock"
+fi
 
 sha256_file() {
     if command -v sha256sum >/dev/null 2>&1; then
@@ -30,7 +34,8 @@ test -f "$build_dir/project_description.json"
     printf 'compiler=%s\n' "$(command -v xtensa-esp32s3-elf-gcc || true)"
     printf 'cmake=%s\n' "$(cmake --version | head -n 1)"
     printf 'ninja=%s\n' "$(ninja --version)"
-    printf 'dependencies_lock_sha256=%s\n' "$(sha256_file "$repo_dir/dependencies.lock")"
+    printf 'dependencies_lock=%s\n' "$dependency_lock"
+    printf 'dependencies_lock_sha256=%s\n' "$(sha256_file "$dependency_lock")"
     printf '\nartifacts:\n'
     find "$build_dir" -maxdepth 3 -type f \( -name '*.bin' -o -name '*.elf' -o -name '*.map' \) -print |
         LC_ALL=C sort |

@@ -5,13 +5,13 @@
 #include <cstdio>
 #include <cstring>
 
-#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "note4_storage_service.h"
-#include "note4_language_setting.h"
-#include "note4_input_service.h"
 #include "note4_foreground_dispatch.h"
+#include "note4_input_service.h"
+#include "note4_language_setting.h"
+#include "note4_log_event.h"
+#include "note4_storage_service.h"
 
 #include "note4_boot_guard.h"
 #if CONFIG_NOTE4_ENABLE_CONNECTIVITY
@@ -39,8 +39,8 @@ TerminalApp::TerminalApp() : ui_(nullptr) { test_states_.fill(Note4TestState::kW
 void TerminalApp::Run() {
     esp_err_t err = platform_.Initialize();
     if (err != ESP_OK) {
-        ESP_LOGE(kTag, "platform initialization failed: %s",
-                 esp_err_to_name(err));
+        NOTE4_LOGE(kTag, "platform_start_failed", "error=%s",
+                   note4::log::Token(esp_err_to_name(err)).c_str());
         return;
     }
     display_ = &platform_.Display();
@@ -52,7 +52,9 @@ void TerminalApp::Run() {
     if (storage_->GetUInt32(display::kOrientationSettingKey, &orientation) != ESP_OK || orientation > 3)
         orientation = static_cast<uint32_t>(display::kDefaultOrientation);
     const auto restored = display_->SetOrientation(static_cast<display::DisplayOrientation>(orientation));
-    if (restored != ESP_OK) ESP_LOGW(kTag, "screen direction restore failed: %s", esp_err_to_name(restored));
+    if (restored != ESP_OK)
+        NOTE4_LOGW(kTag, "orientation_restore_failed", "error=%s",
+                   note4::log::Token(esp_err_to_name(restored)).c_str());
     system_ = &platform_.System();
 #if CONFIG_NOTE4_ENABLE_USB_HOST
     usb_host_ = platform_.Services().Get<host::Channel>();
@@ -60,7 +62,8 @@ void TerminalApp::Run() {
     const auto language_result = i18n::RestoreLanguage(*storage_);
     language_saved_ = language_result == ESP_OK || language_result == ESP_ERR_NOT_FOUND ||
         language_result == ESP_ERR_NOT_SUPPORTED;
-    if (!language_saved_) ESP_LOGW(kTag, "language preference unavailable; using compiled default");
+    if (!language_saved_)
+        NOTE4_LOGW(kTag, "language_fallback", "source=builtin");
 #if CONFIG_NOTE4_ENABLE_CONNECTIVITY
     connectivity_ = platform_.Services().Get<note4::connectivity::ConnectivityService>();
     if (connectivity_) connectivity_->UpdatePower(power_->ReadSnapshot());
@@ -71,7 +74,8 @@ void TerminalApp::Run() {
     sleep_cover_style_ = note4::app::SleepCoverSetting(sleep_style);
     sleep_cover_saved_ = sleep_setting == ESP_ERR_NOT_FOUND ||
         (sleep_setting == ESP_OK && sleep_style == static_cast<uint32_t>(sleep_cover_style_));
-    if (!sleep_cover_saved_) ESP_LOGW(kTag, "sleep cover preference unavailable; using dashboard");
+    if (!sleep_cover_saved_)
+        NOTE4_LOGW(kTag, "sleep_cover_fallback", "style=dashboard");
     tests_ = &platform_.Diagnostics();
     LogHeap("M2-equivalent platform");
     ui_.SetDisplay(display_);
@@ -83,12 +87,12 @@ void TerminalApp::Run() {
     uint32_t digit_style = 0;
     if (storage_->GetUInt32(ui::kDigitStyleSettingKey, &digit_style) != ESP_OK) digit_style = 0;
     ui_.SetDigitStyle(ui::NormalizeDigitStyle(digit_style));
-    ESP_LOGI(kTag, "event=sleep_cover_settings style=%u portrait=%u",
-        static_cast<unsigned>(sleep_cover_style_), static_cast<unsigned>(sleep_portrait_));
+    NOTE4_LOGI(kTag, "sleep_cover_settings", "style=%u portrait=%u",
+               static_cast<unsigned>(sleep_cover_style_), static_cast<unsigned>(sleep_portrait_));
     // A trial OTA image must reach the existing Home-frame confirmation path;
     // an unattended lock-screen wake must never confirm or bypass that trial.
     if (power_->IsScheduledWake() && !platform_.Boot().ReadBootStatus().confirmation_pending) {
-        ESP_LOGI(kTag, "event=calendar_refresh_wake");
+        NOTE4_LOGI(kTag, "calendar_refresh_wake", "");
 #if CONFIG_NOTE4_ENABLE_CONNECTIVITY
         LoadEdgeConfiguration();
         if (!RefreshEdgeOnWake()) {
@@ -106,14 +110,16 @@ void TerminalApp::Run() {
         }
         // A physical key cancels the burst and returns to the normal UI.
         if (connectivity_ && connectivity_->Initialize() != connectivity::ConnectivityResult::kOk)
-            ESP_LOGW(kTag, "event=connectivity_interactive_start_failed");
+            NOTE4_LOGW(kTag, "connectivity_interactive_start_failed", "");
 #else
         PowerOff();
 #endif
     }
     UpdateSystemStatus();
     const auto splash = ui_.ShowSplash();
-    if (splash != ESP_OK) ESP_LOGW(kTag, "splash unavailable: %s; continuing to Home", esp_err_to_name(splash));
+    if (splash != ESP_OK)
+        NOTE4_LOGW(kTag, "splash_failed", "error=%s next=home",
+                   note4::log::Token(esp_err_to_name(splash)).c_str());
     if (Wait(1500, false) == ControlResult::kShutdown) PowerOff();
 
     RunApplicationShell();
@@ -149,7 +155,7 @@ void TerminalApp::UpdateSystemStatus() {
 
 void TerminalApp::RunApplicationShell() {
     if (!ComposeApplications()) {
-        ESP_LOGE(kTag, "application catalog is full");
+        NOTE4_LOGE(kTag, "application_catalog_full", "");
         return;
     }
     sdk::ApplicationRuntime runtime(applications_.data(), applications_.size(), "launcher", *this);
@@ -175,7 +181,9 @@ void TerminalApp::RunApplicationShell() {
         if (sdk::IsOk(result) && runtime.state() == sdk::LifecycleState::Active)
             result = ToSdkStatus(ui_.RefreshPending());
         const bool recover = health.CompleteForeground(static_cast<int32_t>(result), runtime.foreground_generation());
-        if (!sdk::IsOk(result)) ESP_LOGE(kTag, "application step failed: %s", sdk::StatusName(result));
+        if (!sdk::IsOk(result))
+            NOTE4_LOGE(kTag, "application_step_failed", "error=%s",
+                       note4::log::Token(sdk::StatusName(result)).c_str());
         if (recover && runtime.state() == sdk::LifecycleState::Active) {
             health.BeginRecovery(static_cast<int32_t>(result));
             launcher_back_requested_ = false;
@@ -188,11 +196,13 @@ void TerminalApp::RunApplicationShell() {
             // A recovery page never confirms a trial; a completed Home frame does.
             const auto confirmed = platform_.ConfirmBoot();
             if (confirmed != update::Result::kOk) {
-                ESP_LOGE(kTag, "boot confirmation failed: %s", update::ResultName(confirmed));
+                NOTE4_LOGE(kTag, "boot_confirm_failed", "error=%s",
+                           note4::log::Token(update::ResultName(confirmed)).c_str());
                 return false;
             }
             boot_ready = true;
-            ESP_LOGI(kTag, "launcher ready: applications=%u", static_cast<unsigned>(applications_.size()));
+            NOTE4_LOGI(kTag, "launcher_ready", "count=%u",
+                       static_cast<unsigned>(applications_.size()));
         }
         return true;
     };
@@ -259,8 +269,11 @@ sdk::Status TerminalApp::Shutdown() {
         if (maintenance_operation_ == cli::ControlOperation::kStorageWipe ||
             maintenance_operation_ == cli::ControlOperation::kFactoryReset) {
             const auto result = platform_.ResetUserData(maintenance_operation_ == cli::ControlOperation::kFactoryReset);
-            if (result != ESP_OK) ESP_LOGE(kTag, "user data reset incomplete: %s", esp_err_to_name(result));
-            else ESP_LOGI(kTag, "user data reset complete");
+            if (result != ESP_OK)
+                NOTE4_LOGE(kTag, "user_data_reset_failed", "error=%s",
+                           note4::log::Token(esp_err_to_name(result)).c_str());
+            else
+                NOTE4_LOGI(kTag, "user_data_reset_done", "");
         }
         platform_.Reboot();
     }
@@ -344,8 +357,8 @@ sdk::Status TerminalApp::RequestBack(sdk::ApplicationContext& context) {
 }
 
 void TerminalApp::EnterFailsafe(sdk::Status reason) {
-    ESP_LOGE(kTag, "application runtime failsafe: %s",
-             sdk::StatusName(reason));
+    NOTE4_LOGE(kTag, "application_failsafe", "reason=%s",
+               note4::log::Token(sdk::StatusName(reason)).c_str());
     platform_.Health().SuppressAutomaticApps();
     launcher_back_requested_ = false;
 #if CONFIG_NOTE4_ENABLE_USB_CLI
@@ -353,23 +366,24 @@ void TerminalApp::EnterFailsafe(sdk::Status reason) {
     guest_inspection_ = {};
 #endif
     const auto result = ui_.ShowRecovery();
-    if (result != ESP_OK) ESP_LOGW(kTag, "recovery page failed: %s; input and USB remain available", esp_err_to_name(result));
+    if (result != ESP_OK)
+        NOTE4_LOGW(kTag, "recovery_page_failed", "error=%s input=available usb=available",
+                   note4::log::Token(esp_err_to_name(result)).c_str());
 }
 
 void TerminalApp::LogHeap(const char* phase) {
     note4::system::SystemSnapshot snapshot;
     const esp_err_t read = system_->ReadSnapshot(&snapshot);
     if (read != ESP_OK) {
-        ESP_LOGW(kTag, "heap snapshot failed: %s", esp_err_to_name(read));
+        NOTE4_LOGW(kTag, "heap_snapshot_failed", "error=%s",
+                   note4::log::Token(esp_err_to_name(read)).c_str());
         return;
     }
-    ESP_LOGI(kTag, "heap %s: free=%lu min=%lu largest=%lu", phase,
-             static_cast<unsigned long>(
-                 snapshot.diagnostics.free_internal_heap_bytes),
-             static_cast<unsigned long>(
-                 snapshot.diagnostics.minimum_free_internal_heap_bytes),
-             static_cast<unsigned long>(
-                 snapshot.diagnostics.largest_internal_heap_block_bytes));
+    NOTE4_LOGI(kTag, "heap_snapshot", "phase=%s free_bytes=%lu minimum_bytes=%lu largest_bytes=%lu",
+               note4::log::Token(phase).c_str(),
+               static_cast<unsigned long>(snapshot.diagnostics.free_internal_heap_bytes),
+               static_cast<unsigned long>(snapshot.diagnostics.minimum_free_internal_heap_bytes),
+               static_cast<unsigned long>(snapshot.diagnostics.largest_internal_heap_block_bytes));
 }
 
 ControlResult TerminalApp::Wait(uint32_t duration_ms, bool confirm_returns) {
@@ -378,7 +392,9 @@ ControlResult TerminalApp::Wait(uint32_t duration_ms, bool confirm_returns) {
     while (xTaskGetTickCount() - start < duration) {
         UpdateSystemStatus();
         const esp_err_t draw = ui_.RefreshPending();
-        if (draw != ESP_OK) ESP_LOGW(kTag, "status refresh failed: %s", esp_err_to_name(draw));
+        if (draw != ESP_OK)
+            NOTE4_LOGW(kTag, "status_refresh_failed", "error=%s",
+                       note4::log::Token(esp_err_to_name(draw)).c_str());
         sdk::InputEvent event;
         const TickType_t elapsed = xTaskGetTickCount() - start;
         const TickType_t remaining = duration > elapsed ? duration - elapsed : 0;
@@ -407,10 +423,10 @@ ControlResult TerminalApp::Wait(uint32_t duration_ms, bool confirm_returns) {
 #if CONFIG_NOTE4_ENABLE_CONNECTIVITY
     const auto stopped = connectivity_ ? connectivity_->Stop() : note4::connectivity::ConnectivityResult::kOk;
     if (stopped != note4::connectivity::ConnectivityResult::kOk) {
-        ESP_LOGW(kTag, "connectivity stop incomplete before shutdown");
+        NOTE4_LOGW(kTag, "connectivity_stop_retry", "phase=shutdown");
     }
 #endif
-    ESP_LOGI(kTag, "presenting sleep cover before shutdown");
+    NOTE4_LOGI(kTag, "sleep_cover_start", "");
     esp_err_t cover = ESP_ERR_NOT_FOUND;
 #if CONFIG_NOTE4_ENABLE_CONNECTIVITY
     LoadEdgeConfiguration();
@@ -418,11 +434,14 @@ ControlResult TerminalApp::Wait(uint32_t duration_ms, bool confirm_returns) {
 #endif
     if (cover != ESP_OK) cover = PresentSleepCover(sleep_snapshot, sleep_cover_style_);
     if (cover != ESP_OK) {
-        ESP_LOGW(kTag, "sleep cover failed: %s; attempting blank fallback", esp_err_to_name(cover));
+        NOTE4_LOGW(kTag, "sleep_cover_failed", "error=%s fallback=blank",
+                   note4::log::Token(esp_err_to_name(cover)).c_str());
         const auto clear = ui_.ClearDisplay();
-        if (clear != ESP_OK) ESP_LOGW(kTag, "blank fallback failed: %s", esp_err_to_name(clear));
+        if (clear != ESP_OK)
+            NOTE4_LOGW(kTag, "blank_fallback_failed", "error=%s",
+                       note4::log::Token(esp_err_to_name(clear)).c_str());
     }
-    ESP_LOGI(kTag, "releasing platform peripherals before shutdown");
+    NOTE4_LOGI(kTag, "shutdown_start", "");
     // Measure from the current clock after display I/O and cleanup preparation,
     // not the earlier cover snapshot, so slow full refreshes do not accumulate.
     const bool battery_low = sleep_snapshot.power.battery_valid &&
@@ -431,9 +450,10 @@ ControlResult TerminalApp::Wait(uint32_t duration_ms, bool confirm_returns) {
 #if CONFIG_NOTE4_ENABLE_CONNECTIVITY
     if (!battery_low) wake_after_us = NextWakeDelay();
 #endif
-    ESP_LOGI(kTag, "event=sleep_cover_presented style=%u portrait=%u result=%s wake_after_us=%llu",
-        static_cast<unsigned>(sleep_cover_style_), static_cast<unsigned>(sleep_portrait_),
-        esp_err_to_name(cover), static_cast<unsigned long long>(wake_after_us));
+    NOTE4_LOGI(kTag, "sleep_cover_presented", "style=%u portrait=%u result=%s wake_after_us=%llu",
+               static_cast<unsigned>(sleep_cover_style_), static_cast<unsigned>(sleep_portrait_),
+               note4::log::Token(esp_err_to_name(cover)).c_str(),
+               static_cast<unsigned long long>(wake_after_us));
     platform_.Shutdown(wake_after_us);
 }
 

@@ -4,6 +4,7 @@ root_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 work_dir=$(mktemp -d)
 trap 'rm -rf "$work_dir"' EXIT
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pedantic -pthread \
+  -I"$root_dir/components/note4_log/include" \
   -I"$root_dir/tools/host_include" \
   -I"$root_dir/components/note4_connectivity/include" \
   -I"$root_dir/components/note4_companion/include" \

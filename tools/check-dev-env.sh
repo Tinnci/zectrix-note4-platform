@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-expected_idf="${NOTE4_IDF_PATH:-$HOME/esp/esp-idf-v5.5.2}"
-expected_idf_tag="v5.5.2"
+expected_version="${NOTE4_IDF_VERSION:-5.5.2}"
+expected_idf="${NOTE4_IDF_PATH:-$HOME/esp/esp-idf-v$expected_version}"
+expected_idf_tag="v$expected_version"
 expected_idf_commit="30aaf64524299d3bde422ca9a2848090d1bc5d0f"
 repo_dir="$(cd "$(dirname "$0")/.." && pwd)"
 host_os="$(uname -s)"
@@ -30,6 +31,24 @@ required_submodules=(
     "components/json/cJSON c859b25da02955fef659d658b8f324b5cde87be3"
     "components/bootloader/subproject/components/micro-ecc/micro-ecc 24c60e243580c7868f4334a1ba3123481fe1aa48"
 )
+
+case "$expected_version" in
+    5.5.2) ;;
+    6.0.3)
+        expected_idf_commit="$(git -C "$expected_idf" rev-parse --verify "$expected_idf_tag^{commit}" 2>/dev/null || true)"
+        required_submodules=()
+        for submodule_path in components/esp_wifi/lib components/esp_phy/lib \
+            components/lwip/lwip components/mbedtls/mbedtls components/esp_coex/lib \
+            components/heap/tlsf components/bt/controller/lib_esp32 \
+            components/bt/controller/lib_esp32c3_family components/bt/host/nimble/nimble \
+            components/unity/unity components/spiffs/spiffs components/protobuf-c/protobuf-c \
+            components/bootloader/subproject/components/micro-ecc/micro-ecc; do
+            expected_submodule_commit="$(git -C "$expected_idf" ls-tree "$expected_idf_tag" "$submodule_path" 2>/dev/null | awk '$1 == "160000" { print $3 }')"
+            required_submodules+=("$submodule_path $expected_submodule_commit")
+        done
+        ;;
+    *) printf 'Unsupported qualification version: %s\n' "$expected_version" >&2; exit 2 ;;
+esac
 
 pass_count=0
 warn_count=0
@@ -109,8 +128,8 @@ fi
 if command -v idf.py >/dev/null 2>&1; then
     idf_version="$(idf.py --version 2>/dev/null || true)"
     case "$idf_version" in
-        *"5.5.2"*) pass_check "idf_version=$idf_version" ;;
-        *) fail_check "idf_version expected=5.5.2 actual=${idf_version:-unknown}" ;;
+        *"$expected_version"*) pass_check "idf_version=$idf_version" ;;
+        *) fail_check "idf_version expected=$expected_version actual=${idf_version:-unknown}" ;;
     esac
 else
     fail_check "missing command=idf.py"

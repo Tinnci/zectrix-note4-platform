@@ -34,6 +34,17 @@ The optional micro-app runtime builds the core and auxiliary API of
 its standard libraries are not opened for guests. Copyright (C) 1994–2026
 Lua.org, PUC-Rio. Its MIT license is included in [licenses/LUA_LICENSE.txt](licenses/LUA_LICENSE.txt).
 
+## Optional Wasm interpreters
+
+WAMR 2.4.5 is fetched from [WebAssembly Micro Runtime](https://github.com/wasm-micro-runtime/wasm-micro-runtime/tree/WAMR-2.4.5)
+under Apache License 2.0 with LLVM exceptions; upstream `LICENSE` and copyright
+notices remain in the build copy and [WAMR_LICENSE.txt](licenses/WAMR_LICENSE.txt).
+Wasm3 0.5.0 is fetched from
+[Wasm3](https://github.com/wasm3/wasm3/tree/v0.5.0) under MIT; its `LICENSE`
+remains in the build copy and [WASM3_LICENSE.txt](licenses/WASM3_LICENSE.txt).
+Maintained patches are identified in
+`components/note4_runtime/patches` and modify only build-owned copies.
+
 ## Espressif ESP-IDF
 
 ESP-IDF is provided by Espressif Systems under its respective open-source

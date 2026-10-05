@@ -120,6 +120,67 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  runtime-qualification:
+    name: Bounded runtime qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        run: |
+          curl --fail --silent --show-error --location https://astral.sh/uv/install.sh |
+            env UV_UNMANAGED_INSTALL="$RUNNER_TEMP/uv" sh
+          printf '%s\n' "$RUNNER_TEMP/uv" >> "$GITHUB_PATH"
+      - name: Execute patched backends with memory checks
+        run: uv run tools/runtime-qualification/run.py --fetch --sanitize
+      - name: Upload runtime results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bounded-runtime-results
+          path: |
+            build-runtime-qualification/*results.json
+            build-runtime-qualification/*-sanitized/*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  firmware-idf6:
+    name: ESP-IDF 6.0.3 build compatibility
+    if: ${{ !inputs.skip_firmware }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build Full and Minimal on the second SDK lane
+        uses: espressif/esp-idf-ci-action@e6f5c74232b1ccd4c97ed641f1e48553853f1fd5 # v1.2.0
+        with:
+          esp_idf_version: v6.0.3
+          target: esp32s3
+          command: >-
+            apt-get update &&
+            apt-get install --yes --no-install-recommends jq curl ca-certificates &&
+            curl --fail --silent --show-error --location https://astral.sh/uv/install.sh |
+            env UV_UNMANAGED_INSTALL=/usr/local/bin sh &&
+            tools/build-firmware.sh --profile full &&
+            tools/build-firmware.sh --profile minimal &&
+            tools/capture-build-provenance.sh build-idf6-full
+      - name: Upload SDK 6 build reports
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: idf6-build-reports
+          path: |
+            build-idf6-*/*.json
+            build-idf6-*/dependencies.lock
+            build-idf6-*/build-provenance.txt
+          if-no-files-found: error
+          retention-days: 14
+
   firmware:
     name: ESP32-S3 firmware
     if: ${{ !inputs.skip_firmware }}

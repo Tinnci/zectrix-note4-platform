@@ -8,6 +8,7 @@ if [ "${NOTE4_USB_SANITIZE:-0}" = 1 ]; then
     flags+=(-g "-fsanitize=address,undefined" -fno-omit-frame-pointer)
 fi
 includes=(
+    -I"$root_dir/components/note4_log/include" \
     -I"$root_dir/tools/host_include"
     -I"$root_dir/components/note4_host/include"
     -I"$root_dir/components/note4_cli/include"
@@ -15,6 +16,7 @@ includes=(
     -I"$root_dir/components/note4_storage/include"
     -I"$root_dir/components/note4_system/include"
     -I"$root_dir/components/note4_display/include"
+    -I"$root_dir/components/note4_epd/include"
     -I"$root_dir/components/note4_app/include" -I"$root_dir/components/note4_text/include"
     -I"$root_dir/components/note4_time/include"
     -I"$root_dir/components/note4_power/include"
@@ -28,7 +30,10 @@ sources=(
     "$root_dir/components/note4_cli/note4_cli_session.cc"
     "$root_dir/components/note4_cli/note4_cli_control.cc"
     "$root_dir/components/note4_cli/note4_cli_diagnostics.cc"
+    "$root_dir/components/note4_display/note4_display_model.cc"
+    "$root_dir/components/note4_display/note4_display_physics.cc"
     "$root_dir/components/note4_time/note4_time_sync.cc"
+    "$root_dir/components/note4_log/note4_log.cc"
     "$root_dir/components/note4_cli/note4_cli_log.cc"
 )
 for runtime in 1 0; do
