@@ -72,15 +72,15 @@ image sizes, not ELF sizes. Full and Minimal builds passed on both SDKs.
 | 5.5.2 | Minimal | 703,840 |
 | 6.0.3 | Full, Wasm off | 2,784,256 |
 | 6.0.3 | Minimal | 681,184 |
-| 5.5.2 | Full + WAMR qualification fixture | 2,785,584 |
+| 5.5.2 | Full + WAMR qualification fixture | 2,785,776 |
 | 5.5.2 | Full + Wasm3 qualification fixture | 2,785,136 |
-| 6.0.3 | Full + WAMR qualification fixture | 2,850,000 |
+| 6.0.3 | Full + WAMR qualification fixture | 2,850,176 |
 | 6.0.3 | Full + Wasm3 qualification fixture | 2,850,096 |
 
 Runtime qualification images retain calls into the same production adapter,
 not a duplicate VM implementation. They are link/size evidence only: hostile
 fixtures are not executed on a physical device. All eight images fit the existing
-application slot; the largest qualification image leaves 295,632 bytes free.
+application slot; the largest qualification image leaves 295,552 bytes free.
 
 SDK 6 exposed a NimBLE adjacent-entry capacity warning in the one-bond
 configuration. A build-owned capacity-bounded source copy preserves that
