@@ -6,6 +6,45 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(NOTE4_WASM_WAMR) && !defined(ESP_PLATFORM)
+#include "wasm_export.h"
+static void NativeStackChecks(void) {
+    RuntimeInitArgs args = {0};
+    args.mem_alloc_type = Alloc_With_System_Allocator;
+    PROBE_REQUIRE(wasm_runtime_full_init(&args));
+    uint8_t bytes[sizeof(guest_minimal_bytes)];
+    memcpy(bytes, guest_minimal_bytes, sizeof(bytes));
+    char error[128] = {0};
+    wasm_module_t module = wasm_runtime_load(bytes, sizeof(bytes), error, sizeof(error));
+    PROBE_REQUIRE(module != NULL);
+    wasm_module_inst_t instance = wasm_runtime_instantiate(module, 4096, 0, error, sizeof(error));
+    PROBE_REQUIRE(instance != NULL);
+    wasm_exec_env_t execution = wasm_runtime_create_exec_env(instance, 4096);
+    PROBE_REQUIRE(execution != NULL);
+    wasm_function_inst_t step = wasm_runtime_lookup_function(instance, "step");
+    PROBE_REQUIRE(step != NULL);
+    uint32_t result = 0;
+    PROBE_REQUIRE(wasm_runtime_call_wasm(execution, step, 0, &result) && result == 7);
+    PROBE_REQUIRE(wasm_runtime_detect_native_stack_overflow(execution));
+    PROBE_REQUIRE(wasm_runtime_detect_native_stack_overflow_size(execution, 1024));
+    // Synthetic shortage must still trap without actually overflowing the host stack.
+    uint8_t* shortage = (uint8_t*)((uintptr_t)__builtin_frame_address(0) + 65536);
+    wasm_runtime_set_native_stack_boundary(execution, shortage);
+    PROBE_REQUIRE(!wasm_runtime_call_wasm(execution, step, 0, &result));
+    PROBE_REQUIRE(strstr(wasm_runtime_get_exception(instance), "native stack overflow") != NULL);
+    wasm_runtime_clear_exception(instance);
+    PROBE_REQUIRE(!wasm_runtime_detect_native_stack_overflow_size(execution, 1024));
+    wasm_runtime_clear_exception(instance);
+    wasm_runtime_set_native_stack_boundary(execution, NULL);
+    PROBE_REQUIRE(wasm_runtime_call_wasm(execution, step, 0, &result) && result == 7);
+    PROBE_REQUIRE(wasm_runtime_detect_native_stack_overflow_size(execution, 1024));
+    wasm_runtime_destroy_exec_env(execution);
+    wasm_runtime_deinstantiate(instance);
+    wasm_runtime_unload(module);
+    wasm_runtime_destroy();
+}
+#endif
+
 static int32_t Deliver(void* context, const uint8_t* bytes, uint32_t size) {
     (void)context;
     int32_t ignored = 99;
@@ -20,6 +59,10 @@ static void Closed(void) {
 }
 int note4_runtime_qualify(ProbeMode mode) {
     int32_t result = 0;
+#if defined(NOTE4_WASM_WAMR) && !defined(ESP_PLATFORM)
+    if (mode == PROBE_NORMAL)
+        NativeStackChecks();
+#endif
     if (mode == PROBE_START || mode == PROBE_POST) {
         const uint8_t* bytes = mode == PROBE_START ? guest_start_bytes : guest_post_bytes;
         const size_t size =

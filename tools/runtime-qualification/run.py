@@ -138,6 +138,11 @@ def main() -> None:
     parser.add_argument("--sanitize", action="store_true")
     parser.add_argument("--idf", action="store_true", help="Also link each probe into an isolated Full image")
     args = parser.parse_args()
+    if args.sanitize:
+        # Exercise real/fake-stack separation in low-level native stack checks.
+        # Preserve other caller-selected ASan options, but never disable UAR.
+        options = os.environ.get("ASAN_OPTIONS", "")
+        os.environ["ASAN_OPTIONS"] = options + ":detect_stack_use_after_return=1"
     output = args.output.resolve()
     sources = (args.sources or output / "references").resolve()
     output.mkdir(parents=True, exist_ok=True)

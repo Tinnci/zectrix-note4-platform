@@ -14,7 +14,9 @@ Release sources and patched copies stay in ignored `build-runtime-qualification`
 concurrent invocation should use its own output directory; normal and sanitizer
 engine copies are also separated to avoid applying patches over another build.
 Every engine must finish normal, loop and initialization cases: process timeout is a
-failure, never success. The normal host suite tests the admission parser without
+failure, never success. Sanitizer runs explicitly enable stack-use-after-return
+detection; native stack checks must not confuse ASan's fake stack with the
+thread stack. The normal host suite tests the admission parser without
 fetching engines. Full engine qualification runs separately.
 
 Wasm accounting includes allocator headers and owned source bytes. Lua's

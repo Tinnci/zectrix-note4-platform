@@ -32,11 +32,11 @@ or device qualification. The Note4 was not connected; no firmware was flashed.
 | SSD2683/display simulation | Native 2bpp/4bpp equivalence in four orientations; phase failure recovery, packing and allocation failures passed |
 | Display and storage ASan/UBSan | Passed |
 | Wasm admission C11 ASan/UBSan | Passed, including 10,000 malformed-input cases |
-| Lua, WAMR and Wasm3 ASan/UBSan | All passed; bounded loops, initialization handling, quotas, 32/64-bit constants and repeated cleanup |
+| Lua, WAMR and Wasm3 ASan/UBSan | All passed with stack-use-after-return detection; bounded loops, initialization handling, quotas, constants, native-stack shortage and repeated cleanup |
 | Firmware package tests | Nine passed, including SDK 6 esptool command spelling |
 | Offline waveform catalog | 58 entries listed; exported vendor payload contained all 535 bytes |
 | ShellCheck and whitespace checks | Passed |
-| GitHub workflow | Parsed locally; added jobs have not been run on GitHub for this working tree |
+| GitHub workflow | Linux jobs executed; current-commit outcomes are available in [PR #74 checks](https://github.com/Tinnci/zectrix-note4-platform/pull/74/checks) |
 
 The full host run took 365.07 seconds while firmware builds were running.
 This is a correctness result, not a controlled performance comparison.
@@ -91,6 +91,14 @@ access use `memcpy` to fix
 GCC 15 strict-aliasing errors without suppressing warnings. Integer and floating
 point constant regression checks passed. SDK and upstream release checkouts
 are not patched.
+
+Linux sanitizer qualification exposed WAMR comparing an address-taken local
+with the native thread boundary. ASan can relocate that local to its fake stack,
+causing a false native-stack overflow on the first guest call. The build-owned
+patch now uses the compiler's actual frame address. Qualification explicitly
+enables stack-use-after-return checks and verifies both native-stack detection
+APIs, synthetic stack shortage and subsequent recovery; instrumentation and
+overflow protection remain enabled.
 
 ## Remaining physical evidence
 

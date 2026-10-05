@@ -42,9 +42,10 @@ Tracked patches apply only to build-owned copies. Wasm3 fixes its visitor
 callback type and unmetered loop dispatch. Its code-page and constant-table access use
 `memcpy`, avoiding type-punned stores under GCC 15 without disabling
 strict-aliasing warnings. WAMR fixes frame/branch alignment on 64-bit hosts;
-32-bit Xtensa alignment stays unchanged. ASan/UBSan are not
-disabled. Its ESP-IDF port explicitly includes `sys/stat.h`; unused WASI
-file/socket adapters are excluded from the firmware build, matching the
+32-bit Xtensa alignment stays unchanged. Native stack checks use the actual
+compiler frame rather than ASan fake-stack local addresses. ASan/UBSan and
+use-after-return checks are not disabled. Its ESP-IDF port explicitly includes
+`sys/stat.h`; unused WASI file/socket adapters are excluded from the firmware build, matching the
 disabled guest capabilities on both SDK lanes. Upstream licenses remain in
 copied sources.
 
