@@ -64,7 +64,7 @@ jobs:
 
       - name: Upload host timing and failure logs
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: host-test-report
           path: |
@@ -104,7 +104,7 @@ jobs:
 
       - name: Upload Android test report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-test-report
           path: android-companion/app/build/reports/tests/testDebugUnitTest/
@@ -113,7 +113,7 @@ jobs:
 
       - name: Upload debug APK
         if: ${{ success() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-debug-apk
           path: android-companion/app/build/outputs/apk/debug/app-debug.apk
@@ -138,7 +138,7 @@ jobs:
         run: uv run tools/runtime-qualification/run.py --fetch --sanitize
       - name: Upload runtime results
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bounded-runtime-results
           path: |
@@ -171,7 +171,7 @@ jobs:
             tools/build-firmware.sh --profile minimal &&
             tools/capture-build-provenance.sh build-idf6-full
       - name: Upload SDK 6 build reports
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: idf6-build-reports
           path: |
@@ -225,7 +225,7 @@ jobs:
             tools/capture-build-provenance.sh
 
       - name: Upload firmware artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: esp32s3-firmware
           path: |
